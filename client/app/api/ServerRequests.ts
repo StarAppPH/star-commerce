@@ -1,9 +1,12 @@
 import Server from "./Server";
 import type { ApiResponse } from "./ApiResponse";
+import type { AdminProductListResponse } from '../schemas/AdminProductListResponseSchema';
+import type { AdminProductRow } from '../schemas/AdminProductRowSchema';
 import type { CustomerSessionResponse } from '../schemas/CustomerSessionResponseSchema';
 import type { DevUserListResponse } from '../schemas/DevUserListResponseSchema';
 import type { FirebaseUserObject } from '../schemas/FirebaseUserObjectSchema';
 import type { MyStoreResponse } from '../schemas/MyStoreResponseSchema';
+import type { NewProduct } from '../schemas/NewProductSchema';
 import type { NoContentResponse } from '../schemas/NoContentResponseSchema';
 import type { PhoneVerifiedResponse } from '../schemas/PhoneVerifiedResponseSchema';
 import type { ProductListResponse } from '../schemas/ProductListResponseSchema';
@@ -269,6 +272,98 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             return { message: "Failed to fetch data", status: 0, data: null };
         }
     }
+
+    async addStoreProduct(userId: string, name: string, price: number, inventory: number, description: string | null, isAvailable: boolean): Promise<ApiResponse<AdminProductRow>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/addStoreProduct`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "name": name, "price": price, "inventory": inventory, "description": description, "isAvailable": isAvailable}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<AdminProductRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async addStoreProducts(userId: string, products: NewProduct[]): Promise<ApiResponse<AdminProductListResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/addStoreProducts`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "products": products}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<AdminProductListResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async updateStoreProduct(userId: string, productId: string, name: string | null, description: string | null, price: number | null, inventory: number | null, isAvailable: boolean | null): Promise<ApiResponse<AdminProductRow>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/updateStoreProduct`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "productId": productId, "name": name, "description": description, "price": price, "inventory": inventory, "isAvailable": isAvailable}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<AdminProductRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async listMyStoreProducts(userId: string, search: string | null, limit: number): Promise<ApiResponse<AdminProductListResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/listMyStoreProducts`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "search": search, "limit": limit}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<AdminProductListResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
 }
 
 export interface RouteResponseModels {
@@ -283,6 +378,10 @@ export interface RouteResponseModels {
     startGuestSession: CustomerSessionResponse;
     verifyCustomerPhone: PhoneVerifiedResponse;
     listStoreProducts: ProductListResponse;
+    addStoreProduct: AdminProductRow;
+    addStoreProducts: AdminProductListResponse;
+    updateStoreProduct: AdminProductRow;
+    listMyStoreProducts: AdminProductListResponse;
 }
 
 export interface RouteRequestBodies {
@@ -297,6 +396,10 @@ export interface RouteRequestBodies {
     startGuestSession: { idToken: string; storeSlug: string };
     verifyCustomerPhone: { userId: string; idToken: string };
     listStoreProducts: { userId: string; storeId: string; search: string | null; limit: number };
+    addStoreProduct: { userId: string; name: string; price: number; inventory: number; description: string | null; isAvailable: boolean };
+    addStoreProducts: { userId: string; products: NewProduct[] };
+    updateStoreProduct: { userId: string; productId: string; name: string | null; description: string | null; price: number | null; inventory: number | null; isAvailable: boolean | null };
+    listMyStoreProducts: { userId: string; search: string | null; limit: number };
 }
 
 export type PublicRoute =

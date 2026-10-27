@@ -43,6 +43,10 @@ export type Description = string | null;
  */
 export type Price = number;
 /**
+ * Units free to sell; 0 is sold out
+ */
+export type Inventory = number;
+/**
  * The products, best sellers first
  */
 export type Products = ProductRow[];
@@ -52,12 +56,14 @@ export interface ProductListResponse {
   products: Products;
 }
 /**
- * One product as a list sends it. Each field restates Product's, which
- * test_route_response_models.py's MIRRORS keeps in step.
+ * One product as a customer's list sends it. Each field restates
+ * Product's, which test_route_response_models.py's MIRRORS keeps in
+ * step.
  */
 export interface ProductRow {
   _id: Id;
   name: Name;
   description?: Description;
   price: Price;
+  inventory: Inventory;
 }

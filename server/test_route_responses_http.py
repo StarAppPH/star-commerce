@@ -50,6 +50,7 @@ import subprocess
 import sys
 from http import HTTPStatus
 
+import pytest
 import pubSub as pubSubModule
 from ApiRequests import ApiRequests
 from AppCreator import (STATUS_BAD_REQUEST, STATUS_FORBIDDEN,
@@ -611,5 +612,242 @@ def test_http_setUserStoreLocation_aNonNumberOrHugeLatitude_isA400(
         stored = db.read({}, 'Stores', findOne=True)
         assert stored['location'] is None
         assert stored['_version'] == 0
+    finally:
+        wipeCollections(STORE_COLLECTIONS)
+
+
+SENT_PRODUCT = {'name': 'Rrh Pandesal', 'price': 5, 'inventory': 100}
+PRICE_MESSAGE = 'The price is a number from 0 to 10000000'
+
+
+def _postJson(client, route, headers, text):
+    return client.post(route, data=text, content_type='application/json',
+                       headers=headers)
+
+
+def test_http_addStoreProducts_acceptsDictItems_refusesNonLists(monkeypatch):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(STORE_COLLECTIONS)
+    try:
+        createTestStore(ADMIN)
+        headers = _bearer(_token(flaskApp, ADMIN))
+
+        res = client.post('/addStoreProducts',
+                          json={'userId': ADMIN, 'products': [
+                              SENT_PRODUCT,
+                              {**SENT_PRODUCT, 'name': 'Rrh Tea',
+                               'isAvailable': False}]},
+                          headers=headers)
+
+        data = _success_body(res, 'addStoreProducts')['data']
+        assert [p['name'] for p in data['products']] == ['Rrh Pandesal',
+                                                         'Rrh Tea']
+        assert [p['isAvailable'] for p in data['products']] == [True, False]
+        assert len(db.read({}, 'Products')) == 2
+
+        refused = [
+            ({'a': 1}, 'Invalid products'),
+            ('x', 'Invalid products'),
+            (None, 'Invalid products'),
+            ([], 'Send 1 to 50 products at a time'),
+            ([dict(SENT_PRODUCT, name=f'Rrh {n}') for n in range(51)],
+             'Send 1 to 50 products at a time'),
+            ([5], 'Product 1: send it as an object'),
+            (['x'], 'Product 1: send it as an object'),
+            ([{**SENT_PRODUCT, 'name': 'Rrh New', 'price': '5'}],
+             'Product 1: ' + PRICE_MESSAGE[:1].lower() + PRICE_MESSAGE[1:]),
+        ]
+        for products, message in refused:
+            res = client.post('/addStoreProducts',
+                              json={'userId': ADMIN, 'products': products},
+                              headers=headers)
+
+            assert _failure_body(res, STATUS_BAD_REQUEST) == {
+                'message': message, 'status': STATUS_BAD_REQUEST,
+                'data': None}
+        res = client.post('/addStoreProducts', json={'userId': ADMIN},
+                          headers=headers)
+        assert _failure_body(res, STATUS_BAD_REQUEST)[
+            'message'] == 'Invalid products'
+        assert len(db.read({}, 'Products')) == 2
+    finally:
+        wipeCollections(STORE_COLLECTIONS)
+
+
+def test_http_addStoreProduct_missingKeys_andOddPrices(monkeypatch):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(STORE_COLLECTIONS)
+    try:
+        createTestStore(ADMIN)
+        headers = _bearer(_token(flaskApp, ADMIN))
+
+        res = client.post('/addStoreProduct',
+                          json={'userId': ADMIN, **SENT_PRODUCT},
+                          headers=headers)
+
+        data = _success_body(res, 'addStoreProduct')['data']
+        assert data['isAvailable'] is True
+        assert data['description'] is None
+        res = client.post('/addStoreProduct',
+                          json={'userId': ADMIN, **SENT_PRODUCT,
+                                'name': 'Rrh Null', 'isAvailable': None},
+                          headers=headers)
+        assert _success_body(res, 'addStoreProduct')['data'][
+            'isAvailable'] is True
+
+        res = client.post('/addStoreProduct',
+                          json={'userId': ADMIN, 'price': 1, 'inventory': 1},
+                          headers=headers)
+        assert _failure_body(res, STATUS_BAD_REQUEST)['message'] == (
+            'The name is 1 to 80 characters')
+        res = client.post('/addStoreProduct',
+                          json={'userId': ADMIN, 'name': 'Rrh X',
+                                'inventory': 1}, headers=headers)
+        assert _failure_body(res, STATUS_BAD_REQUEST)[
+            'message'] == PRICE_MESSAGE
+
+        # A price that is no number is a 400 on the wire, never a 500.
+        for price in ('NaN', 'Infinity', '-Infinity', '1e999', 'true', '"5"',
+                      'null', '1' + '0' * 400):
+            text = ('{"userId": "%s", "name": "Rrh Odd", "inventory": 1, '
+                    '"price": %s}' % (ADMIN, price))
+            res = _postJson(client, '/addStoreProduct', headers, text)
+
+            assert _failure_body(res, STATUS_BAD_REQUEST)[
+                'message'] == PRICE_MESSAGE
+        text = ('{"userId": "%s", "name": "Rrh Zero", "inventory": 1, '
+                '"price": -0.0}' % ADMIN)
+        res = _postJson(client, '/addStoreProduct', headers, text)
+        assert str(_success_body(res, 'addStoreProduct')['data'][
+            'price']) == '0.0'
+        assert str(db.read({'name': 'Rrh Zero'}, 'Products',
+                           findOne=True)['price']) == '0.0'
+        assert db.read({'name': 'Rrh Odd'}, 'Products') == []
+    finally:
+        wipeCollections(STORE_COLLECTIONS)
+
+
+def test_http_updateStoreProduct_missingKeys(monkeypatch):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(STORE_COLLECTIONS)
+    try:
+        store = createTestStore(ADMIN)
+        product = addProduct(store['_id'], 'Rrh Pandesal', 5,
+                             description='Soft', inventory=10)
+        headers = _bearer(_token(flaskApp, ADMIN))
+
+        def post(**fields):
+            return client.post('/updateStoreProduct',
+                               json={'userId': ADMIN,
+                                     'productId': product['_id'], **fields},
+                               headers=headers)
+
+        data = _success_body(post(price=7), 'updateStoreProduct')['data']
+        assert (data['name'], data['description'], data['price'],
+                data['inventory'], data['isAvailable']) == (
+                    'Rrh Pandesal', 'Soft', 7.0, 10, True)
+        # A blank name means unchanged.
+        data = _success_body(post(name='', price=8),
+                             'updateStoreProduct')['data']
+        assert (data['name'], data['price']) == ('Rrh Pandesal', 8.0)
+
+        assert _failure_body(post(), STATUS_BAD_REQUEST)['message'] == (
+            'Send at least one field to change')
+        res = client.post('/updateStoreProduct',
+                          json={'userId': ADMIN, 'price': 1}, headers=headers)
+        assert _failure_body(res, STATUS_BAD_REQUEST)[
+            'message'] == 'Product not found'
+        res = client.post('/updateStoreProduct',
+                          json={'userId': ADMIN, 'productId': {'$ne': None},
+                                'price': 1}, headers=headers)
+        assert _failure_body(res, STATUS_BAD_REQUEST)[
+            'message'] == 'Invalid productId'
+        assert _failure_body(post(isAvailable='no'), STATUS_BAD_REQUEST)[
+            'message'] == 'isAvailable is true or false'
+        stored = db.read({'_id': product['_id']}, 'Products', findOne=True)
+        assert stored['_version'] == 2
+    finally:
+        wipeCollections(STORE_COLLECTIONS)
+
+
+def test_http_listMyStoreProducts_searchAndLimit(monkeypatch):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(STORE_COLLECTIONS)
+    try:
+        store = createTestStore(ADMIN)
+        for number in range(PRODUCT_LIST_DEFAULT_LIMIT + 2):
+            addProduct(store['_id'], f'Rrh Item {number:02d}', 1,
+                       isAvailable=number % 2 == 0)
+        headers = _bearer(_token(flaskApp, ADMIN))
+
+        def post(**fields):
+            return client.post('/listMyStoreProducts',
+                               json={'userId': ADMIN, **fields},
+                               headers=headers)
+
+        data = _success_body(post(), 'listMyStoreProducts')['data']
+        assert len(data['products']) == PRODUCT_LIST_DEFAULT_LIMIT
+        assert any(not p['isAvailable'] for p in data['products'])
+        assert all('reservedInventory' not in p for p in data['products'])
+        data = _success_body(post(limit=None, search='item 1'),
+                             'listMyStoreProducts')['data']
+        assert [p['name'] for p in data['products']] == [
+            'Rrh Item 10', 'Rrh Item 11']
+
+        for search in (5, True):
+            assert _failure_body(post(search=search), STATUS_BAD_REQUEST)[
+                'message'] == 'The search must be text'
+        for search in ({'$ne': None}, ['a']):
+            assert _failure_body(post(search=search), STATUS_BAD_REQUEST)[
+                'message'] == 'Invalid search'
+    finally:
+        wipeCollections(STORE_COLLECTIONS)
+
+
+def test_http_listStoreProducts_aNonStringSearch_isA400(monkeypatch, firebase):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(STORE_COLLECTIONS)
+    try:
+        store = createTestStore(ADMIN)
+        addProduct(store['_id'], 'Rrh Pandesal', 5)
+        customerId = guestAt(firebase, store, 'rrh-guest-search')
+
+        res = client.post('/listStoreProducts',
+                          json={'userId': customerId, 'storeId': store['_id'],
+                                'search': 5},
+                          headers=_bearer(_token(flaskApp, customerId)))
+
+        assert _failure_body(res, STATUS_BAD_REQUEST)[
+            'message'] == 'The search must be text'
+    finally:
+        wipeCollections(STORE_COLLECTIONS)
+
+
+@pytest.mark.parametrize('route, body', [
+    ('addStoreProduct', SENT_PRODUCT),
+    ('addStoreProducts', {'products': [SENT_PRODUCT]}),
+    ('updateStoreProduct', {'productId': 'rrh-any', 'price': 1}),
+    ('listMyStoreProducts', {}),
+])
+def test_http_adminProductRoutes_refuseAForeignUserId(monkeypatch, route,
+                                                      body):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(STORE_COLLECTIONS)
+    try:
+        createTestStore(ADMIN)
+
+        res = client.post('/' + route,
+                          json={'userId': 'rrh-someone-else', **body},
+                          headers=_bearer(_token(flaskApp, ADMIN)))
+
+        assert _failure_body(res, STATUS_BAD_REQUEST)[
+            'message'] == 'Unauthorized access'
+        assert db.read({}, 'Products') == []
     finally:
         wipeCollections(STORE_COLLECTIONS)

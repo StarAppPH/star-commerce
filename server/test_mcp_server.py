@@ -87,7 +87,10 @@ def test_eachAudienceListsOnlyItsTools():
         return {t.name for t in await mcpServer.servers[audience].list_tools()}
 
     assert asyncio.run(names('customer')) == {'listStoreProducts'}
-    assert asyncio.run(names('admin')) == {'getUserStore', 'createUserStore'}
+    assert asyncio.run(names('admin')) == {
+        'getUserStore', 'createUserStore', 'addStoreProduct',
+        'addStoreProducts', 'updateStoreProduct', 'listMyStoreProducts'
+    }
 
 
 def test_aToolsArguments_leaveOutTheInjectedParams():
@@ -480,10 +483,19 @@ def test_e2e_createUserStore_anUnsupportedCurrencyIsAToolError(clean):
     assert db.read({}, 'Stores') == []
 
 
+PRODUCT_TOOL_ARGUMENTS = [
+    ('addStoreProduct', {'name': 'Tea', 'price': 1, 'inventory': 1}),
+    ('addStoreProducts', {'products': [{'name': 'Tea', 'price': 1,
+                                        'inventory': 1}]}),
+    ('updateStoreProduct', {'productId': 'mc-no-product', 'price': 1}),
+    ('listMyStoreProducts', {}),
+]
+
+
 @pytest.mark.parametrize('tool, arguments', [
     ('getUserStore', {}),
     ('createUserStore', ADMIN_STORE),
-])
+] + PRODUCT_TOOL_ARGUMENTS)
 def test_e2e_adminTools_refuseACustomer(clean, firebase, tool, arguments):
     store = storeWithProducts(ADMIN)
     customerId = guestAt(firebase, store, GUEST)
@@ -495,16 +507,176 @@ def test_e2e_adminTools_refuseACustomer(clean, firebase, tool, arguments):
     assert len(db.read({}, 'Stores')) == 1
 
 
-def test_e2e_adminToolsAreNotOnTheCustomerServer(clean, firebase):
+@pytest.mark.parametrize('tool, arguments', [
+    ('createUserStore', ADMIN_STORE),
+] + PRODUCT_TOOL_ARGUMENTS)
+def test_e2e_adminToolsAreNotOnTheCustomerServer(clean, firebase, tool,
+                                                 arguments):
     store = createTestStore(OTHER_ADMIN)
     customerId = guestAt(firebase, store, GUEST)
 
     try:
-        result = callTool(_auth(customerId, store['_id']), 'createUserStore',
-                          ADMIN_STORE)
+        result = callTool(_auth(customerId, store['_id']), tool, arguments)
         refused = result.is_error
     except Exception:  # the SDK may raise for an unknown tool
         refused = True
 
     assert refused
     assert len(db.read({}, 'Stores')) == 1
+    assert db.read({}, 'Products') == []
+
+
+# ----------------------------- admin product tools ----------------------------- #
+
+PRODUCT_FIELDS = {'name', 'price', 'inventory', 'description', 'isAvailable'}
+
+
+def _resolved(schema: dict, node: dict) -> dict:
+    """`node` with a local $ref followed."""
+    ref = node.get('$ref')
+    if ref is None:
+        return node
+    return schema['$defs'][ref.rsplit('/', 1)[-1]]
+
+
+def test_theAdminProductToolsArguments_leaveOutTheInjectedParams():
+    async def tools():
+        return {t.name: t for t in await mcpServer.servers['admin'].list_tools()}
+
+    byName = asyncio.run(tools())
+
+    add = byName['addStoreProduct'].input_schema
+    assert set(add['properties']) == PRODUCT_FIELDS
+    assert set(add['required']) == {'name', 'price', 'inventory'}
+
+    batch = byName['addStoreProducts'].input_schema
+    assert set(batch['properties']) == {'products'}
+    assert set(batch['required']) == {'products'}
+    item = _resolved(batch, batch['properties']['products']['items'])
+    assert set(item['properties']) == PRODUCT_FIELDS
+    assert set(item['required']) == {'name', 'price', 'inventory'}
+    # NewProduct is types only: the route checks the limits.
+    for key in ('maxLength', 'minLength', 'minimum', 'maximum'):
+        assert key not in str(item)
+
+    update = byName['updateStoreProduct'].input_schema
+    assert set(update['properties']) == {'productId'} | PRODUCT_FIELDS
+    assert set(update['required']) == {'productId'}
+
+    listing = byName['listMyStoreProducts'].input_schema
+    assert set(listing['properties']) == {'search', 'limit'}
+    assert not listing.get('required')
+
+
+PANDESAL = {'name': 'Pandesal', 'price': 5, 'inventory': 100}
+
+
+def test_e2e_adminProducts_addBatchListUpdate(clean, firebase):
+    store = createTestStore(ADMIN)
+    headers = _auth(ADMIN)
+
+    added = callTool(headers, 'addStoreProduct', PANDESAL, audience='admin')
+
+    assert not added.is_error, _text(added)
+    stored = db.read({'name': 'Pandesal'}, 'Products', findOne=True)
+    assert added.structured_content['_id'] == stored['_id']
+    assert stored['storeId'] == store['_id']
+    assert added.structured_content['reservedInventory'] == []
+
+    batch = callTool(headers, 'addStoreProducts', {
+        'products': [{'name': 'Tea', 'price': 3, 'inventory': 0,
+                      'isAvailable': False},
+                     {'name': 'Cake', 'price': 9.5, 'inventory': 4}]
+    }, audience='admin')
+
+    assert not batch.is_error, _text(batch)
+    rows = batch.structured_content['products']
+    assert [r['name'] for r in rows] == ['Tea', 'Cake']
+    assert [r['reservedQuantity'] for r in rows] == [0, 0]
+    assert [r['isAvailable'] for r in rows] == [False, True]
+
+    listed = callTool(headers, 'listMyStoreProducts', {}, audience='admin')
+
+    assert not listed.is_error, _text(listed)
+    assert listed.structured_content == api.listMyStoreProducts(ADMIN)
+    assert [p['name'] for p in listed.structured_content['products']
+            ] == ['Cake', 'Pandesal', 'Tea']
+
+    updated = callTool(headers, 'updateStoreProduct',
+                       {'productId': stored['_id'], 'price': 99.5,
+                        'inventory': 0}, audience='admin')
+
+    assert not updated.is_error, _text(updated)
+    assert (updated.structured_content['price'],
+            updated.structured_content['inventory']) == (99.5, 0)
+    assert updated.structured_content['name'] == 'Pandesal'
+    again = callTool(headers, 'listMyStoreProducts', {'search': 'pan'},
+                     audience='admin')
+    assert [(p['price'], p['inventory']) for p in
+            again.structured_content['products']] == [(99.5, 0)]
+
+    # A customer sees the sold-out product with its inventory, not the
+    # hidden one.
+    customerId = guestAt(firebase, store, GUEST)
+    seen = callTool(_auth(customerId, store['_id']), 'listStoreProducts', {})
+    assert [(p['name'], p['inventory'])
+            for p in seen.structured_content['products']
+            ] == [('Cake', 4), ('Pandesal', 0)]
+
+
+@pytest.mark.parametrize('tool, arguments, message', [
+    ('addStoreProduct', {**PANDESAL, 'price': -1},
+     'The price is a number from 0 to 10000000'),
+    ('addStoreProducts', {'products': [PANDESAL, {**PANDESAL, 'name': ''}]},
+     'Product 2: the name is 1 to 80 characters'),
+    ('updateStoreProduct', {'productId': 'mc-any'},
+     'Send at least one field to change'),
+    ('updateStoreProduct', {'productId': 'mc-no-such-product', 'price': 1},
+     'Product not found'),
+])
+def test_e2e_adminProducts_aRefusalReachesTheAIAsAToolError(
+        clean, tool, arguments, message):
+    createTestStore(ADMIN)
+
+    result = callTool(_auth(ADMIN), tool, arguments, audience='admin')
+
+    assert result.is_error
+    assert message in _text(result)
+    assert db.read({}, 'Products') == []
+
+
+def test_e2e_adminProducts_aTakenNameIsAToolError(clean):
+    store = createTestStore(ADMIN)
+    addProduct(store['_id'], 'Pandesal', 5)
+
+    result = callTool(_auth(ADMIN), 'addStoreProduct', PANDESAL,
+                      audience='admin')
+
+    assert result.is_error
+    assert 'A product with this name already exists' in _text(result)
+    assert len(db.read({}, 'Products')) == 1
+
+
+def test_e2e_adminProducts_aWrongTypeIsAToolError_andAddsNothing(clean):
+    createTestStore(ADMIN)
+
+    result = callTool(_auth(ADMIN), 'addStoreProducts',
+                      {'products': [{**PANDESAL, 'price': 'abc'}]},
+                      audience='admin')
+
+    assert result.is_error
+    assert db.read({}, 'Products') == []
+
+
+def test_e2e_adminProducts_theAICannotPickAnotherStoreOrUser(clean):
+    createTestStore(ADMIN)
+    other = createTestStore(OTHER_ADMIN, 'Coffee B')
+
+    result = callTool(_auth(ADMIN), 'addStoreProduct',
+                      {**PANDESAL, 'storeId': other['_id'],
+                       'userId': OTHER_ADMIN}, audience='admin')
+
+    assert not result.is_error, _text(result)
+    [stored] = db.read({}, 'Products')
+    assert stored['storeId'] == db.read({'ownerUserId': ADMIN}, 'Stores',
+                                        findOne=True)['_id']

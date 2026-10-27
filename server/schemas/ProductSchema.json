@@ -1,5 +1,31 @@
 {
-    "description": "A Products document, priced in its store's currency. Listed best\nsellers first: the (storeId, isAvailable, soldCount, name) index\n(mongoDb.ensureIndexes) serves that sort.",
+    "$defs": {
+        "ReservedInventory": {
+            "description": "Units of a product an order is holding (taken out of inventory).",
+            "properties": {
+                "orderId": {
+                    "description": "The Orders _id",
+                    "minLength": 1,
+                    "title": "Orderid",
+                    "type": "string"
+                },
+                "quantity": {
+                    "description": "Units the order holds",
+                    "minimum": 1,
+                    "title": "Quantity",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "orderId",
+                "quantity"
+            ],
+            "title": "ReservedInventory",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A Products document, priced in its store's currency. Listed best\nsellers first: the (storeId, isAvailable, soldCount, name) index\n(mongoDb.ensureIndexes) serves that sort. (storeId, nameKey) is a\nunique index: one store never has two products of the same name.\n\nEvery write to inventory or reservedInventory (an order reserving or\nreleasing units included) must also $inc _version, or\nupdateStoreProduct's _version lock misses it and the admin's save\noverwrites it.",
     "properties": {
         "_id": {
             "title": "Id",
@@ -30,6 +56,12 @@
             "title": "Name",
             "type": "string"
         },
+        "nameKey": {
+            "description": "productNameKey(name), unique per store",
+            "minLength": 1,
+            "title": "Namekey",
+            "type": "string"
+        },
         "description": {
             "anyOf": [
                 {
@@ -46,9 +78,25 @@
         },
         "price": {
             "description": "Price in the store's currency",
+            "maximum": 10000000,
             "minimum": 0,
             "title": "Price",
             "type": "number"
+        },
+        "inventory": {
+            "description": "Units free to sell; 0 is sold out",
+            "maximum": 1000000,
+            "minimum": 0,
+            "title": "Inventory",
+            "type": "integer"
+        },
+        "reservedInventory": {
+            "description": "Units orders are holding",
+            "items": {
+                "$ref": "#/$defs/ReservedInventory"
+            },
+            "title": "Reservedinventory",
+            "type": "array"
         },
         "soldCount": {
             "default": 0,
@@ -73,7 +121,9 @@
     "required": [
         "storeId",
         "name",
+        "nameKey",
         "price",
+        "inventory",
         "createdAt"
     ],
     "title": "Product",

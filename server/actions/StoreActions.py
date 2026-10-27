@@ -10,6 +10,7 @@ import datetime
 import re
 import secrets
 import typing
+import unicodedata
 
 from pymongo.errors import DuplicateKeyError
 
@@ -34,6 +35,8 @@ FALLBACK_SLUG = 'store'
 ALREADY_HAS_A_STORE = 'You already have a store'
 NO_STORE_YET = 'Create your store first'
 CONTACT_NUMBER_FORMAT_EXAMPLE = '+639171234567'
+# The control characters a text field may hold: line breaks and tabs.
+ALLOWED_CONTROL_CHARACTERS = frozenset('\n\r\t')
 
 
 def ownerQuery(userId: str) -> dict:
@@ -41,6 +44,16 @@ def ownerQuery(userId: str) -> dict:
     admin lookup goes through it, never through a store id the client or
     the AI sends."""
     return {'ownerUserId': userId}
+
+
+def ownerStore(userId: str, projection: dict) -> dict:
+    """The store `userId` owns (read through ownerQuery, with
+    `projection`). Refuses an admin with no store yet."""
+    store = db.read(ownerQuery(userId), STORES, projection=projection,
+                    findOne=True)
+    if store is None:
+        raise ValueError(NO_STORE_YET)
+    return store
 
 
 def _isOwnerCollision(error: DuplicateKeyError) -> bool:
@@ -73,12 +86,16 @@ def storeSlug(name: str) -> str:
 def _validText(value: str | None, label: str, maxLength: int,
                required: bool = True) -> str | None:
     """`value` stripped, refused (naming `label` and its limit, never the
-    value) when it is too long, or empty while `required`. An empty
-    optional value becomes None."""
+    value) when it is too long, empty while `required`, or holds a control
+    character other than a line break or a tab. An empty optional value
+    becomes None."""
     if value is None and not required:
         return None
     if not isinstance(value, str):
         raise ValueError(f'{label} must be text')
+    if any(unicodedata.category(c) == 'Cc'
+           and c not in ALLOWED_CONTROL_CHARACTERS for c in value):
+        raise ValueError(f'{label} cannot contain control characters')
     stripped = value.strip()
     if not stripped and not required:
         return None
@@ -217,10 +234,7 @@ class StoreActions():
                                       LATITUDE_LIMIT),
             longitude=_validCoordinate(longitude, 'The longitude',
                                        LONGITUDE_LIMIT))
-        store = db.read(ownerQuery(userId), STORES,
-                        projection={'_id': 1, '_version': 1}, findOne=True)
-        if store is None:
-            raise ValueError(NO_STORE_YET)
+        store = ownerStore(userId, {'_id': 1, '_version': 1})
         updated = db.update(
             {'_id': store['_id'], '_version': store['_version']},
             {'location': location.model_dump()}, STORES)

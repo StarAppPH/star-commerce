@@ -1,0 +1,74 @@
+{
+    "description": "One product of an admin's list: AdminProductRow with the\nreservations summed (reservedQuantity), so a row never grows with its\nopen orders. Each field restates Product's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+    "properties": {
+        "_id": {
+            "description": "Products _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "name": {
+            "description": "Product name",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "description": {
+            "anyOf": [
+                {
+                    "maxLength": 500,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "What the product is",
+            "title": "Description"
+        },
+        "price": {
+            "description": "Price in the store's currency",
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        },
+        "inventory": {
+            "description": "Units free to sell; 0 is sold out",
+            "maximum": 1000000,
+            "minimum": 0,
+            "title": "Inventory",
+            "type": "integer"
+        },
+        "reservedQuantity": {
+            "description": "Units orders are holding, all orders summed",
+            "minimum": 0,
+            "title": "Reservedquantity",
+            "type": "integer"
+        },
+        "isAvailable": {
+            "description": "Shown to customers",
+            "title": "Isavailable",
+            "type": "boolean"
+        },
+        "soldCount": {
+            "description": "Units sold so far",
+            "minimum": 0,
+            "title": "Soldcount",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "_id",
+        "name",
+        "description",
+        "price",
+        "inventory",
+        "reservedQuantity",
+        "isAvailable",
+        "soldCount"
+    ],
+    "title": "AdminProductListRow",
+    "type": "object",
+    "additionalProperties": false
+}

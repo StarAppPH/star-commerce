@@ -636,11 +636,17 @@ def createTestStore(adminId: str, name: str = 'Bakery A',
 
 
 def addProduct(storeId: str, name: str, price: float, soldCount: int = 0,
-               isAvailable: bool = True, description: str | None = None):
-    """A Products document of the store, stored and returned."""
-    from objects import Product
+               isAvailable: bool = True, description: str | None = None,
+               inventory: int = 10, *,
+               reservedInventory: list[dict] | None = None):
+    """A Products document of the store, stored and returned.
+    `reservedInventory` is a list of {'orderId', 'quantity'} dicts."""
+    from objects import Product, productNameKey
     product = Product(storeId=storeId,
                       name=name,
+                      nameKey=productNameKey(name),
+                      inventory=inventory,
+                      reservedInventory=reservedInventory or [],
                       description=description,
                       price=price,
                       soldCount=soldCount,

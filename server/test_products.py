@@ -128,3 +128,33 @@ def test_listStoreProducts_withoutALimit_returnsTheDefault(clean, firebase):
 
     assert len(unset['products']) == 10
     assert none == unset
+
+
+def test_listStoreProducts_sendsInventory_andListsSoldOutProducts(
+        clean, firebase):
+    store = createTestStore(ADMIN)
+    addProduct(store['_id'], 'Pandesal', 5, soldCount=9, inventory=12,
+               reservedInventory=[{'orderId': 'o1', 'quantity': 2}])
+    addProduct(store['_id'], 'Sold Out', 5, soldCount=3, inventory=0)
+    addProduct(store['_id'], 'Hidden', 5, soldCount=99, inventory=5,
+               isAvailable=False)
+    customerId = guestAt(firebase, store, GUEST)
+
+    res = api.listStoreProducts(customerId, store['_id'])
+
+    assertExactShape(ProductListResponse, res)
+    assertRowKeys(res['products'], ProductRow)
+    assert [(p['name'], p['inventory']) for p in res['products']] == [
+        ('Pandesal', 12), ('Sold Out', 0)]
+    for row in res['products']:
+        assert 'reservedInventory' not in row
+        assert 'nameKey' not in row
+
+
+@pytest.mark.parametrize('search', [5, ['a'], True])
+def test_listStoreProducts_refusesANonTextSearch(clean, firebase, search):
+    store = storeWithProducts(ADMIN)
+    customerId = guestAt(firebase, store, GUEST)
+
+    with pytest.raises(ValueError, match='^The search must be text$'):
+        api.listStoreProducts(customerId, store['_id'], search=search)

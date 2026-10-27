@@ -228,6 +228,43 @@ def test_createUserStore_refusesAnInvalidDetail(clean, field, value, message):
     assert db.read({}, 'Stores') == []
 
 
+@pytest.mark.parametrize('field, label', [
+    ('name', 'A store name'),
+    ('description', 'A description'),
+    ('address', 'An address'),
+    ('openingHours', 'The opening hours text'),
+])
+@pytest.mark.parametrize('bad', ['a\x00b', '\x07', 'a\x7fb', 'a\x85b'])
+def test_createUserStore_refusesAControlCharacter(clean, field, label, bad):
+    createTestUser(ADMIN)
+    details = {**STORE_DETAILS, 'name': 'Bakery A'}
+    details[field] = bad
+
+    with pytest.raises(ValueError,
+                       match=f'^{label} cannot contain control characters$'):
+        api.createUserStore(ADMIN, details.pop('name'), **details)
+    assert db.read({}, 'Stores') == []
+
+
+def test_createUserStore_aControlCharacterInTheContactNumber_isAFormatError(
+        clean):
+    createTestUser(ADMIN)
+
+    with pytest.raises(ValueError, match=CONTACT_FORMAT):
+        _storeWith(contactNumber='+63917123\x004567')
+
+
+def test_createUserStore_keepsLineBreaksAndTabs(clean):
+    createTestUser(ADMIN)
+
+    created = _storeWith(description='a\nb', address='a\tb',
+                         openingHours='Mon\r\nTue')
+
+    assert (created['description'], created['address'],
+            created['openingHours']) == ('a\nb', 'a\tb',
+                                         'Mon\r\nTue')
+
+
 @pytest.mark.parametrize('field, value', [
     ('description', 'x' * 300),
     ('address', 'x' * 200),

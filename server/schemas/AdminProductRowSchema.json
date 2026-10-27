@@ -1,0 +1,102 @@
+{
+    "$defs": {
+        "ReservedInventoryResponse": {
+            "description": "ReservedInventory as a route sends it. Each field restates\nReservedInventory's, which test_route_response_models.py's MIRRORS\nkeeps in step.",
+            "properties": {
+                "orderId": {
+                    "description": "The Orders _id",
+                    "minLength": 1,
+                    "title": "Orderid",
+                    "type": "string"
+                },
+                "quantity": {
+                    "description": "Units the order holds",
+                    "minimum": 1,
+                    "title": "Quantity",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "orderId",
+                "quantity"
+            ],
+            "title": "ReservedInventoryResponse",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "One product as its store's admin sees it. Each field restates\nProduct's, which test_route_response_models.py's MIRRORS keeps in\nstep.",
+    "properties": {
+        "_id": {
+            "description": "Products _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "name": {
+            "description": "Product name",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "description": {
+            "anyOf": [
+                {
+                    "maxLength": 500,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "What the product is",
+            "title": "Description"
+        },
+        "price": {
+            "description": "Price in the store's currency",
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        },
+        "inventory": {
+            "description": "Units free to sell; 0 is sold out",
+            "maximum": 1000000,
+            "minimum": 0,
+            "title": "Inventory",
+            "type": "integer"
+        },
+        "reservedInventory": {
+            "description": "Units orders are holding",
+            "items": {
+                "$ref": "#/$defs/ReservedInventoryResponse"
+            },
+            "title": "Reservedinventory",
+            "type": "array"
+        },
+        "isAvailable": {
+            "description": "Shown to customers",
+            "title": "Isavailable",
+            "type": "boolean"
+        },
+        "soldCount": {
+            "description": "Units sold so far",
+            "minimum": 0,
+            "title": "Soldcount",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "_id",
+        "name",
+        "description",
+        "price",
+        "inventory",
+        "reservedInventory",
+        "isAvailable",
+        "soldCount"
+    ],
+    "title": "AdminProductRow",
+    "type": "object",
+    "additionalProperties": false
+}
