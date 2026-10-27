@@ -2870,6 +2870,16 @@ MIRRORS = [
      set()),
     (ObjectsModule.CustomerSessionResponse, ObjectsModule.Customer, {'id'}),
     (ObjectsModule.ProductRow, ObjectsModule.Product, {'id'}),
+    # reservedInventory is a list of ReservedInventoryResponse on the row,
+    # of ReservedInventory on the document: mirrored by the entry after
+    # this one.
+    (ObjectsModule.AdminProductRow, ObjectsModule.Product,
+     {'id', 'reservedInventory'}),
+    (ObjectsModule.ReservedInventoryResponse, ObjectsModule.ReservedInventory,
+     set()),
+    # reservedQuantity is derived (the reservations summed): no Product
+    # field to mirror.
+    (ObjectsModule.AdminProductListRow, ObjectsModule.Product, {'id'}),
 ]
 
 

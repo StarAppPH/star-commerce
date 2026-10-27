@@ -72,6 +72,12 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     # (requireCustomer).
     'verifyCustomerPhone',
     'listStoreProducts',
+    # The admin's products: requireAdmin, and only the products of the
+    # store the caller owns (ownerQuery).
+    'addStoreProduct',
+    'addStoreProducts',
+    'updateStoreProduct',
+    'listMyStoreProducts',
 }
 
 

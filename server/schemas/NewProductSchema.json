@@ -1,0 +1,47 @@
+{
+    "description": "One product of an addStoreProducts call, as the admin described it.\nTypes only, no limits: the route checks them (_validProduct), so a\nrefusal names the product's position and never quotes the value.",
+    "properties": {
+        "name": {
+            "description": "Product name",
+            "title": "Name",
+            "type": "string"
+        },
+        "price": {
+            "description": "Price in the store's currency",
+            "title": "Price",
+            "type": "number"
+        },
+        "inventory": {
+            "description": "Units in stock, free to sell",
+            "title": "Inventory",
+            "type": "integer"
+        },
+        "description": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "What the product is",
+            "title": "Description"
+        },
+        "isAvailable": {
+            "default": true,
+            "description": "Shown to customers",
+            "title": "Isavailable",
+            "type": "boolean"
+        }
+    },
+    "required": [
+        "name",
+        "price",
+        "inventory"
+    ],
+    "title": "NewProduct",
+    "type": "object",
+    "additionalProperties": false
+}

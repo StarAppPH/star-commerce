@@ -22,6 +22,10 @@ export type Storeid = string;
  */
 export type Name = string;
 /**
+ * productNameKey(name), unique per store
+ */
+export type Namekey = string;
+/**
  * What the product is
  */
 export type Description = string | null;
@@ -29,6 +33,22 @@ export type Description = string | null;
  * Price in the store's currency
  */
 export type Price = number;
+/**
+ * Units free to sell; 0 is sold out
+ */
+export type Inventory = number;
+/**
+ * The Orders _id
+ */
+export type Orderid = string;
+/**
+ * Units the order holds
+ */
+export type Quantity = number;
+/**
+ * Units orders are holding
+ */
+export type Reservedinventory = ReservedInventory[];
 /**
  * Units sold so far
  */
@@ -50,9 +70,19 @@ export interface ProductView {
   _version: Version;
   storeId: Storeid;
   name: Name;
+  nameKey: Namekey;
   description?: Description;
   price: Price;
+  inventory: Inventory;
+  reservedInventory?: Reservedinventory;
   soldCount?: Soldcount;
   isAvailable?: Isavailable;
   createdAt: Createdat;
+}
+/**
+ * Units of a product an order is holding (taken out of inventory).
+ */
+export interface ReservedInventory {
+  orderId: Orderid;
+  quantity: Quantity;
 }

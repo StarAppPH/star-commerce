@@ -1,0 +1,24 @@
+{
+    "description": "Units of a product an order is holding (taken out of inventory).",
+    "properties": {
+        "orderId": {
+            "description": "The Orders _id",
+            "minLength": 1,
+            "title": "Orderid",
+            "type": "string"
+        },
+        "quantity": {
+            "description": "Units the order holds",
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "orderId",
+        "quantity"
+    ],
+    "title": "ReservedInventory",
+    "type": "object",
+    "additionalProperties": false
+}

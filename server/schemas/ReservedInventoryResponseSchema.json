@@ -1,0 +1,24 @@
+{
+    "description": "ReservedInventory as a route sends it. Each field restates\nReservedInventory's, which test_route_response_models.py's MIRRORS\nkeeps in step.",
+    "properties": {
+        "orderId": {
+            "description": "The Orders _id",
+            "minLength": 1,
+            "title": "Orderid",
+            "type": "string"
+        },
+        "quantity": {
+            "description": "Units the order holds",
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "orderId",
+        "quantity"
+    ],
+    "title": "ReservedInventoryResponse",
+    "type": "object",
+    "additionalProperties": false
+}

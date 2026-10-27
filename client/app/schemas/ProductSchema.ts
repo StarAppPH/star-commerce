@@ -16,6 +16,10 @@ export type Storeid = string;
  */
 export type Name = string;
 /**
+ * productNameKey(name), unique per store
+ */
+export type Namekey = string;
+/**
  * What the product is
  */
 export type Description = string | null;
@@ -23,6 +27,22 @@ export type Description = string | null;
  * Price in the store's currency
  */
 export type Price = number;
+/**
+ * Units free to sell; 0 is sold out
+ */
+export type Inventory = number;
+/**
+ * The Orders _id
+ */
+export type Orderid = string;
+/**
+ * Units the order holds
+ */
+export type Quantity = number;
+/**
+ * Units orders are holding
+ */
+export type Reservedinventory = ReservedInventory[];
 /**
  * Units sold so far
  */
@@ -39,16 +59,32 @@ export type Createdat = string;
 /**
  * A Products document, priced in its store's currency. Listed best
  * sellers first: the (storeId, isAvailable, soldCount, name) index
- * (mongoDb.ensureIndexes) serves that sort.
+ * (mongoDb.ensureIndexes) serves that sort. (storeId, nameKey) is a
+ * unique index: one store never has two products of the same name.
+ *
+ * Every write to inventory or reservedInventory (an order reserving or
+ * releasing units included) must also $inc _version, or
+ * updateStoreProduct's _version lock misses it and the admin's save
+ * overwrites it.
  */
 export interface Product {
   _id?: Id;
   _version?: Version;
   storeId: Storeid;
   name: Name;
+  nameKey: Namekey;
   description?: Description;
   price: Price;
+  inventory: Inventory;
+  reservedInventory?: Reservedinventory;
   soldCount?: Soldcount;
   isAvailable?: Isavailable;
   createdAt: Createdat;
+}
+/**
+ * Units of a product an order is holding (taken out of inventory).
+ */
+export interface ReservedInventory {
+  orderId: Orderid;
+  quantity: Quantity;
 }

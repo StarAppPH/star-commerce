@@ -1,7 +1,7 @@
 {
     "$defs": {
         "ProductRow": {
-            "description": "One product as a list sends it. Each field restates Product's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+            "description": "One product as a customer's list sends it. Each field restates\nProduct's, which test_route_response_models.py's MIRRORS keeps in\nstep.",
             "properties": {
                 "_id": {
                     "description": "Products _id",
@@ -31,15 +31,24 @@
                 },
                 "price": {
                     "description": "Price in the store's currency",
+                    "maximum": 10000000,
                     "minimum": 0,
                     "title": "Price",
                     "type": "number"
+                },
+                "inventory": {
+                    "description": "Units free to sell; 0 is sold out",
+                    "maximum": 1000000,
+                    "minimum": 0,
+                    "title": "Inventory",
+                    "type": "integer"
                 }
             },
             "required": [
                 "_id",
                 "name",
-                "price"
+                "price",
+                "inventory"
             ],
             "title": "ProductRow",
             "type": "object",
