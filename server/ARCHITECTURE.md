@@ -1,0 +1,856 @@
+# Architecture Guide — starCommerce
+
+## Overview
+
+This project follows the **Star App** architecture — a Flask server with MongoDB, JWT auth, Google Cloud Pub/Sub, Pydantic models, and auto-generated TypeScript client code.
+
+The central idea: you write business logic in `ApiRequests.py` and `PubSubRequests.py`, then run `AppCreator.py` to generate everything else (Flask routes, TypeScript client, schemas).
+
+---
+
+## File Map
+
+```
+server/
+├── app.py                  ← GENERATED (do not edit) — Flask routes
+├── appPubSub.py            ← GENERATED (do not edit) — Pub/Sub endpoints
+├── AppCreator.py           — Code generation engine
+├── ApiRequests.py          — API business logic (source of truth for routes)
+├── PubSubRequests.py       — Pub/Sub business logic (source of truth for events)
+├── route_config.py         — @route_config decorator (metadata, role enforcement, responseModel check)
+├── objects.py              — Pydantic models (MongoModel, AppModel, StoredDocumentKeys, ResponseModel, User, response models)
+├── responseModelCheck.py   — The response-model rule (ResponseModel all the way down), for AppCreator and the tests
+├── sharedConstants.py      — Values shared with the client (SOURCE OF TRUTH)
+├── sharedConstantsTS.py    — Renders sharedConstants.py as serverConstants.ts, refusing secrets (AppCreator calls it)
+├── mongoDb.py              — MongoDB singleton with CRUD, transactions, versioning
+├── AuthHandler.py          — Firebase ID token verification + signInIdentity
+├── AppConfig.py            — Environment config (dev/prod, timezone, DB, Pub/Sub)
+├── roles.py                — Role definitions and access control
+├── pubSub.py               — Google Cloud Pub/Sub client, @pubSubDecorator, MockData / mockDataConsumer
+├── pubSubAdmin.py          — Pub/Sub topic/subscription management
+├── pubSubMockDataGenerator.py — Records this repo's published messages into pubSubMockDb for other repos to replay
+├── test_pubSubContracts.py — Replays other repos' recorded messages through PubSubRequests + static publisher/consumer checks
+├── test_ifAllServicesMatchConsumerProjectName.py — Guards service projectName vs pubSubMockDb collection drift
+├── pubSubMap.py            — Writes and checks the fleet's Pub/Sub map (with pubSubMapScan/Contract/Section.py)
+├── pubsub_map.json         ← GENERATED (do not edit) — the Pub/Sub map; PUBSUB_MAP.md is rendered from it
+├── test_pubSubMap.py       — Map freshness, publisher/handler edges, payloads vs handler contracts
+├── sharedFileCheck.py      — Holds the shared files to create-star-app (test_sharedFiles.py)
+├── services/              — One <name>.py per remote service (AbstractService: URLs, projectName, localRepoDirName, PubSub enable flag)
+├── servicePortCheck.py     — Refuses codegen when a services/<name>.py dev= port differs from the sibling repo's AppCreator PORT
+├── test_servicePortCheck.py — Unit tests for servicePortCheck.py (temp dirs, no DB)
+├── test_cloudbuild.py      — Pins cloudbuild.yaml, the Dockerfile guard and tools/updateJobsFromService.py (fake gcloud)
+├── Dockerfile              — The service image; refuses a build not run by ../cloudbuild.yaml
+├── .dockerignore           — Keeps .env, venvs and keys/ out of a local docker build
+├── utils.py                — Utility functions, date param parsers (appDayStart, appDayBounds, parseIsoInstant)
+├── conftest.py             — Pytest guards (localdev, *Scratch DB, local Mongo only) + test helpers
+├── test_route_response_models.py — Typed responses: enforcement, the check, generator guards, coverage
+├── test_auth_surface.py    — Sign-in verification, the public and role-less route sets
+├── test_route_responses.py — The sample routes' response shapes
+├── test_route_responses_http.py — The generated Flask transport: envelopes, JWT gate, logging
+├── requirements.txt        — Python dependencies
+├── pytest.ini              — Pytest settings
+├── schemas/                — Generated Pydantic JSON schemas
+└── tools/
+    ├── dumpProdDataToLocalDev.cmd   — Dump production MongoDB to local
+    ├── restoreLocalDev.cmd          — Restore local MongoDB from dump
+    ├── _gcloudTarget.ps1            — Shared pickers/cache/confirm for the GCP scripts
+    ├── create_or_update_job.bat     — GCP Cloud Run job launcher
+    ├── create_or_update_job.ps1     — GCP Cloud Run job script (+ optional scheduler)
+    ├── update_all_jobs.bat          — Refresh all jobs of a service launcher
+    ├── update_all_jobs.ps1          — Refresh all jobs of a service script (calls updateJobsFromService.py)
+    ├── updateJobsFromService.py     — Give a service's jobs its image + env vars (run by cloudbuild.yaml)
+    ├── run_job_once.bat             — Run a job_*.py once on Cloud Run launcher
+    └── run_job_once.ps1             — Run a job_*.py once on Cloud Run script
+
+client/app/
+├── api/
+│   ├── Server.ts           ← GENERATED — API URL config
+│   ├── ApiResponse.ts      ← GENERATED — ApiResponse<T> = ApiSuccess<T> | ApiFailure
+│   └── ServerRequests.ts   ← GENERATED — Type-safe API client (Promise<ApiResponse<Model>>)
+└── schemas/                ← GENERATED — TypeScript types from Pydantic models
+
+client/lib/
+└── generated/
+    └── serverConstants.ts  ← GENERATED — values copied from sharedConstants.py
+```
+
+---
+
+## Dependency Graph
+
+```
+                    ┌──────────────────────────┐
+                    │   AppConfig (Foundation)  │
+                    │ Environment | DB | PubSub │
+                    └────────────┬─────────────┘
+                                 │
+              ┌──────────────────┼──────────────────┐
+              ▼                  ▼                   ▼
+           mongoDb.py        roles.py            utils.py
+          (DB singleton)   (Access control)     (Helpers)
+              │                  │                   │
+              └────────┬─────────┴─────────┬─────────┘
+                       │                   │
+                       ▼                   ▼
+                  objects.py          AuthHandler.py
+                (Pydantic models)    (ID token + signInIdentity)
+                       │
+              ┌────────┼────────┐
+              ▼        ▼        ▼
+       route_config  pubSub.py  (your business logic files)
+       (decorator)   (messaging)
+              │
+              └────────┬────────┐
+                       ▼        ▼
+              ApiRequests.py  PubSubRequests.py
+              (API logic)     (Event logic)
+                       │
+                       ▼
+                 AppCreator.py ──→ GENERATES:
+                                    • app.py
+                                    • appPubSub.py
+                                    • ServerRequests.ts
+                                    • Server.ts
+                                    • ApiResponse.ts
+                                    • schemas/*.ts
+```
+
+---
+
+## Request Flow (Client → Server)
+
+```
+NextJS Client (ServerRequests.ts)
+    │
+    │  HTTP POST with JSON body + JWT header
+    ▼
+app.py (Generated Flask Route)
+    │
+    ├─ @jwt_required() → validate JWT token (missing/expired/invalid → 401 {msg})
+    ├─ Parse request body (anything but a JSON object reads as {}) → extract parameters
+    ├─ get_jwt_identity() → extract userId from token
+    ├─ if userId != current_user → reject (400 "Unauthorized access")
+    ├─ route_config roleAccess check (if set):
+    │     └─ Fetch user from DB → check role(s) with OR logic (str or list[str])
+    │
+    ▼
+ApiRequests.methodName(params)
+    │
+    ├─ mongoDb.db.read/create/update(...)
+    │
+    ▼
+route_config checks the return value against the route's responseModel
+(in localdev only, raising on a mismatch; the value is returned unchanged)
+    │
+    ▼
+Response wrapped in ApiResponse(message, status, data, jwtToken)
+(a raised exception → 400, a PermissionError → 403, both with data null;
+the request's keys are logged, never its values)
+    │
+    ▼
+JSON response → the client method returns ApiResponse<Model> and stores the refreshed JWT token
+```
+
+Secret field names listed in `AppConfig.SECRET_RESPONSE_KEYS` are automatically stripped from all HTTP responses (via the `ApiResponse.data` field serializer in `objects.py`) and from all pubsub payloads (via the `pubSubDecorator` publish step in `pubSub.py`). Endpoints never need manual pops or `{'field': 0}` projections to hide secrets.
+
+---
+
+## Code Generation Pipeline
+
+**You write** → `ApiRequests.py`, `PubSubRequests.py`, `objects.py`
+**AppCreator generates** → everything else
+
+### How it works:
+
+1. `AppCreator.py` introspects your classes using Python's `inspect` module
+2. It reads `@route_config` decorator metadata from each method:
+   - `httpMethod` — GET, POST, PUT, DELETE, etc.
+   - `jwtRequired` — whether JWT auth is needed
+   - `createAccessToken` — whether to create a new token (login endpoints)
+   - `successMessage` — response message on success
+   - `roleAccess` — which role permission to check
+   - `responseModel` — the `objects.py` model the route returns
+3. It reads parameter names and **type annotations** from method signatures
+4. It converts Python types to TypeScript types (`str→string`, `int→number`, `List[X]→X[]`, etc.)
+5. It generates Pydantic JSON schemas from `objects.py` models, then converts them to TypeScript with json-schema-to-typescript, the library behind `json2ts`, compiling every schema in one node process (`server/tools/json2tsBatch.js`, a shared file)
+
+`validateRoutes()` runs every check first, so a bad route aborts the run before any route, schema or client file is rewritten (only `serverConstants.ts`, generated first, may already be).
+
+### To regenerate after changes:
+
+```bash
+cd server && ENVIRONMENT=localdev python AppCreator.py
+```
+
+It needs node and the global json-schema-to-typescript at the major version `tools/json2tsBatch.js` pins (`npm install -g json-schema-to-typescript@15`); a missing or mismatched install, or a schema that fails to compile, fails the run, and no TS file is written. Rerun it after every model or route change and commit what it writes: no test checks that the committed generated files are current.
+
+### What gets generated:
+
+| Generated File | From | Purpose |
+|---|---|---|
+| `app.py` | ApiRequests.py | Flask routes with JWT, error handling, role checks |
+| `appPubSub.py` | PubSubRequests.py | Pub/Sub endpoints with idempotency |
+| `ServerRequests.ts` | ApiRequests.py | TypeScript API client: each method returns `Promise<ApiResponse<Model>>`; plus `RouteResponseModels`, `RouteRequestBodies`, `PublicRoute` |
+| `ApiResponse.ts` | AppCreator's `STATUS_*` | The envelope union `ApiSuccess<T>` / `ApiFailure` |
+| `Server.ts` | Config | API URL switching (local vs production) |
+| `schemas/*.ts` | objects.py | TypeScript interfaces from Pydantic models (closed: no index signature; a schema whose model is gone is deleted) |
+| `lib/generated/serverConstants.ts` | sharedConstants.py | Values shared verbatim with the browser |
+| `pubsub_map.json`, `PUBSUB_MAP.md` | Every repo's publishers and `PubSubRequests.py` | The fleet's Pub/Sub map (`pubSubMap.writeMap`, the last step of a full run) |
+
+---
+
+## Typed API Responses
+
+Every `ApiRequests` route declares what it returns, and both the client and the server hold it to that:
+
+```python
+@route_config(httpMethod='POST', jwtRequired=False,
+              successMessage='Todos fetched',
+              responseModel=SampleTodoListResponse)
+def getTodos(self) -> dict:
+    return {'todos': db.read({}, 'SampleTodos',
+                             projection=projection_of(SampleTodoRow))}
+```
+
+### The model
+
+- `responseModel` must be a top-level class in `objects.py` (only those get a TS schema) and a `ResponseModel`, all the way down: every model nested in it is a `ResponseModel` too, and a `ResponseModel` inherits from `ResponseModel`s only, never from a database model (`MongoModel`, `AppModel`, `StoredDocumentKeys`, a `*View`). The same holds for every Pub/Sub publisher's payload model. AppCreator refuses to generate otherwise, naming each offending model with its file:line (`responseModelCheck.py`), and `test_responseModelsAreResponseModels` asserts it. Routes return a dict with explicit keys; a list or primitive is wrapped (`{'todos': [...]}`).
+- A `RootModel` (a bare list or number) is refused unless the route is in `AppCreator.CROSS_REPO_BARE_RESPONSE_ROUTES`, which maps each route to why it is bare and who reads it: only a route another service ALREADY reads as `data['data']` (a bare value) belongs there. Empty in a new project; never add a route to avoid wrapping a new response. `test_route_response_models.py` pins the map to exactly the RootModel routes.
+- Its fields are built from allowed leaves only: a scalar, `datetime`, `date`, a `Literal`, an `Enum` or a `ResponseModel`, through `Optional`, unions, `list[...]` and `dict[str, ...]`. Never `Any`, a bare `dict`/`list`, `object`, a TypedDict, a dataclass, a tuple or a set: they could carry a whole document past the check. No `@computed_field`. route_config refuses a model that breaks this when the route is decorated.
+- A `ResponseModel` declares EXACTLY what the route sends, each field under its serialized key (its alias, else its name): under the localdev response check it rejects any other key, at any depth (as `extra='forbid'` would; production never validates). So the route reads the declared fields with a projection DERIVED from the model, `projection_of(FooResponse)` (a nested `ResponseModel`, a list or union of them, is read field by field as dotted keys; `_id` is excluded unless declared), or builds the dict explicitly. A nested model that may be null must be read whole (a dotted projection drops a null or a legacy scalar), so `projection_of` refuses it: read that model with `db.readResponse(s)` or, for a pipeline, `db.aggregateResponses(FooResponse, pipeline, collection)`, which read it whole and cut every document. They take `readWhole=(...)` (top-level keys read whole: a field a legacy-shape repair needs as stored, or a key the route reads for its own use) and `prepare=fn(doc)` (run on each document before the cut), and `db.projectionStage(FooRow)` puts a row's projection in the middle of an `aggregateResponses` pipeline (before a `$group`). `projection_of` also raises for a nested model it cannot express (a dict of them, a list of lists, a union with a scalar). Fields read for the route's own use are cut before it returns: `projectedCopy(FooResponse, doc)` cuts a document down to what the model declares, at every depth. A union of two or more models declares a str discriminator (`Field(discriminator='kind')`): its value is cut as the member its tag names, never one guessed by validation.
+- A stored document is still typed, as stored, with its `*View` (`class FooView(StoredDocumentKeys, Foo)`, `StoredDocumentKeys` listed first: `_id` and `_version` required, never minted), but a `*View` is never a response.
+- A list route sends narrowed rows, not whole documents; the exceptions are listed in `WHOLE_DOCUMENT_ROWS` (`test_route_response_models.py`), and a stale entry fails.
+- Fields the route always sets are REQUIRED. Omittable but never null: `X = Field(None)`. Omittable or null: `X | None = None`.
+- Row models that restate domain fields are listed in `MIRRORS` (`test_route_response_models.py`), which fails when the domain type changes and the row does not.
+- No bare `dict`/`list`/`Any` fields, no `dict[str, X]` keyed by customer data, no values in validator messages. A before-validator is copy-on-write (the module rule in `objects.py`'s docstring).
+- A model may not type a `SECRET_RESPONSE_KEYS` key (AppCreator refuses): `ApiResponse` strips those keys, so declare such a field `SkipJsonSchema[...]`.
+
+### The response check (`route_config._check_response_model`)
+
+In localdev every call validates the return value through `objects.validate_route_response` (under the `responseCheck` context), so it runs in tests (which call `ApiRequests()` directly), in Flask and in nested calls:
+
+- **localdev** (so pytest): a mismatch raises `ValueError` naming the route and at most 10 failing fields, never input values; a validator that crashes is reported by exception class only. A deep-copy snapshot also catches a before-validator that mutated the response.
+- **Elsewhere**: the check is skipped (nothing validated, copied or logged), because validating every response costs every production call time.
+- The route's value is always returned unchanged.
+- A test that deliberately returns an unmodelled shape turns the check off with the `responseCheckOff` fixture.
+
+### What AppCreator generates and refuses
+
+- Each method returns `Promise<ApiResponse<Model>>`. `ApiResponse<T>` is `ApiSuccess<T>` (`status: 200`) | `ApiFailure` (`status: 0 | 400 | 401 | 403`, `data: null`). The statuses come from the `STATUS_*` constants in `AppCreator.py`, so the TS union cannot drift from what `app.py` sends:
+  - 400: the route raised a `ValueError`, the caller's to fix (including a role refusal, a `userId` mismatch, a body that is not a JSON object and an object or a list for a scalar param), with its message; a pydantic `ValidationError` names the failing fields, never their values; 403: it raised `PermissionError`;
+  - 401: the client turns flask_jwt_extended's bare `{msg}` body (missing, expired or invalid token) into this envelope, removes the stored token and dispatches `jwt-expired`;
+  - 0: the client's `catch` (network error or non-JSON body), message "Failed to fetch data", or a server fault (below), with the server's message. A generated method never throws.
+- **Errors** (`routeErrors.py`, a shared file; its docstring has the whole mapping): every generated handler answers a failure through `routeFailure(e, status=403|400)` and logs it once, as its own log entry plus a traceback WITHOUT the exception's message, chained causes or locals. Anything that is not the caller's to fix (a `KeyError`, a Mongo error, a bug) is a real HTTP 500 with "Something went wrong on our side. Please try again. (error id X)"; a sibling that failed (`services/__request.py`'s `ServiceUnavailable`, or a `ServiceError` other than a 400 with a message) is a 503 naming it. The error id is in the log line's traceback. A sibling's 400 passes its own message on; `mongoDb.OutdatedDataError` (the `_version` lock) is a 400. So raise a `ValueError` with a message the user can act on; any other exception reaches the user only as the generic message.
+- `RouteResponseModels`, `RouteRequestBodies` and `PublicRoute` map route names to their model, body and public flag. The schema imports are exactly the models the routes reference.
+- Every schema, nested `$defs` included, is closed (`additionalProperties: false`), so a renamed nested field fails `tsc`; a `$ref` with a sibling description is wrapped in `allOf`, so json2ts never emits a duplicate `X1` interface.
+- It refuses: a route without a `responseModel`; a model that is not a top-level `objects.py` class; a RootModel outside the allowlist; a model typing a secret key; a param that is unannotated, a bare `dict`/`list`/`tuple`/`Any`, a `datetime`/`date`/`time`, a class outside `objects.py`, a container TS cannot express, or a `None` default without `| None`.
+- The generated API handlers bind the request body whatever was sent (anything but a JSON object reads as `{}`, so the params are None and the route answers 400), refuse an object or a list for a scalar param (`str`/`int`/`float`/`bool`/`Literal`, or Optional of one) with a 400 "Invalid <param>" before the route runs, and the same for anything but an object for a dict or model param, or anything but a list for a list param (None only when Optional or defaulted; no other coercion), and log which of their own params a POST sent (never values, never another key). A `createAccessToken` route logs no request data at all.
+- **Caller auth** (`callerAuth.py`, a shared file; its docstring has the rules): AppCreator puts `@requirePushCaller` under the route of every Pub/Sub push handler and `@requireServiceCaller` under every `@route_config(serviceOnly=True)` route (exactly the routes of `actions/ServiceToServiceActions.py`, pinned by `test_callerAuth.py`). Both require a Google-signed ID token: a push's audience is its own URL (`https://<host><path>`, what pubSubAdmin.py configures) and its email `PUSH_SERVICE_ACCOUNTS`; a service call's audience is this service's URL and its email `SERVICE_CALLER_ACCOUNTS` (`services/__request.py` fetches the token from the metadata server on Cloud Run, for the sibling's URL; a local run sends none). A refusal is a 401 logged with its reason, never the token. Localdev skips the check; `CALLER_AUTH_MODE=report` with an unexpired `CALLER_AUTH_REPORT_UNTIL` (a date, through that day UTC, or a datetime with its offset, at most 30 days ahead) logs refusals and runs the route; past that date, or without a readable one, it enforces, and report mode logs a WARNING at startup (roll out with both set: deploy the callers, watch the `callerRejected` log lines, then unset them). `callerVerified()` tells a route whether this request's caller passed the check. A `serviceOnly` route takes no JWT.
+- **Accounts and identities between sibling services**: a service's `SERVICE_CALLER_ACCOUNTS` lists exactly the runtime accounts (`<svc>-run@<project>.iam.gserviceaccount.com`) of the sibling services that call it, nothing else (never a push account, never its own). Its `PUSH_SERVICE_ACCOUNTS` starts with its own `<svc>-push` account (`[0]`, what its own subscriptions mint tokens for) and then lists the `<svc>-push` account of every sibling that publishes to it: a push subscription lives with the publisher and mints its OIDC token for the PUBLISHER's push account, so without that entry every cross-service push is a 401 and dead-letters. `test_callerAuth.py` restates both tuples in its `EXPECTED_*` block. `create-star-app link` adds a sibling's runtime account once its record has one; `cloud-setup`'s `siblings.wire` makes each repo of a pair accept the other (both tuples and their `EXPECTED_*` mirrors) and commits and pushes those two files there, so that repo's trigger redeploys with them; `cloud-teardown` removes our accounts from the siblings again. A refused call or push is a 401 `callerRejected` line in the callee's log: run `create-star-app cloud-setup --step siblings.wire` in either repo.
+- The generated Pub/Sub push handlers parse the push envelope inside the try, so a malformed push is a 400 "Malformed Pub/Sub push" (GCP retries, then dead-letters), never a 500, and log the messageId and the message's keys. A fault in the handler after the envelope parsed is a 500 (GCP retries any non-2xx alike).
+- `route_config` refuses `roleAccess` without `jwtRequired=True`: the role check reads the user the body's userId names, which only a JWT route ties to the caller.
+- The response check's mutation guard compares with `==`: a mutation that keeps the response equal is not caught, and a validator that swaps a `float('nan')` for another NaN reads as a mutation.
+- A defaulted field is optional (`x?:`) in the TS type. A model a route always returns as a full `model_dump()` may opt in to `ConfigDict(json_schema_serialization_defaults_required=True)` to make them required; never a model a route takes as a param. A `@computed_field` is declared in the TS type but never sent by a raw-dict route: do not use one on a response model.
+
+### Dates in params
+
+`app.py` passes the raw JSON value, so a date param is `str` (no `datetime` route params). Parse it with `utils`:
+
+- `appDayStart(isoDate)` — an ISO `YYYY-MM-DD` date as the first instant of that day in the app timezone (UTC+8, a fixed offset with no daylight-saving time);
+- `appDayBounds(startDate, endDate)` — the first and the last instant of two such dates;
+- `parseIsoInstant(value, name)` — an ISO 8601 date-time (`str | None`), parsed exactly as a pydantic `datetime | None` field would.
+
+Each refuses anything else with a generic message that never quotes the value. Flask sends response datetimes as RFC 1123.
+
+### Publishers
+
+A `@pubSubDecorator` route's return value IS the message every consumer receives. Type it, never reshape it, keep `@pubSubDecorator` the OUTER decorator (so the response check runs before the publish), and pin the payload with `lastPublishedPayload('<route>')` in a test (`test_everyPublisherRoute_hasAPayloadPin`). `PubSubRequests` push handlers need no `responseModel`.
+
+### Tests
+
+- `conftest.py`, before any project import: refuses to start unless `ENVIRONMENT=localdev` and `databaseName` ends in `Scratch` (use `teststarCommerceScratch`; the default `teststarCommerce` holds the restored prod dump and tests wipe the DB), unsets the cloud Mongo variables, and replaces pymongo's `MongoClient` with `_LocalOnlyMongoClient`, which refuses every non-local host.
+- **Parallel suites**: the suites of different repos may run at the same time on one local mongod. Each wipes only its own `*Scratch` DB, `pubSubMockDb` is only read (only the generators write it), and only `mainDb` / `TestDb` build indexes. Two runs of the same repo at once need different `*Scratch` names (e.g. `databaseName=teststarCommerce<Branch>Scratch`). Never run a `pubSubMockDataGenerator.py` while any suite runs: it rebuilds the `pubSubMockDb` collection the other suites replay. A sibling server a suite calls runs on its own `*Scratch` DB, never the one that sibling's own suite uses (e.g. ecommerce's accounting on :5000: `databaseName=testaccountingForEcomScratch`). Two ecommerce runs at once would share that one accounting server and its `testaccountingForEcomScratch` DB: a second ecommerce run needs its own accounting server on another port and DB, or must not run at the same time.
+- Route shape tests use the conftest helpers: `assertExactShape` (validate and pin exact keys), `assertMatchesModel`, `modelKeys` / `hiddenModelKeys`, `assertRowKeys`, `dumpedKeys`, `wipeCollections`, `createTestUser`, `utcNow`, `appToday`, and `lastPublishedPayload` / `publishedPayloads` (publishes are recorded in memory; only the generator writes `pubSubMockDb`).
+- `test_everyApiRoute_isCalledOutsidePytestRaises` requires every route to be called by a test that expects it to succeed (`KNOWN_UNCALLABLE_ROUTES` lists the exceptions, with the reason).
+- `test_auth_surface.py` pins the routes that answer without a JWT and the JWT routes with no `roleAccess`: a new one must be added there on purpose.
+
+```bash
+cd server && ENVIRONMENT=localdev databaseName=teststarCommerceScratch pytest
+```
+
+---
+
+## JWT Authentication
+
+### Login Flow
+
+```
+Client: signInWithPopup → user.getIdToken() → loginWithGoogle({ idToken })
+    ▼                                          (AuthContext.signInWithGoogle)
+ApiRequests.loginWithGoogle() → @route_config(createAccessToken=True)
+    ▼
+AuthHandler.verifyFirebaseIdToken(idToken)
+    │  only an RS256 token whose key id Google's certs hold is decoded; the
+    │  certs are cached for their max-age, a fetch is attempted at most once
+    │  a minute, a failed one keeps the last good certs for 6 hours past
+    │  their expiry, and an answer of the wrong shape is refused. google-auth
+    │  checks the signature, the expiry and the audience (the FIREBASE_PROJECT_ID
+    │  env var, or sharedConstants.FIREBASE_PROJECT_ID, which
+    │  client/lib/firebase.ts reads too; while it is the YOUR_PROJECT
+    │  placeholder, or a demo- id outside emulator mode, nothing verifies
+    │  and a warning says so); then the issuer
+    │  and a 1-128 character subject. Anything else is a PermissionError (403)
+    │  with one generic message; only the exception's class name is logged.
+    ▼
+requires a verified email and the google.com sign-in provider
+    ▼
+AuthHandler.signInIdentity(uid, email, name) → the stored Users document
+(created on first sign-in; the first user of an empty Users is superAdmin
+when it wins the one-time claim: inserting the Bootstrap 'superAdmin'
+document, whose unique _id lets only one of two racing sign-ins succeed. The
+claim outlives an emptied Users; delete it on purpose to re-run the bootstrap)
+    ▼
+app.py calls create_access_token(identity=user["_id"])
+    ▼
+ApiResponse includes access_token
+    ▼
+Client stores in localStorage("access_token")
+```
+
+Without an `idToken`, only localdev accepts the client's raw `uid`/`email` (signing in without a Firebase project, and the tests); elsewhere it is refused (403). `devLogin` and `devGetUserList` answer in localdev only. A login route's logs carry no request data.
+
+**Local sign-in through the Firebase Auth emulator.** Before `cloud-setup` the project id is `demo-<name>` (`sharedConstants.FIREBASE_PROJECT_ID`, `.firebaserc`), a project Firebase runs only in its local Emulator Suite. `create-star-app dev` starts the Auth and Storage emulators (`firebase.json`: 127.0.0.1:9099 and :9199, UI on :4000) and runs app.py with `FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099`; `client/lib/firebase.ts` connects to the emulators while `NEXT_PUBLIC_ENVIRONMENT` is `localdev`, before and after cloud-setup. The emulator's ID tokens are unsigned (`alg: none`), so anyone can write one for any uid. `verifyFirebaseIdToken` decodes one (`_decodeEmulatorIdToken`) only while `emulatorTokensAccepted()`: `ENVIRONMENT` is `localdev` (AppConfig's `Environment`) AND `FIREBASE_AUTH_EMULATOR_HOST` is `127.0.0.1:<port>` or `localhost:<port>`; and only a token whose header is `alg: none` with an empty signature. The audience and issuer must still name `FIREBASE_PROJECT_ID`, the subject must be set and the token unexpired; a signed token is verified against Google's keys as always. clouddev, cloudprod and localprod refuse them even with the variable set, and the module logs `firebaseAuthEmulatorMode` (or `firebaseAuthEmulatorHostIgnored`) once at import when the variable is set. Never set `FIREBASE_AUTH_EMULATOR_HOST` on a deployed service, and never widen this rule. Storage files follow `storage.rules` (in the emulator and, once cloud-setup deploys them, on the real bucket): a signed-in user reads and deletes `users/<uid>/` only, and uploads there only a JPEG or PNG under 10 MB.
+
+### Subsequent Requests
+
+```
+Client sends: Authorization: Bearer {token}
+    ▼
+@jwt_required() validates token
+    ▼
+current_user = get_jwt_identity() → userId
+    ▼
+Authorization check: userId == current_user
+    ▼
+JWT refreshed on every successful request (jwtToken in response)
+    ▼
+Token expires after 5 minutes (configured in app.py)
+```
+
+### Token Expiry Handling (Client)
+
+When a JWT-protected request returns `data.msg` (Flask-JWT-Extended error format), the client:
+1. Removes `access_token` from localStorage
+2. Removes `user_data` from localStorage
+3. Dispatches `window.dispatchEvent(new Event("jwt-expired"))` for the app to handle
+4. Returns the `ApiFailure` `{ message: data.msg, status: 401, data: null }`
+
+---
+
+## Role-Based Access Control
+
+### How roles work:
+
+1. **Define roles** in `roles.py` → `AllRoles` class contains all permission flags
+2. **Define user types** in `roles.py` → `UserRoleTypes` maps user types to role configurations
+3. **Assign roles** → `User.setRole(userType)` sets all role flags based on user type
+4. **Enforce at route level** → `@route_config(roleAccess='canDoSomething')`
+
+### Enforcement flow:
+
+```python
+# In ApiRequests.py — you write this:
+@route_config(httpMethod='POST', jwtRequired=True, roleAccess='canUpdateUserRole')
+def setUserRole(self, userId: str, targetUserId: str, userType: str):
+    ...
+
+# route_config.py does this automatically at runtime:
+# 1. Fetch user: user = User(**db.read({'_id': userId}, 'Users'))
+# 2. Check: user.checkIfAuthorized('canUpdateUserRole')
+# 3. If role value is False → raise PermissionError
+# 4. If authorized → call the actual method
+```
+
+### Adding a new role:
+
+1. Add the role to `AllRoles` in `roles.py`
+2. Set its default value in each user type in `UserRoleTypes`
+3. Use it in `@route_config(roleAccess='yourNewRole')`
+
+---
+
+## Database Layer (mongoDb.py)
+
+### Singleton Access
+
+```python
+from mongoDb import db  # Already instantiated — use directly
+
+db.create(data, 'CollectionName')
+db.read(query, 'CollectionName', findOne=True)
+db.update(query, updateData, 'CollectionName')
+db.readWithPagination(query, 'CollectionName', page=1, pageSize=20)
+db.aggregate(pipeline, 'CollectionName')
+db.createTransaction(updateFunction)
+```
+
+### Environments
+
+| Environment | Database Name | Connection |
+|---|---|---|
+| `localdev` | `teststarCommerce` | localhost:27017 |
+| `localprod` | `teststarCommerce` | localhost:27017 |
+| `clouddev` | `teststarCommerce` | MongoDB Atlas (`MONGO_URI` env var) |
+| `cloudprod` | `databaseName` (required, e.g. `starCommerce`) | MongoDB Atlas (`MONGO_URI` env var) |
+
+The `databaseName` env var names the database. In cloudprod it is required: AppConfig refuses to start without it (`databaseName environment is not set for cloudprod environment`), so a production service never falls back to a default. Elsewhere it defaults to `teststarCommerce`.
+
+### Connection budget
+
+The Star App services share one MongoDB Atlas Flex cluster, which caps connections across all of them (each service has its own database and user). What counts is sockets, not clients:
+
+- One connected client holds about 6 monitor sockets on a 3-member replica set (pymongo monitors each member on two sockets), plus its pool sockets, opened on demand up to the number of operations in flight at once.
+- Multiply by the processes: Cloud Run instances (up to the service's max instances), gunicorn workers per instance and running job tasks. A second connected client per process doubles the monitor share.
+- An idle instance keeps its sockets until Cloud Run scales it down, so `--min-instances` above 0 holds its share permanently.
+
+So a cloud process holds one real client:
+
+- `db` (`mainDb`) is the only client that connects at import.
+- Any other `MongoClient` built at import uses `connect=False`, so pymongo opens no connection or topology monitor until a first operation (it only defers: a first operation would connect). `pubSubMockDb` is built that way, and it is never used in the cloud: `pubSub.publishMessage` refuses to write it in every cloud environment.
+- No `testDb` exists in the cloud: only the tests use one.
+- A second `mainDb()` or `PubSubMockDb()` call returns the existing instance and builds no new client (`_initialized`).
+- A missing or empty `MONGO_URI` fails at once, never a client for a default host.
+- The Dockerfile runs one synchronous gunicorn worker per instance: keep it that way (every extra worker is another client).
+- Do not set `maxPoolSize` to fit the cap: the pool opens sockets only for concurrent operations, and a lower limit just queues them. Cap the processes instead.
+
+`create-star-app cloud-setup` creates a service with `--max-instances=10`. Size each service's max instances (and its jobs' parallelism) so the fleet's total stays under the cluster's cap; the fleet repos set their own.
+
+`server/test_mongoDb_cloud_clients.py` (shared) pins the clients built at import. A new client at import, such as a second cluster, goes in with `connect=False` and a pin in that file's per-repo block.
+
+### Optimistic Locking
+
+Every document must have a `_version` field. When updating with `checkVersion=True`:
+1. Read the document's current `_version`
+2. Attempt update with `_version` match in the query
+3. If another process updated first → version mismatch → error raised
+4. Prevents lost updates in concurrent scenarios
+
+### Transactions
+
+```python
+def myTransaction(session):
+    db.create(data1, 'Collection1', session=session)
+    db.update(query, data2, 'Collection2', session=session)
+    # If any operation fails, all are rolled back
+
+db.createTransaction(myTransaction)
+```
+
+---
+
+## Pub/Sub Integration
+
+### Inbound Flow (receiving events from other services)
+
+```
+External Service publishes message
+    ▼
+Google Cloud Pub/Sub Topic
+    ▼
+Push subscription → POST to /methodName on appPubSub.py
+    ▼
+Decode base64 message data
+    ▼
+Idempotency check: has messageId been processed?
+  ├─ Yes → return 200 (skip)
+  └─ No → call PubSubRequests.methodName(data)
+              ▼
+           Store messageId in 'PubSubMessages' collection
+              ▼
+           Return 200
+```
+
+### Outbound Flow (publishing events to other services)
+
+```python
+from pubSub import pubSubDecorator
+from services.exampleService import exampleService
+
+@pubSubDecorator(projectNameConsumers=[exampleService])
+@route_config(httpMethod='POST', jwtRequired=True, successMessage='Order created')
+def createOrder(self, userId: str, customerId: str, items: list,
+                publishToProdPubSub: bool,            # no default: pubSubDecorator raises at import if it has one
+                publishToPubSubMockDb: bool = False):  # True only in pubSubMockDataGenerator.py
+    ...
+    return db.create(order, 'Orders')  # the return dict IS the message payload
+```
+
+The decorator publishes the return dict on topic `createOrder_starCommerce`; each consumer receives it in a `PubSubRequests` handler named `createOrder_starCommerce`. `@pubSubDecorator(..., publishToProdPubSub=False)` makes a publisher mock/replay-only: production never publishes it (`app.py` passes the decorator's value), generator rows are still produced, and a call with `publishToProdPubSub=True` raises. A commented, fully annotated copy of this example lives at the bottom of `ApiRequests.py`.
+
+Where a publish actually goes (`pubSub.publishMessage`):
+
+| Environment | `publishToPubSubMockDb=True` | otherwise |
+|---|---|---|
+| `localdev` | `MockData` row in `pubSubMockDb.starCommerce` -- what consumers replay | passive capture row in `pubSubMockDb.starCommerce_devData` (skipped under pytest; never consumed, safe to drop) |
+| `localprod`, `clouddev` | mock row (the generator refuses to run here, so this should never happen) | nothing is published |
+| `cloudprod` | raises | the real topic, and only if at least one consumer has `PUBSUB_ENABLED_<SERVICE>=true` |
+
+### Dead Letter Handling
+
+A handler that does not return 200 is retried up to `max_delivery_attempts` (5, set in `pubSubAdmin.py`) and the message is then routed to the dead-letter topic. If you add a `createDeadLetter` receiver to `PubSubRequests.py` (AppCreator recognises that name and wires the dead-letter push to it), list it in `UNTESTED_PUBSUB_FUNCTIONS` next to `ping`: it is fed by the dead-letter topic, never by a `@pubSubDecorator` function, so it is the second and last legitimate entry there.
+
+---
+
+## Pub/Sub mock messages & contract tests
+
+Nothing at runtime checks that the dict a publisher returns is the dict a consumer's handler expects. Instead, every repo records its real published payloads into one shared local MongoDB database, `pubSubMockDb`, and every consumer replays the payloads addressed to it through its real handlers under `pytest`.
+
+### Flow
+
+```
+PUBLISHER REPO                                    CONSUMER REPO
+-----------------------------------------------   ------------------------------------------
+ApiRequests.createOrder(...,                      PubSubRequests.createOrder_<publisher>(data)
+    publishToProdPubSub=False,                                      ^
+    publishToPubSubMockDb=True)                                     |
+  @pubSubDecorator(projectNameConsumers=[svc])                      |
+        |                                                           |
+        | pubSubMockDataGenerator.py calls it once                  | test_pubSubContracts.py
+        v                                                           | replays every row addressed
+MockData row in pubSubMockDb.<publisher projectName>                | to Project().projectName, in
+    projectNameConsumers = [svc.getProjectName(), ...]   ---------->+ `index` order, via
+    consumeFunctionName  = 'createOrder_<publisher>'                | mockDataConsumer.consumeMockData(
+    index                = emit order                               |   publisherProjectName, handler)
+    dateOfCreation       = expires after 3 days                     v
+                                                  test_atExitValidation FAILS if any
+                                                  addressed row was never consumed
+```
+
+### File map
+
+| File | Role |
+|---|---|
+| `pubSub.py` | `@pubSubDecorator` (publishes the return dict, or stores it as `MockData` when `publishToPubSubMockDb=True`), `MockData` (3-day `checkIfValid` expiry), `mockDataConsumer` (replays rows in `index` order and tracks what was consumed) |
+| `pubSubMockDataGenerator.py` | Publisher side. Calls every `@pubSubDecorator` function once with `publishToProdPubSub=False, publishToPubSubMockDb=True`. Deletes and rebuilds only this repo's `pubSubMockDb.starCommerce` collection. localdev only; wipes `TEST_COLLECTIONS` before and after |
+| `test_pubSubContracts.py` | Consumer side. Three static AST tests (publisher flags, generator coverage, handler/message 1:1), the replay (`REPLAY_STEPS` seed + assert per handler, `REDELIVERY_STEPS` idempotency per handler) and `test_atExitValidation` |
+| `test_ifAllServicesMatchConsumerProjectName.py` | Every `services/<name>.py` is registered and its `getProjectName()` is an existing `pubSubMockDb` collection, i.e. messages addressed to it can actually be consumed |
+| `services/<name>.py` | `projectName=` must equal the target repo's `AppConfig().projectName` whenever it differs from the filename; mock messages are addressed with `getProjectName()` |
+| `servicePortCheck.py` | Every `services/<name>.py` `dev=` port must equal the target repo's `AppCreator.py` `PORT` (read from `../<localRepoDirName>/server/AppCreator.py`); `AppCreator.py` exits with a drift table on mismatch and only warns when the sibling checkout is absent. `--constants-only` skips it |
+
+### Rules and caveats
+
+- **Run order**: run every publisher's `pubSubMockDataGenerator.py` before a consumer's `pytest`. Each generator deletes and rebuilds only its own collection, so publishers can be regenerated in any order among themselves, but always before the consumers that read them.
+- **One shared database**: `pubSubMockDb` is shared by every repo on the machine. Never run two repos' suites or generators at the same time. Some suites delete their own repo's collection while running; regenerate afterwards.
+- **Expiry**: rows older than 3 days are rejected by `MockData.checkIfValid`. The fix is always to re-run the publisher's generator, never to edit the row.
+- **Wipes**: `pubSubMockDataGenerator.py` owns the one `TEST_COLLECTIONS` list (it includes `PubSubMessages`, the route's messageId de-dupe log) and the one `wipeDatabase()`; the replay test imports both. Both are localdev-only and empty those collections of this repo's local test database before and after. Extend the list whenever a handler or generator setup writes to a new collection.
+- **Bootstrap**: with a completely empty `pubSubMockDb` the two static tests that read it (`test_ifAllApiRequestTested`, `test_ifAllPubSubMockDataHasFunctions`) refuse to run. `python pubSubMockDataGenerator.py` creates this repo's collection even with zero publishers, which is enough.
+- **Shared code**: the "Shared AST helpers" and "Static contract tests" regions of `test_pubSubContracts.py` (between their `# >>> star-app shared:` marker lines) are identical in every repo; only the text outside them (`wipeDatabase()`, the replay section) is per-repo. `test_sharedFiles.py` fails when a region differs from create-star-app's `templates/test_pubSubContracts.py.tmpl`: fix the template, commit it, then run `cd server && python sharedFileCheck.py --write` in every repo (see "Shared files").
+- **What guards what**: `pubSubDecorator` raises `ValueError` at import / call time when a publisher lacks either flag, gives `publishToProdPubSub` a default, or is called with both flags `True`. `test_ifAllPubSubFunctionsGenerated` only adds generator coverage (every publisher called in `pubSubMockDataGenerator.py` with the literal `publishToPubSubMockDb=True`) and the explicit `publishToProdPubSub` keyword on every call site in the top-level `server/*.py` files (non-recursive, `PubSubRequests.py` excepted).
+- **Redelivery**: the generated route de-dupes most redeliveries by messageId, but `PubSubMessages` is written after the handler returns, so a crash between the handler and the 200 redelivers the same messageId into the handler. Handlers must be idempotent; `REDELIVERY_STEPS` proves it.
+- **`UNTESTED_PUBSUB_FUNCTIONS`** holds only handlers no publisher will ever address: `ping`, and `createDeadLetter` if you add it. Never park a real handler there.
+
+### The Pub/Sub map
+
+The replay needs every repo's generator run on one machine. The map is the static complement: `server/pubsub_map.json` (the source) and `server/PUBSUB_MAP.md` (rendered from it) list every `@pubSubDecorator` publisher in the fleet, each consumer's handler, the payload paths each handler reads and whether the publisher's types satisfy them. Both are generated, checked in and identical in every repo; never edit them.
+
+- **Regenerate**: `cd server && python pubSubMap.py --write` (AppCreator also runs it at the end of a full generation). `python pubSubMap.py` exits 0 only when the map is fresh and clean for this repo, equivalent to `test_pubSubMap.py` (use it where pytest can't run); 1 when stale or a problem fails this repo's map tests; 2 on an error. Problems that only concern other repos print WARNING lines and keep exit 0. `--explain <topic|handler|publisherFn>` prints live `file:line` and where each side was read from.
+- **Siblings** are found through `services/*.py` (`localRepoDirName`, resolved as `../<dir>`) and read at a committed git ref: this branch's name if the sibling has it, else `main` (`--repo name=path[@ref]` overrides one; `--worktree-siblings` reads working trees). A missing sibling falls back to the snapshot and gets a gitignored `server/services/<name>.notFound.md` note; read it. `--write` and the AppCreator hook refuse (exit 2, "refusing to write the map") while a sibling this repo publishes to or consumes from, or one in the checked-in map, is neither checked out nor in the snapshot: clone it to `../<localRepoDirName>` or pass `--repo name=path[@ref]`.
+- **`test_pubSubMap.py`** fails on a stale map, a consumer with no handler, a handler with no publisher, a message contract it cannot resolve, a publisher `pubSubAdmin.py` cannot see (a non-literal consumer list; consumers passed positionally instead of as `projectNameConsumers=`; a decorator not written `@pubSubDecorator(...)`, e.g. `@pubSub.pubSubDecorator`; an `async def`; a consumer whose name is not a `services/` class name (case-insensitive); an unknown consumer; a file outside `server/*.py` and `server/actions/*.py`), a hand `publishMessage` on a topic that is not a decorated function's, a dead hatch or a `PUBSUB_CONTRACT_GAPS` dict (retired, see below), and a compat issue (`undeclared`, `nullable`, `literal`, `numericNarrowing`, `forbiddenExtra`) on any flow, in both the publisher's repo and the consumer's.
+- **Compat is strict**: a mismatch is fixed at its source, never recorded: the publisher's payload model, or the consumer's handling (`--explain <handler>` shows both sides). A flow's verdict is `ok`, `issues` (fails) or `unverified` (payload unknown, or a snapshot side that could not be re-checked; shown in the map, not failed). `PUBSUB_CONTRACT_GAPS`, the old list of known mismatches, is retired: defining it in any form, even `{}`, is a hatch error.
+- **Escape hatch** (a literal dict, read by AST; it declares a model and suppresses nothing): `PUBSUB_PAYLOAD_MODELS = {'<fn>': '<Model>'}` in the module of a publisher that is no route. It is that publisher's payload model: `pubSubModels.py` writes it to the manifest, `route_config.check_route_response` holds the payload to it (localdev only), and the map takes it as the payload when it cannot type the return value (`declared`) and fills in the unknown value types of a returned dict literal from it. A handler has none: it parses its message with its generated `<Fn>Message` (`test_everyHandlerParsesItsGeneratedMessage`), and the retired `PUBSUB_MESSAGE_MODELS` is a hatch error in any form.
+- **Blind spot**: static and type-level only. Value-dependent logic is not modelled, so the replay above stays the ground truth.
+- **A contract change** (a payload at a path a consumer reads, a handler's reads, a consumer list, a renamed publisher or handler) is done only when the map is regenerated and committed in every repo of the fleet, each after the change is committed in its own repo. Siblings are read at this repo's branch name if they have that branch, else at `main`, so regenerate with the same branch name checked out in every repo (a cross-repo feature branch shares one name), or after merging to `main`; otherwise the other repos read the old `main`. `cd server && python pubSubMap.py --write-all` regenerates this repo and every sibling checkout on the same branch in one go (skipping the others with a reason) and lists the repos to commit; the commits stay manual.
+
+### Generated message models (`pubSubModels.py`)
+
+The map checks types statically; the generated models enforce them at the consumer's door.
+
+- **Publisher**: this repo commits `server/pubsub_models.json`, the serialization JSON schema of every topic's payload model: the route's `responseModel`, or `PUBSUB_PAYLOAD_MODELS = {'<fn>': '<Model>'}` in the module of a publisher that is no route (a hand-publish site checks its payload with `route_config.check_route_response`). AppCreator builds it after `validateRoutes()` and writes it before the map; `ENVIRONMENT=localdev python pubSubModels.py --write-manifest` writes it alone. A serializer in a payload model needs a return type, or the manifest would state the declared type instead of what is sent.
+- **Consumer**: `server/objects_<publisherProjectName>.py` holds one pydantic class per object schema (fields and types only) and a `<Fn>Message` per topic this repo consumes. It is generated (`python pubSubModels.py --pull`; AppCreator pulls before it imports the app): never edit it, and keep logic out of it. `--push` in the publisher pulls in every same-branch consumer checkout; the commits stay manual.
+- **A handler** parses its whole message once, `message = <Fn>Message.model_validate(data)`, and reads only `message`. It touches `data` again only inside an `except ValidationError:` on that parse: a fallback that keeps acting on the few fields an older handler read, so drift elsewhere in the payload does not drop the action. Logic lives in helpers that take the message; what is stored is built through this repo's own models (the generated classes do no empty-string coercion, and the publisher's `_version` never reaches this repo's lock).
+- **Tests**: `test_pubSubModels.py` fails on a stale generated file or manifest, and on a handler that breaks the rule above (`test_everyHandlerParsesItsGeneratedMessage`). `test_ifAllPubSubMockDataParsesWithGeneratedModels` parses every mock message addressed to this repo with its generated model, as stored and as sent on the wire. A consumer test feeds a payload the publisher can produce: every required key, not a hand-trimmed subset.
+
+### Deploying strict consumers
+
+A consumer's generated models refuse a payload that does not fit them, so a payload change deploys in an order:
+
+- **Narrowing, or adding a field**, ships the publisher first: its consumers already accept the narrower payload and ignore the new key until they pull.
+- **Widening** (a new `Literal` member, a field that becomes nullable or optional, a dropped field, `int` to `float`) ships after every consumer has pulled the new models and deployed, or their parse refuses the new payload.
+- **Before the first strict deploy**, scan the production data each payload carries (on a restored dump) for stored shapes the models refuse (legacy shapes, a date stored as a string, a fractional quantity) and fix them first. A generated model is stricter than the hand-written one it replaces, which read only a few fields.
+
+### Adding a new publisher (this repo emits a message)
+
+1. In `ApiRequests.py`, decorate the method with `@pubSubDecorator(projectNameConsumers=[<service>, ...])` outside `@route_config`, add `publishToProdPubSub: bool` (no default) and `publishToPubSubMockDb: bool = False` parameters, and return a dict with explicit keys -- that dict is the payload, and the route's `responseModel` is its model (consumers generate their message class from it; see "Generated message models"). Use the commented `createOrder` example at the bottom of `ApiRequests.py` as the pattern.
+2. Make sure each consumer service in `services/` has `projectName=` set to the target repo's `AppConfig().projectName` if it differs from the filename, and remove that service from `SERVICES_WITHOUT_MOCK_DATA_YET` in `test_ifAllServicesMatchConsumerProjectName.py` (it is keyed on `service.name`; leaving it there silently disables the drift guard for that consumer).
+3. In `pubSubMockDataGenerator.py`, seed whatever the method reads, then call it once with the literal keywords `publishToProdPubSub=False, publishToPubSubMockDb=True` (an AST scan looks for that literal). Emit creates before the updates/deletes that touch the same document. Add any new collections to `TEST_COLLECTIONS`.
+4. `python AppCreator.py`, then `python pubSubMockDataGenerator.py`, then `pytest` here, all with `ENVIRONMENT=localdev databaseName=teststarCommerceScratch` (the generator wipes the selected DB and does not check its name; pytest refuses any other DB). Pin the new payload with `lastPublishedPayload('<route>')` in a test. Importing the module already proved the flag rules (the decorator raises otherwise); `test_ifAllPubSubFunctionsGenerated` proves the generator call and the explicit `publishToProdPubSub` at every call site. AppCreator rewrote `pubsub_map.json` / `PUBSUB_MAP.md`: commit them (see "The Pub/Sub map").
+5. Set `PUBSUB_ENABLED_<SERVICE>=true` (e.g. `PUBSUB_ENABLED_EXAMPLE_SERVICE`) in every environment that must publish to that consumer. `AppConfig` raises at start-up if the variable is missing, `pubSubAdmin.py` raises "No Cloud Run URL mapped" for a consumer that is not enabled/mapped, and `cloudprod` publishing silently skips disabled consumers.
+6. Run `pubSubAdmin.py` from THIS repo BEFORE deploying: it creates the topic `<function>_starCommerce` and one push subscription `<function>_starCommerce_to_<consumerService>` per consumer (endpoint `<consumer URL>/<function>_starCommerce`). `checkPubSubTopics` (run by the predeploy job, before the deploy) fails the build while a topic for an enabled publisher is missing, so the order is: pubSubAdmin, then deploy.
+7. In every consumer repo, follow "Adding a new consumer handler" below and run its suite -- its `test_atExitValidation` fails until the new message is handled.
+
+### Adding a new consumer handler (this repo receives a message)
+
+1. Find the payload: the publisher's method return dict, or the row in `pubSubMockDb.<publisherProjectName>` after its generator ran.
+2. Run `python pubSubModels.py --pull` (or AppCreator) so `objects_<publisherProjectName>.py` has the topic's `<Fn>Message`. In `PubSubRequests.py`, add `<function>_<publisherProjectName>(self, data)` under `@route_config(httpMethod='POST', jwtRequired=False, ...)` that parses `message = <Fn>Message.model_validate(data)` and reads only `message` (see "Generated message models"). Make it idempotent (look up by natural key, return the existing doc / `{'updated': 0}` on redelivery) and never raise on a benign missing document.
+3. In `test_pubSubContracts.py`, add a `REPLAY_STEPS` entry keyed `PubSubRequests().<handler>.__name__: (seed, assert)` -- seed only prerequisites the handler reads, assert the real DB state after a first delivery -- and a `REDELIVERY_STEPS` entry `(owned collection, payload -> owned _id, check)`. Put the publisher in `EXPECTED_PUBLISHERS` if it is not there yet. Add any new collections to `TEST_COLLECTIONS`.
+4. `python AppCreator.py` (regenerates `appPubSub.py`), run the publisher's generator, then `pytest` here (`ENVIRONMENT=localdev databaseName=teststarCommerceScratch`). `test_ifAllPubSubMockDataHasFunctions` and `test_atExitValidation` prove the handler and the message are matched 1:1. Commit the rewritten `pubsub_map.json` / `PUBSUB_MAP.md`; `test_pubSubMap.py` proves the handler's reads match the publisher's payload.
+5. Nothing to run in GCP from this repo: this repo's `pubSubAdmin.py` creates nothing for topics it consumes. The push subscription `<function>_<publisher>_to_<thisService>` is created by the PUBLISHER's `pubSubAdmin.py`, which needs `PUBSUB_ENABLED_<THIS_SERVICE>=true` and this repo's Cloud Run URL mapped on its side -- ask for that (or do it) in the publisher repo.
+
+---
+
+## Pydantic Model Hierarchy
+
+```
+BaseModel (Pydantic)
+    ├── MongoModel          — DB-persisted documents (_id, _version, empty-string coercion)
+    │       └── User, SampleTodo, Product, Order, etc.
+    ├── AppModel            — Embedded/non-persisted models (empty-string coercion only)
+    │       └── FirebaseUserObject, etc.
+    ├── StoredDocumentKeys  — Mixin for a document READ from Mongo (_id, _version required)
+    │       └── UserView(StoredDocumentKeys, User), SampleTodoView, etc.
+    ├── ResponseModel       — What a route sends, and every model nested in it (never a database model)
+    │       └── UserResponse, SampleTodoRow, SampleTodoListResponse, NoContentResponse, etc.
+    └── ApiResponse         — Response wrapper (no coercion needed)
+```
+
+### When to use which:
+
+| Base Class | Use For | Has _id/_version | Empty String → None |
+|---|---|---|---|
+| `MongoModel` | Documents stored in MongoDB | Yes (auto-generated) | Yes |
+| `AppModel` | Embedded sub-documents, DTOs, request models | No | Yes |
+| `ResponseModel` | A route's responseModel, a publisher's payload, and every model nested in either | Only if declared | Yes |
+| `BaseModel` | Simple data carriers with no `str \| None` fields | No | No |
+| `StoredDocumentKeys` (first base) | A document as read from Mongo (`*View`); never a response | Yes (required) | From the domain model |
+
+### Empty String Coercion
+
+All `str | None` fields in `MongoModel`, `AppModel` and `ResponseModel` subclasses automatically convert `""` to `None`. This prevents issues where empty strings pass `is not None` checks but fail when used as DB lookup keys. The coercion is copy-on-write: it never edits the dict it validates, because route_config validates a route's response without copying it.
+
+```python
+# Example: empty string becomes None automatically
+class Product(MongoModel):
+    category: str | None = None
+
+p = Product(category="")
+assert p.category is None  # True — coerced to None
+```
+
+---
+
+## Generated vs. Manual Files
+
+### Files you edit (source of truth):
+
+| File | What to add |
+|---|---|
+| `ApiRequests.py` | New API endpoints (add methods with @route_config) |
+| `PubSubRequests.py` | New Pub/Sub event handlers |
+| `pubSubMockDataGenerator.py` | One call per `@pubSubDecorator` publisher with `publishToPubSubMockDb=True`; `TEST_COLLECTIONS` |
+| `test_pubSubContracts.py` | `REPLAY_STEPS` / `REDELIVERY_STEPS` / `EXPECTED_PUBLISHERS` per handler (never the two `star-app shared` regions: see "Shared files") |
+| `test_ifAllServicesMatchConsumerProjectName.py` | `SERVICES_WITHOUT_MOCK_DATA_YET` when a target repo has no mock data yet |
+| `services/<name>.py` | One file per remote service; `projectName=` when it differs from the filename |
+| `objects.py` | New Pydantic models |
+| `sharedConstants.py` | Values the client needs too (see the warning in its docstring — everything public there ships to every browser) |
+| `roles.py` | New roles and user types |
+| `AuthHandler.py` | Auth-related logic |
+| `utils.py` | Utility functions |
+
+### Files you never edit (auto-generated):
+
+| File | Regenerated by |
+|---|---|
+| `app.py` | `ENVIRONMENT=localdev python AppCreator.py` |
+| `appPubSub.py` | `ENVIRONMENT=localdev python AppCreator.py` |
+| `ServerRequests.ts` | `ENVIRONMENT=localdev python AppCreator.py` |
+| `ApiResponse.ts` | `ENVIRONMENT=localdev python AppCreator.py` |
+| `Server.ts` | `ENVIRONMENT=localdev python AppCreator.py` |
+| `schemas/*.ts` | `ENVIRONMENT=localdev python AppCreator.py` |
+| `lib/generated/serverConstants.ts` | `python AppCreator.py --constants-only` |
+| `pubsub_map.json`, `PUBSUB_MAP.md` | `python pubSubMap.py --write` (AppCreator runs it too) |
+
+### Shared files
+
+create-star-app is the source of truth for the files every Star App repo keeps identical: the generic tests (`test_file_sizes.py`, `test_route_coverage.py`, `test_mock_drift.py`, ...), `servicePortCheck.py`, the `pubSubMap*.py` tools, `sharedFileCheck.py`, the `tools/` job scripts and the two `star-app shared` regions of `test_pubSubContracts.py`. Its `fleet/sharedFiles.json` lists them. `test_sharedFiles.py` fails while a copy differs from the create-star-app checkout at `../create-star-app` (its committed HEAD), and skips without one. A `# >>> star-app per-repo: <name>` block keeps this repo's own content.
+
+Never edit one repo's copy alone: change the template in create-star-app, commit it, then run `cd server && python sharedFileCheck.py --write` in every repo. `--template-worktree` previews uncommitted template work. The usage notes are in the `sharedFileCheck.py` docstring.
+
+### Adding a new API endpoint:
+
+1. Add (or reuse) its response model in `objects.py`: a `ResponseModel` declaring exactly the fields it sends, e.g. `class MyThingResponse(ResponseModel)`.
+2. Add a method to a class in `ApiRequests.py`:
+   ```python
+   @route_config(httpMethod='POST', jwtRequired=True, successMessage='Done',
+                 responseModel=MyThingResponse)
+   def myNewEndpoint(self, userId: str, someParam: str) -> dict:
+       result = db.read({'_id': someParam}, 'MyCollection',
+                        projection=projection_of(MyThingResponse),
+                        findOne=True)
+       if result is None:
+           raise ValueError('Not found')
+       return result
+   ```
+3. Run `cd server && ENVIRONMENT=localdev python AppCreator.py`
+4. `app.py` now has a `/myNewEndpoint` route
+5. `ServerRequests.ts` now has `myNewEndpoint(userId: string, someParam: string): Promise<ApiResponse<MyThingResponse>>`; narrow on `res.status === 200` before reading `res.data`
+6. Add a test calling it outside `pytest.raises` that pins its shape (`assertExactShape`), and add it to `test_auth_surface.py`'s sets if it answers without a JWT or has no `roleAccess`
+
+---
+
+## Environment Setup
+
+### Required Environment Variables
+
+| Variable | Purpose |
+|---|---|
+| `ENVIRONMENT` | `localdev`, `localprod`, `clouddev`, or `cloudprod` |
+| `JWT_SECRET_KEY` | Secret for signing JWT tokens. Scaffolding writes a random one into `server/.env`; outside localdev app.py refuses a key under 32 characters or the old placeholder |
+| `LOCAL_BIND_HOST` | Optional, local runs only: the host app.py binds (default `127.0.0.1`). `0.0.0.0` opens it to the LAN, announced by a startup warning |
+| `GOOGLE_CLOUD_PROJECT_ID` | GCP project ID |
+| `MONGO_URI` | MongoDB Atlas connection string (clouddev and cloudprod, set on the Cloud Run service; a cloud `mongoDb()` without it refuses to start) |
+| `databaseName` | The database to use. Required in cloudprod (set it on the service, its jobs and the predeploy job); elsewhere it defaults to `teststarCommerce` |
+| `FIREBASE_PROJECT_ID` | Optional: the Firebase project sign-in tokens must come from (blank or unset: `sharedConstants.FIREBASE_PROJECT_ID`) |
+| `FIREBASE_AUTH_EMULATOR_HOST` | Local only (`create-star-app dev` sets it): `127.0.0.1:9099`. With `ENVIRONMENT=localdev` the server accepts the Auth emulator's unsigned tokens; every other environment ignores it. Never set it on a deployed service |
+| `FIREBASE_STORAGE_EMULATOR_HOST` | Local only (`create-star-app dev` sets it): `127.0.0.1:9199`, the Storage emulator |
+
+### Running Locally
+
+```bash
+# From project root (not server/); Git Bash syntax
+ENVIRONMENT=localdev python server/app.py
+```
+
+The server reads `ENVIRONMENT` to determine which database and configuration to use. For local development, it connects to `localhost:27017` with database name `teststarCommerce`.
+
+A local run (localdev, localprod) binds `127.0.0.1:5003`, reachable from this machine only: localdev accepts a sign-in with a raw uid and email, and `devLogin` signs in as any user, so a server reachable from the network lets anyone on it act as any user (against the restored prod dump, in localprod). To reach it from another device (a phone on the same Wi-Fi), set `LOCAL_BIND_HOST=0.0.0.0` in `server/.env`; app.py then prints a red warning on start-up and logs `localBindHostExposed`. Cloud Run always binds `0.0.0.0:8080`.
+
+app.py compresses its responses (flask-compress): a JSON or CSV body of 500 bytes or more goes out as brotli (quality 4) or gzip (level 6) when the request's `Accept-Encoding` allows it, with `Vary: Accept-Encoding`. Browsers and Next.js's server-side `fetch` decode it on their own. The routes that issue an access token (`createAccessToken`) are never compressed (`NO_COMPRESSION_ENDPOINTS` in app.py): a compressed response that carries a secret next to text the caller sent can leak the secret through its length (BREACH). The sliding `jwtToken` other routes return is compressed, since the client sends its token in an `Authorization` header and never in a cookie, so no other site can make a browser send an authenticated request. Set `COMPRESS_DISABLED=1` on the Cloud Run service to turn compression off without a code deploy (or `true`, `yes`, `on`; app.py reads it when it starts and logs `compressionDisabled` once). `AppCreator._compression_block` writes the hook; `test_response_compression.py` pins it.
+
+---
+
+## Tools
+
+### MongoDB Dump & Restore
+
+```bash
+# Dump production data to local backup
+server/tools/dumpProdDataToLocalDev.cmd
+
+# Restore from existing backup (no download)
+server/tools/restoreLocalDev.cmd
+```
+
+`dumpProdDataToLocalDev.cmd` dumps the `starCommerce` database into the local `teststarCommerce`. It takes the source from the first of these it finds:
+
+1. `MONGO_DUMP_URI` in the environment: the Atlas connection string of a read-only user (never commit it).
+2. `MONGO_DUMP_URI` in `server/cloud.env`, which `create-star-app cloud-setup` writes (gitignored).
+3. `MONGO_DUMP_HOST` and `MONGO_DUMP_USER` from the environment, else the defaults at the top of the script (empty in a new project). mongodump gets the user and asks for the password itself (masked), so it is on no command line.
+
+With none of them it names all three and exits 1. It runs under `setlocal`, so nothing it sets reaches the calling shell, prints `Dumping from <host> as <user>`, and never prints the password. With a connection string (1 or 2) the password is on mongodump's command line, which other processes of the same Windows user and command-line auditing can read: that is why the URI is a read-only user's. The dump is always scoped to the `starCommerce` database (`--db`; the cluster is shared), and mongosh and mongorestore run without the connection string in their environment. It needs the MongoDB Database Tools (`mongodump`, `mongorestore`) on PATH (`winget install MongoDB.DatabaseTools`, then add its `bin` folder to PATH; `create-star-app doctor` checks).
+
+### GCP Cloud Run Jobs
+
+**Automatic refresh on deploy.** Every push to `main` runs `cloudbuild.yaml` (repo root; identical in every Star App repo, every repo-specific value is a trigger substitution) through the repo's GitHub-connected Cloud Build trigger:
+1. `build`: `docker build server` with `--build-arg BUILD_CONFIG=cloudbuild.yaml`;
+2. `push`: the image to Artifact Registry;
+3. `update-predeploy-job`: `updateJobsFromService.py --only=<service>-predeploy` gives just that job the new image and the service's env vars; a missing job fails the build (create it once with `server/tools/create_or_update_job.bat`, job file `job_predeploy.py`, no schedule);
+4. `run-predeploy-job`: `gcloud run jobs execute <service>-predeploy --wait` runs `server/job_predeploy.py` on the new image: the Pub/Sub topic check (`checkPubSubTopics.main`: a stale `pubsub_models.json`, a missing prod topic, or a lookup that failed) and the index builds against the main database (with the required-index checks). A non-zero exit fails the build before the deploy, so the old revision keeps serving. The execution gets `EXPECTED_COMMIT_SHA=$COMMIT_SHA` and the job exits 1 first when its image was built from another commit (`BUILD_COMMIT_SHA`, baked in by the Dockerfile): an overlapping build that re-imaged the job in between cannot pass this build's check. The service's containers run neither: the Dockerfile CMD is `exec gunicorn` alone, and `mainDb` builds no index at import in the cloud. Only this build runs the check: a console deploy, a manual `gcloud run deploy` or a revision rollback skips it;
+5. `deploy-service`: `gcloud run services update <service> --image=... --startup-probe=...`, which waits for the new revision and fails the build when it never becomes ready. The HTTP startup probe GETs `/startupCheck`, a plain route app.py answers only once it has fully imported (`AppCreator._startup_check_block`): the services bill per request (CPU throttled outside requests), and with the default TCP probe startup ended as soon as gunicorn bound port 8080, so the worker imported the app on throttled CPU (minutes with no traffic, 7-30s on the first requests). Startup now has full CPU until the app is loaded; a revision that never answers (120 tries, 1s apart; the same 120s as gunicorn's `--timeout 120`) fails the deploy and the old revision keeps serving. Rollback: `services update` keeps the probe once a build has set it, so an image without `/startupCheck` (a git revert of the probe, a console or manual deploy of an older image, a hotfix branch cut from an older main) fails the probe and cannot be deployed until the probe is set back with `--startup-probe=tcpSocket.port=8080` (or dropped with `--startup-probe=""`). Routing traffic back to an existing older revision works: each revision keeps its own probe;
+6. `update-jobs`: `server/tools/updateJobsFromService.py` gives the service's `<service>-*` Cloud Run jobs the image that just went live and the service's env vars; a failed job update fails the build (the service is already live by then). Rules (which jobs, secret refs, exit codes): see the docstring of `server/tools/updateJobsFromService.py`. New jobs and their Cloud Scheduler schedules stay manual (below).
+
+`server/Dockerfile` refuses an image built without that build-arg (`ARG BUILD_CONFIG` + a `RUN` that exits 1), so a trigger that still holds the inline build the Cloud Run wizard stored goes red at `docker build`, before anything is pushed or deployed, and the old revision keeps serving. A local `docker build` of `server/` needs `--build-arg BUILD_CONFIG=cloudbuild.yaml` too.
+
+**A project made by `create-star-app cloud-setup` already has the trigger.** Step `cloudbuild.trigger` creates `<service>-main` on `cloudbuild.yaml` for every push to `main`, with the substitutions the file needs, so there is nothing to switch. The user can see it with `gcloud builds triggers describe <service>-main --project=<PROJECT> --region=<REGION> --format="yaml(filename,substitutions,build)"`: `filename: cloudbuild.yaml`, the substitutions, no `build:`. Switching a trigger is only for a project that was set up by hand.
+
+<details>
+<summary>Legacy: switch a hand-made trigger from its inline build to the file</summary>
+
+Switching a trigger to the file is a one-time step the user runs (Claude never writes to GCP). `gcloud builds triggers update github <TRIGGER> --build-config=cloudbuild.yaml` fails with INVALID_ARGUMENT (gcloud 493), so export, edit and import the trigger. The export goes to the temp folder, never the repo, so it cannot be committed by accident (in cmd, `%TEMP%\trigger.yaml`):
+
+```powershell
+gcloud builds triggers describe <TRIGGER> --project=<PROJECT> --format=yaml > $env:TEMP\trigger.yaml
+# Edit it: delete the whole `build:` block, add `filename: cloudbuild.yaml`,
+# and move any `build.substitutions` entries to a top-level `substitutions:` map.
+# Drop `createTime` / `resourceName` if the import complains about them.
+gcloud builds triggers import --project=<PROJECT> --source=$env:TEMP\trigger.yaml
+# Expect filename: cloudbuild.yaml, the substitutions, and no build:
+gcloud builds triggers describe <TRIGGER> --project=<PROJECT> --format="yaml(filename,substitutions,build)"
+```
+
+</details>
+
+`updateJobsFromService.py` writes to GCP: Claude and its agents never run it, not even with `--dry-run` (it still calls gcloud). `test_cloudbuild.py` pins the yaml, the Dockerfile guard and the script (fake gcloud, no network).
+
+After the last `COPY` and `pip install`, the Dockerfile precompiles the app (`RUN python -m compileall -q -j 0 /app`): the build context (a git checkout) has no `__pycache__`, so each new instance would otherwise compile every module it imports before gunicorn's worker can serve; a syntax error in any .py file under server/ (tests and job scripts included) now fails the build rather than a deploy or cold start.
+
+```bash
+# Create or update a Cloud Run job from a job_*.py file (pickers and a review step)
+server/tools/create_or_update_job.bat
+
+# The same thing without the pickers
+python server/tools/createOrUpdateJob.py --project=<PROJECT> --region=<REGION> --service=<SERVICE> --job-file=job_X.py [--schedule="0 8 * * *" --time-zone=Asia/Manila] [--scheduler-service-account=<EMAIL>] [--yes]
+```
+
+`server/tools/createOrUpdateJob.py` (a shared file; pure stdlib) makes or updates ONE job. `create_or_update_job.bat` keeps the pickers and the review summary and calls it, and so does `create-star-app cloud-setup` for the `<service>-predeploy` job. What it does:
+1. Maps `--job-file` to the job name (`job_sync_Foo.py` on service `svc` is `svc-sync-foo`). A name ending in `-once` is refused: that suffix belongs to `run_job_once.bat`'s temporary jobs.
+2. Reads the service's image, env vars and runtime service account. An env var that references a secret, or a service with no env vars, is exit 2.
+3. Chooses create or update from the service's job list, prints a summary (env var names and counts, never values) and asks for `y` unless `--yes`.
+4. Writes the env vars to a temp JSON file (deleted afterwards) and runs `gcloud run jobs create|update` with `--env-vars-file`, `--command=python`, `--args=<file>`, `--max-retries=0` and the service's account.
+5. With `--schedule` (five cron fields) and `--time-zone`, creates or updates the Cloud Scheduler job `<job>-scheduler`, which POSTs to the job's `:run` URL with an OAuth token. Its identity is `--scheduler-service-account`. Without that flag an existing scheduler keeps its account and a new one gets the service's runtime account, which then needs `roles/run.invoker` on the job. The fleet repos pass `<project>@appspot.gserviceaccount.com`. Without `--schedule` an existing scheduler is left alone.
+
+Exit codes: 0 done (or a dry run), 1 a gcloud write failed (a failed job write skips the scheduler), 2 nothing was written. It writes to GCP, so Claude and its agents never run it, not even with `--dry-run`: they give the user the command.
+
+```bash
+# Re-sync EVERY <service>-* job with the service's current image and env vars
+# (calls tools/updateJobsFromService.py; every push already does this)
+server/tools/update_all_jobs.bat
+```
+
+To retry a red `update-jobs` step, rerun the build in Cloud Build. To re-sync the jobs after the service changed without a build (e.g. an env var edited in the console, which no push follows), the user runs `server/tools/update_all_jobs.bat`: it picks the project and service, previews the sync with `updateJobsFromService.py --dry-run`, asks for confirmation, then runs `updateJobsFromService.py` (the service's current image; the same job rules as the build, multiline values such as `FIREBASE_PRIVATE_KEY` intact). Running `python server/tools/updateJobsFromService.py --project=<PROJECT> --region=<REGION> --service=<SERVICE>` directly does the same without the pickers.
+
+```bash
+# Run a job_*.py ONCE on Cloud Run (e.g. a backfill after a deploy)
+server/tools/run_job_once.bat
+```
+
+This creates a temporary job named `<service>-<jobfile>-once` from the
+service's image and env vars, executes it, waits, prints its logs and
+status, and deletes it after a successful run (then offers to delete the
+local `job_*.py` too, default no; a file tracked in git is removed with
+`git rm` and the removal is committed alone on `main`, never pushed; on
+another branch the deletion is only staged). On failure the job is kept
+and the console link, re-run command and delete command are printed. It
+only ever lists job files, never Cloud Run jobs, and every name it creates,
+executes or deletes ends in `-once`, so scheduled jobs are never touched.
+The confirmation asks you to type the job's short name instead of `y`.
+The `-once` suffix is reserved: `create_or_update_job.ps1` refuses a job
+file whose derived name would end in `-once`.
+
+All three scripts share `_gcloudTarget.ps1`: numbered project/service
+pickers, a per-repo cache of the last confirmed target in
+`.last_gcloud_target.json` (gitignored), a single review summary before
+anything is written, and `--project=` on every gcloud call (the global
+gcloud default project is never used or changed).
+
+### Accounts and identities
+
+`create-star-app cloud-setup` makes three service accounts per service in the GCP project. Each has one job, so a leak of one cannot do what the others can.
+
+| Account | Used by | Roles it holds |
+|---|---|---|
+| `<svc>-run@<project>.iam.gserviceaccount.com` | the Cloud Run service and its jobs (the runtime identity); the identity a service call to a sibling is signed as | `roles/pubsub.publisher`, `roles/pubsub.viewer`, `roles/run.invoker` on the project |
+| `<svc>-push@<project>.iam.gserviceaccount.com` | the OIDC token of every push subscription this service publishes to | none of its own; the Pub/Sub service agent may mint tokens for it |
+| `<svc>-build@<project>.iam.gserviceaccount.com` | the Cloud Build trigger `<svc>-main` | `roles/run.developer`, `roles/artifactregistry.writer`, `roles/logging.logWriter`, `roles/storage.objectViewer`, and `roles/iam.serviceAccountUser` on `<svc>-run` |
+
+The Pub/Sub service agent (`service-<projectNumber>@gcp-sa-pubsub.iam.gserviceaccount.com`) has these bindings:
+- `roles/iam.serviceAccountTokenCreator` on `<svc>-push`, so Pub/Sub can sign the push token.
+- `roles/pubsub.publisher` on `deadLetterTopic`, so a subscription can forward a failed message there.
+- `roles/pubsub.subscriber` on each source subscription that has a dead-letter policy (`pubSubAdmin.py` sets it).
+
+Where each account appears in the code:
+- `callerAuth.py`: `PUSH_SERVICE_ACCOUNTS[0]` is this service's own `<svc>-push`; `SERVICE_CALLER_ACCOUNTS` lists the `-run` accounts of the siblings that call this one. See "Accounts and identities between sibling services" above for how a sibling is added.
+- `cloudbuild.yaml` and the trigger: `<svc>-build`.
+- Cloud Run service and jobs: `<svc>-run` (`--service-account`).
+- The dead-letter dashboard's `<name>-run` account is the second entry of every sibling's `PUSH_SERVICE_ACCOUNTS` (`PUSH_SERVICE_ACCOUNTS[1]`, never `[0]`): its "Retry Prod" replays a dead letter with an ID token minted for exactly that endpoint, and the sibling accepts it as a push caller. The dashboard's own tuple holds its push account alone, so a replay token can never create a dead letter.
+
+`create-star-app doctor --cloud` reads these bindings and prints the exact command for any that is missing; it never applies a fix.

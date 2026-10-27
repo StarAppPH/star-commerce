@@ -1,0 +1,60 @@
+# Environment & secrets
+.env
+*.env
+.env.*
+keys/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+venv/
+.venv/
+
+# Testing
+.pytest_cache/
+
+# MongoDB backups
+backup/
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+# Vercel project link (cloud-setup links the repository root)
+.vercel/
+# Firebase Emulator Suite (create-star-app dev): the saved local users and
+# files, and the CLI's logs and cache
+.firebase-emulator-data/
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Last-used GCP project/service remembered by the deploy scripts (per machine)
+server/tools/.last_gcloud_target.json
+# "Sibling checkout not found" notes written by server/pubSubMap.py (per machine)
+server/services/*.notFound.md
+# Per-checkout test stamps (test_unused_response_fields.py skips for 7 days after a pass)
+server/.testStamps/
+
+# create-star-app
+!/CLAUDE.md
+
+# create-star-app: secrets and local folders (keep this block last)
+.env
+*.env
+.env.*
+keys/
+venv/
+.vercel/

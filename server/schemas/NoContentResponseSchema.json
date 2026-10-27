@@ -1,0 +1,7 @@
+{
+    "description": "A route whose result is its status and message alone: no client code\nreads data from it (test_unused_response_fields.py), so it sends none\nand returns {}.",
+    "properties": {},
+    "title": "NoContentResponse",
+    "type": "object",
+    "additionalProperties": false
+}

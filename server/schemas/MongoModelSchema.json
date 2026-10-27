@@ -1,0 +1,24 @@
+{
+    "description": "Base for models stored in MongoDB with _id, _version, and empty-string coercion.",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        }
+    },
+    "title": "MongoModel",
+    "type": "object",
+    "additionalProperties": false
+}

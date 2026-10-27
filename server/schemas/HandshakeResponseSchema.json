@@ -1,0 +1,22 @@
+{
+    "properties": {
+        "environment": {
+            "description": "The ENVIRONMENT the server runs",
+            "title": "Environment",
+            "type": "string"
+        },
+        "status": {
+            "const": "running",
+            "description": "Always running",
+            "title": "Status",
+            "type": "string"
+        }
+    },
+    "required": [
+        "environment",
+        "status"
+    ],
+    "title": "HandshakeResponse",
+    "type": "object",
+    "additionalProperties": false
+}

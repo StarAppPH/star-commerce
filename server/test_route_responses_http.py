@@ -1,0 +1,506 @@
+"""HTTP envelopes of the generated Flask app (app.py).
+
+Every other route test calls ApiRequests() directly, as DO_NOT_DO.md
+requires. These are the exception it allows: they test the generated
+TRANSPORT layer, which a direct call never reaches -
+  - the ApiResponse envelope each kind of route answers with
+    (createAccessToken, jwtRequired, public, GET): the ApiSuccess /
+    ApiFailure the TS client is typed against, with status_code equal to
+    body.status and no key outside ApiResponse;
+  - the status mapping: a ValueError the route raises, a failed role check
+    and a body userId that is not the JWT identity are 400 envelopes with
+    data null; a PermissionError (sign-in) is a 403;
+  - a POST whose body is not a JSON object is a 400 envelope, never a 500,
+    and an object or a list for a scalar param is refused (a {"$ne": null}
+    never reaches a query); a malformed Pub/Sub push is a 400 too;
+  - the JWT gate: a missing, expired or malformed token is turned away with
+    a {msg}-only body before the route runs; a JWT route that succeeds hands
+    back a refreshed jwtToken, and a failed one hands back none;
+  - logging: a route logs which of its params it was sent, never the
+    values; a push handler logs the messageId and the message's keys;
+  - app.py's config: outside localdev a short or placeholder
+    JWT_SECRET_KEY is refused; a local run binds 127.0.0.1 unless
+    LOCAL_BIND_HOST says otherwise, and then warns;
+  - sign-in: the loginWithGoogle envelopes, and the sign-in payload (the ID
+    token, a token fragment, a raw identity) never reaching a log record or
+    stderr.
+Response SHAPES stay on the direct-call tests (test_route_responses.py).
+
+The REAL app.py is imported, not regenerated source, so what is tested is
+what ships, and a stale app.py fails here. It is imported lazily inside each
+test: pytest's log handlers are attached by then, so app.py's
+logging.basicConfig is a no-op. Only _flask_app imports app.py (and
+test_response_compression.py imports it from here), so the
+JWT_SECRET_KEY set here is the one its config reads; tokens are minted
+inside its app_context either way, so they always match its config.
+
+Creating the Pub/Sub clients fails the test. Sign-in verification is mocked
+at AuthHandler._decodeFirebaseIdToken (conftest's `firebase` fixture), so no
+Google call is made.
+"""
+
+import datetime
+import importlib
+import json
+import logging
+import os
+import subprocess
+import sys
+from http import HTTPStatus
+
+import pubSub as pubSubModule
+from ApiRequests import ApiRequests
+from AppCreator import (STATUS_BAD_REQUEST, STATUS_FORBIDDEN,
+                        STATUS_JWT_REJECTED, STATUS_OK)
+from conftest import (RAW_EMAIL, RAW_UID, TOKEN, TOKEN_UID, createTestUser,
+                      modelKeys, wipeCollections)
+from flask_jwt_extended import create_access_token, decode_token
+from mongoDb import db
+from objects import ApiResponse, UserResponse
+from roles import AllRoles
+
+_TEST_JWT_SECRET = 'rrh-http-test-jwt-secret-0123456789abcdef'
+FORGED_TOKEN = 'rrh-http-forged-firebase-token'
+TOKEN_FRAGMENT = 'rrh-token-fragment'
+SECRET_TITLE = 'rrh-a-value-no-log-may-quote'
+ADMIN = 'rrh-admin'
+NOBODY = 'rrh-no-role'
+
+# The keys only some kinds of route add to their envelope.
+TOKEN_KEYS = {'access_token', 'current_user', 'jwtToken'}
+FAILURE_KEYS = {'message', 'status', 'data'}
+
+
+def _no_gcp(*args, **kwargs):
+    raise AssertionError('a test tried to create the Pub/Sub clients')
+
+
+def _flask_app(monkeypatch):
+    """The generated app, with Pub/Sub client creation turned into a test
+    failure. JWT_SECRET_KEY only matters if this is the first import of
+    app.py in the run."""
+    monkeypatch.setenv('ENVIRONMENT', 'localdev')
+    monkeypatch.setenv('JWT_SECRET_KEY', _TEST_JWT_SECRET)
+    monkeypatch.setattr(pubSubModule.pubSub, '_ensureClients', _no_gcp)
+    assert not pubSubModule.pubSub.isProductionEnvironment
+    return importlib.import_module('app').app
+
+
+def _token(flaskApp, identity, expiresDelta=None) -> str:
+    with flaskApp.app_context():
+        return create_access_token(identity=identity,
+                                   expires_delta=expiresDelta)
+
+
+def _identity(flaskApp, token) -> str:
+    with flaskApp.app_context():
+        return decode_token(token)['sub']
+
+
+def _bearer(token) -> dict:
+    return {'Authorization': f'Bearer {token}'}
+
+
+def _as_sent(flaskApp, value):
+    """`value` as the app's JSON provider puts it on the wire (datetimes
+    as RFC 1123 strings)."""
+    return json.loads(flaskApp.json.dumps(value))
+
+
+def _success_body(res, route) -> dict:
+    """The ApiSuccess envelope: status 200 in both places, only ApiResponse
+    keys, no traceback, and the route's own success message."""
+    body = res.get_json()
+    assert res.status_code == body['status'] == STATUS_OK, body
+    assert set(body) <= modelKeys(ApiResponse)
+    assert 'traceback' not in body
+    assert body['message'] == getattr(ApiRequests, route).successMessage
+    return body
+
+
+def _failure_body(res, status) -> dict:
+    """A browser route's failure envelope: exactly message, status and
+    data (so no token keys: a failed call never slides the session), with
+    status_code equal to body.status."""
+    body = res.get_json()
+    assert res.status_code == body['status'] == status, body
+    assert set(body) == FAILURE_KEYS
+    return body
+
+
+def _routeLogs(caplog, route) -> list:
+    return [
+        r.msg for r in caplog.records
+        if isinstance(r.msg, dict) and r.msg.get('function') == route
+    ]
+
+
+def test_http_generatedRoutes_successEnvelopes(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(['Users', 'SampleTodos'])
+    try:
+        createTestUser(ADMIN)
+        headers = _bearer(_token(flaskApp, ADMIN))
+
+        # jwtRequired: the caller rides along, with a refreshed token.
+        res = client.post('/getRoles', json={'userId': ADMIN}, headers=headers)
+
+        body = _success_body(res, 'getRoles')
+        assert TOKEN_KEYS & set(body) == {'current_user', 'jwtToken'}
+        assert body['current_user'] == ADMIN
+        assert _identity(flaskApp, body['jwtToken']) == ADMIN
+        assert body['data'] == _as_sent(flaskApp,
+                                        ApiRequests().getRoles(ADMIN))
+
+        # The client signs its next call with the refreshed token.
+        res = client.post('/getRoles',
+                          json={'userId': ADMIN},
+                          headers=_bearer(body['jwtToken']))
+        _success_body(res, 'getRoles')
+
+        # GET, no token in or out.
+        res = client.get('/handshake')
+
+        body = _success_body(res, 'handshake')
+        assert not TOKEN_KEYS & set(body)
+        assert body['data'] == ApiRequests().handshake()
+
+        # Public POST; the log carries the body's keys, never its values.
+        res = client.post('/createTodo', json={'title': SECRET_TITLE})
+
+        body = _success_body(res, 'createTodo')
+        assert not TOKEN_KEYS & set(body)
+        # The page reads nothing from a mutation's answer: it sends nothing.
+        assert body['data'] == {}
+        assert db.read({'title': SECRET_TITLE}, 'SampleTodos', findOne=True)
+        assert _routeLogs(caplog, 'createTodo') == [{
+            'function': 'createTodo',
+            'event': 'success',
+            'requestKeys': ['title']
+        }]
+        # A key the route does not take is not logged either: the caller
+        # chose its name.
+        caplog.clear()
+        res = client.post('/createTodo',
+                          json={
+                              'title': 'Rrh second',
+                              SECRET_TITLE: 1
+                          })
+        _success_body(res, 'createTodo')
+        assert _routeLogs(caplog, 'createTodo')[0]['requestKeys'] == ['title']
+        assert all(SECRET_TITLE not in r.getMessage() for r in caplog.records)
+        db.delete({'title': 'Rrh second'}, 'SampleTodos')
+        assert all(SECRET_TITLE not in r.getMessage() for r in caplog.records)
+
+        res = client.post('/getTodos')
+
+        body = _success_body(res, 'getTodos')
+        assert [todo['title'] for todo in body['data']['todos']
+                ] == [SECRET_TITLE]
+    finally:
+        wipeCollections(['Users', 'SampleTodos'])
+
+
+def test_http_generatedRoutes_failureEnvelopes(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(['Users', 'SampleTodos'])
+    try:
+        createTestUser(ADMIN)
+        createTestUser(NOBODY, userType='unauthorized')
+
+        # The JWT gate turns each of these away with a {msg}-only body,
+        # which the generated client maps to its 401 ApiFailure.
+        rejectedTokens = [
+            None,
+            _token(flaskApp, ADMIN, datetime.timedelta(seconds=-10)),
+            'not-a-jwt',
+        ]
+        for token in rejectedTokens:
+            res = client.post('/getRoles',
+                              json={'userId': ADMIN},
+                              headers=_bearer(token) if token else None)
+
+            body = res.get_json()
+            assert res.status_code in (STATUS_JWT_REJECTED,
+                                       HTTPStatus.UNPROCESSABLE_ENTITY)
+            assert set(body) == {'msg'}
+            assert body['msg']
+
+        # A token for someone other than the userId sent: the generated
+        # identity check answers 400 before the route runs.
+        res = client.post('/getRoles',
+                          json={'userId': ADMIN},
+                          headers=_bearer(_token(flaskApp, NOBODY)))
+
+        assert _failure_body(res, STATUS_BAD_REQUEST) == {
+            'message': 'Unauthorized access',
+            'status': STATUS_BAD_REQUEST,
+            'data': None
+        }
+
+        # The caller's own token, without the route's role: its message.
+        res = client.post('/getRoles',
+                          json={'userId': NOBODY},
+                          headers=_bearer(_token(flaskApp, NOBODY)))
+
+        assert _failure_body(res, STATUS_BAD_REQUEST) == {
+            'message':
+            AllRoles().getSpecificRole('canUpdateUserRole').unauthorizedMessage,
+            'status': STATUS_BAD_REQUEST,
+            'data': None
+        }
+
+        # A ValueError the route raises: a 400 with data null.
+        res = client.post('/markTodoAsCompleted',
+                          json={'todoId': 'rrh-no-such-todo'})
+
+        assert _failure_body(res, STATUS_BAD_REQUEST) == {
+            'message': 'Todo not found',
+            'status': STATUS_BAD_REQUEST,
+            'data': None
+        }
+
+        # A body that is not a JSON object reads as {}: the route runs with
+        # its params None and answers the 400 envelope, never a 500.
+        for kwargs in ({}, {
+                'data': 'todoId=x',
+                'content_type': 'text/plain'
+        }, {
+                'json': ['rrh-a', 'json', 'list']
+        }):
+            res = client.post('/markTodoAsCompleted', **kwargs)
+
+            assert _failure_body(res, STATUS_BAD_REQUEST) == {
+                'message': 'Todo not found',
+                'status': STATUS_BAD_REQUEST,
+                'data': None
+            }
+        errorLogs = _routeLogs(caplog, 'markTodoAsCompleted')
+        assert [log['requestKeys'] for log in errorLogs
+                ] == [['todoId'], [], [], []]
+        assert {log['event'] for log in errorLogs} == {'error'}
+    finally:
+        wipeCollections(['Users', 'SampleTodos'])
+
+
+def test_http_loginWithGoogle_envelopesAndNeverLogsTheSignInPayload(
+        monkeypatch, caplog, capsys, firebase, anotherUser):
+    """A verified token signs in with an access_token; a malformed body is
+    a generic 400; outside localdev a raw identity or a token that does not
+    verify is refused with a 403. None of them mints a token, and the
+    sign-in payload never reaches a log record, at any level.
+
+    The caplog record check is the guard. stderr (where the generated
+    except blocks print the traceback, and which Cloud Run ships as logs)
+    is checked too, as a lower bound: capsys sees what goes through
+    sys.stderr, not a handler bound to the real stream."""
+    caplog.set_level(logging.INFO)
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+
+    res = client.post('/loginWithGoogle',
+                      json={'firebaseUserObject': {
+                          'idToken': TOKEN
+                      }})
+
+    body = _success_body(res, 'loginWithGoogle')
+    assert TOKEN_KEYS & set(body) == {'access_token'}
+    assert _identity(flaskApp, body['access_token']) == TOKEN_UID
+    # The wire's datetimes are RFC 1123 strings, so the keys are pinned
+    # (the direct-call tests validate the shape).
+    assert set(body['data']) == modelKeys(UserResponse)
+    assert body['data']['_id'] == TOKEN_UID
+
+    # A malformed body: pydantic would quote it, the refusal does not.
+    res = client.post('/loginWithGoogle',
+                      json={'firebaseUserObject': {
+                          'idToken': [TOKEN_FRAGMENT]
+                      }})
+
+    assert _failure_body(res, STATUS_BAD_REQUEST) == {
+        'message': 'Invalid sign-in request',
+        'status': STATUS_BAD_REQUEST,
+        'data': None
+    }
+
+    # Not a cloud value: outside localdev is all the refusals need.
+    monkeypatch.setenv('ENVIRONMENT', 'localprod')
+
+    res = client.post('/loginWithGoogle',
+                      json={
+                          'firebaseUserObject': {
+                              'uid': RAW_UID,
+                              'email': RAW_EMAIL,
+                              'displayName': 'Rrh Raw'
+                          }
+                      })
+
+    assert _failure_body(res, STATUS_FORBIDDEN) == {
+        'message': 'Firebase ID token is required',
+        'status': STATUS_FORBIDDEN,
+        'data': None
+    }
+    assert db.read({'email': RAW_EMAIL}, 'Users', findOne=True) is None
+
+    res = client.post('/loginWithGoogle',
+                      json={'firebaseUserObject': {
+                          'idToken': FORGED_TOKEN
+                      }})
+
+    assert _failure_body(res, STATUS_FORBIDDEN) == {
+        'message': 'Sign-in could not be verified, please sign in again',
+        'status': STATUS_FORBIDDEN,
+        'data': None
+    }
+    assert [token for token, _ in firebase['verified']
+            ] == [TOKEN, FORGED_TOKEN]
+
+    loginLogs = _routeLogs(caplog, 'loginWithGoogle')
+    assert {log['event'] for log in loginLogs} == {'success', 'error'}
+    assert all(set(log) <= {'function', 'event', 'traceback'}
+               for log in loginLogs)
+    rejected = [
+        r.msg for r in caplog.records if isinstance(r.msg, dict)
+        and r.msg.get('event') == 'firebaseIdTokenRejected'
+    ]
+    assert rejected == [{
+        'event': 'firebaseIdTokenRejected',
+        'reason': 'ValueError'
+    }]
+    stderr = capsys.readouterr().err
+    for sent in (TOKEN, FORGED_TOKEN, TOKEN_FRAGMENT, RAW_UID, RAW_EMAIL):
+        for record in caplog.records:
+            assert sent not in record.getMessage()
+        assert sent not in stderr
+
+
+def test_http_aScalarParamRefusesAnObjectOrAList(monkeypatch, caplog):
+    """deleteTodo's todoId is a str: {"$ne": null} would be a Mongo operator
+    matching every todo (a delete_many). The handler refuses an object or a
+    list for any scalar param with a 400 before the route runs."""
+    caplog.set_level(logging.INFO)
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(['SampleTodos'])
+    try:
+        for title in ('Rrh one', 'Rrh two'):
+            ApiRequests().createTodo(title)
+
+        for todoId in ({'$ne': None}, ['rrh-a'], {'$gt': ''}):
+            res = client.post('/deleteTodo', json={'todoId': todoId})
+
+            assert _failure_body(res, STATUS_BAD_REQUEST) == {
+                'message': 'Invalid todoId',
+                'status': STATUS_BAD_REQUEST,
+                'data': None
+            }
+        assert len(db.read({}, 'SampleTodos')) == 2
+
+        # A str still goes through, and a scalar of another type is the
+        # route's own business (no strict coercion).
+        res = client.post('/deleteTodo', json={'todoId': 'rrh-no-such-todo'})
+        assert _success_body(res, 'deleteTodo')['data'] == {}
+        assert len(db.read({}, 'SampleTodos')) == 2
+    finally:
+        wipeCollections(['SampleTodos'])
+
+
+def test_http_aMalformedPubSubPush_isA400(monkeypatch, caplog):
+    """The push envelope is parsed inside the try: a body without
+    message.data/messageId is a 400 envelope (GCP retries, then
+    dead-letters), never a 500. The log carries the messageId and the
+    message's keys, never its values."""
+    caplog.set_level(logging.INFO)
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+
+    for body in ({}, {'message': {}}, ['rrh-not-an-envelope']):
+        res = client.post('/ping', json=body)
+
+        payload = res.get_json()
+        assert res.status_code == payload['status'] == STATUS_BAD_REQUEST
+        assert payload['data'] is None
+    logs = _routeLogs(caplog, 'ping')
+    assert [log['event'] for log in logs] == ['error'] * 3
+    assert all(log['messageId'] is None and log['messageKeys'] is None
+               for log in logs)
+
+    caplog.clear()
+    message = {'secretField': SECRET_TITLE}
+    res = client.post('/ping',
+                      json={
+                          'message': {
+                              'data': message,
+                              'messageId': None,
+                              'attributes': {}
+                          }
+                      })
+
+    assert res.status_code == STATUS_OK
+    assert _routeLogs(caplog, 'ping') == [{
+        'function': 'ping',
+        'event': 'success',
+        'messageId': None,
+        'messageKeys': ['secretField']
+    }]
+    assert all(SECRET_TITLE not in r.getMessage() for r in caplog.records)
+
+
+def test_http_localBindHost_isLoopbackUnlessOptedIn(monkeypatch, caplog,
+                                                     capsys):
+    """localdev accepts a raw sign-in identity: a local run is reachable
+    from this machine only, unless server/.env sets LOCAL_BIND_HOST, which
+    is then announced loudly."""
+    _flask_app(monkeypatch)
+    appModule = importlib.import_module('app')
+
+    for value in (None, '', '  '):
+        if value is None:
+            monkeypatch.delenv('LOCAL_BIND_HOST', raising=False)
+        else:
+            monkeypatch.setenv('LOCAL_BIND_HOST', value)
+        assert appModule._localBindHost() == '127.0.0.1'
+    assert 'reachable from your network' not in capsys.readouterr().out
+
+    monkeypatch.setenv('LOCAL_BIND_HOST', '0.0.0.0')
+    with caplog.at_level(logging.WARNING):
+        assert appModule._localBindHost() == '0.0.0.0'
+    assert 'reachable from your network' in capsys.readouterr().out
+    assert {'event': 'localBindHostExposed', 'host': '0.0.0.0'} in [
+        r.msg for r in caplog.records
+    ]
+
+    with open(appModule.__file__, encoding='utf-8') as f:
+        source = f.read()
+    assert 'host=_localBindHost()' in source
+    assert "host='0.0.0.0', port=8080" in source  # Cloud Run only
+
+
+def _importAppIn(environment: str, jwtSecretKey: str):
+    env = dict(os.environ,
+               ENVIRONMENT=environment,
+               JWT_SECRET_KEY=jwtSecretKey)
+    return subprocess.run([sys.executable, '-c', 'import app'],
+                          cwd=os.path.dirname(os.path.abspath(__file__)),
+                          env=env,
+                          capture_output=True,
+                          text=True,
+                          timeout=120)
+
+
+def test_http_appRefusesAWeakJwtSecretOutsideLocaldev():
+    """Anyone who knows the signing key can mint a token for any user: in
+    every environment but localdev, app.py refuses the placeholder or a key
+    under 32 characters. (localprod here: it reads the local Mongo only.)"""
+    for weak in ('change-me-to-a-secret-key', 'x' * 31):
+        result = _importAppIn('localprod', weak)
+
+        assert result.returncode != 0
+        assert 'JWT_SECRET_KEY must be a random secret' in result.stderr
+
+    assert _importAppIn('localprod', 'x' * 32).returncode == 0
+    assert _importAppIn('localdev', 'short').returncode == 0

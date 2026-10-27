@@ -1,0 +1,19 @@
+flask>=3.0
+flask-cors>=4.0
+flask-compress==1.25
+Brotli==1.2.0
+backports.zstd==1.7.0; python_version < "3.14"
+Flask-JWT-Extended>=4.6
+pydantic>=2.7
+pymongo>=4.8
+pytest>=8.0
+pytest-xdist==3.8.0
+gunicorn>=21.0
+python-dotenv>=1.0
+google-cloud-pubsub>=2.21
+google-auth>=2.29
+google-cloud-iam>=2.15
+google-cloud-run>=0.10
+google-cloud-resource-manager>=1.12
+requests>=2.31
+werkzeug>=3.0

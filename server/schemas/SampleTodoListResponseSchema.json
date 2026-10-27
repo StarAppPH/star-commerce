@@ -1,0 +1,49 @@
+{
+    "$defs": {
+        "SampleTodoRow": {
+            "description": "One row of getTodos: the fields its projection reads\n(projection_of(SampleTodoRow)). Each field restates SampleTodo's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+            "properties": {
+                "_id": {
+                    "description": "SampleTodos _id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "title": {
+                    "description": "What to do",
+                    "minLength": 1,
+                    "title": "Title",
+                    "type": "string"
+                },
+                "completed": {
+                    "description": "Whether it is done",
+                    "title": "Completed",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "_id",
+                "title",
+                "completed"
+            ],
+            "title": "SampleTodoRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "properties": {
+        "todos": {
+            "description": "Every todo",
+            "items": {
+                "$ref": "#/$defs/SampleTodoRow"
+            },
+            "title": "Todos",
+            "type": "array"
+        }
+    },
+    "required": [
+        "todos"
+    ],
+    "title": "SampleTodoListResponse",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "projectName": "starCommerce",
+  "npmName": "starcommerce",
+  "port": 5003,
+  "timezone": 8,
+  "gcpRegion": "asia-east1",
+  "layout": {
+    "server": "server",
+    "client": "client",
+    "venv": "server/venv",
+    "envFile": "server/.env",
+    "clientEnvFile": "client/.env.local"
+  },
+  "scaffold": {
+    "createdWith": "1.38.0",
+    "lastRunWith": "1.38.0",
+    "createdAt": "2026-10-27T03:15:08Z",
+    "lastRunAt": "2026-10-27T03:20:18Z"
+  },
+  "cloud": {},
+  "kind": "service"
+}

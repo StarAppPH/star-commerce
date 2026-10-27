@@ -1,0 +1,15 @@
+{
+  "flows": [],
+  "formatVersion": 3,
+  "repos": {
+    "starCommerce": {
+      "projectName": "starCommerce",
+      "services": {
+        "exampleService": {"localRepoDirName": "example-service-repo", "projectName": "exampleService"}
+      },
+      "utilityHandlers": [
+        "ping"
+      ]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+    "description": "A SampleTodos document as stored.",
+    "properties": {
+        "_id": {
+            "description": "Document _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "description": "Optimistic-lock version",
+            "title": "Version",
+            "type": "integer"
+        },
+        "title": {
+            "description": "What to do",
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+        },
+        "completed": {
+            "default": false,
+            "description": "Whether it is done",
+            "title": "Completed",
+            "type": "boolean"
+        }
+    },
+    "required": [
+        "_id",
+        "_version",
+        "title"
+    ],
+    "title": "SampleTodoView",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -1,0 +1,70 @@
+{
+    "properties": {
+        "message": {
+            "title": "Message",
+            "type": "string"
+        },
+        "status": {
+            "title": "Status",
+            "type": "integer"
+        },
+        "data": {
+            "title": "Data"
+        },
+        "current_user": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Current User"
+        },
+        "access_token": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Access Token"
+        },
+        "jwtToken": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Jwttoken"
+        },
+        "traceback": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Traceback"
+        }
+    },
+    "required": [
+        "message",
+        "status"
+    ],
+    "title": "ApiResponse",
+    "type": "object",
+    "additionalProperties": false
+}

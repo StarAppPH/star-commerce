@@ -1,0 +1,28 @@
+{
+    "description": "A role as a response sends it: roles.Role as it serializes (its\nexcluded fields are never sent).",
+    "properties": {
+        "_id": {
+            "description": "Role id",
+            "title": "Id",
+            "type": "string"
+        },
+        "value": {
+            "description": "Role value",
+            "title": "Value",
+            "type": "boolean"
+        },
+        "description": {
+            "description": "Role description",
+            "title": "Description",
+            "type": "string"
+        }
+    },
+    "required": [
+        "_id",
+        "value",
+        "description"
+    ],
+    "title": "RoleResponse",
+    "type": "object",
+    "additionalProperties": false
+}

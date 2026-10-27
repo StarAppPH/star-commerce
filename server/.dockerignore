@@ -1,0 +1,15 @@
+# Keep local-only files out of the image. Cloud Build only sees git-tracked
+# files, so this mainly protects a local docker build from shipping .env or a
+# virtualenv. keys/ is gitignored and never shipped: the app reads its
+# Firebase credentials from env vars. A project that tracks a key file the
+# app opens at runtime re-includes it by name, below the keys/* line:
+#   !keys/<file>.json
+.env
+*.env
+keys/*
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+node_modules/

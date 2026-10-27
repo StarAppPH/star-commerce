@@ -1,0 +1,61 @@
+{
+    "description": "The sign-in payload loginWithGoogle receives. Anything else the client\nsends is dropped.\n\nThe client sends just `idToken`, and the uid, email and name are then\ntaken from the VERIFIED token. The raw identity fields are honoured ONLY\nin localdev without an idToken (signing in with no Firebase project, and\nthe tests); trusting them anywhere else would let a client pick whose\naccount it signs into.",
+    "properties": {
+        "idToken": {
+            "anyOf": [
+                {
+                    "maxLength": 4096,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Firebase ID token; the only field read outside localdev",
+            "title": "Idtoken"
+        },
+        "uid": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Localdev only: Firebase uid, the Users _id",
+            "title": "Uid"
+        },
+        "email": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Localdev only: email",
+            "title": "Email"
+        },
+        "displayName": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Localdev only: display name",
+            "title": "Displayname"
+        }
+    },
+    "title": "FirebaseUserObject",
+    "type": "object",
+    "additionalProperties": false
+}

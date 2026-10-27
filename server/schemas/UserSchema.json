@@ -1,0 +1,117 @@
+{
+    "$defs": {
+        "Role": {
+            "properties": {
+                "_id": {
+                    "description": "Role id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "value": {
+                    "description": "Role value",
+                    "title": "Value",
+                    "type": "boolean"
+                },
+                "description": {
+                    "description": "Role description",
+                    "title": "Description",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "_id",
+                "value",
+                "description"
+            ],
+            "title": "Role",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "UserRoles": {
+            "items": {
+                "$ref": "#/$defs/Role"
+            },
+            "title": "UserRoles",
+            "type": "array"
+        }
+    },
+    "properties": {
+        "_id": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Unique identifier for the user",
+            "title": "Id"
+        },
+        "_version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+        },
+        "name": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Username of the user",
+            "title": "Name"
+        },
+        "email": {
+            "description": "Email address of the user",
+            "title": "Email",
+            "type": "string"
+        },
+        "roles": {
+            "allOf": [
+                {
+                    "$ref": "#/$defs/UserRoles"
+                }
+            ],
+            "description": "Roles assigned to the user"
+        },
+        "userType": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "User type",
+            "title": "Usertype"
+        },
+        "createdAt": {
+            "description": "Account creation date",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        },
+        "needToBeLinked": {
+            "default": false,
+            "description": "User has been created by pubSub function and needs to be linked by authentication system",
+            "title": "Needtobelinked",
+            "type": "boolean"
+        }
+    },
+    "required": [
+        "_id",
+        "name",
+        "email",
+        "roles",
+        "createdAt"
+    ],
+    "title": "User",
+    "type": "object",
+    "additionalProperties": false
+}

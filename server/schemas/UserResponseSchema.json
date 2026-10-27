@@ -1,0 +1,101 @@
+{
+    "$defs": {
+        "RoleResponse": {
+            "description": "A role as a response sends it: roles.Role as it serializes (its\nexcluded fields are never sent).",
+            "properties": {
+                "_id": {
+                    "description": "Role id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "value": {
+                    "description": "Role value",
+                    "title": "Value",
+                    "type": "boolean"
+                },
+                "description": {
+                    "description": "Role description",
+                    "title": "Description",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "_id",
+                "value",
+                "description"
+            ],
+            "title": "RoleResponse",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A Users document as loginWithGoogle and devLogin send it: the client\nkeeps it (client/lib/storedShapes.ts). Read with\nprojection_of(UserResponse), or cut down with projectedCopy.",
+    "properties": {
+        "_id": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Unique identifier for the user",
+            "title": "Id"
+        },
+        "name": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Username of the user",
+            "title": "Name"
+        },
+        "email": {
+            "description": "Email address of the user",
+            "title": "Email",
+            "type": "string"
+        },
+        "roles": {
+            "description": "Roles assigned to the user",
+            "items": {
+                "$ref": "#/$defs/RoleResponse"
+            },
+            "title": "Roles",
+            "type": "array"
+        },
+        "userType": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "User type",
+            "title": "Usertype"
+        },
+        "createdAt": {
+            "description": "Account creation date",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "_id",
+        "name",
+        "email",
+        "roles",
+        "createdAt"
+    ],
+    "title": "UserResponse",
+    "type": "object",
+    "additionalProperties": false
+}

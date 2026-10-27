@@ -1,0 +1,39 @@
+{
+    "description": "A SampleTodos document, as createTodo builds it.",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "title": {
+            "description": "What to do",
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+        },
+        "completed": {
+            "default": false,
+            "description": "Whether it is done",
+            "title": "Completed",
+            "type": "boolean"
+        }
+    },
+    "required": [
+        "title"
+    ],
+    "title": "SampleTodo",
+    "type": "object",
+    "additionalProperties": false
+}

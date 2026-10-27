@@ -1,0 +1,133 @@
+# Cloud Build for this service: runs on every push to main through the repo's
+# GitHub trigger, switched once to this file (see 'GCP Cloud Run Jobs' in
+# the repo's architecture doc).
+#
+# Shared file: identical in every Star App repo. Every repo-specific value is
+# a trigger substitution (_SERVICE_NAME, _DEPLOY_REGION, _AR_*, REPO_NAME,
+# _TRIGGER_ID), so no service name appears here. create-star-app is its
+# source of truth (fleet/sharedFiles.json); never edit one repo's copy alone.
+#
+# Steps:
+#   build           docker build of server/ with BUILD_CONFIG=cloudbuild.yaml
+#                   and COMMIT_SHA (the image's BUILD_COMMIT_SHA env var).
+#                   server/Dockerfile refuses any build without that arg, so a
+#                   trigger still on its old inline build fails here, before
+#                   anything is pushed or deployed (the old revision keeps
+#                   serving).
+#   push            pushes the image to Artifact Registry.
+#   update-predeploy-job
+#                   gives the Cloud Run job <service>-predeploy the new image
+#                   and the service's env vars (updateJobsFromService.py
+#                   --only). A missing job fails the build: create it once
+#                   with server/tools/create_or_update_job.bat.
+#   run-predeploy-job
+#                   runs that job (server/job_predeploy.py) and waits: the
+#                   Pub/Sub topic check and the index builds, which the
+#                   service's containers no longer run at start. A non-zero
+#                   exit fails the build before deploy-service, so the old
+#                   revision keeps serving. The execution gets
+#                   EXPECTED_COMMIT_SHA=<this build's commit>, and the job
+#                   exits 1 first when its image was built from another
+#                   commit: an overlapping build that re-imaged the job in
+#                   between can never pass this one's check.
+#                   A console deploy, a manual `gcloud run deploy` or a
+#                   revision rollback skips this check.
+#   deploy-service  points the Cloud Run service at the new image; it waits
+#                   for the revision and fails when it never becomes ready.
+#                   Its HTTP startup probe GETs /startupCheck (app.py), which
+#                   answers only once the app has fully imported, so startup,
+#                   which has full CPU, lasts until the app is loaded (a TCP
+#                   probe passes as soon as gunicorn binds the port, and the
+#                   import then runs on throttled CPU). A revision that never
+#                   answers (1s period, 120 tries) fails the deploy, so the old
+#                   revision keeps serving. The 120s window and gunicorn's
+#                   --timeout 120 (server/Dockerfile) go together: raising
+#                   one without the other gains nothing.
+#                   Rollback: services update keeps the probe once a build has
+#                   set it, so an image without /startupCheck can no longer be
+#                   deployed to the service (a git revert of the probe, a
+#                   console or manual deploy of an older image, a hotfix
+#                   branch cut from an older main): it fails the probe. To
+#                   deploy one, first pass --startup-probe=tcpSocket.port=8080
+#                   (or --startup-probe="" to drop it). Routing traffic back to
+#                   an existing older revision works: each revision keeps its
+#                   own probe.
+#   update-jobs     gives every Cloud Run job named <service>-* (except
+#                   *-once) the same image and the service's env vars
+#                   (server/tools/updateJobsFromService.py). A failed job
+#                   update fails the build; the log names the job.
+#                   The service is already live by then: a red update-jobs
+#                   means a new service with some jobs still on the old image.
+#                   It updates <service>-predeploy again, to the same image
+#                   and env vars (a no-op change, kept so the one rule holds:
+#                   every <service>-* job mirrors the service).
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --no-cache
+      - --build-arg
+      - BUILD_CONFIG=cloudbuild.yaml
+      - --build-arg
+      - COMMIT_SHA=$COMMIT_SHA
+      - -t
+      - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      - server
+      - -f
+      - server/Dockerfile
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+  - id: update-predeploy-job
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: python3
+    args:
+      - server/tools/updateJobsFromService.py
+      - --project=$PROJECT_ID
+      - --region=$_DEPLOY_REGION
+      - --service=$_SERVICE_NAME
+      - --image=$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      - --only=$_SERVICE_NAME-predeploy
+  - id: run-predeploy-job
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - execute
+      - $_SERVICE_NAME-predeploy
+      - --region=$_DEPLOY_REGION
+      - --update-env-vars=EXPECTED_COMMIT_SHA=$COMMIT_SHA
+      - --wait
+  - id: deploy-service
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update
+      - $_SERVICE_NAME
+      - --platform=managed
+      - --image=$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      - --startup-probe=httpGet.path=/startupCheck,httpGet.port=8080,periodSeconds=1,timeoutSeconds=1,failureThreshold=120
+      - --labels=managed-by=gcp-cloud-build-deploy-cloud-run,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID,gcb-trigger-id=$_TRIGGER_ID
+      - --region=$_DEPLOY_REGION
+      - --quiet
+  - id: update-jobs
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: python3
+    args:
+      - server/tools/updateJobsFromService.py
+      - --project=$PROJECT_ID
+      - --region=$_DEPLOY_REGION
+      - --service=$_SERVICE_NAME
+      - --image=$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+images:
+  - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+timeout: 1500s
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE

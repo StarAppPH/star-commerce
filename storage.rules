@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// Firebase Storage rules. The local Storage emulator (create-star-app dev)
+// enforces them, and cloud-setup deploys them to the project's default
+// bucket (firebase deploy --only storage). Redeploy after a change:
+//   firebase deploy --only storage
+//
+// A signed-in user may read and delete only the files under users/<their
+// uid>/, and upload there only a JPEG or PNG under 10 MB (the apps accept no
+// other image type; HEIC/HEIF must be converted first). Everything else is
+// denied: no match below allows it.
+//
+// To accept PDFs too, widen the type test:
+//   request.resource.contentType.matches('image/(jpeg|png)|application/pdf')
+// To open another path, add a match block, e.g. product images anyone may
+// read and any signed-in user may upload:
+//   match /products/{allPaths=**} {
+//     allow read;
+//     allow create, update: if request.auth != null
+//                           && request.resource.size < 10 * 1024 * 1024
+//                           && request.resource.contentType.matches('image/(jpeg|png)');
+//   }
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{uid}/{allPaths=**} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+                            && request.resource.size < 10 * 1024 * 1024
+                            && request.resource.contentType.matches('image/(jpeg|png)');
+    }
+  }
+}

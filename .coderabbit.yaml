@@ -1,0 +1,288 @@
+# CodeRabbit Configuration
+# Derived from Claude Code review agents and CLAUDE.md conventions
+# Copy this file to any repository root for automated PR reviews
+
+language: "en-US"
+tone_instructions: "Be concise and actionable. No fluff. Lead with the issue and severity, then the fix. Use assertive language."
+
+reviews:
+  profile: "assertive"
+  high_level_summary: true
+  sequence_diagrams: true
+  poem: false
+  collapse_walkthrough: false
+  changed_files_summary: true
+
+  # Slop detection (filler words, vague language)
+  slop_detection:
+    enabled: true
+
+  path_filters:
+    - "!**/*.lock"
+    - "!**/node_modules/**"
+    - "!dist/**"
+    - "!build/**"
+    - "!**/generated/**"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+    - "!**/.next/**"
+    - "!**/coverage/**"
+    - "!**/__pycache__/**"
+
+  path_instructions:
+    # ── Backend: Flask + MongoDB (Security, DB, Logic, DRY, Datetime) ──
+    - path: "server/**/*.py"
+      instructions: |
+        ## Security (CRITICAL)
+        - All user inputs MUST be validated through Pydantic models before processing.
+        - No raw user input passed directly into MongoDB queries (prevent NoSQL injection).
+        - Authentication tokens verified on every protected endpoint.
+        - Passwords hashed using bcrypt, never stored in plaintext.
+        - Sensitive fields (passwords, tokens, secrets) NEVER returned in API responses.
+        - API endpoints enforce proper authorization (users can only access their own data).
+        - Rate limiting on authentication endpoints.
+        - Environment variables for secrets, never hardcoded.
+        - Error messages must NOT expose internal details (stack traces, DB structure, file paths).
+        - File uploads validated for type, size, and content.
+        - CORS configured to allow only trusted origins.
+        - REJECT code that: trusts client-side data without server-side validation, exposes sensitive data in responses/logs, has missing/broken auth checks, uses string concatenation to build queries, stores secrets in code, has overly permissive CORS, lacks input sanitization.
+
+        ## MongoDB Performance
+        - Transactions used only when necessary (multi-document atomic operations, financial/inventory integrity).
+        - Queries MUST use indexed fields and avoid full collection scans.
+        - Filtering, sorting, and projection performed in MongoDB, NOT in application code.
+        - Only required fields returned (use projection).
+        - Aggregation pipelines optimized: $match early, $project early, avoid unnecessary $lookup/$unwind.
+        - Data modeling (embedded vs referenced) must be appropriate and consistent.
+        - REJECT code that: risks performance degradation, loads excessive data into memory, does filtering after fetching documents, is not scalable for 10x data growth.
+
+        ## Logic Correctness
+        - Trace data flow from input to output. Every branch must have an intentional outcome.
+        - Watch for: off-by-one errors, wrong operators (== vs ===), null/undefined/falsy traps, incomplete boolean logic.
+        - No unintended mutations, no race conditions, state initialized before use.
+        - Errors caught at the right level, handled meaningfully, system left in valid state.
+        - FLAG: silent failures (errors swallowed), dead code, unreachable branches, assumed execution order without guarantees, magic numbers/strings, copy-paste logic that can drift, incomplete switch/map/enum handling, premature returns that skip cleanup.
+
+        ## DRY (Don't Repeat Yourself)
+        - Every piece of business logic must exist in exactly one place.
+        - If a new endpoint needs logic that already exists, extract into a reusable helper. Both must call the helper.
+        - No copy-paste of query logic, computation, or business rules across methods.
+        - Single source of truth for each calculation (commissions, points, streaks, sales totals).
+        - Composite/dashboard endpoints MUST call the same helpers that individual endpoints use — never reimplement inline.
+        - FLAG: logic duplicated between endpoints, new endpoint reimplementing what a helper already does, identical queries in multiple methods, business rules defined in more than one place.
+
+        ## Datetime Handling
+        - UTC everywhere. Local timezone conversion ONLY at the display layer.
+        - ISO 8601 for transport with timezone designator (e.g., 2026-04-04T08:30:00.000Z). Never locale-formatted strings or Unix timestamps in API payloads.
+        - Store Python datetime objects in MongoDB, not strings. MongoDB BSON Date is always UTC.
+        - ALWAYS use datetime.now(timezone.utc), NEVER datetime.now() or datetime.utcnow() (deprecated).
+        - Parse safely with datetime.fromisoformat() (Python 3.11+). Always handle the Z suffix.
+        - No timezone conversion on the server before storage. Store UTC. Apply business timezone only for display or business-logic time windows.
+        - Consistent serialization: .isoformat() + "Z" or a consistent Pydantic serializer. Never mix formats.
+        - FLAG (CRITICAL): datetime.now() or datetime.utcnow() without timezone info, naive datetime objects stored in MongoDB, date strings stored instead of native datetime, timezone conversion before database write.
+
+        ## Route Return Convention
+        - All functions decorated with @route_config or @pubSubDecorator must return a dictionary with explicit keys.
+        - Never return a raw variable (string, list, number).
+        - If the return value is already a dict (e.g., a document from model_dump()), return it directly. Do NOT wrap it in {'data': ...}.
+        - Only use {'key': value} wrapping when the value is a list or primitive.
+        - This is critical for @pubSubDecorator functions because the return value IS the PubSub message payload that consumer services receive.
+        - WRONG: return sampleData (raw variable) | WRONG: return {'data': salesOrder.model_dump(by_alias=True)} (unnecessary wrapping of a dict)
+        - CORRECT: return salesOrder.model_dump(by_alias=True) | CORRECT: return {'categories': categoryNames}
+
+        ## Typed Responses (CRITICAL)
+        - Every ApiRequests @route_config route declares responseModel=<a top-level objects.py ResponseModel> declaring exactly its return value (AppCreator refuses to generate without one; PubSubRequests handlers are exempt). A responseModel or publisher payload model is a ResponseModel all the way down: never a MongoModel, AppModel, StoredDocumentKeys or *View, nested or as a base.
+        - A route reads what it sends with projection=projection_of(Model), never a hand-written projection, or builds the dict; it drops what it read for itself (projectedCopy).
+        - Route params: no datetime/date/time (an ISO str parsed with utils.appDayStart / appDayBounds / parseIsoInstant), no bare dict/list/Any, a None default needs | None.
+        - REJECT: a RootModel responseModel or a new CROSS_REPO_BARE_RESPONSE_ROUTES entry for a route no other service already reads as a bare value; a reshaped @pubSubDecorator return value; a validator that mutates its input or quotes a value in its message.
+
+        ## JWT Convention
+        - JWT checks are auto-generated by AppCreator.py.
+        - The check code is "if userId == current_user" and applies to functions with a userId parameter and @jwt_required decorator.
+
+        ## File Upload Convention
+        - Block HEIC and HEIF file uploads in all file uploading functions.
+        - Check both file extension (.heic, .heif) and MIME type (image/heic, image/heif).
+        - Throw an error instructing user to convert to JPG or PNG before uploading.
+
+    # ── Pydantic Models: No DB Queries ──
+    - path: "server/objects.py"
+      instructions: |
+        ## No DB in Models (CRITICAL)
+        - Pydantic model classes must NEVER import or call database functions (db) directly.
+        - All database reads and writes belong in action functions (server/actions/).
+        - Models should only contain pure business logic, validation, and data transformation.
+        - REJECT any import of mongoDb, db, or direct database calls in this file.
+
+    - path: "server/**/objects.py"
+      instructions: |
+        ## No DB in Models (CRITICAL)
+        - Pydantic model classes must NEVER import or call database functions (db) directly.
+        - All database reads and writes belong in action functions.
+        - Models should only contain pure business logic, validation, and data transformation.
+
+    # ── Action Files: MongoDB Best Practices ──
+    - path: "server/ApiRequests.py"
+      instructions: |
+        ## MongoDB Action Rules
+        - Use transactions for multi-document atomic operations (financial, inventory).
+        - Queries must use indexed fields. Flag any unindexed query.
+        - Aggregation pipelines: $match and $project early. Avoid unnecessary $lookup/$unwind.
+        - Only return required fields via projection.
+        - No filtering in application code — push filters into queries.
+        - Reject code that loads excessive data into memory or won't scale for 10x growth.
+
+    # ── Tests ──
+    - path: "**/test_*.py"
+      instructions: |
+        ## Testing Standards (STRICT)
+        - Every test that writes to DB MUST use try/finally with wipeDatabase() in finally.
+        - CRITICAL: wipeDatabase() must ALSO be called as the FIRST line inside the try: block (idempotency for stale data from crashed runs).
+        - Tests are top-level test_ functions. NO test classes. NO pytest fixtures (except the conftest.py helpers and test_auth_surface.py's sign-in fixtures).
+        - All local variables use camelCase (e.g., salesOrder, unitCreated).
+        - Test data created using factory helpers from objectGeneratorForTesting.py, then inserted via db.create(model.model_dump(by_alias=True), 'CollectionName').
+        - API methods called directly on ApiRequests() — NEVER via HTTP test client (only test_route_responses_http.py, which tests the generated transport layer).
+        - A route's response shape is pinned with assertExactShape(Model, res); a publisher's payload with lastPublishedPayload('<route>').
+        - publishToProdPubSub=False passed wherever the parameter exists.
+        - DB state verified independently via db.read(...) after API calls, not just by checking return values.
+        - Return dicts cast to Pydantic models (User(**data)) when testing model behavior.
+        - Error cases use pytest.raises(ValueError, match='expected message') inline within the same workflow, NOT as separate test functions.
+        - Tests are long integration-style: chain multiple operations (create → verify → mutate → assert) in a single function.
+        - NEVER modify assert statements to make tests pass. Asserts are the source of truth. Fix production code or test setup/data instead.
+        - REJECT: missing wipeDatabase() in finally, pytest fixtures or test classes, snake_case variables, hardcoded raw dicts instead of factory helpers, HTTP test client calls, assertions only on return values without DB verification, error cases in separate test functions, missing publishToProdPubSub=False.
+
+    # ── Frontend TypeScript (React + Next.js) ──
+    - path: "client/**/*.ts"
+      instructions: &frontend_ts_rules |
+        ## TypeScript Type Safety (CRITICAL)
+        - NEVER use `any` type — always use a proper type from app/schemas/ (this project has no app/types/index.ts).
+        - Never define manual interfaces that duplicate generated schemas. If a Pydantic model exists, use the generated schema type.
+        - API responses are ApiResponse<T> from @/app/api/ApiResponse (generated), where T is the route's responseModel: narrow on res.status === 200 before reading res.data. NEVER res.data as X, and never import schemas/ApiResponseSchema outside app/api/.
+        - Check if a schema exists in app/schemas/ before defining a new type.
+        - Use nullish coalescing (??) instead of non-null assertions (!) for optional schema fields.
+        - FLAG (CRITICAL): any type anywhere, manual interfaces duplicating generated schemas, Promise<any> for API calls.
+        - FLAG (MAJOR): non-null assertions on optional schema fields, inline object types for server data, importing types from wrong location.
+        - OK: Local UI-only types (OverdueDisplayItem, TabItem) with no server counterpart. The types from @/app/api/ApiResponse (ApiResponse<T>, ApiSuccess<T>, ApiFailure).
+
+        ## UI/UX Standards
+        - WCAG AA accessibility compliance required.
+        - Responsive design for all viewports.
+        - Consistent use of Material-UI (MUI) and TailwindCSS.
+        - Professional polish matching accounting software standards (QuickBooks/Xero level).
+        - Clear information hierarchy, proper spacing, typography, and colors.
+
+        ## data-component Convention
+        - All core UI sections must include a data-component attribute on the outermost wrapper div.
+        - Use descriptive camelCase names identifying what the section does.
+        - Required on: dashboard widgets, page main content, form containers, modal/dialog wrappers, sidebar/header/footer, data table wrappers, tab panel content areas.
+        - NOT on: individual buttons/inputs, repeated list items, generic layout wrappers with no semantic meaning.
+
+        ## File Uploads
+        - All photo/image file inputs must use accept="image/jpeg,image/png" instead of accept="image/*".
+        - Block HEIC/HEIF uploads with an error message instructing user to convert to JPG or PNG.
+
+    - path: "client/**/*.tsx"
+      instructions: *frontend_ts_rules
+
+    - path: "client-nextjs/**/*.ts"
+      instructions: *frontend_ts_rules
+
+    - path: "client-nextjs/**/*.tsx"
+      instructions: *frontend_ts_rules
+
+  # ── Auto-review settings ──
+  auto_review:
+    enabled: true
+    drafts: false
+
+    base_branches:
+      - "main"
+      - "master"
+      - "develop"
+
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+      - "DRAFT"
+
+    labels_to_ignore:
+      - "do-not-review"
+      - "wip"
+
+    paths_to_ignore:
+      - "**/*.lock"
+      - "**/node_modules/**"
+      - "dist/**"
+      - "build/**"
+
+  # ── Tools ──
+  tools:
+    # Python
+    ruff:
+      enabled: true
+    pylint:
+      enabled: true
+
+    # Security
+    semgrep:
+      enabled: true
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+
+    # JavaScript/TypeScript
+    eslint:
+      enabled: true
+    biome:
+      enabled: true
+
+    # General
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    actionlint:
+      enabled: true
+    checkov:
+      enabled: true
+
+    # Disabled (not used in this stack)
+    swiftlint:
+      enabled: false
+    phpstan:
+      enabled: false
+    golangci-lint:
+      enabled: false
+    clippy:
+      enabled: false
+    rubocop:
+      enabled: false
+    detekt:
+      enabled: false
+    hadolint:
+      enabled: false
+
+  # ── Finishing touches ──
+  finishing_touches:
+    docstrings:
+      enabled: true
+    unit_tests:
+      enabled: true
+
+# ── Knowledge base ──
+knowledge_base:
+  web_search:
+    enabled: true
+  learnings:
+    scope: "auto"
+  issues:
+    scope: "auto"
+  jira:
+    enabled: false
+  linear:
+    enabled: false
+
+# ── Chat ──
+chat:
+  auto_reply: true

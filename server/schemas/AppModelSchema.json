@@ -1,0 +1,7 @@
+{
+    "description": "Base for non-persisted/embedded models with empty-string-to-None coercion.",
+    "properties": {},
+    "title": "AppModel",
+    "type": "object",
+    "additionalProperties": false
+}

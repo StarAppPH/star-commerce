@@ -1,0 +1,42 @@
+{
+    "description": "One row of devGetUserList: the fields its projection reads\n(projection_of(DevUserRow)). Each field restates User's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+    "properties": {
+        "_id": {
+            "description": "Users _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "name": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Username of the user",
+            "title": "Name"
+        },
+        "userType": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "User type",
+            "title": "Usertype"
+        }
+    },
+    "required": [
+        "_id",
+        "name"
+    ],
+    "title": "DevUserRow",
+    "type": "object",
+    "additionalProperties": false
+}

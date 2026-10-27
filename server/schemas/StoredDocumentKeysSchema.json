@@ -1,0 +1,22 @@
+{
+    "description": "Mixin for a model describing a document as READ from MongoDB: _id and\n_version, which every stored document has, are required.\n\nMongoModel defaults both (a fresh id, no version) so a new document can\nbe built; a response model inheriting those defaults would fabricate an\nid for a document that came back without one. Its _set_id_if_none,\nwhich replaces a null _id with a fresh one, is overridden here too, so a\nnull _id fails as well. List it FIRST among the bases\n(`class FooView(StoredDocumentKeys, Foo)`) so its fields and that\noverride win.",
+    "properties": {
+        "_id": {
+            "description": "Document _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "description": "Optimistic-lock version",
+            "title": "Version",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "_id",
+        "_version"
+    ],
+    "title": "StoredDocumentKeys",
+    "type": "object",
+    "additionalProperties": false
+}

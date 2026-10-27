@@ -1,0 +1,72 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run the app locally (create-star-app dev)",
+            "type": "shell",
+            "command": "create-star-app dev",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Start Server",
+            "type": "shell",
+            "command": "python server/app.py",
+            "options": {
+                "env": {
+                    "ENVIRONMENT": "localdev",
+                    "FIREBASE_AUTH_EMULATOR_HOST": "127.0.0.1:9099"
+                }
+            },
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Start Client",
+            "type": "shell",
+            "command": "cd client && npm run dev",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "python AppCreator.py",
+            "type": "shell",
+            "command": "cd server && python AppCreator.py",
+            "options": {
+                "env": {
+                    "ENVIRONMENT": "localdev"
+                }
+            },
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "pytest",
+            "type": "shell",
+            "command": "cd server && python -m pytest -v",
+            "options": {
+                "env": {
+                    "ENVIRONMENT": "localdev",
+                    "databaseName": "teststarCommerceScratch"
+                }
+            },
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        }
+    ]
+}
