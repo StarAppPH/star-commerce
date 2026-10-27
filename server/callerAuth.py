@@ -63,7 +63,9 @@ import requests
 # PUSH_SERVICE_ACCOUNTS[0] is the one pubSubAdmin.py gives every push
 # subscription's OIDC token; any other entry may replay a push (a
 # dead-letter dashboard's runtime account).
-PUSH_SERVICE_ACCOUNTS: tuple[str, ...] = ()
+PUSH_SERVICE_ACCOUNTS: tuple[str, ...] = (
+    'star-commerce-push@star-commerce-6797.iam.gserviceaccount.com',
+)
 # The runtime service accounts of the sibling services (and their jobs) that
 # call this one's serviceOnly routes.
 SERVICE_CALLER_ACCOUNTS: tuple[str, ...] = ()

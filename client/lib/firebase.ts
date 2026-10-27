@@ -9,12 +9,12 @@ import { FIREBASE_PROJECT_ID } from "@/lib/generated/serverConstants";
 // (FIREBASE_PROJECT_ID): the server only accepts sign-ins from that same
 // project.
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  apiKey: "AIzaSyC-NVxra0LUyXUvTxr4O2uupFAU5Ca4Tsg",
+  authDomain: "star-commerce-6797.firebaseapp.com",
   projectId: FIREBASE_PROJECT_ID,
-  storageBucket: "YOUR_PROJECT.firebasestorage.app",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  storageBucket: "star-commerce-6797.firebasestorage.app",
+  messagingSenderId: "764152965079",
+  appId: "1:764152965079:web:b286cdd3ddb93558ed0d92"
 };
 
 // Before cloud-setup the project id is a "demo-" one, which Firebase runs only

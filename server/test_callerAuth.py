@@ -37,7 +37,9 @@ from route_config import route_config
 # The accounts this repo's callerAuth.py accepts, restated: a push or a
 # sibling's call is refused outside localdev unless its account is listed
 # there, and an empty PUSH_SERVICE_ACCOUNTS refuses every push.
-EXPECTED_PUSH_SERVICE_ACCOUNTS: tuple[str, ...] = ()
+EXPECTED_PUSH_SERVICE_ACCOUNTS: tuple[str, ...] = (
+    'star-commerce-push@star-commerce-6797.iam.gserviceaccount.com',
+)
 EXPECTED_SERVICE_CALLER_ACCOUNTS: tuple[str, ...] = ()
 # <<< star-app per-repo: callerAuth expected accounts
 

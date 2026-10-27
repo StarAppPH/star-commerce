@@ -1,0 +1,4 @@
+# Written by create-star-app cloud-setup: what builds submit leaves out.
+#!include:.gitignore
+.star-app/
+client/

@@ -18,6 +18,218 @@
     "createdAt": "2026-10-27T03:15:08Z",
     "lastRunAt": "2026-10-27T03:20:18Z"
   },
-  "cloud": {},
+  "cloud": {
+    "gcp": {
+      "region": "asia-east1",
+      "projectId": "star-commerce-6797",
+      "projectCreated": true,
+      "billingAccount": "016F76-84FFC9-C959C6",
+      "projectNumber": "764152965079",
+      "runtimeServiceAccount": "star-commerce-run@star-commerce-6797.iam.gserviceaccount.com",
+      "pushServiceAccount": "star-commerce-push@star-commerce-6797.iam.gserviceaccount.com",
+      "buildServiceAccount": "star-commerce-build@star-commerce-6797.iam.gserviceaccount.com",
+      "arHostname": "asia-east1-docker.pkg.dev",
+      "arRepository": "cloud-run-source-deploy",
+      "bootstrapImage": "asia-east1-docker.pkg.dev/star-commerce-6797/cloud-run-source-deploy/star-commerce/star-commerce:bootstrap-30121975b3e25aff63558f16128f2e95a4097a08",
+      "serviceUrl": "https://star-commerce-itmewo7tha-de.a.run.app",
+      "deadLetterTopic": "deadLetterTopic"
+    },
+    "tornDown": false,
+    "steps": [
+      {
+        "name": "preflight",
+        "status": "done",
+        "at": "2026-10-27T03:56:44Z"
+      },
+      {
+        "name": "auth.gcloud",
+        "status": "done",
+        "at": "2026-10-27T03:56:45Z"
+      },
+      {
+        "name": "auth.gh",
+        "status": "done",
+        "at": "2026-10-27T03:56:45Z"
+      },
+      {
+        "name": "auth.firebase",
+        "status": "done",
+        "at": "2026-10-27T03:56:46Z"
+      },
+      {
+        "name": "auth.atlas",
+        "status": "done",
+        "at": "2026-10-27T03:56:47Z"
+      },
+      {
+        "name": "auth.vercel",
+        "status": "done",
+        "at": "2026-10-27T03:56:48Z"
+      },
+      {
+        "name": "gcp.project",
+        "status": "done",
+        "at": "2026-10-27T04:31:50Z"
+      },
+      {
+        "name": "gcp.billing",
+        "status": "done",
+        "at": "2026-10-27T04:31:59Z"
+      },
+      {
+        "name": "gcp.apis",
+        "status": "done",
+        "at": "2026-10-27T04:32:18Z"
+      },
+      {
+        "name": "gcp.serviceAccounts",
+        "status": "done",
+        "at": "2026-10-27T05:04:24Z"
+      },
+      {
+        "name": "gcp.artifactRegistry",
+        "status": "done",
+        "at": "2026-10-27T05:04:48Z"
+      },
+      {
+        "name": "atlas.project",
+        "status": "done",
+        "at": "2026-10-27T05:04:56Z"
+      },
+      {
+        "name": "atlas.cluster",
+        "status": "done",
+        "at": "2026-10-27T05:05:23Z"
+      },
+      {
+        "name": "atlas.users",
+        "status": "done",
+        "at": "2026-10-27T05:05:33Z"
+      },
+      {
+        "name": "atlas.uri",
+        "status": "done",
+        "at": "2026-10-27T05:05:34Z"
+      },
+      {
+        "name": "secrets.jwt",
+        "status": "done",
+        "at": "2026-10-27T05:05:36Z"
+      },
+      {
+        "name": "local.edits",
+        "status": "done",
+        "at": "2026-10-27T05:05:37Z"
+      },
+      {
+        "name": "github.repo",
+        "status": "done",
+        "at": "2026-10-27T05:05:38Z"
+      },
+      {
+        "name": "cloudrun.bootstrapImage",
+        "status": "done",
+        "at": "2026-10-27T05:06:47Z"
+      },
+      {
+        "name": "cloudrun.service",
+        "status": "done",
+        "at": "2026-10-27T05:29:34Z"
+      },
+      {
+        "name": "cloudrun.predeployJob",
+        "status": "done",
+        "at": "2026-10-27T05:29:44Z"
+      },
+      {
+        "name": "pubsub.topics",
+        "status": "done",
+        "at": "2026-10-27T05:29:59Z"
+      },
+      {
+        "name": "cloudbuild.connection",
+        "status": "done",
+        "at": "2026-10-27T05:51:25Z"
+      },
+      {
+        "name": "cloudbuild.repository",
+        "status": "done",
+        "at": "2026-10-27T05:51:34Z"
+      },
+      {
+        "name": "cloudbuild.trigger",
+        "status": "done",
+        "at": "2026-10-27T05:51:41Z"
+      },
+      {
+        "name": "firebase.project",
+        "status": "done",
+        "at": "2026-10-27T06:15:27Z"
+      },
+      {
+        "name": "firebase.storage",
+        "status": "done",
+        "at": "2026-10-27T06:16:28Z"
+      },
+      {
+        "name": "firebase.webApp",
+        "status": "done",
+        "at": "2026-10-27T06:16:43Z"
+      },
+      {
+        "name": "firebase.googleSignIn",
+        "status": "done",
+        "at": "2026-10-27T07:35:06Z"
+      },
+      {
+        "name": "vercel.project",
+        "status": "pending",
+        "at": "2026-10-27T08:06:34Z"
+      }
+    ],
+    "lastRun": {
+      "at": "2026-10-27T08:06:34Z",
+      "version": "1.38.5",
+      "lastStep": "vercel.project"
+    },
+    "atlas": {
+      "projectName": "starCommerce",
+      "projectCreated": true,
+      "projectId": "6ae030f3129cb84a31405864",
+      "clusterName": "star-commerce",
+      "clusterCreated": true,
+      "accessList": "0.0.0.0/0",
+      "region": "EASTERN_ASIA_PACIFIC",
+      "appUser": "star-commerce-app",
+      "readerUser": "star-commerce-reader",
+      "srvHost": "star-commerce.mtmtdoc.mongodb.net"
+    },
+    "serviceName": "star-commerce",
+    "github": {
+      "owner": "StarAppPH",
+      "repo": "star-commerce",
+      "url": "https://github.com/StarAppPH/star-commerce",
+      "defaultBranch": "main"
+    },
+    "cloudBuild": {
+      "connection": "github",
+      "connectionCreated": true,
+      "region": "asia-east1",
+      "repository": "star-commerce",
+      "trigger": "star-commerce-main",
+      "triggerId": "2142397b-6271-4c2b-8d1c-86244a24fd22"
+    },
+    "firebase": {
+      "projectId": "star-commerce-6797",
+      "storageBucket": "star-commerce-6797.firebasestorage.app",
+      "webAppId": "1:764152965079:web:b286cdd3ddb93558ed0d92",
+      "webAppName": "starCommerce-web"
+    },
+    "vercel": {
+      "projectName": "starcommerce",
+      "projectCreated": true,
+      "productionDomain": "starcommerce.vercel.app"
+    }
+  },
   "kind": "service"
 }

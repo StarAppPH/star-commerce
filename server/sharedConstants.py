@@ -48,7 +48,7 @@ VAT_RATE = 0.12
 # Emulator Suite only (create-star-app dev), with no account, and
 # cloud-setup replaces it with the real project's id. A project id is
 # public: it is in every page that uses Firebase.
-FIREBASE_PROJECT_ID = 'demo-starcommerce'
+FIREBASE_PROJECT_ID = 'star-commerce-6797'
 
 # Everything above this line ships to every browser. No credentials, no API
 # keys, no bank details, no internal limits.

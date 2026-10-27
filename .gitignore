@@ -58,3 +58,5 @@ server/.testStamps/
 keys/
 venv/
 .vercel/
+
+.vercel

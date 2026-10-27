@@ -1,0 +1,8 @@
+# Written by create-star-app cloud-setup: what `vercel deploy` does not upload.
+server/
+.star-app/
+*.env
+.env*
+.firebase-emulator-data/
+.firebase/
+*-debug.log

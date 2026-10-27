@@ -8,4 +8,4 @@
 
 export const VAT_RATE = 0.12 as const;
 
-export const FIREBASE_PROJECT_ID = "demo-starcommerce" as const;
+export const FIREBASE_PROJECT_ID = "star-commerce-6797" as const;
