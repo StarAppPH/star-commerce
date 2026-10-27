@@ -52,7 +52,7 @@ from mongoDb import db, pubSubMockDb
 # imports it and wipeDatabase() below, so the generator's wipe and the
 # replay's wipe cannot drift apart. Extend it whenever a publisher's setup or
 # a handler writes somewhere new.
-TEST_COLLECTIONS = ['Users', 'Bootstrap', 'SampleTodos', 'PubSubMessages']
+TEST_COLLECTIONS = ['Users', 'Bootstrap', 'PubSubMessages']
 
 
 def wipeDatabase():

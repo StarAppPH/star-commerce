@@ -1,0 +1,43 @@
+{
+    "description": "A Customers document as stored.",
+    "properties": {
+        "_id": {
+            "description": "Document _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "description": "Optimistic-lock version",
+            "title": "Version",
+            "type": "integer"
+        },
+        "phoneNumber": {
+            "anyOf": [
+                {
+                    "pattern": "^\\+[1-9][0-9]{6,14}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Verified contact number",
+            "title": "Phonenumber"
+        },
+        "createdAt": {
+            "description": "First visit",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "_id",
+        "_version",
+        "createdAt"
+    ],
+    "title": "CustomerView",
+    "type": "object",
+    "additionalProperties": false
+}

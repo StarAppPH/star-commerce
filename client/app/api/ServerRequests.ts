@@ -1,11 +1,14 @@
 import Server from "./Server";
 import type { ApiResponse } from "./ApiResponse";
+import type { CustomerSessionResponse } from '../schemas/CustomerSessionResponseSchema';
 import type { DevUserListResponse } from '../schemas/DevUserListResponseSchema';
 import type { FirebaseUserObject } from '../schemas/FirebaseUserObjectSchema';
-import type { HandshakeResponse } from '../schemas/HandshakeResponseSchema';
+import type { MyStoreResponse } from '../schemas/MyStoreResponseSchema';
 import type { NoContentResponse } from '../schemas/NoContentResponseSchema';
+import type { PhoneVerifiedResponse } from '../schemas/PhoneVerifiedResponseSchema';
+import type { ProductListResponse } from '../schemas/ProductListResponseSchema';
 import type { RoleListResponse } from '../schemas/RoleListResponseSchema';
-import type { SampleTodoListResponse } from '../schemas/SampleTodoListResponseSchema';
+import type { StoreResponse } from '../schemas/StoreResponseSchema';
 import type { UserResponse } from '../schemas/UserResponseSchema';
 
     class ServerRequests extends Server {
@@ -129,20 +132,89 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
         }
     }
 
-    async handshake(): Promise<ApiResponse<HandshakeResponse>> {
+    async getUserStore(userId: string): Promise<ApiResponse<MyStoreResponse>> {
         try {
-        const res = await fetch(`${this.apiUrl}/handshake`, {
-            method: 'GET',
+        const res = await fetch(`${this.apiUrl}/getUserStore`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<MyStoreResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async createUserStore(userId: string, name: string, description: string, contactNumber: string, address: string, currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED', openingHours: string | null): Promise<ApiResponse<StoreResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/createUserStore`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "name": name, "description": description, "contactNumber": contactNumber, "address": address, "currency": currency, "openingHours": openingHours}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StoreResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async setUserStoreLocation(userId: string, latitude: number, longitude: number): Promise<ApiResponse<StoreResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/setUserStoreLocation`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "latitude": latitude, "longitude": longitude}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StoreResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async startGuestSession(idToken: string, storeSlug: string): Promise<ApiResponse<CustomerSessionResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/startGuestSession`, {
+            method: 'POST',
             headers: {
             "Content-Type": "application/json",
             
             },
-            
+            body: JSON.stringify({"idToken": idToken, "storeSlug": storeSlug}),
             cache: 'no-store'
         });
-        const data: ApiResponse<HandshakeResponse> & { msg?: string } = await res.json();
+        const data: ApiResponse<CustomerSessionResponse> & { msg?: string } = await res.json();
         if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
-        
+        if (data.access_token) { localStorage.setItem("access_token", data.access_token); }
         
         
         return data;
@@ -152,22 +224,22 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
         }
     }
 
-    async getTodos(): Promise<ApiResponse<SampleTodoListResponse>> {
+    async verifyCustomerPhone(userId: string, idToken: string): Promise<ApiResponse<PhoneVerifiedResponse>> {
         try {
-        const res = await fetch(`${this.apiUrl}/getTodos`, {
+        const res = await fetch(`${this.apiUrl}/verifyCustomerPhone`, {
             method: 'POST',
             headers: {
             "Content-Type": "application/json",
-            
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({}),
+            body: JSON.stringify({"userId": userId, "idToken": idToken}),
             cache: 'no-store'
         });
-        const data: ApiResponse<SampleTodoListResponse> & { msg?: string } = await res.json();
+        const data: ApiResponse<PhoneVerifiedResponse> & { msg?: string } = await res.json();
         if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
         
-        
-        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
         return data;
         } catch (error) {
             console.error("Error:", error);
@@ -175,91 +247,22 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
         }
     }
 
-    async createTodo(title: string): Promise<ApiResponse<NoContentResponse>> {
+    async listStoreProducts(userId: string, storeId: string, search: string | null, limit: number): Promise<ApiResponse<ProductListResponse>> {
         try {
-        const res = await fetch(`${this.apiUrl}/createTodo`, {
+        const res = await fetch(`${this.apiUrl}/listStoreProducts`, {
             method: 'POST',
             headers: {
             "Content-Type": "application/json",
-            
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"title": title}),
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "search": search, "limit": limit}),
             cache: 'no-store'
         });
-        const data: ApiResponse<NoContentResponse> & { msg?: string } = await res.json();
+        const data: ApiResponse<ProductListResponse> & { msg?: string } = await res.json();
         if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
         
-        
-        
-        return data;
-        } catch (error) {
-            console.error("Error:", error);
-            return { message: "Failed to fetch data", status: 0, data: null };
-        }
-    }
-
-    async markTodoAsCompleted(todoId: string): Promise<ApiResponse<NoContentResponse>> {
-        try {
-        const res = await fetch(`${this.apiUrl}/markTodoAsCompleted`, {
-            method: 'POST',
-            headers: {
-            "Content-Type": "application/json",
-            
-            },
-            body: JSON.stringify({"todoId": todoId}),
-            cache: 'no-store'
-        });
-        const data: ApiResponse<NoContentResponse> & { msg?: string } = await res.json();
-        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
-        
-        
-        
-        return data;
-        } catch (error) {
-            console.error("Error:", error);
-            return { message: "Failed to fetch data", status: 0, data: null };
-        }
-    }
-
-    async markTodoAsUnfinished(todoId: string): Promise<ApiResponse<NoContentResponse>> {
-        try {
-        const res = await fetch(`${this.apiUrl}/markTodoAsUnfinished`, {
-            method: 'POST',
-            headers: {
-            "Content-Type": "application/json",
-            
-            },
-            body: JSON.stringify({"todoId": todoId}),
-            cache: 'no-store'
-        });
-        const data: ApiResponse<NoContentResponse> & { msg?: string } = await res.json();
-        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
-        
-        
-        
-        return data;
-        } catch (error) {
-            console.error("Error:", error);
-            return { message: "Failed to fetch data", status: 0, data: null };
-        }
-    }
-
-    async deleteTodo(todoId: string): Promise<ApiResponse<NoContentResponse>> {
-        try {
-        const res = await fetch(`${this.apiUrl}/deleteTodo`, {
-            method: 'POST',
-            headers: {
-            "Content-Type": "application/json",
-            
-            },
-            body: JSON.stringify({"todoId": todoId}),
-            cache: 'no-store'
-        });
-        const data: ApiResponse<NoContentResponse> & { msg?: string } = await res.json();
-        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
-        
-        
-        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
         return data;
         } catch (error) {
             console.error("Error:", error);
@@ -274,12 +277,12 @@ export interface RouteResponseModels {
     devLogin: UserResponse;
     getRoles: RoleListResponse;
     getUserRoleTypes: NoContentResponse;
-    handshake: HandshakeResponse;
-    getTodos: SampleTodoListResponse;
-    createTodo: NoContentResponse;
-    markTodoAsCompleted: NoContentResponse;
-    markTodoAsUnfinished: NoContentResponse;
-    deleteTodo: NoContentResponse;
+    getUserStore: MyStoreResponse;
+    createUserStore: StoreResponse;
+    setUserStoreLocation: StoreResponse;
+    startGuestSession: CustomerSessionResponse;
+    verifyCustomerPhone: PhoneVerifiedResponse;
+    listStoreProducts: ProductListResponse;
 }
 
 export interface RouteRequestBodies {
@@ -288,20 +291,15 @@ export interface RouteRequestBodies {
     devLogin: { userId: string };
     getRoles: { userId: string };
     getUserRoleTypes: { userId: string };
-    handshake: Record<string, never>;
-    getTodos: Record<string, never>;
-    createTodo: { title: string };
-    markTodoAsCompleted: { todoId: string };
-    markTodoAsUnfinished: { todoId: string };
-    deleteTodo: { todoId: string };
+    getUserStore: { userId: string };
+    createUserStore: { userId: string; name: string; description: string; contactNumber: string; address: string; currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED'; openingHours: string | null };
+    setUserStoreLocation: { userId: string; latitude: number; longitude: number };
+    startGuestSession: { idToken: string; storeSlug: string };
+    verifyCustomerPhone: { userId: string; idToken: string };
+    listStoreProducts: { userId: string; storeId: string; search: string | null; limit: number };
 }
 
 export type PublicRoute =
-    | 'devGetUserList'
-    | 'getTodos'
-    | 'createTodo'
-    | 'markTodoAsCompleted'
-    | 'markTodoAsUnfinished'
-    | 'deleteTodo';
+    | 'devGetUserList';
 
 export default ServerRequests;

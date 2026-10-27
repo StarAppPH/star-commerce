@@ -70,11 +70,13 @@ EXAMPLE (the models are in objects.py's docstring):
 from pydantic import ValidationError
 
 from route_config import route_config
+from actions.CustomerActions import CustomerActions
+from actions.ProductActions import ProductActions
 from actions.ServiceToServiceActions import ServiceToServiceActions
+from actions.StoreActions import StoreActions
 from objects import (DevUserListResponse, DevUserRow, FirebaseUserObject,
-                     HandshakeResponse, NoContentResponse, RoleListResponse,
-                     SampleTodo, SampleTodoListResponse, SampleTodoRow,
-                     UserResponse, projectedCopy)
+                     NoContentResponse, RoleListResponse, UserResponse,
+                     projectedCopy)
 from mongoDb import db
 from AppConfig import Environment
 from roles import AllRoles
@@ -84,14 +86,6 @@ def _requireLocalDev() -> None:
     """Refuse a dev-only route outside localdev."""
     if not Environment().getisLocalDevEnvironment():
         raise PermissionError('This endpoint is only available in localdev')
-
-
-def _setTodoCompleted(todoId: str, completed: bool) -> None:
-    todo = db.read({'_id': todoId}, 'SampleTodos', findOne=True)
-    if not todo:
-        raise ValueError('Todo not found')
-    db.update({'_id': todoId, '_version': todo['_version']},
-              {'completed': completed}, 'SampleTodos')
 
 
 class AuthActions():
@@ -194,66 +188,6 @@ class RolesActions():
         return {}
 
 
-class SampleTodoActions():
-
-    @route_config(httpMethod='GET',
-                  jwtRequired=False,
-                  successMessage='Handshake successful',
-                  responseModel=HandshakeResponse)
-    def handshake(self) -> dict:
-        from AppConfig import AppConfig
-        return {
-            'environment': AppConfig().getEnvironment(),
-            'status': 'running'
-        }
-
-    @route_config(httpMethod='POST',
-                  jwtRequired=False,
-                  successMessage='Todos fetched',
-                  responseModel=SampleTodoListResponse)
-    def getTodos(self) -> dict:
-        return {
-            'todos':
-            db.readResponses(SampleTodoRow, {}, 'SampleTodos')
-        }
-
-    @route_config(httpMethod='POST',
-                  jwtRequired=False,
-                  successMessage='Todo created',
-                  responseModel=NoContentResponse)
-    def createTodo(self, title: str) -> dict:
-        # Validated before it is stored: an empty title is refused here.
-        # The starter page reloads the list after a change and reads nothing
-        # from this answer, so it sends nothing (test_unused_response_fields).
-        todo = SampleTodo(title=title, _version=0)
-        db.create(todo.model_dump(by_alias=True), 'SampleTodos')
-        return {}
-
-    @route_config(httpMethod='POST',
-                  jwtRequired=False,
-                  successMessage='Todo marked as completed',
-                  responseModel=NoContentResponse)
-    def markTodoAsCompleted(self, todoId: str) -> dict:
-        _setTodoCompleted(todoId, True)
-        return {}
-
-    @route_config(httpMethod='POST',
-                  jwtRequired=False,
-                  successMessage='Todo marked as unfinished',
-                  responseModel=NoContentResponse)
-    def markTodoAsUnfinished(self, todoId: str) -> dict:
-        _setTodoCompleted(todoId, False)
-        return {}
-
-    @route_config(httpMethod='POST',
-                  jwtRequired=False,
-                  successMessage='Todo deleted',
-                  responseModel=NoContentResponse)
-    def deleteTodo(self, todoId: str) -> dict:
-        db.delete({'_id': todoId}, 'SampleTodos')
-        return {}
-
-
 # Add your project-specific action classes below
 
 
@@ -352,9 +286,12 @@ class SampleTodoActions():
 #      aborts cloud start-up while the topic is missing.
 
 
-class ApiRequests(AuthActions, RolesActions, SampleTodoActions, ServiceToServiceActions):
+class ApiRequests(AuthActions, RolesActions, StoreActions, CustomerActions,
+                  ProductActions, ServiceToServiceActions):
 
     def __init__(self):
         AuthActions.__init__(self)
         RolesActions.__init__(self)
-        SampleTodoActions.__init__(self)
+        StoreActions.__init__(self)
+        CustomerActions.__init__(self)
+        ProductActions.__init__(self)

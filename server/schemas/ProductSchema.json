@@ -1,0 +1,82 @@
+{
+    "description": "A Products document, priced in its store's currency. Listed best\nsellers first: the (storeId, isAvailable, soldCount, name) index\n(mongoDb.ensureIndexes) serves that sort.",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "storeId": {
+            "description": "The Stores _id",
+            "minLength": 1,
+            "title": "Storeid",
+            "type": "string"
+        },
+        "name": {
+            "description": "Product name",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "description": {
+            "anyOf": [
+                {
+                    "maxLength": 500,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "What the product is",
+            "title": "Description"
+        },
+        "price": {
+            "description": "Price in the store's currency",
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        },
+        "soldCount": {
+            "default": 0,
+            "description": "Units sold so far",
+            "minimum": 0,
+            "title": "Soldcount",
+            "type": "integer"
+        },
+        "isAvailable": {
+            "default": true,
+            "description": "Shown to customers",
+            "title": "Isavailable",
+            "type": "boolean"
+        },
+        "createdAt": {
+            "description": "When it was added",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "storeId",
+        "name",
+        "price",
+        "createdAt"
+    ],
+    "title": "Product",
+    "type": "object",
+    "additionalProperties": false
+}

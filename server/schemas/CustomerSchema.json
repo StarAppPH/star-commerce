@@ -1,0 +1,47 @@
+{
+    "description": "A Customers document. The _id is the customer's Firebase uid: an\nanonymous guest at first, linked to a phone at checkout (same uid).",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "phoneNumber": {
+            "anyOf": [
+                {
+                    "pattern": "^\\+[1-9][0-9]{6,14}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Verified contact number",
+            "title": "Phonenumber"
+        },
+        "createdAt": {
+            "description": "First visit",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "createdAt"
+    ],
+    "title": "Customer",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -1394,6 +1394,10 @@ if __name__ == '__main__':
     # bad route found mid-run would leave the schemas regenerated but
     # app.py and ServerRequests.ts stale.
     creator.validateRoutes()
+    # The MCP tools (mcpCreator.py, the @mcp_tool routes): checked with the
+    # routes, before any file is rewritten; written after app.py below.
+    import mcpCreator
+    mcpSource = mcpCreator.generatedSource()
     # The payload model of every topic this repo publishes (pubSubModels.py;
     # test_pubSubModels.py enforces it), read from the imported app before any
     # file is rewritten: a publisher without one stops the run here. Written
@@ -1407,6 +1411,8 @@ if __name__ == '__main__':
     creator.generateTSFile()
     creator.generateAPI('app')
     creator.generateAPI('appPubSub')
+    if mcpCreator.write(mcpSource):
+        print('Generated mcpServer.py')
     # Last: refresh server/pubsub_map.json and PUBSUB_MAP.md, the fleet's Pub/Sub
     # map (pubSubMap.py; test_pubSubMap.py enforces it). Imported here so that
     # --constants-only stays import-free; a hard error (an unparsable source file,

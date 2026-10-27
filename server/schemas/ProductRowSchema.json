@@ -1,0 +1,45 @@
+{
+    "description": "One product as a list sends it. Each field restates Product's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+    "properties": {
+        "_id": {
+            "description": "Products _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "name": {
+            "description": "Product name",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "description": {
+            "anyOf": [
+                {
+                    "maxLength": 500,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "What the product is",
+            "title": "Description"
+        },
+        "price": {
+            "description": "Price in the store's currency",
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        }
+    },
+    "required": [
+        "_id",
+        "name",
+        "price"
+    ],
+    "title": "ProductRow",
+    "type": "object",
+    "additionalProperties": false
+}

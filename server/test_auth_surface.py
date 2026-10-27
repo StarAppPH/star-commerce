@@ -53,19 +53,26 @@ PUBLIC_ROUTES = {
     # signing in as one of its users.
     'devGetUserList',
     'devLogin',
-    # The starter page's health check and sample todo app. Replace them (or
-    # put them behind a JWT) before shipping anything real.
-    'handshake',
-    'getTodos',
-    'createTodo',
-    'markTodoAsCompleted',
-    'markTodoAsUnfinished',
-    'deleteTodo',
+    # A customer opening a store link: a verified anonymous or phone
+    # Firebase token, never a Google one (CustomerActions).
+    'startGuestSession',
 }
 
 # JWT routes with no roleAccess: any signed-in user may call them. Pinned so a
 # new one is a decision, not an accident.
-JWT_ROUTES_WITHOUT_ROLE_ACCESS = set()
+JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
+    # Admin side: the caller must be a Users document (requireAdmin) and
+    # reaches only the store it owns.
+    'getUserStore',
+    'createUserStore',
+    # The map component pins the admin's store: requireAdmin, and only the
+    # store the caller owns.
+    'setUserStoreLocation',
+    # Customer side: the caller must be a Customers document
+    # (requireCustomer).
+    'verifyCustomerPhone',
+    'listStoreProducts',
+}
 
 
 def _storedUser(userId: str):
@@ -461,7 +468,7 @@ def test_loginRoutes_areTheOnlyRoutesThatMintAToken():
     assert {
         name
         for name, func in apiRoutes().items() if func.createAccessToken
-    } == {'loginWithGoogle', 'devLogin'}
+    } == {'loginWithGoogle', 'devLogin', 'startGuestSession'}
 
 
 @pytest.mark.parametrize('environment', ['localprod', 'clouddev', 'cloudprod'])

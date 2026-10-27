@@ -559,6 +559,19 @@ def firebaseClaims(**overrides) -> dict:
     return claims
 
 
+def guestClaims(uid: str, provider: str = 'anonymous',
+                phoneNumber: str | None = None) -> dict:
+    """A Firebase anonymous (or phone) sign-in's claims: no email."""
+    claims = firebaseClaims(sub=uid,
+                            user_id=uid,
+                            firebase={'sign_in_provider': provider})
+    for key in ('email', 'email_verified', 'name'):
+        claims.pop(key)
+    if phoneNumber is not None:
+        claims['phone_number'] = phoneNumber
+    return claims
+
+
 @pytest.fixture
 def firebase(monkeypatch):
     """Firebase verification without the network: TOKEN decodes to the
@@ -598,3 +611,61 @@ def emptyUsers(monkeypatch):
     yield
     monkeypatch.setenv('ENVIRONMENT', 'localdev')
     wipeCollections(SIGN_IN_COLLECTIONS)
+
+
+# --- Stores and products -------------------------------------------------------
+# An admin's store and its products, made through the routes, for
+# test_stores_and_customers.py, test_products.py and test_mcp_server.py.
+
+# The details createUserStore requires besides the name.
+STORE_DETAILS = {
+    'description': 'Fresh bread and pastries',
+    'contactNumber': '+639171234567',
+    'address': '12 Rizal St, Quezon City',
+}
+
+
+def createTestStore(adminId: str, name: str = 'Bakery A',
+                    currency: str = 'PHP') -> dict:
+    """An admin (createTestUser) and its store, as createUserStore sends
+    it."""
+    from ApiRequests import ApiRequests
+    createTestUser(adminId)
+    return ApiRequests().createUserStore(adminId, name, **STORE_DETAILS,
+                                         currency=currency)
+
+
+def addProduct(storeId: str, name: str, price: float, soldCount: int = 0,
+               isAvailable: bool = True, description: str | None = None):
+    """A Products document of the store, stored and returned."""
+    from objects import Product
+    product = Product(storeId=storeId,
+                      name=name,
+                      description=description,
+                      price=price,
+                      soldCount=soldCount,
+                      isAvailable=isAvailable,
+                      createdAt=datetime.datetime.now(
+                          tz=datetime.timezone.utc),
+                      _version=0)
+    return db.create(product.model_dump(by_alias=True), 'Products')
+
+
+def storeWithProducts(adminId: str, name: str = 'Bakery A',
+                      currency: str = 'PHP') -> dict:
+    """A store with three available products and one hidden one."""
+    store = createTestStore(adminId, name, currency)
+    addProduct(store['_id'], 'Pandesal', 5, soldCount=120,
+               description='Soft bread roll')
+    addProduct(store['_id'], 'Ensaymada', 45, soldCount=80)
+    addProduct(store['_id'], 'Ube Cake', 650, soldCount=80)
+    addProduct(store['_id'], 'Old Recipe', 10, soldCount=999,
+               isAvailable=False)
+    return store
+
+
+def guestAt(firebase, store: dict, uid: str) -> str:
+    """The Customers _id of guest `uid` after it opens the store's link."""
+    from ApiRequests import ApiRequests
+    firebase['claims'] = guestClaims(uid)
+    return ApiRequests().startGuestSession(TOKEN, store['slug'])['_id']

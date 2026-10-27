@@ -6,15 +6,10 @@
  */
 
 /**
- * The ENVIRONMENT the server runs
+ * The verified contact number
  */
-export type Environment = string;
-/**
- * Always running
- */
-export type Status = "running";
+export type Phonenumber = string;
 
-export interface HandshakeResponse {
-  environment: Environment;
-  status: Status;
+export interface PhoneVerifiedResponse {
+  phoneNumber: Phonenumber;
 }

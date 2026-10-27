@@ -1,0 +1,16 @@
+{
+    "properties": {
+        "phoneNumber": {
+            "description": "The verified contact number",
+            "pattern": "^\\+[1-9][0-9]{6,14}$",
+            "title": "Phonenumber",
+            "type": "string"
+        }
+    },
+    "required": [
+        "phoneNumber"
+    ],
+    "title": "PhoneVerifiedResponse",
+    "type": "object",
+    "additionalProperties": false
+}

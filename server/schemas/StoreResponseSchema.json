@@ -1,0 +1,134 @@
+{
+    "$defs": {
+        "StoreLocationResponse": {
+            "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "latitude": {
+                    "description": "Degrees north (negative: south)",
+                    "maximum": 90,
+                    "minimum": -90,
+                    "title": "Latitude",
+                    "type": "number"
+                },
+                "longitude": {
+                    "description": "Degrees east (negative: west)",
+                    "maximum": 180,
+                    "minimum": -180,
+                    "title": "Longitude",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "latitude",
+                "longitude"
+            ],
+            "title": "StoreLocationResponse",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A store as a route sends it. Each field restates Store's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+    "properties": {
+        "_id": {
+            "description": "Stores _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "name": {
+            "description": "Store name shown to customers",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "slug": {
+            "description": "The store's link name, e.g. bakery-a",
+            "maxLength": 50,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Slug",
+            "type": "string"
+        },
+        "currency": {
+            "description": "ISO 4217 code every price of the store is in",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "description": {
+            "description": "What the store sells",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+        },
+        "contactNumber": {
+            "description": "Contact number, E.164",
+            "pattern": "^\\+[1-9][0-9]{6,14}$",
+            "title": "Contactnumber",
+            "type": "string"
+        },
+        "address": {
+            "description": "Street address, as the admin typed it",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Address",
+            "type": "string"
+        },
+        "openingHours": {
+            "anyOf": [
+                {
+                    "maxLength": 100,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Opening hours, free text",
+            "title": "Openinghours"
+        },
+        "location": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/StoreLocationResponse"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Map location; null until the admin pins it"
+        }
+    },
+    "required": [
+        "_id",
+        "name",
+        "slug",
+        "currency",
+        "description",
+        "contactNumber",
+        "address",
+        "openingHours",
+        "location"
+    ],
+    "title": "StoreResponse",
+    "type": "object",
+    "additionalProperties": false
+}

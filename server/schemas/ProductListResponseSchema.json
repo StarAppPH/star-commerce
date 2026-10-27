@@ -1,0 +1,90 @@
+{
+    "$defs": {
+        "ProductRow": {
+            "description": "One product as a list sends it. Each field restates Product's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+            "properties": {
+                "_id": {
+                    "description": "Products _id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Product name",
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "description": {
+                    "anyOf": [
+                        {
+                            "maxLength": 500,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "What the product is",
+                    "title": "Description"
+                },
+                "price": {
+                    "description": "Price in the store's currency",
+                    "minimum": 0,
+                    "title": "Price",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "_id",
+                "name",
+                "price"
+            ],
+            "title": "ProductRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "properties": {
+        "currency": {
+            "description": "ISO 4217 code of every price in the list",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "products": {
+            "description": "The products, best sellers first",
+            "items": {
+                "$ref": "#/$defs/ProductRow"
+            },
+            "title": "Products",
+            "type": "array"
+        }
+    },
+    "required": [
+        "currency",
+        "products"
+    ],
+    "title": "ProductListResponse",
+    "type": "object",
+    "additionalProperties": false
+}

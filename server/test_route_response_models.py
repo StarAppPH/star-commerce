@@ -2863,6 +2863,13 @@ MIRRORS = [
     # A row is read, so its _id is a required str.
     (ObjectsModule.DevUserRow, ObjectsModule.User, {'id'}),
     (ObjectsModule.SampleTodoRow, ObjectsModule.SampleTodo, {'id'}),
+    # location is a StoreLocationResponse on the row, a StoreLocation on
+    # the document: mirrored by the entry after this one.
+    (ObjectsModule.StoreResponse, ObjectsModule.Store, {'id', 'location'}),
+    (ObjectsModule.StoreLocationResponse, ObjectsModule.StoreLocation,
+     set()),
+    (ObjectsModule.CustomerSessionResponse, ObjectsModule.Customer, {'id'}),
+    (ObjectsModule.ProductRow, ObjectsModule.Product, {'id'}),
 ]
 
 

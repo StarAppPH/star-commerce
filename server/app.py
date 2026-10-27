@@ -180,165 +180,231 @@ def getUserRoleTypes():
 
 
 
-@app.route('/handshake', methods=['GET'])
-
-def handshake():
+@app.route('/getUserStore', methods=['POST'])
+@jwt_required()
+def getUserStore():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         data = {}
+    userId = data.get('userId')
+    current_user = get_jwt_identity()
     try:
-        res = ApiRequests().handshake()
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().getUserStore(userId)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'handshake', 'event': 'error', 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'getUserStore', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId',)), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'handshake', 'event': 'error', 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'getUserStore', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId',)), 'traceback': failure.traceback})
         return failure.response()
 
+    logging.info({'function': 'getUserStore', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId',))})
 
-
-    response = ApiResponse(message="Handshake successful", status=200, data=res)
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Store fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
     return jsonify(response.model_dump(exclude_unset=True)), response.status
 
 
 
-@app.route('/getTodos', methods=['POST'])
-
-def getTodos():
+@app.route('/createUserStore', methods=['POST'])
+@jwt_required()
+def createUserStore():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         data = {}
+    userId = data.get('userId')
+    name = data.get('name')
+    description = data.get('description')
+    contactNumber = data.get('contactNumber')
+    address = data.get('address')
+    currency = data.get('currency')
+    openingHours = data.get('openingHours')
+    current_user = get_jwt_identity()
     try:
-        res = ApiRequests().getTodos()
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(name, (dict, list)):
+            raise ValueError('Invalid name')
+        if isinstance(description, (dict, list)):
+            raise ValueError('Invalid description')
+        if isinstance(contactNumber, (dict, list)):
+            raise ValueError('Invalid contactNumber')
+        if isinstance(address, (dict, list)):
+            raise ValueError('Invalid address')
+        if isinstance(currency, (dict, list)):
+            raise ValueError('Invalid currency')
+        if isinstance(openingHours, (dict, list)):
+            raise ValueError('Invalid openingHours')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().createUserStore(userId, name, description, contactNumber, address, currency, openingHours)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'getTodos', 'event': 'error', 'requestKeys': [], 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'createUserStore', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'address', 'currency', 'openingHours')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'getTodos', 'event': 'error', 'requestKeys': [], 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'createUserStore', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'address', 'currency', 'openingHours')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'getTodos', 'event': 'success', 'requestKeys': []})
+    logging.info({'function': 'createUserStore', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'address', 'currency', 'openingHours'))})
 
-    response = ApiResponse(message="Todos fetched", status=200, data=res)
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Store created", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
     return jsonify(response.model_dump(exclude_unset=True)), response.status
 
 
 
-@app.route('/createTodo', methods=['POST'])
-
-def createTodo():
+@app.route('/setUserStoreLocation', methods=['POST'])
+@jwt_required()
+def setUserStoreLocation():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         data = {}
-    title = data.get('title')
+    userId = data.get('userId')
+    latitude = data.get('latitude')
+    longitude = data.get('longitude')
+    current_user = get_jwt_identity()
     try:
-        if isinstance(title, (dict, list)):
-            raise ValueError('Invalid title')
-        res = ApiRequests().createTodo(title)
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(latitude, (dict, list)):
+            raise ValueError('Invalid latitude')
+        if isinstance(longitude, (dict, list)):
+            raise ValueError('Invalid longitude')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().setUserStoreLocation(userId, latitude, longitude)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'createTodo', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('title',)), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'setUserStoreLocation', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'latitude', 'longitude')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'createTodo', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('title',)), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'setUserStoreLocation', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'latitude', 'longitude')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'createTodo', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('title',))})
+    logging.info({'function': 'setUserStoreLocation', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'latitude', 'longitude'))})
 
-    response = ApiResponse(message="Todo created", status=200, data=res)
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Store location saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
     return jsonify(response.model_dump(exclude_unset=True)), response.status
 
 
 
-@app.route('/markTodoAsCompleted', methods=['POST'])
+@app.route('/startGuestSession', methods=['POST'])
 
-def markTodoAsCompleted():
+def startGuestSession():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         data = {}
-    todoId = data.get('todoId')
+    idToken = data.get('idToken')
+    storeSlug = data.get('storeSlug')
     try:
-        if isinstance(todoId, (dict, list)):
-            raise ValueError('Invalid todoId')
-        res = ApiRequests().markTodoAsCompleted(todoId)
+        if isinstance(idToken, (dict, list)):
+            raise ValueError('Invalid idToken')
+        if isinstance(storeSlug, (dict, list)):
+            raise ValueError('Invalid storeSlug')
+        res = ApiRequests().startGuestSession(idToken, storeSlug)
+        access_token = create_access_token(identity=res["_id"])
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'markTodoAsCompleted', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('todoId',)), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'startGuestSession', 'event': 'error', 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'markTodoAsCompleted', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('todoId',)), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'startGuestSession', 'event': 'error', 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'markTodoAsCompleted', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('todoId',))})
+    logging.info({'function': 'startGuestSession', 'event': 'success'})
 
-    response = ApiResponse(message="Todo marked as completed", status=200, data=res)
+    response = ApiResponse(message="Welcome", status=200, data=res, access_token=access_token)
     return jsonify(response.model_dump(exclude_unset=True)), response.status
 
 
 
-@app.route('/markTodoAsUnfinished', methods=['POST'])
-
-def markTodoAsUnfinished():
+@app.route('/verifyCustomerPhone', methods=['POST'])
+@jwt_required()
+def verifyCustomerPhone():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         data = {}
-    todoId = data.get('todoId')
+    userId = data.get('userId')
+    idToken = data.get('idToken')
+    current_user = get_jwt_identity()
     try:
-        if isinstance(todoId, (dict, list)):
-            raise ValueError('Invalid todoId')
-        res = ApiRequests().markTodoAsUnfinished(todoId)
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(idToken, (dict, list)):
+            raise ValueError('Invalid idToken')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().verifyCustomerPhone(userId, idToken)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'markTodoAsUnfinished', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('todoId',)), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'verifyCustomerPhone', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'idToken')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'markTodoAsUnfinished', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('todoId',)), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'verifyCustomerPhone', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'idToken')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'markTodoAsUnfinished', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('todoId',))})
+    logging.info({'function': 'verifyCustomerPhone', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'idToken'))})
 
-    response = ApiResponse(message="Todo marked as unfinished", status=200, data=res)
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Phone number verified", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
     return jsonify(response.model_dump(exclude_unset=True)), response.status
 
 
 
-@app.route('/deleteTodo', methods=['POST'])
-
-def deleteTodo():
+@app.route('/listStoreProducts', methods=['POST'])
+@jwt_required()
+def listStoreProducts():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         data = {}
-    todoId = data.get('todoId')
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    search = data.get('search')
+    limit = data.get('limit')
+    current_user = get_jwt_identity()
     try:
-        if isinstance(todoId, (dict, list)):
-            raise ValueError('Invalid todoId')
-        res = ApiRequests().deleteTodo(todoId)
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(search, (dict, list)):
+            raise ValueError('Invalid search')
+        if isinstance(limit, (dict, list)):
+            raise ValueError('Invalid limit')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().listStoreProducts(userId, storeId, search, limit)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'deleteTodo', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('todoId',)), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'listStoreProducts', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'search', 'limit')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'deleteTodo', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('todoId',)), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'listStoreProducts', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'search', 'limit')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'deleteTodo', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('todoId',))})
+    logging.info({'function': 'listStoreProducts', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'search', 'limit'))})
 
-    response = ApiResponse(message="Todo deleted", status=200, data=res)
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Products fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
     return jsonify(response.model_dump(exclude_unset=True)), response.status
 
 
 
 # Never compressed: the routes that issue an access token (BREACH; see
 # AppCreator._compression_block).
-NO_COMPRESSION_ENDPOINTS = frozenset(['devLogin', 'loginWithGoogle'])
+NO_COMPRESSION_ENDPOINTS = frozenset(['devLogin', 'loginWithGoogle', 'startGuestSession'])
 
 if app.config["COMPRESS_DISABLED"]:
     logging.warning({'event': 'compressionDisabled'})

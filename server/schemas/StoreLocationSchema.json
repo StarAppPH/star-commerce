@@ -1,0 +1,26 @@
+{
+    "description": "Where a store is on the map, pinned by its admin.",
+    "properties": {
+        "latitude": {
+            "description": "Degrees north (negative: south)",
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Latitude",
+            "type": "number"
+        },
+        "longitude": {
+            "description": "Degrees east (negative: west)",
+            "maximum": 180,
+            "minimum": -180,
+            "title": "Longitude",
+            "type": "number"
+        }
+    },
+    "required": [
+        "latitude",
+        "longitude"
+    ],
+    "title": "StoreLocation",
+    "type": "object",
+    "additionalProperties": false
+}

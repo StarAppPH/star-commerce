@@ -23,7 +23,9 @@ TRANSPORT layer, which a direct call never reaches -
     LOCAL_BIND_HOST says otherwise, and then warns;
   - sign-in: the loginWithGoogle envelopes, and the sign-in payload (the ID
     token, a token fragment, a raw identity) never reaching a log record or
-    stderr.
+    stderr;
+  - a missing optional body key reaches the route as None (the route maps
+    it to its default), and a coordinate that is no number is a 400.
 Response SHAPES stay on the direct-call tests (test_route_responses.py).
 
 The REAL app.py is imported, not regenerated source, so what is tested is
@@ -52,7 +54,9 @@ import pubSub as pubSubModule
 from ApiRequests import ApiRequests
 from AppCreator import (STATUS_BAD_REQUEST, STATUS_FORBIDDEN,
                         STATUS_JWT_REJECTED, STATUS_OK)
-from conftest import (RAW_EMAIL, RAW_UID, TOKEN, TOKEN_UID, createTestUser,
+from actions.ProductActions import PRODUCT_LIST_DEFAULT_LIMIT
+from conftest import (RAW_EMAIL, RAW_UID, STORE_DETAILS, TOKEN, TOKEN_UID,
+                      addProduct, createTestStore, createTestUser, guestAt,
                       modelKeys, wipeCollections)
 from flask_jwt_extended import create_access_token, decode_token
 from mongoDb import db
@@ -504,3 +508,108 @@ def test_http_appRefusesAWeakJwtSecretOutsideLocaldev():
 
     assert _importAppIn('localprod', 'x' * 32).returncode == 0
     assert _importAppIn('localdev', 'short').returncode == 0
+
+
+STORE_COLLECTIONS = ['Users', 'Bootstrap', 'Stores', 'Customers', 'Products']
+SENT_STORE = {**STORE_DETAILS, 'name': 'Rrh Bakery'}
+
+
+def test_http_createUserStore_withoutCurrency_storesPHP(monkeypatch):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(STORE_COLLECTIONS)
+    try:
+        variants = [('rrh-store-a', 'Rrh Alpha', {}),
+                    ('rrh-store-b', 'Rrh Beta', {'currency': None}),
+                    ('rrh-store-c', 'Rrh Gamma', {'openingHours': ''})]
+        for adminId, name, extra in variants:
+            createTestUser(adminId)
+
+            res = client.post('/createUserStore',
+                              json={**SENT_STORE, 'name': name,
+                                    'userId': adminId, **extra},
+                              headers=_bearer(_token(flaskApp, adminId)))
+
+            data = _success_body(res, 'createUserStore')['data']
+            assert data['name'] == name
+            assert data['currency'] == 'PHP'
+            assert data['openingHours'] is None
+            assert data['location'] is None
+            stored = db.read({'ownerUserId': adminId}, 'Stores', findOne=True)
+            assert stored['currency'] == 'PHP'
+    finally:
+        wipeCollections(STORE_COLLECTIONS)
+
+
+def test_http_listStoreProducts_withoutLimit_returnsAtMostTheDefault(
+        monkeypatch, firebase):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(STORE_COLLECTIONS)
+    try:
+        store = createTestStore(ADMIN)
+        for number in range(PRODUCT_LIST_DEFAULT_LIMIT + 2):
+            addProduct(store['_id'], f'Item {number:02d}', 10)
+        customerId = guestAt(firebase, store, 'rrh-guest')
+        headers = _bearer(_token(flaskApp, customerId))
+        body = {'userId': customerId, 'storeId': store['_id']}
+
+        for extra, expected in (({}, PRODUCT_LIST_DEFAULT_LIMIT),
+                                ({'limit': None}, PRODUCT_LIST_DEFAULT_LIMIT),
+                                ({'limit': 3}, 3)):
+            res = client.post('/listStoreProducts', json={**body, **extra},
+                              headers=headers)
+
+            data = _success_body(res, 'listStoreProducts')['data']
+            assert len(data['products']) == expected
+    finally:
+        wipeCollections(STORE_COLLECTIONS)
+
+
+def test_http_setUserStoreLocation_savesTheLocation(monkeypatch):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(STORE_COLLECTIONS)
+    try:
+        createTestStore(ADMIN)
+
+        res = client.post('/setUserStoreLocation',
+                          json={'userId': ADMIN, 'latitude': 14.5,
+                                'longitude': 121.0},
+                          headers=_bearer(_token(flaskApp, ADMIN)))
+
+        data = _success_body(res, 'setUserStoreLocation')['data']
+        assert data['location'] == {'latitude': 14.5, 'longitude': 121.0}
+    finally:
+        wipeCollections(STORE_COLLECTIONS)
+
+
+def test_http_setUserStoreLocation_aNonNumberOrHugeLatitude_isA400(
+        monkeypatch):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(STORE_COLLECTIONS)
+    try:
+        createTestStore(ADMIN)
+        headers = _bearer(_token(flaskApp, ADMIN))
+        huge = '1' + '0' * 400
+
+        for latitude in ('NaN', 'Infinity', huge, '1e999', 'true', '"14.6"',
+                         '91', 'null', None):
+            text = ('{"userId": "%s", "longitude": 10%s}' % (
+                ADMIN, '' if latitude is None else f', "latitude": {latitude}'))
+
+            res = client.post('/setUserStoreLocation', data=text,
+                              content_type='application/json',
+                              headers=headers)
+
+            assert _failure_body(res, STATUS_BAD_REQUEST) == {
+                'message': 'The latitude is a number from -90 to 90',
+                'status': STATUS_BAD_REQUEST,
+                'data': None
+            }
+        stored = db.read({}, 'Stores', findOne=True)
+        assert stored['location'] is None
+        assert stored['_version'] == 0
+    finally:
+        wipeCollections(STORE_COLLECTIONS)

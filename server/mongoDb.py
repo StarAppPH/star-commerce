@@ -132,7 +132,13 @@ class mongoDb():
 
     def ensureIndexes(self) -> None:
         """Create indexes for frequent query patterns."""
-        pass
+        # One store per admin, and every store link name taken once: both
+        # enforced by the database, so two racing creates cannot both win.
+        self.db['Stores'].create_index('ownerUserId', unique=True)
+        self.db['Stores'].create_index('slug', unique=True)
+        # A store's products, best sellers first (listStoreProducts).
+        self.db['Products'].create_index([('storeId', 1), ('isAvailable', 1),
+                                          ('soldCount', -1), ('name', 1)])
 
     def create(self, data: dict, collection_name: str, session: Optional[ClientSession] = None) -> dict:
         """Insert a document into the collection and return the created data."""

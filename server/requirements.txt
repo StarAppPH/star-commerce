@@ -17,3 +17,5 @@ google-cloud-run>=0.10
 google-cloud-resource-manager>=1.12
 requests>=2.31
 werkzeug>=3.0
+mcp==2.3.0
+PyJWT>=2.8

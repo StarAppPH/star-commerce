@@ -1,0 +1,26 @@
+{
+    "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+    "properties": {
+        "latitude": {
+            "description": "Degrees north (negative: south)",
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Latitude",
+            "type": "number"
+        },
+        "longitude": {
+            "description": "Degrees east (negative: west)",
+            "maximum": 180,
+            "minimum": -180,
+            "title": "Longitude",
+            "type": "number"
+        }
+    },
+    "required": [
+        "latitude",
+        "longitude"
+    ],
+    "title": "StoreLocationResponse",
+    "type": "object",
+    "additionalProperties": false
+}

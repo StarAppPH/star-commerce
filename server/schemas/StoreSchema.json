@@ -1,0 +1,158 @@
+{
+    "$defs": {
+        "StoreLocation": {
+            "description": "Where a store is on the map, pinned by its admin.",
+            "properties": {
+                "latitude": {
+                    "description": "Degrees north (negative: south)",
+                    "maximum": 90,
+                    "minimum": -90,
+                    "title": "Latitude",
+                    "type": "number"
+                },
+                "longitude": {
+                    "description": "Degrees east (negative: west)",
+                    "maximum": 180,
+                    "minimum": -180,
+                    "title": "Longitude",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "latitude",
+                "longitude"
+            ],
+            "title": "StoreLocation",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A Stores document. One per admin: ownerUserId (the admin's Users _id)\nand slug are both unique indexes (mongoDb.ensureIndexes).",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "ownerUserId": {
+            "description": "The admin's Users _id",
+            "minLength": 1,
+            "title": "Owneruserid",
+            "type": "string"
+        },
+        "name": {
+            "description": "Store name shown to customers",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "slug": {
+            "description": "The store's link name, e.g. bakery-a",
+            "maxLength": 50,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Slug",
+            "type": "string"
+        },
+        "currency": {
+            "description": "ISO 4217 code every price of the store is in",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "description": {
+            "description": "What the store sells",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+        },
+        "contactNumber": {
+            "description": "Contact number, E.164",
+            "pattern": "^\\+[1-9][0-9]{6,14}$",
+            "title": "Contactnumber",
+            "type": "string"
+        },
+        "address": {
+            "description": "Street address, as the admin typed it",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Address",
+            "type": "string"
+        },
+        "openingHours": {
+            "anyOf": [
+                {
+                    "maxLength": 100,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Opening hours, free text",
+            "title": "Openinghours"
+        },
+        "location": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/StoreLocation"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Map location; null until the admin pins it"
+        },
+        "createdAt": {
+            "description": "When it was created",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "ownerUserId",
+        "name",
+        "slug",
+        "currency",
+        "description",
+        "contactNumber",
+        "address",
+        "createdAt"
+    ],
+    "title": "Store",
+    "type": "object",
+    "additionalProperties": false
+}

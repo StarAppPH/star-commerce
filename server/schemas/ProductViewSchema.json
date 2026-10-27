@@ -1,0 +1,78 @@
+{
+    "description": "A Products document as stored.",
+    "properties": {
+        "_id": {
+            "description": "Document _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "description": "Optimistic-lock version",
+            "title": "Version",
+            "type": "integer"
+        },
+        "storeId": {
+            "description": "The Stores _id",
+            "minLength": 1,
+            "title": "Storeid",
+            "type": "string"
+        },
+        "name": {
+            "description": "Product name",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "description": {
+            "anyOf": [
+                {
+                    "maxLength": 500,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "What the product is",
+            "title": "Description"
+        },
+        "price": {
+            "description": "Price in the store's currency",
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        },
+        "soldCount": {
+            "default": 0,
+            "description": "Units sold so far",
+            "minimum": 0,
+            "title": "Soldcount",
+            "type": "integer"
+        },
+        "isAvailable": {
+            "default": true,
+            "description": "Shown to customers",
+            "title": "Isavailable",
+            "type": "boolean"
+        },
+        "createdAt": {
+            "description": "When it was added",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "_id",
+        "_version",
+        "storeId",
+        "name",
+        "price",
+        "createdAt"
+    ],
+    "title": "ProductView",
+    "type": "object",
+    "additionalProperties": false
+}
