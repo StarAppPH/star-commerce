@@ -22,6 +22,7 @@ from objects import (PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH,
                      AdminProductRow, NewProduct, Product, ProductListResponse,
                      ProductRow, productNameKey, projectedCopy)
 from route_config import route_config
+from utils import wholeNumber
 
 PRODUCTS = 'Products'
 PRODUCT_LIST_DEFAULT_LIMIT = 10
@@ -49,10 +50,8 @@ def _validLimit(limit: int | None,
     applies to direct and MCP calls only: None is `default` here."""
     if limit is None:
         return default
-    if (not isinstance(limit, int) or isinstance(limit, bool)
-            or not 1 <= limit <= maximum):
-        raise ValueError(f'limit is a whole number from 1 to {maximum}')
-    return limit
+    return wholeNumber(limit, 1, maximum,
+                       f'limit is a whole number from 1 to {maximum}')
 
 
 def _nameSearch(search: str | None) -> dict:

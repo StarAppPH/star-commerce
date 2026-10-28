@@ -9,11 +9,19 @@ brand colors, StoreActions.updateMyStoreTheme), saves each under
 stores/<storeId>/photos/ and returns their download URLs. Admins only, at
 the store they own (requireOwnerStore); the call runs inside the request.
 
-Each store makes at most STORE_DAILY_PHOTO_CAP photos a day (UTC+8): a
-PhotoUsage counter (usageCounters, deleted by a TTL index) counts the
-photos asked for, and gives back those the model never returned (all of
-them when it failed). At most PHOTO_CALLS_AT_ONCE calls run at once per
-process: a call past that is a 503 before any quota is taken.
+Each store makes at most STORE_DAILY_PHOTO_CAP photos a day (UTC+8), and
+all stores together at most PHOTO_DAILY_CAP_ALL (every Google sign-in
+becomes an admin with a store, so the store cap alone bounds nothing): two
+PhotoUsage counters (usageCounters, deleted by a TTL index) count the
+photos asked for, and give back those the model never returned (all of
+them when it failed). A photo returned but not saved stays counted: Meta
+billed it. At most PHOTO_CALLS_AT_ONCE calls run at once per process: a
+call past that is a 503 before any quota is taken.
+
+One deadline, taken when the call starts, bounds the Storage reads and the
+model call; the model is skipped (a 503) with under MODEL_MIN_SECONDS
+left. Each photo is recorded (a GeneratedPhotos document) right after its
+upload: when a later one fails, the saved ones are still returned.
 
 The clock: every read of now is _now(), which reads this module's
 `datetime`, so a test freezes it by replacing PhotoActions.datetime.
@@ -21,11 +29,13 @@ The clock: every read of now is _now(), which reads this module's
 
 import datetime
 import logging
+import os
 import threading
 import time
 
 import imageModel
 import photoStorage
+from actions.callSlots import slot
 from actions.StoreActions import _validText, requireOwnerStore
 from actions.usageCounters import (appDay, giveBackQuota, takeQuota,
                                    usageExpiry, usageKey)
@@ -35,7 +45,7 @@ from objects import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                      PHOTOS_PER_CALL_MAX, GeneratedPhoto,
                      GeneratedPhotosResponse)
 from route_config import route_config
-from utils import generateRandomString
+from utils import generateRandomString, wholeNumber
 
 GENERATED_PHOTOS = 'GeneratedPhotos'
 PHOTO_USAGE = 'PhotoUsage'
@@ -43,17 +53,29 @@ PHOTO_USAGE = 'PhotoUsage'
 # module's `datetime`.
 UTC = datetime.timezone.utc
 STORE_DAILY_PHOTO_CAP = 100
+# All stores together: PHOTO_DAILY_CAP_ALL (a whole number, 0 turns photos
+# off), else DEFAULT_PHOTO_DAILY_CAP_ALL.
+PHOTO_DAILY_CAP_ALL_VARIABLE = 'PHOTO_DAILY_CAP_ALL'
+DEFAULT_PHOTO_DAILY_CAP_ALL = 1000
+# The owner of the all-stores counter (a store _id is a random token).
+ALL_STORES = 'all'
 # The photo calls one process runs at once: each holds one of gunicorn's 8
 # threads for up to PHOTO_DEADLINE_SECONDS. With the chat's 4, 2 stay free
 # for the rest of the app.
 PHOTO_CALLS_AT_ONCE = 2
 _photoSlots = threading.BoundedSemaphore(PHOTO_CALLS_AT_ONCE)
-# The image model's share of the call (gunicorn's --timeout 120 is above
-# it, with room for reading and saving the photos).
+# The call's reads and model call end by this deadline, and the saves get
+# SAVE_SECONDS after the model answered. Cloud Run's request timeout is
+# what caps a request (gunicorn's gthread --timeout only watches the
+# worker), and it is above both together.
 PHOTO_DEADLINE_SECONDS = 90
+SAVE_SECONDS = 20
+# The least time the model call may start with: less, and it is skipped.
+MODEL_MIN_SECONDS = 15
 NO_PHOTO_STYLE = "Set your store's photo style first"
 PHOTO_CAP_REACHED = ("Your store has reached today's photo limit, try again "
                      'tomorrow')
+PHOTO_ALL_CAP_REACHED = 'Photo generation is busy today, try again tomorrow'
 IMAGE_URLS_COUNT = f'Send 1 to {PHOTO_REFERENCES_MAX} imageUrls'
 IMAGE_URLS_TWICE = 'imageUrls lists the same photo twice'
 PHOTO_COUNT = f'count is a whole number from 1 to {PHOTOS_PER_CALL_MAX}'
@@ -94,10 +116,7 @@ def _validCount(count) -> int:
     which is 1."""
     if count is None:
         return 1
-    if (not isinstance(count, int) or isinstance(count, bool)
-            or not 1 <= count <= PHOTOS_PER_CALL_MAX):
-        raise ValueError(PHOTO_COUNT)
-    return count
+    return wholeNumber(count, 1, PHOTOS_PER_CALL_MAX, PHOTO_COUNT)
 
 
 def brandColorsLine(primaryColor: str | None,
@@ -127,56 +146,115 @@ def photoPrompt(store: dict, notes: str | None) -> str:
     return '\n'.join(lines)
 
 
-def _photoQuotaKey(storeId: str) -> tuple[str, datetime.datetime]:
+def dailyCapAll() -> int:
+    """PHOTO_DAILY_CAP_ALL, read at each call: a whole number, 0 or more.
+    Unset, it is DEFAULT_PHOTO_DAILY_CAP_ALL; anything else is refused (a
+    warning) and the default applies."""
+    raw = (os.getenv(PHOTO_DAILY_CAP_ALL_VARIABLE) or '').strip()
+    if not raw:
+        return DEFAULT_PHOTO_DAILY_CAP_ALL
+    try:
+        cap = int(raw)
+    except ValueError:
+        cap = -1
+    if cap < 0:
+        logging.warning({'event': 'photoDailyCapAllInvalid',
+                         'default': DEFAULT_PHOTO_DAILY_CAP_ALL})
+        return DEFAULT_PHOTO_DAILY_CAP_ALL
+    return cap
+
+
+def _giveBack(keys: tuple[str, ...], amount: int) -> None:
+    """Give `amount` back on each counter of `keys`. A failure is logged
+    (class only), never raised, so the error that caused the refund is the
+    one the caller sees."""
+    for key in keys:
+        try:
+            giveBackQuota(PHOTO_USAGE, key, amount)
+        except Exception as error:
+            logging.warning({'event': 'photoQuotaRefundFailed',
+                             'errorClass': type(error).__name__})
+
+
+def _takePhotoQuota(storeId: str, count: int) -> tuple[str, str]:
+    """Count `count` photos against the store's daily cap and all stores'
+    (dailyCapAll), refused when either would pass (and then counted against
+    neither). Returns the two counters' keys."""
     day = appDay(_now())
-    return usageKey('photos', storeId, day), usageExpiry(day)
-
-
-def _generate(userId: str, store: dict, paths: list[str], count: int,
-              notes: str | None) -> list[dict]:
-    """Make and save `count` photos of the store from the reference photos
-    at `paths`, counting them against the store's daily cap: the photos
-    the model did not return are given back. Returns the response's
-    rows."""
-    key, expireAt = _photoQuotaKey(store['_id'])
-    if not takeQuota(PHOTO_USAGE, key, STORE_DAILY_PHOTO_CAP, expireAt,
+    expireAt = usageExpiry(day)
+    storeKey = usageKey('photos', storeId, day)
+    allKey = usageKey('photos', ALL_STORES, day)
+    if not takeQuota(PHOTO_USAGE, storeKey, STORE_DAILY_PHOTO_CAP, expireAt,
                      amount=count):
         raise ValueError(PHOTO_CAP_REACHED)
+    if not takeQuota(PHOTO_USAGE, allKey, dailyCapAll(), expireAt,
+                     amount=count):
+        _giveBack((storeKey,), count)
+        raise ValueError(PHOTO_ALL_CAP_REACHED)
+    return storeKey, allKey
+
+
+def _makeImages(userId: str, store: dict, paths: list[str], count: int,
+                notes: str | None, deadline: float) -> list[bytes]:
+    """`count` photos of the store from the reference photos at `paths`,
+    counted against the daily caps: those the model did not return are
+    given back (all of them when this fails)."""
+    keys = _takePhotoQuota(store['_id'], count)
     images = []
     try:
         references = []
-        for i, path in enumerate(paths):
-            data, contentType = photoStorage.readOwnImage(
-                userId, path, f'imageUrls[{i}]')
+        read = photoStorage.readOwnImages(
+            userId, [(f'imageUrls[{i}]', path) for i, path in enumerate(paths)],
+            deadline)
+        for i, (data, contentType) in enumerate(read):
             extension = 'png' if contentType == 'image/png' else 'jpg'
             references.append((f'reference{i}.{extension}', data,
                                contentType))
-        images = imageModel.editImages(
-            references, photoPrompt(store, notes), count,
-            time.monotonic() + PHOTO_DEADLINE_SECONDS)
+        if deadline - time.monotonic() < MODEL_MIN_SECONDS:
+            raise imageModel.unavailable()
+        images = imageModel.editImages(references, photoPrompt(store, notes),
+                                       count, deadline)
     finally:
         # Only the photos returned are billed: the rest are not counted.
-        giveBackQuota(PHOTO_USAGE, key, count - len(images))
+        _giveBack(keys, count - len(images))
     if not images:
         raise imageModel.unavailable()
-    now = _now()
-    documents = []
-    for image in images:
-        photoId = generateRandomString()
-        url = photoStorage.saveStorePhoto(store['_id'], photoId, image)
-        documents.append(GeneratedPhoto(
-            _id=photoId,
-            storeId=store['_id'],
-            createdBy=userId,
-            path=photoStorage.storePhotoPath(store['_id'], photoId),
-            url=url,
-            sourcePaths=paths,
-            notes=notes,
-            model=imageModel.IMAGE_MODEL,
-            createdAt=now,
-            _version=0).model_dump(by_alias=True))
-    db.createMany(documents, GENERATED_PHOTOS)
-    return [{'_id': doc['_id'], 'url': doc['url']} for doc in documents]
+    return images
+
+
+def _saveImages(userId: str, store: dict, paths: list[str],
+                notes: str | None, images: list[bytes]) -> list[dict]:
+    """Upload each image and record it (a GeneratedPhotos document) right
+    after, within SAVE_SECONDS. Returns the response's rows. When one
+    fails, the saved ones are returned (the failure logged, class only);
+    with none saved, it is raised."""
+    deadline = time.monotonic() + SAVE_SECONDS
+    saved = []
+    try:
+        for image in images:
+            photoId = generateRandomString()
+            url = photoStorage.saveStorePhoto(store['_id'], photoId, image,
+                                              deadline)
+            db.create(GeneratedPhoto(
+                _id=photoId,
+                storeId=store['_id'],
+                createdBy=userId,
+                path=photoStorage.storePhotoPath(store['_id'], photoId),
+                url=url,
+                sourcePaths=paths,
+                notes=notes,
+                model=imageModel.IMAGE_MODEL,
+                createdAt=_now(),
+                _version=0).model_dump(by_alias=True), GENERATED_PHOTOS)
+            saved.append({'_id': photoId, 'url': url})
+    except Exception as error:
+        if not saved:
+            raise
+        logging.warning({'event': 'productPhotoSaveFailed',
+                         'errorClass': type(error).__name__,
+                         'saved': len(saved),
+                         'returned': len(images)})
+    return saved
 
 
 class PhotoActions():
@@ -197,11 +275,13 @@ class PhotoActions():
         imageUrls are 1 to 10 photos of the same item that the admin
         uploaded in the app (their download URLs, each once): never invent
         or change one. count is how many photos to make (1 to 4, default
-        1); a store makes at most 100 a day. notes is optional extra
+        1); a store makes at most 100 a day, and the app has a daily limit
+        across all stores too. notes is optional extra
         direction from the admin for these photos (up to 300 characters),
         e.g. "show it from above". Confirm the count with the admin before
         calling. Returns each photo's _id and url. If this tool refuses,
         relay its message to the admin."""
+        deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
         store = requireOwnerStore(userId, {'_id': 1, 'photoStyle': 1,
                                            'primaryColor': 1,
                                            'secondaryColor': 1})
@@ -211,19 +291,18 @@ class PhotoActions():
         count = _validCount(count)
         notes = _validText(notes, NOTES_LABEL, PHOTO_NOTES_MAX_LENGTH,
                            required=False)
-        if not _photoSlots.acquire(blocking=False):
-            raise imageModel.unavailable()
         started = time.monotonic()
-        try:
-            photos = _generate(userId, store, paths, count, notes)
-        finally:
-            _photoSlots.release()
+        with slot(_photoSlots, imageModel.unavailable):
+            images = _makeImages(userId, store, paths, count, notes,
+                                 deadline)
+            photos = _saveImages(userId, store, paths, notes, images)
         # Never the URLs, the paths, the prompt, the notes or the key.
         logging.info({
             'event': 'productPhotos',
             'storeId': store['_id'],
             'count': count,
-            'returned': len(photos),
+            'returned': len(images),
+            'saved': len(photos),
             'durationMs': round((time.monotonic() - started) * 1000),
         })
         return {'photos': photos}

@@ -16,6 +16,8 @@ it. Only the images returned are billed.
 """
 
 import base64
+import binascii
+import logging
 
 import chatModel
 from services.__request import ServiceUnavailable
@@ -77,8 +79,20 @@ def editImages(images: list[tuple[str, bytes, str]], prompt: str, n: int,
     response = chatModel.callModel(request, deadline, IMAGE_TIMEOUT_SECONDS,
                                    failure=unavailable, refusal=_declined,
                                    logEvent='imageModelError')
+    data = response.data or []
+    if len(data) > n:
+        logging.warning({'event': 'imageModelExtraImages', 'asked': n,
+                         'returned': len(data)})
     decoded = []
-    for image in response.data or []:
-        if image.b64_json:
-            decoded.append(base64.b64decode(image.b64_json))
-    return decoded[:n]
+    for image in data[:n]:
+        if not image.b64_json:
+            continue
+        try:
+            decoded.append(base64.b64decode(image.b64_json, validate=True))
+        except (binascii.Error, TypeError, ValueError) as error:
+            logging.warning({'event': 'imageModelBadImage',
+                             'errorClass': type(error).__name__})
+    if not decoded:
+        logging.warning({'event': 'imageModelEmpty', 'asked': n,
+                         'returned': len(data)})
+    return decoded

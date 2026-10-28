@@ -157,9 +157,10 @@ def callModel(request: Callable[[float], T], deadline: float,
     time left). A connection error, a timeout, a 429 or a 5xx is retried
     once, with at least RETRY_MIN_SECONDS left after a
     RETRY_BACKOFF_SECONDS pause; a 4xx other than 429 never is. An SDK
-    error `refusal` maps to an exception is raised as that one; any other
-    is then raised as failure(), and so is a passed deadline. Every SDK
-    error is logged (logEvent) by its class and status only."""
+    error `refusal` maps to an exception is raised as that one (logged as
+    a warning); any other is then raised as failure(), and so is a passed
+    deadline. Every SDK error is logged (logEvent) by its class and status
+    only."""
     import openai
     retryable = (openai.APIConnectionError, openai.APITimeoutError,
                  openai.RateLimitError, openai.InternalServerError)
@@ -170,10 +171,16 @@ def callModel(request: Callable[[float], T], deadline: float,
         try:
             return request(min(attemptSeconds, remaining))
         except openai.OpenAIError as error:
-            _logModelError(error, logEvent)
             refused = refusal(error) if refusal is not None else None
             if refused is not None:
+                # The user's to act on (a content refusal), not ours to fix.
+                logging.warning({'event': logEvent,
+                                 'errorClass': type(error).__name__,
+                                 'status': getattr(error, 'status_code',
+                                                   None),
+                                 'refused': True})
                 raise refused from None
+            _logModelError(error, logEvent)
             if (attempt == 0 and isinstance(error, retryable)
                     and deadline - time.monotonic() >=
                     RETRY_BACKOFF_SECONDS + RETRY_MIN_SECONDS):

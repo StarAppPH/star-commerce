@@ -36,6 +36,7 @@ import time
 import chatModel
 from actions.OrderActions import customerAtStore
 from actions.ProductActions import _validLimit
+from actions.callSlots import slot
 from actions.StoreActions import _validText, requireOwnerStore, setUpStore
 # QUOTA_ATTEMPTS is imported for the tests, which read it here.
 from actions.usageCounters import (QUOTA_ATTEMPTS, appDay, giveBackQuota,
@@ -385,13 +386,9 @@ def _chatTurn(audience: str, userId: str, storeId: str, message,
     """One message of `userId` at `storeId` and the assistant's reply,
     saved as a turn of the conversation `conversationId` (None: a new
     one). Refused (503) while CHAT_TURNS_AT_ONCE turns run."""
-    if not _turnSlots.acquire(blocking=False):
-        raise chatModel.unavailable()
-    try:
+    with slot(_turnSlots, chatModel.unavailable):
         return _slottedTurn(audience, userId, storeId, message,
                             conversationId)
-    finally:
-        _turnSlots.release()
 
 
 def _slottedTurn(audience: str, userId: str, storeId: str, message,

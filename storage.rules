@@ -10,7 +10,8 @@ rules_version = '2';
 // other image type; HEIC/HEIF must be converted first). Everything else is
 // denied: no match below allows it. The product photos the server makes
 // (server/photoStorage.py) are under stores/<storeId>/photos/: anyone may
-// read them (customers see them), and only the server writes there (its
+// get one by its path (customers see them) but nobody may list the folder
+// (a store's drafts stay unlisted), and only the server writes there (its
 // admin credentials bypass these rules).
 //
 // To accept PDFs too, widen the type test:
@@ -32,7 +33,7 @@ service firebase.storage {
                             && request.resource.contentType.matches('image/(jpeg|png)');
     }
     match /stores/{storeId}/photos/{file} {
-      allow read: if true;
+      allow get: if true;
       allow write: if false;
     }
   }

@@ -6,6 +6,8 @@ No real Meta or Storage call: a FakeBucket replaces photoStorage._bucket()
 chatModel.client(), recording every images.edit call."""
 
 import base64
+import logging
+import time
 from types import SimpleNamespace
 from urllib.parse import quote
 
@@ -50,6 +52,9 @@ class FakeBlob:
         return self.bucket.objects[self.name]['data'][:end + 1]
 
     def upload_from_string(self, data, content_type, **kwargs):
+        self.bucket.uploads.append(kwargs)
+        if len(self.bucket.uploads) > self.bucket.uploadsThatWork:
+            raise photoStorage._storageErrors()[0]('upload failed')
         self.bucket.objects[self.name] = {'data': data,
                                           'contentType': content_type,
                                           'metadata': self.metadata}
@@ -59,6 +64,8 @@ class FakeBucket:
 
     def __init__(self):
         self.objects = {}
+        self.uploads = []
+        self.uploadsThatWork = 100
 
     def get_blob(self, name, **kwargs):
         stored = self.objects.get(name)
@@ -66,7 +73,7 @@ class FakeBucket:
             return None
         blob = FakeBlob(self, name)
         blob.content_type = stored['contentType']
-        blob.size = len(stored['data'])
+        blob.size = stored.get('size', len(stored['data']))
         return blob
 
     def blob(self, name):
@@ -152,6 +159,136 @@ def test_generateProductPhotos_savesEachPhotoReturned(fakes, monkeypatch):
     for doc in saved:
         assert doc['path'] == f'stores/{store["_id"]}/photos/{doc["_id"]}.jpg'
         assert fakes.bucket.objects[doc['path']]['data'] == JPEG
-    # 3 asked for, 2 returned: 1 given back.
-    [usage] = db.read({}, PhotoActions.PHOTO_USAGE)
-    assert usage['count'] == 2
+    assert all(u['if_generation_match'] == 0 for u in fakes.bucket.uploads)
+    # 3 asked for, 2 returned: 1 given back, on both counters.
+    counts = {doc['_id'].split(':')[1]: doc['count']
+              for doc in db.read({}, PhotoActions.PHOTO_USAGE)}
+    assert counts == {store['_id']: 2, PhotoActions.ALL_STORES: 2}
+
+
+def themedStoreWithPhoto(fakes, size=None) -> tuple[dict, str]:
+    store = createTestStore(ADMIN)
+    api.updateMyStoreTheme(ADMIN, photoStyle='plain')
+    source = f'users/{ADMIN}/mug.jpg'
+    fakes.bucket.objects[source] = {'data': JPEG, 'contentType': 'image/jpeg',
+                                    'metadata': None}
+    if size is not None:
+        fakes.bucket.objects[source]['size'] = size
+    return store, downloadUrl(source)
+
+
+def usageCounts() -> list[int]:
+    return [doc['count'] for doc in db.read({}, PhotoActions.PHOTO_USAGE)]
+
+
+def test_allStoresCap_refusesAndGivesTheStoreCountBack(fakes, monkeypatch):
+    _, url = themedStoreWithPhoto(fakes)
+    monkeypatch.setenv(PhotoActions.PHOTO_DAILY_CAP_ALL_VARIABLE, '1')
+
+    with pytest.raises(ValueError, match='^Photo generation is busy today'):
+        api.generateProductPhotos(ADMIN, [url], count=2)
+
+    assert fakes.images.calls == []
+    assert usageCounts() == [0]
+
+
+@pytest.mark.parametrize('raw', ['lots', '-3', '1.5'])
+def test_dailyCapAll_fallsBackToTheDefaultOnABadValue(monkeypatch, caplog,
+                                                       raw):
+    monkeypatch.setenv(PhotoActions.PHOTO_DAILY_CAP_ALL_VARIABLE, raw)
+    with caplog.at_level(logging.WARNING):
+        assert (PhotoActions.dailyCapAll() ==
+                PhotoActions.DEFAULT_PHOTO_DAILY_CAP_ALL)
+    assert raw not in caplog.text
+
+
+def test_aFailedLaterUpload_returnsTheSavedPhotos_andKeepsTheCount(fakes):
+    store, url = themedStoreWithPhoto(fakes)
+    fakes.bucket.uploadsThatWork = 1
+
+    res = api.generateProductPhotos(ADMIN, [url], count=2)
+
+    assertExactShape(GeneratedPhotosResponse, res)
+    assert len(res['photos']) == 1
+    [saved] = db.read({'storeId': store['_id']}, 'GeneratedPhotos')
+    assert saved['_id'] == res['photos'][0]['_id']
+    # Both photos came back from Meta (billed): none is given back.
+    assert usageCounts() == [2, 2]
+
+
+def test_noUploadWorks_raises_andRecordsNothing(fakes):
+    _, url = themedStoreWithPhoto(fakes)
+    fakes.bucket.uploadsThatWork = 0
+
+    with pytest.raises(Exception, match='photo storage'):
+        api.generateProductPhotos(ADMIN, [url], count=1)
+    assert db.read({}, 'GeneratedPhotos') == []
+
+
+def test_referencesOver25MbTogether_areRefusedBeforeAnyDownload(
+        fakes, monkeypatch):
+    _, url = themedStoreWithPhoto(fakes, size=9 * 1024 * 1024)
+    others = [f'users/{ADMIN}/b.jpg', f'users/{ADMIN}/c.jpg']
+    for path in others:
+        fakes.bucket.objects[path] = {'data': JPEG,
+                                      'contentType': 'image/jpeg',
+                                      'metadata': None,
+                                      'size': 9 * 1024 * 1024}
+    monkeypatch.setattr(FakeBlob, 'download_as_bytes',
+                        lambda *a, **k: pytest.fail('downloaded'))
+
+    with pytest.raises(ValueError) as error:
+        api.generateProductPhotos(ADMIN,
+                                  [url, *map(downloadUrl, others)])
+    assert str(error.value) == photoStorage.REFERENCES_TOO_LARGE
+    assert usageCounts() == [0, 0]
+
+
+def test_tooLittleTimeLeft_skipsTheModel_andGivesEverythingBack(
+        fakes, monkeypatch):
+    _, url = themedStoreWithPhoto(fakes)
+    # The deadline is taken at the real now; every later read of the
+    # route's clock is past the point the model may still start.
+    lateBy = (PhotoActions.PHOTO_DEADLINE_SECONDS -
+              PhotoActions.MODEL_MIN_SECONDS + 1)
+    reads = []
+
+    def monotonic():
+        reads.append(1)
+        return time.monotonic() + (lateBy if len(reads) > 1 else 0)
+
+    monkeypatch.setattr(PhotoActions, 'time',
+                        SimpleNamespace(monotonic=monotonic))
+
+    with pytest.raises(Exception, match='photo generation'):
+        api.generateProductPhotos(ADMIN, [url], count=2)
+    assert fakes.images.calls == []
+    assert usageCounts() == [0, 0]
+
+
+@pytest.mark.parametrize('host, accepted', [
+    ('127.0.0.1:9199', True), ('localhost:9199', True), ('[::1]:9199', True),
+    ('http://127.0.0.1:9199', True), ('10.0.0.5:9199', False),
+    ('storage.example.com:9199', False)])
+def test_emulatorHost_isLoopbackOnly(monkeypatch, host, accepted):
+    monkeypatch.delenv('STORAGE_EMULATOR_HOST', raising=False)
+    monkeypatch.setenv('FIREBASE_STORAGE_EMULATOR_HOST', host)
+    assert (photoStorage.emulatorHost() is not None) is accepted
+
+
+def test_editImages_skipsABadImage_andLogsAnEmptyAnswer(monkeypatch, caplog):
+    good = base64.b64encode(JPEG).decode()
+    data = [SimpleNamespace(b64_json='not base64!!'),
+            SimpleNamespace(b64_json=good)]
+    fake = SimpleNamespace(edit=lambda **k: SimpleNamespace(data=data))
+    monkeypatch.setattr(chatModel, 'client',
+                        lambda: SimpleNamespace(images=fake))
+    with caplog.at_level(logging.WARNING):
+        assert imageModel.editImages([], 'p', 2,
+                                     time.monotonic() + 60) == [JPEG]
+        data[1] = SimpleNamespace(b64_json=None)
+        assert imageModel.editImages([], 'p', 2,
+                                     time.monotonic() + 60) == []
+    events = [r.msg.get('event') for r in caplog.records
+              if isinstance(r.msg, dict)]
+    assert 'imageModelBadImage' in events and 'imageModelEmpty' in events

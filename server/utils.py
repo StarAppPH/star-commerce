@@ -116,6 +116,16 @@ def parseIsoInstant(value, name: str) -> datetime.datetime | None:
         raise ValueError(f'{name} must be an ISO 8601 date-time') from None
 
 
+def wholeNumber(value, minimum: int, maximum: int, message: str) -> int:
+    """`value` when it is a whole number from `minimum` to `maximum` (a
+    bool is no number), else a ValueError with `message`, which never
+    quotes the value."""
+    if (not isinstance(value, int) or isinstance(value, bool)
+            or not minimum <= value <= maximum):
+        raise ValueError(message)
+    return value
+
+
 class TODO:
     """Placeholder for types not yet implemented.
 

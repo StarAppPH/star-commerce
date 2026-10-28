@@ -10,14 +10,15 @@ instead; every other environment ignores both.
   bucket (https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>,
   plus the emulator's http://<host>/v0/b/... in localdev only). Any other
   scheme, host or bucket is refused.
-- readOwnImage(): a JPEG or PNG of at most MAX_IMAGE_BYTES under the
-  caller's own users/<uid>/ folder, read by bucket and path through the
+- readOwnImages(): JPEGs or PNGs of at most MAX_IMAGE_BYTES each (and
+  PHOTO_REFERENCES_MAX_TOTAL_BYTES together) under the caller's own
+  users/<uid>/ folder, read by bucket and path through the
   Storage SDK. Nothing is ever fetched by URL, so no request can make the
   server fetch an address of its choosing. HEIC/HEIF is refused by name
   and by type.
 - saveStorePhoto(): writes stores/<storeId>/photos/<photoId>.jpg, which
-  storage.rules lets anyone read and only the server (admin credentials)
-  write, and returns its download URL.
+  storage.rules lets anyone get (never list) and only the server (admin
+  credentials) write, and returns its download URL.
 
 A refusal names the field (imageUrls[0]), never a URL or a path. The client
 is one per process, built on first use under a lock (it is no Mongo client:
@@ -30,6 +31,7 @@ import os
 import re
 import secrets
 import threading
+import time
 import unicodedata
 from urllib.parse import quote, unquote, urlsplit
 
@@ -38,11 +40,19 @@ from services.__request import ServiceUnavailable
 
 BUCKET_VARIABLE = 'FIREBASE_STORAGE_BUCKET'
 EMULATOR_VARIABLES = ('STORAGE_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST')
+# The emulator only on this machine: 127.0.0.1, localhost or [::1].
+EMULATOR_LOOPBACK_HOSTS = ('127.0.0.1', 'localhost', '[::1]')
+EMULATOR_HOST_PATTERN = re.compile(
+    r'(127\.0\.0\.1|localhost|\[::1\]):([0-9]{1,5})')
 DOWNLOAD_HOST = 'firebasestorage.googleapis.com'
 STORAGE_API_ENDPOINT = 'https://storage.googleapis.com'
 # /v0/b/<bucket>/o/<the object path, URL-encoded: its / are %2F>
 DOWNLOAD_PATH_PATTERN = re.compile(r'/v0/b/([^/]+)/o/([^/]+)')
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
+# The reference photos of one call together (checked before any download).
+PHOTO_REFERENCES_MAX_TOTAL_BYTES = 25 * 1024 * 1024
+REFERENCES_TOO_LARGE = ('The photos are over 25 MB together: send fewer or '
+                        'smaller photos')
 IMAGE_CONTENT_TYPES = ('image/jpeg', 'image/png')
 HEIC_CONTENT_TYPES = ('image/heic', 'image/heif')
 HEIC_EXTENSIONS = ('.heic', '.heif')
@@ -52,8 +62,8 @@ DOWNLOAD_TOKEN_KEY = 'firebaseStorageDownloadTokens'
 STORAGE_SERVICE = 'photo storage'
 CONVERT_PHOTO = 'Convert the photo to JPG or PNG before uploading'
 # Each Storage request waits at most STORAGE_TIMEOUT_SECONDS, and the SDK's
-# retries of a read stop after STORAGE_RETRY_SECONDS, well inside the photo
-# call's request.
+# retries stop after STORAGE_RETRY_SECONDS, both cut to the time the photo
+# call has left (its deadline).
 STORAGE_TIMEOUT_SECONDS = 15
 STORAGE_RETRY_SECONDS = 20
 
@@ -67,13 +77,15 @@ def _isLocalDev() -> bool:
 
 def emulatorHost() -> str | None:
     """The Storage emulator's host:port in localdev (STORAGE_EMULATOR_HOST,
-    else FIREBASE_STORAGE_EMULATOR_HOST, without a scheme), else None."""
+    else FIREBASE_STORAGE_EMULATOR_HOST, without a scheme), on a loopback
+    host only (as AuthHandler.emulatorTokensAccepted); else None."""
     if not _isLocalDev():
         return None
     for variable in EMULATOR_VARIABLES:
         host = (os.getenv(variable) or '').strip()
         if host:
-            return re.sub(r'^https?://', '', host).rstrip('/')
+            host = re.sub(r'^https?://', '', host).rstrip('/').lower()
+            return host if EMULATOR_HOST_PATTERN.fullmatch(host) else None
     return None
 
 
@@ -98,9 +110,16 @@ def _storageErrors() -> tuple:
     return (GoogleAPIError, GoogleAuthError, requests.RequestException)
 
 
-def _readRetry():
+def _limits(deadline: float) -> dict:
+    """The timeout and retry of one Storage request, cut to the time left
+    before `deadline` (time.monotonic()); past it, unavailable()."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise unavailable()
     from google.cloud.storage.retry import DEFAULT_RETRY
-    return DEFAULT_RETRY.with_timeout(STORAGE_RETRY_SECONDS)
+    return {'timeout': min(STORAGE_TIMEOUT_SECONDS, remaining),
+            'retry': DEFAULT_RETRY.with_timeout(
+                min(STORAGE_RETRY_SECONDS, remaining))}
 
 
 def _storageFailure(error: Exception) -> ServiceUnavailable:
@@ -112,7 +131,7 @@ def _storageFailure(error: Exception) -> ServiceUnavailable:
 def _bucket():
     """Our bucket, through the one Storage client of the process: the
     emulator's (anonymous) in localdev when it is set, else Google's with
-    the service's own credentials."""
+    the service's own credentials (google.auth.default)."""
     global _client
     with _clientLock:
         if _client is None:
@@ -126,9 +145,14 @@ def _bucket():
                     credentials=AnonymousCredentials(),
                     client_options={'api_endpoint': f'http://{host}'})
             else:
-                # Named outright, so a stray STORAGE_EMULATOR_HOST never
-                # redirects a cloud service.
+                # The endpoint and the credentials are both named outright:
+                # with STORAGE_EMULATOR_HOST set, the SDK would otherwise
+                # send its calls to that host, with anonymous credentials.
+                import google.auth
+                credentials, project = google.auth.default()
                 _client = storage.Client(
+                    project=project,
+                    credentials=credentials,
                     client_options={'api_endpoint': STORAGE_API_ENDPOINT})
         return _client.bucket(bucketName())
 
@@ -141,13 +165,13 @@ def objectPathFromUrl(url, label: str) -> str:
         raise ValueError(f'{label} must be text')
     try:
         parts = urlsplit(url.strip())
-        port = parts.port
+        parts.port  # a malformed port raises ValueError
     except ValueError:
         raise notOurs from None
     if parts.username is not None or parts.password is not None:
         raise notOurs
-    host = parts.hostname or ''
-    hostPort = f'{host}:{port}' if port is not None else host
+    # No userinfo (refused above), so the netloc is host[:port].
+    hostPort = parts.netloc.lower()
     emulator = emulatorHost()
     if parts.scheme == 'https' and hostPort == DOWNLOAD_HOST:
         pass
@@ -163,13 +187,10 @@ def objectPathFromUrl(url, label: str) -> str:
 
 
 def _emulatorNames(emulator: str) -> set[str]:
-    """The host:port names of the emulator: as set, and with 127.0.0.1 and
-    localhost swapped."""
-    names = {emulator}
-    host, _, port = emulator.rpartition(':')
-    if host in ('127.0.0.1', 'localhost'):
-        names |= {f'127.0.0.1:{port}', f'localhost:{port}'}
-    return names
+    """The host:port names of the emulator: its port on each loopback
+    host."""
+    port = emulator.rpartition(':')[2]
+    return {f'{host}:{port}' for host in EMULATOR_LOOPBACK_HOSTS}
 
 
 def _isHeic(name: str) -> bool:
@@ -194,36 +215,53 @@ def ownImagePath(uid: str, path: str, label: str) -> str:
     return path
 
 
-def readOwnImage(uid: str, path: str, label: str) -> tuple[bytes, str]:
-    """The bytes and content type of the photo at `path` under the caller
-    `uid`'s own folder (ownImagePath): it must exist, be a JPEG or PNG and
-    be at most MAX_IMAGE_BYTES."""
+def _ownImageBlob(uid: str, path: str, label: str, deadline: float):
+    """The blob of the photo at `path` under the caller `uid`'s own folder
+    (ownImagePath), with its content type: it must exist, be a JPEG or PNG
+    and be at most MAX_IMAGE_BYTES."""
     path = ownImagePath(uid, path, label)
+    blob = _bucket().get_blob(path, **_limits(deadline))
+    if blob is None:
+        raise ValueError(f'{label} was not found: upload it again')
+    contentType = (blob.content_type or '').split(';')[0].strip().lower()
+    if contentType in HEIC_CONTENT_TYPES:
+        raise ValueError(f'{label} is a HEIC or HEIF photo. {CONVERT_PHOTO}')
+    if contentType not in IMAGE_CONTENT_TYPES:
+        raise ValueError(f'{label} must be a JPG or PNG photo')
+    if blob.size is None or blob.size > MAX_IMAGE_BYTES:
+        raise ValueError(f'{label} is over 10 MB')
+    return blob, contentType
+
+
+def readOwnImages(uid: str, photos: list[tuple[str, str]],
+                  deadline: float) -> list[tuple[bytes, str]]:
+    """The bytes and content type of each photo (its label and path) under
+    the caller `uid`'s own folder (_ownImageBlob), read before `deadline`
+    (time.monotonic()). Every photo's metadata is checked before any is
+    downloaded, their sizes together included
+    (PHOTO_REFERENCES_MAX_TOTAL_BYTES)."""
     from google.api_core.exceptions import NotFound
+    label = None
     try:
-        blob = _bucket().get_blob(path, timeout=STORAGE_TIMEOUT_SECONDS,
-                                  retry=_readRetry())
-        if blob is None:
-            raise ValueError(f'{label} was not found: upload it again')
-        contentType = (blob.content_type or '').split(';')[0].strip().lower()
-        if contentType in HEIC_CONTENT_TYPES:
-            raise ValueError(
-                f'{label} is a HEIC or HEIF photo. {CONVERT_PHOTO}')
-        if contentType not in IMAGE_CONTENT_TYPES:
-            raise ValueError(f'{label} must be a JPG or PNG photo')
-        if blob.size is None or blob.size > MAX_IMAGE_BYTES:
-            raise ValueError(f'{label} is over 10 MB')
-        # At most one byte past the limit, should it have grown since.
-        data = blob.download_as_bytes(end=MAX_IMAGE_BYTES,
-                                      timeout=STORAGE_TIMEOUT_SECONDS,
-                                      retry=_readRetry())
+        blobs = []
+        for label, path in photos:
+            blobs.append((label, *_ownImageBlob(uid, path, label, deadline)))
+        total = sum(blob.size for _, blob, _ in blobs)
+        if total > PHOTO_REFERENCES_MAX_TOTAL_BYTES:
+            raise ValueError(REFERENCES_TOO_LARGE)
+        read = []
+        for label, blob, contentType in blobs:
+            # At most one byte past the limit, should it have grown since.
+            data = blob.download_as_bytes(end=MAX_IMAGE_BYTES,
+                                          **_limits(deadline))
+            if len(data) > MAX_IMAGE_BYTES:
+                raise ValueError(f'{label} is over 10 MB')
+            read.append((data, contentType))
     except NotFound:
         raise ValueError(f'{label} was not found: upload it again') from None
     except _storageErrors() as error:
         raise _storageFailure(error) from None
-    if len(data) > MAX_IMAGE_BYTES:
-        raise ValueError(f'{label} is over 10 MB')
-    return data, contentType
+    return read
 
 
 def storePhotoPath(storeId: str, photoId: str) -> str:
@@ -239,16 +277,19 @@ def downloadUrl(path: str, token: str) -> str:
             f'{quote(path, safe="")}?alt=media&token={token}')
 
 
-def saveStorePhoto(storeId: str, photoId: str, data: bytes) -> str:
+def saveStorePhoto(storeId: str, photoId: str, data: bytes,
+                   deadline: float) -> str:
     """Write the JPEG `data` to storePhotoPath(storeId, photoId) with a
-    fresh random download token, and return its download URL."""
+    fresh random download token, before `deadline` (time.monotonic()), and
+    return its download URL. Create-only (if_generation_match=0: the path
+    is a fresh id), which also lets the SDK retry the upload."""
     path = storePhotoPath(storeId, photoId)
     token = secrets.token_urlsafe(24)
     try:
         blob = _bucket().blob(path)
         blob.metadata = {DOWNLOAD_TOKEN_KEY: token}
         blob.upload_from_string(data, content_type=STORE_PHOTO_CONTENT_TYPE,
-                                timeout=STORAGE_TIMEOUT_SECONDS)
+                                if_generation_match=0, **_limits(deadline))
     except _storageErrors() as error:
         raise _storageFailure(error) from None
     return downloadUrl(path, token)
