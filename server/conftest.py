@@ -535,9 +535,10 @@ RAW_UID = 'aa-raw-uid'
 RAW_EMAIL = 'aa-raw-email-target@test.com'
 OTHER_UID = 'aa-other-user'
 
-# What a sign-in test wipes: the users, and the one-time superAdmin claim
-# (AuthHandler.BOOTSTRAP_COLLECTION), which outlives an emptied Users.
-SIGN_IN_COLLECTIONS = ['Users', 'Bootstrap']
+# What a sign-in test wipes: the users, the one-time superAdmin claim
+# (AuthHandler.BOOTSTRAP_COLLECTION), which outlives an emptied Users, and
+# the empty Store and Policy every new admin gets at sign-up.
+SIGN_IN_COLLECTIONS = ['Users', 'Bootstrap', 'Stores', 'Policies']
 
 
 def firebaseClaims(**overrides) -> dict:

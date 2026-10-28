@@ -20,8 +20,9 @@ import requests
 from pymongo.errors import DuplicateKeyError
 
 from AppConfig import Environment
+from actions.StoreActions import POLICIES, STORES, emptyPolicy
 from mongoDb import db
-from objects import User
+from objects import DEFAULT_STORE_CURRENCY, Store, User
 from roles import AllRoles, UserRoles
 from sharedConstants import FIREBASE_PROJECT_ID
 
@@ -312,9 +313,19 @@ def verifyFirebaseIdToken(idToken: str) -> dict:
 _warnAboutEmulatorMode()
 
 
+def _holdsSuperAdminClaim(firebaseUserId: str) -> bool:
+    """Whether the superAdmin claim document names `firebaseUserId`: it
+    won the claim on an earlier sign-in whose Users insert then failed."""
+    claim = db.read({'_id': SUPER_ADMIN_CLAIM_ID}, BOOTSTRAP_COLLECTION,
+                    projection={'userId': 1}, findOne=True)
+    return claim is not None and claim.get('userId') == firebaseUserId
+
+
 def _claimSuperAdmin(firebaseUserId: str) -> bool:
     """Whether `firebaseUserId` wins the one-time superAdmin claim: True
-    for the one sign-in whose insert of the claim document succeeds. The
+    for the one sign-in whose insert of the claim document succeeds, or
+    that already holds it (_holdsSuperAdminClaim: the claim is written
+    outside the sign-up's transaction, so a failed sign-up keeps it). The
     claim outlives the Users it was made for, so emptying Users later never
     re-opens it (delete the claim document on purpose to re-run the
     bootstrap)."""
@@ -327,7 +338,7 @@ def _claimSuperAdmin(firebaseUserId: str) -> bool:
                 'claimedAt': datetime.datetime.now(tz=datetime.timezone.utc),
             }, BOOTSTRAP_COLLECTION)
     except DuplicateKeyError:
-        return False
+        return _holdsSuperAdminClaim(firebaseUserId)
     return True
 
 
@@ -338,6 +349,12 @@ def signInIdentity(firebaseUserId: str, email: str, displayName: str) -> dict:
     owner) when it wins the atomic bootstrap claim (_claimSuperAdmin).
     Whether any user exists is decided from one _id, not by reading the
     whole collection.
+
+    A new user is an admin, so it also gets its store, empty (not set up:
+    createUserStore fills it in), and the store's policy, every answer
+    unset: one transaction writes all three. On a database without
+    transactions a sign-in that stops between the writes leaves a user
+    without them, which createUserStore makes up for.
 
     The identity must already be trusted: a verified token's claims, or the
     raw identity loginWithGoogle accepts in localdev only."""
@@ -352,6 +369,24 @@ def signInIdentity(firebaseUserId: str, email: str, displayName: str) -> dict:
                 createdAt=datetime.datetime.now(tz=datetime.timezone.utc),
                 roles=UserRoles(AllRoles().getAllRoles()),
                 _version=0)
-    if firstUser and _claimSuperAdmin(firebaseUserId):
+    # A retry after a failed sign-up still holds the claim it won, even
+    # once another user signed up in between (Users no longer empty).
+    if (_claimSuperAdmin(firebaseUserId)
+            if firstUser else _holdsSuperAdminClaim(firebaseUserId)):
         user.setRole('superAdmin')
-    return db.create(user.model_dump(by_alias=True), 'Users')
+    createdAt = user.createdAt
+    store = Store(ownerUserId=firebaseUserId,
+                  currency=DEFAULT_STORE_CURRENCY,
+                  location=None,
+                  createdAt=createdAt,
+                  _version=0)
+
+    def createAll(session):
+        created = db.create(user.model_dump(by_alias=True), 'Users',
+                            session=session)
+        db.create(store.model_dump(by_alias=True), STORES, session=session)
+        db.create(emptyPolicy(store.id, createdAt), POLICIES,
+                  session=session)
+        return created
+
+    return db.createTransaction(createAll)

@@ -20,12 +20,17 @@ from objects import (DEFAULT_STORE_CURRENCY, LATITUDE_LIMIT, LONGITUDE_LIMIT,
                      PHONE_NUMBER_PATTERN, STORE_ADDRESS_MAX_LENGTH,
                      STORE_DESCRIPTION_MAX_LENGTH, STORE_NAME_MAX_LENGTH,
                      STORE_OPENING_HOURS_MAX_LENGTH, STORE_SLUG_MAX_LENGTH,
-                     MyStoreResponse, Store, StoreCurrency, StoreLocation,
-                     StoreResponse, projectedCopy)
+                     MyStoreResponse, Policy, Store, StoreCurrency,
+                     StoreLocation, StoreResponse, projectedCopy)
 from route_config import route_config
 
 STORES = 'Stores'
 USERS = 'Users'
+POLICIES = 'Policies'
+# A store is set up once createUserStore gave it its details, the slug
+# among them: until then (the empty store sign-up creates) every reader
+# treats it as no store yet.
+SET_UP = {'slug': {'$type': 'string'}}
 # A taken link name gets "-" plus 4 hex characters; a few tries at most.
 SLUG_SUFFIX_BYTES = 2
 SLUG_SUFFIX_LENGTH = 1 + 2 * SLUG_SUFFIX_BYTES
@@ -34,9 +39,15 @@ SLUG_ATTEMPTS = 5
 FALLBACK_SLUG = 'store'
 ALREADY_HAS_A_STORE = 'You already have a store'
 NO_STORE_YET = 'Create your store first'
+# A store id or link name no set-up store has: what a customer gets.
+STORE_NOT_FOUND = 'Store not found'
 CONTACT_NUMBER_FORMAT_EXAMPLE = '+639171234567'
 # The control characters a text field may hold: line breaks and tabs.
 ALLOWED_CONTROL_CHARACTERS = frozenset('\n\r\t')
+# What createUserStore writes: the details the admin gives, and the slug
+# that sets the store up.
+STORE_DETAILS = ('name', 'slug', 'currency', 'description', 'contactNumber',
+                 'address', 'openingHours')
 
 
 def ownerQuery(userId: str) -> dict:
@@ -46,18 +57,34 @@ def ownerQuery(userId: str) -> dict:
     return {'ownerUserId': userId}
 
 
+def setUpOwnerQuery(userId: str) -> dict:
+    """ownerQuery, matching the store only once it is set up (SET_UP)."""
+    return {**ownerQuery(userId), **SET_UP}
+
+
 def ownerStore(userId: str, projection: dict) -> dict:
-    """The store `userId` owns (read through ownerQuery, with
-    `projection`). Refuses an admin with no store yet."""
-    store = db.read(ownerQuery(userId), STORES, projection=projection,
+    """The store `userId` owns (read through setUpOwnerQuery, with
+    `projection`). Refuses an admin with no store yet, or one whose store
+    is not set up yet."""
+    store = db.read(setUpOwnerQuery(userId), STORES, projection=projection,
                     findOne=True)
     if store is None:
         raise ValueError(NO_STORE_YET)
     return store
 
 
+def setUpStore(storeId: str, projection: dict) -> dict:
+    """The store `storeId` (with `projection`), as a customer reaches it:
+    refused (STORE_NOT_FOUND) unless it exists and is set up (SET_UP)."""
+    store = db.read({'_id': storeId, **SET_UP}, STORES,
+                    projection=projection, findOne=True)
+    if store is None:
+        raise ValueError(STORE_NOT_FOUND)
+    return store
+
+
 def _isOwnerCollision(error: DuplicateKeyError) -> bool:
-    """Whether the insert broke the unique ownerUserId index (a second
+    """Whether the write broke the unique ownerUserId index (a second
     store of the admin) rather than the slug one. The server names the
     index in keyPattern, else keyValue, else only in its message."""
     details = error.details or {}
@@ -65,6 +92,34 @@ def _isOwnerCollision(error: DuplicateKeyError) -> bool:
     if keys:
         return 'ownerUserId' in keys
     return 'ownerUserId' in str(error)
+
+
+def emptyPolicy(storeId: str, createdAt: datetime.datetime) -> dict:
+    """The Policies document of the store `storeId` before the admin gave
+    any answer: every answer None (not said yet), unchanged since
+    `createdAt`, the store's creation. The one source of "no policy yet",
+    stored (ensurePolicy, sign-up) or sent for a store without one."""
+    return Policy(storeId=storeId,
+                  createdAt=createdAt,
+                  updatedAt=createdAt,
+                  _version=0).model_dump(by_alias=True)
+
+
+def ensurePolicy(storeId: str, createdAt: datetime.datetime) -> None:
+    """Give the store `storeId` (created at `createdAt`) its Policies
+    document unless it has one. Sign-up creates it, but not for an admin
+    from before that, nor after a sign-up that stopped between its writes
+    on a database without transactions. An existing policy is never
+    changed."""
+    policy = emptyPolicy(storeId, createdAt)
+    del policy['storeId']  # the filter's equality sets it on insert
+    try:
+        db.findOneAndUpdate({'storeId': storeId}, {'$setOnInsert': policy},
+                            POLICIES,
+                            upsert=True,
+                            projection={'_id': 1})
+    except DuplicateKeyError:
+        pass  # a racing call inserted it
 
 
 def requireAdmin(userId: str) -> None:
@@ -153,7 +208,7 @@ class StoreActions():
         requireAdmin(userId)
         return {
             'store':
-            db.readResponse(StoreResponse, ownerQuery(userId), STORES)
+            db.readResponse(StoreResponse, setUpOwnerQuery(userId), STORES)
         }
 
     @mcp_tool('admin')
@@ -182,9 +237,12 @@ class StoreActions():
         anonymous visitors included. If this tool refuses a detail, relay
         its message to the admin so they can correct that detail, then
         call again."""
-        # The unique index on ownerUserId is what enforces "one store per
-        # admin"; the read first only gives the usual case a clear message
-        # without an insert.
+        # This fills in the empty store sign-up created, or creates the
+        # store of an admin who has none (one from before that). The unique
+        # index on ownerUserId is what enforces "one store per admin" for a
+        # create, the not-set-up guard of the fill for a fill: of two racing
+        # calls only one wins. The read first gives the usual case a clear
+        # message without a write.
         requireAdmin(userId)
         name = _validText(name, 'A store name', STORE_NAME_MAX_LENGTH)
         description = _validText(description, 'A description',
@@ -200,14 +258,17 @@ class StoreActions():
             currency = DEFAULT_STORE_CURRENCY
         if currency not in typing.get_args(StoreCurrency):
             raise ValueError('That currency is not supported')
-        if db.read(ownerQuery(userId), STORES, projection={'_id': 1},
-                   findOne=True) is not None:
+        existing = db.read(ownerQuery(userId), STORES,
+                           projection={'_id': 1, 'slug': 1}, findOne=True)
+        if existing is not None and isinstance(existing.get('slug'), str):
             raise ValueError(ALREADY_HAS_A_STORE)
         baseSlug = storeSlug(name)
         createdAt = datetime.datetime.now(tz=datetime.timezone.utc)
         for attempt in range(SLUG_ATTEMPTS):
             slug = baseSlug if attempt == 0 else (
                 f'{baseSlug}-{secrets.token_hex(SLUG_SUFFIX_BYTES)}')
+            # Built whole, so the details are checked as a store's; a fill
+            # writes only the details over the empty store.
             store = Store(ownerUserId=userId,
                           name=name,
                           slug=slug,
@@ -218,14 +279,27 @@ class StoreActions():
                           openingHours=openingHours,
                           location=None,
                           createdAt=createdAt,
-                          _version=0)
+                          _version=0).model_dump(by_alias=True)
             try:
-                created = db.create(store.model_dump(by_alias=True), STORES)
+                if existing is None:
+                    saved = db.create(store, STORES)
+                else:
+                    saved = db.findOneAndUpdate(
+                        {'_id': existing['_id'],
+                         'slug': {'$not': SET_UP['slug']}},
+                        {'$set': {key: store[key] for key in STORE_DETAILS},
+                         '$inc': {'_version': 1}},
+                        STORES,
+                        upsert=False)
             except DuplicateKeyError as error:
                 if _isOwnerCollision(error):
                     raise ValueError(ALREADY_HAS_A_STORE) from None
                 continue  # the link name is taken: try one with a suffix
-            return projectedCopy(StoreResponse, created)
+            if saved is None:
+                # A racing call set the store up first.
+                raise ValueError(ALREADY_HAS_A_STORE)
+            ensurePolicy(saved['_id'], saved['createdAt'])
+            return projectedCopy(StoreResponse, saved)
         raise ValueError(
             'Could not pick a link name for this store, try another name')
 

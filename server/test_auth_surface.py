@@ -94,6 +94,12 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     'completeOrder',
     'cancelStoreOrder',
     'cancelMyOrder',
+    # Policies: the admin's own store's policy (requireOwnerStore); a
+    # customer reads the policy of the connection's store
+    # (requireCustomer).
+    'getMyStorePolicy',
+    'updateMyStorePolicy',
+    'getStorePolicy',
 }
 
 

@@ -10,6 +10,11 @@ from singleton import Singleton
 import time
 import os
 
+# The unique index of a set-up store's slug (ensureIndexes), and the
+# unfiltered one it replaced.
+STORE_SLUG_INDEX = 'slug_setUp_unique'
+LEGACY_STORE_SLUG_INDEX = 'slug_1'
+
 
 @contextmanager
 def _timed(label: str) -> Generator[None, None, None]:
@@ -134,8 +139,18 @@ class mongoDb():
         """Create indexes for frequent query patterns."""
         # One store per admin, and every store link name taken once: both
         # enforced by the database, so two racing creates cannot both win.
+        # Only a set-up store has a slug (a string), so the slug index is
+        # partial: the many stores not set up yet never collide on it.
         self.db['Stores'].create_index('ownerUserId', unique=True)
-        self.db['Stores'].create_index('slug', unique=True)
+        self.db['Stores'].create_index(
+            'slug', unique=True, name=STORE_SLUG_INDEX,
+            partialFilterExpression={'slug': {'$type': 'string'}})
+        # The index it replaces: same key, no filter. The new one is built
+        # first, so the slug stays unique throughout.
+        if LEGACY_STORE_SLUG_INDEX in self.db['Stores'].index_information():
+            self.db['Stores'].drop_index(LEGACY_STORE_SLUG_INDEX)
+        # One policy per store.
+        self.db['Policies'].create_index('storeId', unique=True)
         # A store's products, best sellers first (listStoreProducts).
         self.db['Products'].create_index([('storeId', 1), ('isAvailable', 1),
                                           ('soldCount', -1), ('name', 1)])
@@ -477,7 +492,11 @@ class mongoDb():
             self.db[x].delete_many({})
 
     def createTransaction(self, updateFunction: Callable) -> Any:
-        if AppConfig().getIsCloudEnvironment() or self.replicaSetEnabled:
+        # replicaSetEnabled is True in the cloud (checkReplicaSet trusts
+        # Atlas), so it alone decides: a test that switches ENVIRONMENT to
+        # a cloud one on a standalone local mongod still runs without a
+        # transaction, which that server could not start.
+        if self.replicaSetEnabled:
             max_retries = 5
             for attempt in range(max_retries):
                 with self.client.start_session() as session:

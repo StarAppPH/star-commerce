@@ -14,11 +14,11 @@ export type Owneruserid = string;
 /**
  * Store name shown to customers
  */
-export type Name = string;
+export type Name = string | null;
 /**
  * The store's link name, e.g. bakery-a
  */
-export type Slug = string;
+export type Slug = string | null;
 /**
  * ISO 4217 code every price of the store is in
  */
@@ -43,15 +43,15 @@ export type Currency =
 /**
  * What the store sells
  */
-export type Description = string;
+export type Description = string | null;
 /**
  * Contact number, E.164
  */
-export type Contactnumber = string;
+export type Contactnumber = string | null;
 /**
  * Street address, as the admin typed it
  */
-export type Address = string;
+export type Address = string | null;
 /**
  * Opening hours, free text
  */
@@ -71,18 +71,24 @@ export type Createdat = string;
 
 /**
  * A Stores document. One per admin: ownerUserId (the admin's Users _id)
- * and slug are both unique indexes (mongoDb.ensureIndexes).
+ * is a unique index, and so is slug among the stores that have one
+ * (mongoDb.ensureIndexes).
+ *
+ * Sign-up creates the admin's store empty: only its owner and currency.
+ * A store is *set up* once its slug is a string, which createUserStore
+ * sets together with the other details; until then every store reader
+ * treats it as no store yet (StoreActions.SET_UP).
  */
 export interface Store {
   _id?: Id;
   _version?: Version;
   ownerUserId: Owneruserid;
-  name: Name;
-  slug: Slug;
+  name?: Name;
+  slug?: Slug;
   currency: Currency;
-  description: Description;
-  contactNumber: Contactnumber;
-  address: Address;
+  description?: Description;
+  contactNumber?: Contactnumber;
+  address?: Address;
   openingHours?: Openinghours;
   /**
    * Map location; null until the admin pins it

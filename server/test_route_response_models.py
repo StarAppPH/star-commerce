@@ -2899,6 +2899,7 @@ MIRRORS = [
     (ObjectsModule.StoreOrderRow, ObjectsModule.Order, {'id', 'items'}),
     (ObjectsModule.MyOrderRow, ObjectsModule.Order, {'id', 'items'}),
     (ObjectsModule.OrderItemRow, ObjectsModule.OrderItem, set()),
+    (ObjectsModule.StorePolicyResponse, ObjectsModule.Policy, set()),
 ]
 
 
