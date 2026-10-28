@@ -18,6 +18,8 @@ This module imports nothing from the MCP SDK: the Flask app imports it with
 every route module.
 """
 
+import inspect
+
 # The MCP servers a tool can be listed on: one per kind of user.
 MCP_AUDIENCES = ('admin', 'customer')
 
@@ -28,9 +30,12 @@ MCP_AUDIENCES = ('admin', 'customer')
 INJECTED_PARAMS = ('userId', 'storeId')
 
 
-def mcp_tool(*audiences: str):
+def mcp_tool(*audiences: str, description: str | None = None):
     """List the route as an MCP tool for `audiences` (see MCP_AUDIENCES).
-    Goes OUTSIDE @route_config."""
+    Goes OUTSIDE @route_config. `description`, when given, is the tool
+    description in place of a docstring: text built at import (from
+    constants such as a limit or a list of choices) that a docstring, never
+    an f-string, cannot hold."""
     if not audiences:
         raise ValueError('mcp_tool needs at least one audience')
     unknown = [a for a in audiences if a not in MCP_AUDIENCES]
@@ -42,6 +47,10 @@ def mcp_tool(*audiences: str):
 
     def decorator(func):
         func.mcpAudiences = tuple(audiences)
+        if description is not None:
+            # mcpCreator reads the docstring of the unwrapped route.
+            inspect.unwrap(func).__doc__ = description
+            func.__doc__ = description
         return func
 
     return decorator

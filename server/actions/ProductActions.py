@@ -30,6 +30,9 @@ PRODUCT_LIST_MAX_LIMIT = 50
 PRODUCT_SEARCH_MAX_LENGTH = 80
 NAME_TAKEN = 'A product with this name already exists'
 PRODUCT_NOT_FOUND = 'Product not found'
+INVENTORY_WITH_RESERVED = (
+    'The inventory plus the units orders are holding is at most '
+    f'{PRODUCT_INVENTORY_MAX}')
 DUPLICATE_KEY_CODE = 11000
 
 
@@ -170,21 +173,39 @@ def _refuseTakenNames(storeId: str, nameKeys: list,
         raise ValueError(NAME_TAKEN)
 
 
-def _batchItem(item, position: int) -> dict:
-    """One addStoreProducts item as a dict: over HTTP it arrives as a JSON
-    object, from the MCP tool as a NewProduct."""
-    if isinstance(item, NewProduct):
+def _batchItem(item, position: int, model=NewProduct,
+               label: str = 'Product') -> dict:
+    """One item of a list param as a dict (an addStoreProducts product, a
+    createOrder item): over HTTP it arrives as a JSON object, from the MCP
+    tool as a `model`. `label` names the item in a refusal."""
+    if isinstance(item, model):
         return item.model_dump()
     if isinstance(item, dict):
         return item
-    raise ValueError(f'Product {position}: send it as an object')
+    raise ValueError(f'{label} {position}: send it as an object')
 
 
-def _atPosition(position: int, error: ValueError) -> ValueError:
-    """A batch item's refusal, naming its position (1 based)."""
+def _atPosition(position: int, error: ValueError,
+                label: str = 'Product') -> ValueError:
+    """A list item's refusal, naming its position (1 based)."""
     message = str(error)
     return ValueError(
-        f'Product {position}: {message[:1].lower()}{message[1:]}')
+        f'{label} {position}: {message[:1].lower()}{message[1:]}')
+
+
+def validBatch(items: list, model, label: str, validate) -> list:
+    """Each item of a list param (a dict over HTTP, a `model` over MCP:
+    _batchItem) as `validate(item, earlier)` returns it, `earlier` being
+    what it returned for the items before. A refusal names the item's
+    position (_atPosition)."""
+    validated = []
+    for position, item in enumerate(items, start=1):
+        item = _batchItem(item, position, model, label)
+        try:
+            validated.append(validate(item, validated))
+        except ValueError as error:
+            raise _atPosition(position, error, label) from None
+    return validated
 
 
 class ProductActions():
@@ -283,19 +304,14 @@ class ProductActions():
                 or not 1 <= len(products) <= PRODUCT_BATCH_MAX):
             raise ValueError(
                 f'Send 1 to {PRODUCT_BATCH_MAX} products at a time')
-        validated = []
-        for position, item in enumerate(products, start=1):
-            item = _batchItem(item, position)
-            try:
-                validated.append(
-                    _validProduct(item.get('name'),
-                                  item.get('description'),
-                                  item.get('price'),
-                                  item.get('inventory'),
-                                  item.get('isAvailable'),
-                                  isNew=True))
-            except ValueError as error:
-                raise _atPosition(position, error) from None
+        validated = validBatch(
+            products, NewProduct, 'Product',
+            lambda item, _: _validProduct(item.get('name'),
+                                          item.get('description'),
+                                          item.get('price'),
+                                          item.get('inventory'),
+                                          item.get('isAvailable'),
+                                          isNew=True))
         createdAt = datetime.datetime.now(tz=datetime.timezone.utc)
         documents = [
             _newProductDocument(store['_id'], fields, createdAt)
@@ -368,10 +384,19 @@ class ProductActions():
         product = None
         if isinstance(productId, str) and productId:
             product = db.read({'_id': productId, 'storeId': store['_id']},
-                              PRODUCTS, projection={'_id': 1, '_version': 1},
+                              PRODUCTS,
+                              projection={'_id': 1, '_version': 1,
+                                          'reservedInventory': 1},
                               findOne=True)
         if product is None:
             raise ValueError(PRODUCT_NOT_FOUND)
+        # An order's cancel gives its units back to inventory: with them,
+        # inventory still stays within PRODUCT_INVENTORY_MAX. (A change
+        # since this read is refused by the _version lock below.)
+        if 'inventory' in changes and changes['inventory'] + sum(
+                r['quantity'] for r in product.get('reservedInventory', [])
+        ) > PRODUCT_INVENTORY_MAX:
+            raise ValueError(INVENTORY_WITH_RESERVED)
         if 'name' in changes:
             changes['nameKey'] = productNameKey(changes['name'])
             _refuseTakenNames(store['_id'], [changes['nameKey']],

@@ -45,7 +45,7 @@
                     "description": "Where the order is",
                     "enum": [
                         "pending",
-                        "confirmed",
+                        "paid",
                         "completed",
                         "cancelled"
                     ],
@@ -103,6 +103,56 @@
                     "format": "date-time",
                     "title": "Createdat",
                     "type": "string"
+                },
+                "paymentMethod": {
+                    "anyOf": [
+                        {
+                            "enum": [
+                                "card",
+                                "gcash",
+                                "maya",
+                                "grabPay",
+                                "bankTransfer"
+                            ],
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "How the customer paid",
+                    "title": "Paymentmethod"
+                },
+                "paidAt": {
+                    "anyOf": [
+                        {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "When it was paid",
+                    "title": "Paidat"
+                },
+                "expiresAt": {
+                    "description": "Unpaid by then, it is cancelled (UTC)",
+                    "format": "date-time",
+                    "title": "Expiresat",
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The payment provider's id of the payment",
+                    "title": "Paymentreference"
                 }
             },
             "required": [
@@ -112,7 +162,11 @@
                 "total",
                 "currency",
                 "contactNumber",
-                "createdAt"
+                "createdAt",
+                "paymentMethod",
+                "paidAt",
+                "expiresAt",
+                "paymentReference"
             ],
             "title": "StoreOrderRow",
             "type": "object",

@@ -70,16 +70,42 @@ export type Contactnumber = string;
 /**
  * Where the order is
  */
-export type Status = "pending" | "confirmed" | "completed" | "cancelled";
+export type Status = "pending" | "paid" | "completed" | "cancelled";
 /**
  * When it was placed
  */
 export type Createdat = string;
+/**
+ * Unpaid by then, it is cancelled (UTC)
+ */
+export type Expiresat = string;
+/**
+ * How the customer paid
+ */
+export type Paymentmethod = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+/**
+ * The payment provider's id of the payment
+ */
+export type Paymentreference = string | null;
+/**
+ * When it was paid
+ */
+export type Paidat = string | null;
+/**
+ * When it was cancelled
+ */
+export type Cancelledat = string | null;
+/**
+ * Why it was cancelled
+ */
+export type Cancelreason = "expired" | null;
 
 /**
  * An Orders document, read newest first: the (storeId, status,
  * createdAt) and (customerId, storeId, createdAt) indexes
- * (mongoDb.ensureIndexes) serve the admin's and the customer's lists.
+ * (mongoDb.ensureIndexes) serve the admin's and the customer's lists,
+ * (status, expiresAt) and (storeId, status, expiresAt) the sweeps of
+ * expired unpaid orders.
  *
  * Every write to a product's inventory or reservedInventory an order
  * makes (placing, cancelling or completing it) must also $inc the
@@ -97,6 +123,12 @@ export interface Order {
   contactNumber: Contactnumber;
   status: Status;
   createdAt: Createdat;
+  expiresAt: Expiresat;
+  paymentMethod?: Paymentmethod;
+  paymentReference?: Paymentreference;
+  paidAt?: Paidat;
+  cancelledAt?: Cancelledat;
+  cancelReason?: Cancelreason;
 }
 /**
  * One product of an order, a snapshot taken when the order is placed:

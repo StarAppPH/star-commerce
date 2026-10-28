@@ -38,7 +38,7 @@ from mongoDb import db
 from objects import NoContentResponse
 from conftest import (STORE_DETAILS, addOrder, addProduct, createTestStore,
                       createTestUser, guestAt, storeWithProducts,
-                      wipeCollections)
+                      verifiedGuestAt, wipeCollections)
 
 COLLECTIONS = [
     'Users', 'Bootstrap', 'Stores', 'Customers', 'Products', 'Orders'
@@ -91,7 +91,8 @@ def test_eachAudienceListsOnlyItsTools():
         return {t.name for t in await mcpServer.servers[audience].list_tools()}
 
     assert asyncio.run(names('customer')) == {'listStoreProducts',
-                                              'getMyOrders'}
+                                              'getMyOrders', 'createOrder',
+                                              'payOrder'}
     assert asyncio.run(names('admin')) == {
         'getUserStore', 'createUserStore', 'addStoreProduct',
         'addStoreProducts', 'updateStoreProduct', 'listMyStoreProducts',
@@ -703,9 +704,10 @@ def _orderIds(result) -> list[str]:
 
 
 def _withoutCreatedAt(res: dict) -> list[dict]:
-    """The orders of a response, minus createdAt: MCP sends it as text, a
-    direct call as a datetime."""
-    return [{k: v for k, v in o.items() if k != 'createdAt'}
+    """The orders of a response, minus their times (createdAt, expiresAt,
+    paidAt): MCP sends a time as text, a direct call as a datetime."""
+    return [{k: v for k, v in o.items()
+             if k not in ('createdAt', 'expiresAt', 'paidAt')}
             for o in res['orders']]
 
 
@@ -736,14 +738,14 @@ def test_e2e_getStoreOrders_listsTheAdminsStoreOrders(clean, firebase):
     older, newer = [
         addOrder(store['_id'], customerId, ORDER_ITEMS, status,
                  ORDER_BASE + datetime.timedelta(minutes=i))['_id']
-        for i, status in enumerate(['pending', 'confirmed'])
+        for i, status in enumerate(['pending', 'paid'])
     ]
     addOrder(other['_id'], customerId, ORDER_ITEMS)
 
     everything = callTool(_auth(ADMIN), 'getStoreOrders', {},
                           audience='admin')
     confirmed = callTool(_auth(ADMIN), 'getStoreOrders',
-                         {'status': 'confirmed'}, audience='admin')
+                         {'status': 'paid'}, audience='admin')
     limited = callTool(_auth(ADMIN), 'getStoreOrders', {'limit': 1},
                        audience='admin')
 
@@ -800,7 +802,7 @@ def test_e2e_getMyOrders_listsTheCustomersOwnOrdersAtTheConnectionsStore(
     otherCustomerId = guestAt(firebase, store, 'mc-other-guest-uid')
     older = addOrder(store['_id'], customerId, ORDER_ITEMS,
                      createdAt=ORDER_BASE)['_id']
-    newer = addOrder(store['_id'], customerId, ORDER_ITEMS, 'confirmed',
+    newer = addOrder(store['_id'], customerId, ORDER_ITEMS, 'paid',
                      ORDER_BASE + datetime.timedelta(minutes=1))['_id']
     addOrder(store['_id'], otherCustomerId, ORDER_ITEMS)
     addOrder(other['_id'], customerId, ORDER_ITEMS)
@@ -813,7 +815,7 @@ def test_e2e_getMyOrders_listsTheCustomersOwnOrdersAtTheConnectionsStore(
         'userId': otherCustomerId
     })
     confirmed = callTool(_auth(customerId, store['_id']), 'getMyOrders',
-                         {'status': 'confirmed'})
+                         {'status': 'paid'})
 
     assert not result.is_error, _text(result)
     assert _orderIds(result) == [newer, older]
@@ -934,3 +936,69 @@ def test_addStoreProducts_productsAsAJsonString_isRefusedWithoutQuotingIt(
     assert result.is_error
     assert ORDER_SENTINEL not in _text(result)
     assert db.read({}, 'Products') == []
+
+
+# ----------------------------- checkout ----------------------------- #
+
+
+def test_theCheckoutToolsArguments_leaveOutTheInjectedParams():
+    async def tools():
+        listed = await mcpServer.servers['customer'].list_tools()
+        return {t.name: t for t in listed}
+
+    byName = asyncio.run(tools())
+
+    assert set(byName['createOrder'].input_schema['properties']) == {'items'}
+    assert set(byName['payOrder'].input_schema['properties']) == {
+        'orderId', 'paymentMethod'}
+    assert 'enum' not in str(
+        byName['payOrder'].input_schema['properties']['paymentMethod'])
+
+
+def test_e2e_listCreateAndPayAnOrder_overMcp(clean, firebase):
+    store = storeWithProducts(ADMIN)
+    customerId = verifiedGuestAt(firebase, store, GUEST)
+    headers = _auth(customerId, store['_id'])
+
+    listing = callTool(headers, 'listStoreProducts', {'limit': 3})
+    ube = next(p for p in listing.structured_content['products']
+               if p['name'] == 'Ube Cake')
+    created = callTool(headers, 'createOrder', {
+        'items': [{'productId': ube['_id'], 'quantity': 2}]})
+
+    assert not created.is_error, _text(created)
+    order = created.structured_content['order']
+    assert created.structured_content['paymentMethods'] == [
+        'card', 'gcash', 'maya', 'grabPay', 'bankTransfer']
+    assert (order['status'], order['total']) == ('pending', 1300)
+
+    paid = callTool(headers, 'payOrder', {
+        'orderId': order['_id'], 'paymentMethod': 'maya'})
+
+    assert not paid.is_error, _text(paid)
+    assert paid.structured_content['status'] == 'paid'
+    assert paid.structured_content['paymentMethod'] == 'maya'
+    assert db.read({'_id': ube['_id']}, 'Products', findOne=True)[
+        'inventory'] == 8
+
+
+@pytest.mark.parametrize('tool, arguments', [
+    ('createOrder', {'items': [{'productId': ORDER_SENTINEL,
+                                'quantity': 1}]}),
+    ('createOrder', {'items': [{'productId': 'p1',
+                                'quantity': ORDER_SENTINEL}]}),
+    ('createOrder', {'items': [{'productId': 'p1', 'quantity': True}]}),
+    ('createOrder', {'items': ORDER_SENTINEL}),
+    ('payOrder', {'orderId': ORDER_SENTINEL, 'paymentMethod': 'card'}),
+    ('payOrder', {'orderId': 'o1', 'paymentMethod': ORDER_SENTINEL}),
+])
+def test_e2e_checkoutRefusals_reachTheAI_withoutQuotingTheValue(
+        clean, firebase, tool, arguments):
+    store = storeWithProducts(ADMIN)
+    customerId = verifiedGuestAt(firebase, store, GUEST)
+
+    result = callTool(_auth(customerId, store['_id']), tool, arguments)
+
+    assert result.is_error
+    assert ORDER_SENTINEL not in _text(result)
+    assert db.read({}, 'Orders') == []

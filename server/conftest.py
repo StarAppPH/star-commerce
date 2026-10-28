@@ -661,25 +661,42 @@ def addOrder(storeId: str, customerId: str, items: list[dict],
              status: str = 'pending',
              createdAt: datetime.datetime | None = None, *,
              currency: str = 'PHP',
-             contactNumber: str = '+639171234567'):
+             contactNumber: str = '+639171234567',
+             **fields):
     """An Orders document, stored and returned. `items` is a list of
     {'productId', 'name', 'price', 'quantity'} dicts; the total is summed
     from them. createdAt defaults to now (UTC); a naive one is refused, so
-    a test cannot seed a local time 8 hours off."""
+    a test cannot seed a local time 8 hours off. The total and expiresAt
+    are createOrder's (orderTotal, orderExpiresAt). `fields` sets any other
+    Order field (paymentMethod, paidAt, ...)."""
+    from actions.OrderActions import orderExpiresAt, orderTotal
     from objects import Order
     if createdAt is not None and createdAt.utcoffset() is None:
         raise ValueError('addOrder needs a timezone-aware createdAt')
+    createdAt = createdAt or datetime.datetime.now(tz=datetime.timezone.utc)
     order = Order(storeId=storeId,
                   customerId=customerId,
                   items=items,
-                  total=sum(i['price'] * i['quantity'] for i in items),
+                  total=orderTotal(items),
                   currency=currency,
                   contactNumber=contactNumber,
                   status=status,
-                  createdAt=createdAt or datetime.datetime.now(
-                      tz=datetime.timezone.utc),
-                  _version=0)
+                  createdAt=createdAt,
+                  expiresAt=orderExpiresAt(createdAt),
+                  _version=0,
+                  **fields)
     return db.create(order.model_dump(by_alias=True), 'Orders')
+
+
+@pytest.fixture
+def noExpirySweep(monkeypatch):
+    """The order routes without their expiry sweep (cancelExpiredOrders),
+    for tests that seed pending orders placed long ago (or before a frozen
+    clock) to test the list filters: the sweep would cancel them first.
+    test_checkout.py tests the sweep."""
+    import actions.OrderActions as orderActions
+    monkeypatch.setattr(orderActions, 'cancelExpiredOrders',
+                        lambda storeId=None: 0)
 
 
 def orderIds(res: dict) -> list[str]:
@@ -714,3 +731,14 @@ def guestAt(firebase, store: dict, uid: str) -> str:
     from ApiRequests import ApiRequests
     firebase['claims'] = guestClaims(uid)
     return ApiRequests().startGuestSession(TOKEN, store['slug'])['_id']
+
+
+def verifiedGuestAt(firebase, store: dict, uid: str,
+                    phoneNumber: str = '+639171234567') -> str:
+    """guestAt, then the guest's phone number verified (verifyCustomerPhone),
+    so it can place an order."""
+    from ApiRequests import ApiRequests
+    customerId = guestAt(firebase, store, uid)
+    firebase['claims'] = guestClaims(uid, 'phone', phoneNumber)
+    ApiRequests().verifyCustomerPhone(customerId, TOKEN)
+    return customerId

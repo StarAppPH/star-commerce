@@ -1,0 +1,188 @@
+{
+    "$defs": {
+        "MyOrderRow": {
+            "description": "One order as the customer who placed it sees it: StoreOrderRow\nwithout the contact number and the payment reference. Each field\nrestates Order's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "_id": {
+                    "description": "Orders _id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Where the order is",
+                    "enum": [
+                        "pending",
+                        "paid",
+                        "completed",
+                        "cancelled"
+                    ],
+                    "title": "Status",
+                    "type": "string"
+                },
+                "items": {
+                    "description": "What was ordered",
+                    "items": {
+                        "$ref": "#/$defs/OrderItemRow"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "title": "Items",
+                    "type": "array"
+                },
+                "total": {
+                    "description": "What the order costs",
+                    "minimum": 0,
+                    "title": "Total",
+                    "type": "number"
+                },
+                "currency": {
+                    "description": "ISO 4217 code of the store's currency when ordered",
+                    "enum": [
+                        "PHP",
+                        "USD",
+                        "EUR",
+                        "GBP",
+                        "JPY",
+                        "SGD",
+                        "AUD",
+                        "CAD",
+                        "HKD",
+                        "CNY",
+                        "KRW",
+                        "MYR",
+                        "THB",
+                        "IDR",
+                        "VND",
+                        "INR",
+                        "AED"
+                    ],
+                    "title": "Currency",
+                    "type": "string"
+                },
+                "createdAt": {
+                    "description": "When it was placed",
+                    "format": "date-time",
+                    "title": "Createdat",
+                    "type": "string"
+                },
+                "paymentMethod": {
+                    "anyOf": [
+                        {
+                            "enum": [
+                                "card",
+                                "gcash",
+                                "maya",
+                                "grabPay",
+                                "bankTransfer"
+                            ],
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "How the customer paid",
+                    "title": "Paymentmethod"
+                },
+                "paidAt": {
+                    "anyOf": [
+                        {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "When it was paid",
+                    "title": "Paidat"
+                },
+                "expiresAt": {
+                    "description": "Unpaid by then, it is cancelled (UTC)",
+                    "format": "date-time",
+                    "title": "Expiresat",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "_id",
+                "status",
+                "items",
+                "total",
+                "currency",
+                "createdAt",
+                "paymentMethod",
+                "paidAt",
+                "expiresAt"
+            ],
+            "title": "MyOrderRow",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "OrderItemRow": {
+            "description": "One item of an order as a route sends it: OrderItem without its\nproductId. Each field restates OrderItem's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+            "properties": {
+                "name": {
+                    "description": "Product name when ordered",
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "price": {
+                    "description": "Unit price paid, in the order currency",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Price",
+                    "type": "number"
+                },
+                "quantity": {
+                    "description": "Units ordered",
+                    "minimum": 1,
+                    "title": "Quantity",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "name",
+                "price",
+                "quantity"
+            ],
+            "title": "OrderItemRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "properties": {
+        "order": {
+            "allOf": [
+                {
+                    "$ref": "#/$defs/MyOrderRow"
+                }
+            ],
+            "description": "The order just placed"
+        },
+        "paymentMethods": {
+            "description": "The ways the customer can pay it",
+            "items": {
+                "enum": [
+                    "card",
+                    "gcash",
+                    "maya",
+                    "grabPay",
+                    "bankTransfer"
+                ],
+                "type": "string"
+            },
+            "title": "Paymentmethods",
+            "type": "array"
+        }
+    },
+    "required": [
+        "order",
+        "paymentMethods"
+    ],
+    "title": "CreatedOrderResponse",
+    "type": "object",
+    "additionalProperties": false
+}
