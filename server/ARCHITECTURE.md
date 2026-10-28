@@ -18,7 +18,7 @@ server/
 ├── ApiRequests.py          — API business logic (source of truth for routes)
 ├── PubSubRequests.py       — Pub/Sub business logic (source of truth for events)
 ├── route_config.py         — @route_config decorator (metadata, role enforcement, responseModel check)
-├── objects.py              — Pydantic models (MongoModel, AppModel, StoredDocumentKeys, ResponseModel, User, response models)
+├── objects/                — Pydantic models, one module per domain (base.py: MongoModel, AppModel, StoredDocumentKeys, ResponseModel, the response check and projections; user.py, store.py, product.py, order.py, ...); __init__.py re-exports every name, so callers import from `objects`
 ├── responseModelCheck.py   — The response-model rule (ResponseModel all the way down), for AppCreator and the tests
 ├── sharedConstants.py      — Values shared with the client (SOURCE OF TRUTH)
 ├── sharedConstantsTS.py    — Renders sharedConstants.py as serverConstants.ts, refusing secrets (AppCreator calls it)
@@ -92,7 +92,7 @@ client/lib/
               └────────┬─────────┴─────────┬─────────┘
                        │                   │
                        ▼                   ▼
-                  objects.py          AuthHandler.py
+                  objects/            AuthHandler.py
                 (Pydantic models)    (ID token + signInIdentity)
                        │
               ┌────────┼────────┐
@@ -151,13 +151,13 @@ the request's keys are logged, never its values)
 JSON response → the client method returns ApiResponse<Model> and stores the refreshed JWT token
 ```
 
-Secret field names listed in `AppConfig.SECRET_RESPONSE_KEYS` are automatically stripped from all HTTP responses (via the `ApiResponse.data` field serializer in `objects.py`) and from all pubsub payloads (via the `pubSubDecorator` publish step in `pubSub.py`). Endpoints never need manual pops or `{'field': 0}` projections to hide secrets.
+Secret field names listed in `AppConfig.SECRET_RESPONSE_KEYS` are automatically stripped from all HTTP responses (via the `ApiResponse.data` field serializer in `objects/base.py`) and from all pubsub payloads (via the `pubSubDecorator` publish step in `pubSub.py`). Endpoints never need manual pops or `{'field': 0}` projections to hide secrets.
 
 ---
 
 ## Code Generation Pipeline
 
-**You write** → `ApiRequests.py`, `PubSubRequests.py`, `objects.py`
+**You write** → `ApiRequests.py`, `PubSubRequests.py`, `objects/`
 **AppCreator generates** → everything else
 
 ### How it works:
@@ -169,10 +169,10 @@ Secret field names listed in `AppConfig.SECRET_RESPONSE_KEYS` are automatically 
    - `createAccessToken` — whether to create a new token (login endpoints)
    - `successMessage` — response message on success
    - `roleAccess` — which role permission to check
-   - `responseModel` — the `objects.py` model the route returns
+   - `responseModel` — the `objects` model the route returns
 3. It reads parameter names and **type annotations** from method signatures
 4. It converts Python types to TypeScript types (`str→string`, `int→number`, `List[X]→X[]`, etc.)
-5. It generates Pydantic JSON schemas from `objects.py` models, then converts them to TypeScript with json-schema-to-typescript, the library behind `json2ts`, compiling every schema in one node process (`server/tools/json2tsBatch.js`, a shared file)
+5. It generates Pydantic JSON schemas from the `objects` package's models, then converts them to TypeScript with json-schema-to-typescript, the library behind `json2ts`, compiling every schema in one node process (`server/tools/json2tsBatch.js`, a shared file)
 
 `validateRoutes()` runs every check first, so a bad route aborts the run before any route, schema or client file is rewritten (only `serverConstants.ts`, generated first, may already be).
 
@@ -193,7 +193,7 @@ It needs node and the global json-schema-to-typescript at the major version `too
 | `ServerRequests.ts` | ApiRequests.py | TypeScript API client: each method returns `Promise<ApiResponse<Model>>`; plus `RouteResponseModels`, `RouteRequestBodies`, `PublicRoute` |
 | `ApiResponse.ts` | AppCreator's `STATUS_*` | The envelope union `ApiSuccess<T>` / `ApiFailure` |
 | `Server.ts` | Config | API URL switching (local vs production) |
-| `schemas/*.ts` | objects.py | TypeScript interfaces from Pydantic models (closed: no index signature; a schema whose model is gone is deleted) |
+| `schemas/*.ts` | objects/ | TypeScript interfaces from Pydantic models (closed: no index signature; a schema whose model is gone is deleted) |
 | `lib/generated/serverConstants.ts` | sharedConstants.py | Values shared verbatim with the browser |
 | `pubsub_map.json`, `PUBSUB_MAP.md` | Every repo's publishers and `PubSubRequests.py` | The fleet's Pub/Sub map (`pubSubMap.writeMap`, the last step of a full run) |
 
@@ -214,7 +214,7 @@ def getTodos(self) -> dict:
 
 ### The model
 
-- `responseModel` must be a top-level class in `objects.py` (only those get a TS schema) and a `ResponseModel`, all the way down: every model nested in it is a `ResponseModel` too, and a `ResponseModel` inherits from `ResponseModel`s only, never from a database model (`MongoModel`, `AppModel`, `StoredDocumentKeys`, a `*View`). The same holds for every Pub/Sub publisher's payload model. AppCreator refuses to generate otherwise, naming each offending model with its file:line (`responseModelCheck.py`), and `test_responseModelsAreResponseModels` asserts it. Routes return a dict with explicit keys; a list or primitive is wrapped (`{'todos': [...]}`).
+- `responseModel` must be a class the `objects` package exports (`objects/__init__.py` re-exports it: only those get a TS schema, and `test_objects_package_exports.py` fails on one it does not) and a `ResponseModel`, all the way down: every model nested in it is a `ResponseModel` too, and a `ResponseModel` inherits from `ResponseModel`s only, never from a database model (`MongoModel`, `AppModel`, `StoredDocumentKeys`, a `*View`). The same holds for every Pub/Sub publisher's payload model. AppCreator refuses to generate otherwise, naming each offending model with its file:line (`responseModelCheck.py`), and `test_responseModelsAreResponseModels` asserts it. Routes return a dict with explicit keys; a list or primitive is wrapped (`{'todos': [...]}`).
 - A `RootModel` (a bare list or number) is refused unless the route is in `AppCreator.CROSS_REPO_BARE_RESPONSE_ROUTES`, which maps each route to why it is bare and who reads it: only a route another service ALREADY reads as `data['data']` (a bare value) belongs there. Empty in a new project; never add a route to avoid wrapping a new response. `test_route_response_models.py` pins the map to exactly the RootModel routes.
 - Its fields are built from allowed leaves only: a scalar, `datetime`, `date`, a `Literal`, an `Enum` or a `ResponseModel`, through `Optional`, unions, `list[...]` and `dict[str, ...]`. Never `Any`, a bare `dict`/`list`, `object`, a TypedDict, a dataclass, a tuple or a set: they could carry a whole document past the check. No `@computed_field`. route_config refuses a model that breaks this when the route is decorated.
 - A `ResponseModel` declares EXACTLY what the route sends, each field under its serialized key (its alias, else its name): under the localdev response check it rejects any other key, at any depth (as `extra='forbid'` would; production never validates). So the route reads the declared fields with a projection DERIVED from the model, `projection_of(FooResponse)` (a nested `ResponseModel`, a list or union of them, is read field by field as dotted keys; `_id` is excluded unless declared), or builds the dict explicitly. A nested model that may be null must be read whole (a dotted projection drops a null or a legacy scalar), so `projection_of` refuses it: read that model with `db.readResponse(s)` or, for a pipeline, `db.aggregateResponses(FooResponse, pipeline, collection)`, which read it whole and cut every document. They take `readWhole=(...)` (top-level keys read whole: a field a legacy-shape repair needs as stored, or a key the route reads for its own use) and `prepare=fn(doc)` (run on each document before the cut), and `db.projectionStage(FooRow)` puts a row's projection in the middle of an `aggregateResponses` pipeline (before a `$group`). `projection_of` also raises for a nested model it cannot express (a dict of them, a list of lists, a union with a scalar). Fields read for the route's own use are cut before it returns: `projectedCopy(FooResponse, doc)` cuts a document down to what the model declares, at every depth. A union of two or more models declares a str discriminator (`Field(discriminator='kind')`): its value is cut as the member its tag names, never one guessed by validation.
@@ -222,7 +222,7 @@ def getTodos(self) -> dict:
 - A list route sends narrowed rows, not whole documents; the exceptions are listed in `WHOLE_DOCUMENT_ROWS` (`test_route_response_models.py`), and a stale entry fails.
 - Fields the route always sets are REQUIRED. Omittable but never null: `X = Field(None)`. Omittable or null: `X | None = None`.
 - Row models that restate domain fields are listed in `MIRRORS` (`test_route_response_models.py`), which fails when the domain type changes and the row does not.
-- No bare `dict`/`list`/`Any` fields, no `dict[str, X]` keyed by customer data, no values in validator messages. A before-validator is copy-on-write (the module rule in `objects.py`'s docstring).
+- No bare `dict`/`list`/`Any` fields, no `dict[str, X]` keyed by customer data, no values in validator messages. A before-validator is copy-on-write (the package rule in `objects/__init__.py`'s docstring).
 - A model may not type a `SECRET_RESPONSE_KEYS` key (AppCreator refuses): `ApiResponse` strips those keys, so declare such a field `SkipJsonSchema[...]`.
 
 ### The response check (`route_config._check_response_model`)
@@ -243,7 +243,7 @@ In localdev every call validates the return value through `objects.validate_rout
 - **Errors** (`routeErrors.py`, a shared file; its docstring has the whole mapping): every generated handler answers a failure through `routeFailure(e, status=403|400)` and logs it once, as its own log entry plus a traceback WITHOUT the exception's message, chained causes or locals. Anything that is not the caller's to fix (a `KeyError`, a Mongo error, a bug) is a real HTTP 500 with "Something went wrong on our side. Please try again. (error id X)"; a sibling that failed (`services/__request.py`'s `ServiceUnavailable`, or a `ServiceError` other than a 400 with a message) is a 503 naming it. The error id is in the log line's traceback. A sibling's 400 passes its own message on; `mongoDb.OutdatedDataError` (the `_version` lock) is a 400. So raise a `ValueError` with a message the user can act on; any other exception reaches the user only as the generic message.
 - `RouteResponseModels`, `RouteRequestBodies` and `PublicRoute` map route names to their model, body and public flag. The schema imports are exactly the models the routes reference.
 - Every schema, nested `$defs` included, is closed (`additionalProperties: false`), so a renamed nested field fails `tsc`; a `$ref` with a sibling description is wrapped in `allOf`, so json2ts never emits a duplicate `X1` interface.
-- It refuses: a route without a `responseModel`; a model that is not a top-level `objects.py` class; a RootModel outside the allowlist; a model typing a secret key; a param that is unannotated, a bare `dict`/`list`/`tuple`/`Any`, a `datetime`/`date`/`time`, a class outside `objects.py`, a container TS cannot express, or a `None` default without `| None`.
+- It refuses: a route without a `responseModel`; a model that is not a class the `objects` package exports; a RootModel outside the allowlist; a model typing a secret key; a param that is unannotated, a bare `dict`/`list`/`tuple`/`Any`, a `datetime`/`date`/`time`, a class outside the `objects` package, a container TS cannot express, or a `None` default without `| None`.
 - The generated API handlers bind the request body whatever was sent (anything but a JSON object reads as `{}`, so the params are None and the route answers 400), refuse an object or a list for a scalar param (`str`/`int`/`float`/`bool`/`Literal`, or Optional of one) with a 400 "Invalid <param>" before the route runs, and the same for anything but an object for a dict or model param, or anything but a list for a list param (None only when Optional or defaulted; no other coercion), and log which of their own params a POST sent (never values, never another key). A `createAccessToken` route logs no request data at all.
 - **Caller auth** (`callerAuth.py`, a shared file; its docstring has the rules): AppCreator puts `@requirePushCaller` under the route of every Pub/Sub push handler and `@requireServiceCaller` under every `@route_config(serviceOnly=True)` route (exactly the routes of `actions/ServiceToServiceActions.py`, pinned by `test_callerAuth.py`). Both require a Google-signed ID token: a push's audience is its own URL (`https://<host><path>`, what pubSubAdmin.py configures) and its email `PUSH_SERVICE_ACCOUNTS`; a service call's audience is this service's URL and its email `SERVICE_CALLER_ACCOUNTS` (`services/__request.py` fetches the token from the metadata server on Cloud Run, for the sibling's URL; a local run sends none). A refusal is a 401 logged with its reason, never the token. Localdev skips the check; `CALLER_AUTH_MODE=report` with an unexpired `CALLER_AUTH_REPORT_UNTIL` (a date, through that day UTC, or a datetime with its offset, at most 30 days ahead) logs refusals and runs the route; past that date, or without a readable one, it enforces, and report mode logs a WARNING at startup (roll out with both set: deploy the callers, watch the `callerRejected` log lines, then unset them). `callerVerified()` tells a route whether this request's caller passed the check. A `serviceOnly` route takes no JWT.
 - **Accounts and identities between sibling services**: a service's `SERVICE_CALLER_ACCOUNTS` lists exactly the runtime accounts (`<svc>-run@<project>.iam.gserviceaccount.com`) of the sibling services that call it, nothing else (never a push account, never its own). Its `PUSH_SERVICE_ACCOUNTS` starts with its own `<svc>-push` account (`[0]`, what its own subscriptions mint tokens for) and then lists the `<svc>-push` account of every sibling that publishes to it: a push subscription lives with the publisher and mints its OIDC token for the PUBLISHER's push account, so without that entry every cross-service push is a 401 and dead-letters. `test_callerAuth.py` restates both tuples in its `EXPECTED_*` block. `create-star-app link` adds a sibling's runtime account once its record has one; `cloud-setup`'s `siblings.wire` makes each repo of a pair accept the other (both tuples and their `EXPECTED_*` mirrors) and commits and pushes those two files there, so that repo's trigger redeploys with them; `cloud-teardown` removes our accounts from the siblings again. A refused call or push is a 401 `callerRejected` line in the callee's log: run `create-star-app cloud-setup --step siblings.wire` in either repo.
@@ -650,7 +650,7 @@ assert p.category is None  # True — coerced to None
 | `test_pubSubContracts.py` | `REPLAY_STEPS` / `REDELIVERY_STEPS` / `EXPECTED_PUBLISHERS` per handler (never the two `star-app shared` regions: see "Shared files") |
 | `test_ifAllServicesMatchConsumerProjectName.py` | `SERVICES_WITHOUT_MOCK_DATA_YET` when a target repo has no mock data yet |
 | `services/<name>.py` | One file per remote service; `projectName=` when it differs from the filename |
-| `objects.py` | New Pydantic models |
+| `objects/<domain>.py` | New Pydantic models (in the module of their domain, re-exported from `objects/__init__.py`) |
 | `sharedConstants.py` | Values the client needs too (see the warning in its docstring — everything public there ships to every browser) |
 | `roles.py` | New roles and user types |
 | `AuthHandler.py` | Auth-related logic |
@@ -677,7 +677,7 @@ Never edit one repo's copy alone: change the template in create-star-app, commit
 
 ### Adding a new API endpoint:
 
-1. Add (or reuse) its response model in `objects.py`: a `ResponseModel` declaring exactly the fields it sends, e.g. `class MyThingResponse(ResponseModel)`.
+1. Add (or reuse) its response model in `objects/<domain>.py` (re-exported from `objects/__init__.py`): a `ResponseModel` declaring exactly the fields it sends, e.g. `class MyThingResponse(ResponseModel)`.
 2. Add a method to a class in `ApiRequests.py`:
    ```python
    @route_config(httpMethod='POST', jwtRequired=True, successMessage='Done',

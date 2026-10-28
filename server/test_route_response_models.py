@@ -1868,22 +1868,36 @@ def _handWrittenServerSources() -> list:
 def test_cutProjection_isReachedOnlyThroughTheReadAndCutHelpers():
     """Only db.readResponse(s) and db.aggregateResponses read a nullable
     sub-document whole, because they cut every document they read: no other
-    module reaches the cut projection, and none passes a cut flag."""
+    module reaches the cut projection, and none passes a cut flag.
+    The objects package's __init__ may name them in its re-export imports
+    only."""
     defining = {
         os.path.normcase(os.path.abspath(path)) for path in (
             inspect.getsourcefile(ObjectsModule._projection_of_for_cut),
             inspect.getsourcefile(type(db).aggregateResponses))
     }
+    reExports = os.path.normcase(os.path.abspath(ObjectsModule.__file__))
     reach = re.compile(r'\b(_projection_of_for_cut|_projection|cutAfter)\b')
     reaching = []
     for path in _handWrittenServerSources():
-        if os.path.normcase(os.path.abspath(path)) in defining:
+        path = os.path.normcase(os.path.abspath(path))
+        if path in defining:
             continue
         with open(path, encoding='utf-8') as source:
-            reaching += [
-                f'{path}:{number}' for number, line in enumerate(source, 1)
-                if reach.search(line)
-            ]
+            text = source.read()
+        importLines = set()
+        if path == reExports:
+            importLines = {
+                number
+                for node in ast.parse(text).body
+                if isinstance(node, (ast.Import, ast.ImportFrom))
+                for number in range(node.lineno, node.end_lineno + 1)
+            }
+        reaching += [
+            f'{path}:{number}'
+            for number, line in enumerate(text.splitlines(), 1)
+            if reach.search(line) and number not in importLines
+        ]
     assert len(defining) == 2
     assert reaching == []
 

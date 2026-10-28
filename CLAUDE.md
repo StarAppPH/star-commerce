@@ -83,7 +83,7 @@
 - All server responses from POST actions must go through the app's unified Snackbar.
 
 ### No DB Queries in Model Classes
-- Pydantic model classes (e.g., in `objects.py`) must never import or call database functions (`db`) directly.
+- Pydantic model classes (e.g., in the `server/objects/` package) must never import or call database functions (`db`) directly.
 - All database reads and writes belong in action functions (e.g., `server/actions/`).
 - Models should only contain pure business logic, validation, and data transformation.
 
@@ -187,7 +187,7 @@ Every Star App service runs on its own local port, and its sibling checkouts sit
 
 ## Architecture
 
-- **Code generation**: AppCreator.py generates `app.py`, `appPubSub.py`, `ServerRequests.ts`, `Server.ts`, `ApiResponse.ts` and `schemas/*.ts` from `ApiRequests.py`, `PubSubRequests.py` and `objects.py`, plus `client/lib/generated/serverConstants.ts` from `sharedConstants.py` (regenerate that one alone with `python AppCreator.py --constants-only`), and last refreshes `server/pubsub_map.json` + `server/PUBSUB_MAP.md`. Do not edit generated files.
+- **Code generation**: AppCreator.py generates `app.py`, `appPubSub.py`, `ServerRequests.ts`, `Server.ts`, `ApiResponse.ts` and `schemas/*.ts` from `ApiRequests.py`, `PubSubRequests.py` and the `objects/` package (one module per domain, re-exported by `objects/__init__.py`), plus `client/lib/generated/serverConstants.ts` from `sharedConstants.py` (regenerate that one alone with `python AppCreator.py --constants-only`), and last refreshes `server/pubsub_map.json` + `server/PUBSUB_MAP.md`. Do not edit generated files.
 - **Service-to-service routes**: routes another service calls over HTTP go in `server/actions/ServiceToServiceActions.py` (a mixin of `ApiRequests`). Their response is a contract with that service: the unused-response-field gate skips them, and fails on a route a sibling calls that is not there, or one there that no sibling calls. Each one declares `@route_config(serviceOnly=True)` (and no other route does): outside localdev it answers only a caller with a Google ID token from `callerAuth.SERVICE_CALLER_ACCOUNTS`, which `services/__request.py` sends on Cloud Run.
 - **Caller auth** (`callerAuth.py`, shared): every Pub/Sub push handler checks the push's OIDC token (`PUSH_SERVICE_ACCOUNTS`, audience = the push URL) and every `serviceOnly` route its caller's ID token; a refusal is a 401. Skipped in localdev only. `CALLER_AUTH_MODE=report` with an unexpired `CALLER_AUTH_REPORT_UNTIL` on a service logs refusals and lets them through (the rollout phase, which ends by itself on that date); unset, past that date, more than 30 days ahead or without a readable one, it enforces. The accounts live in callerAuth.py's per-repo block; pubSubAdmin.py gives every push subscription `PUSH_SERVICE_ACCOUNTS[0]`.
 - **Database**: MongoDB, PyMongo singleton via `mongoDb.py`, optimistic locking with `_version`.
@@ -195,7 +195,7 @@ Every Star App service runs on its own local port, and its sibling checkouts sit
 - **Production data locally**: `server/tools/dumpProdDataToLocalDev.cmd` restores prod into `teststarCommerce`. Its source, first found wins: `MONGO_DUMP_URI` in the environment, `MONGO_DUMP_URI` in `server/cloud.env` (written by cloud-setup), or `MONGO_DUMP_HOST` + `MONGO_DUMP_USER`, with mongodump asking for the password (masked). With a URI the password is on mongodump's command line: use a read-only user. The tests wipe their `*Scratch` DB, never that one.
 - **Auth**: Firebase + JWT (Flask-JWT-Extended).
 - **Typed API responses** (details in `server/ARCHITECTURE.md`):
-  - Every `ApiRequests` `@route_config` route declares `responseModel=<objects.py ResponseModel>`; AppCreator refuses to generate without one. `PubSubRequests` push handlers are exempt.
+  - Every `ApiRequests` `@route_config` route declares `responseModel=<objects ResponseModel>`; AppCreator refuses to generate without one. `PubSubRequests` push handlers are exempt.
   - A responseModel, and every Pub/Sub publisher's payload model, is a `ResponseModel` all the way down: every nested model too, inheriting from `ResponseModel`s only, never a database model (`MongoModel`, `AppModel`, `StoredDocumentKeys`, `*View`). AppCreator refuses otherwise, naming the model's file:line (`responseModelCheck.py`); a test asserts it.
   - A `RootModel` (bare list or number) is refused except for the routes in `AppCreator.CROSS_REPO_BARE_RESPONSE_ROUTES` (each with its reason and consumers; a test pins the map; empty in a new project). Never add a route to avoid wrapping its answer.
   - AppCreator generates `Promise<ApiResponse<Model>>` methods plus the `RouteResponseModels` / `RouteRequestBodies` / `PublicRoute` maps.
