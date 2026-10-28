@@ -1,10 +1,11 @@
 """photoStorage.py — product photos in Firebase Storage (hand-written).
 
 The bucket is the Firebase project's: FIREBASE_STORAGE_BUCKET, else
-<FIREBASE_PROJECT_ID>.firebasestorage.app. In localdev with
-STORAGE_EMULATOR_HOST or FIREBASE_STORAGE_EMULATOR_HOST set (create-star-app
-dev sets the second), every call goes to the local Storage emulator
-instead; every other environment ignores both.
+<FIREBASE_PROJECT_ID>.firebasestorage.app. In localdev every call goes to
+the local Storage emulator, STORAGE_EMULATOR_HOST or
+FIREBASE_STORAGE_EMULATOR_HOST (create-star-app dev sets the second) on a
+loopback host, and without one it is a 503: localdev never reaches a real
+bucket. Every other environment ignores both.
 
 - objectPathFromUrl(): the object path of a Firebase download URL of our
   bucket (https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>,
@@ -22,7 +23,8 @@ instead; every other environment ignores both.
 
 A refusal names the field (imageUrls[0]), never a URL or a path. The client
 is one per process, built on first use under a lock (it is no Mongo client:
-the connection budget is unchanged). A Storage failure is a 503
+the connection budget is unchanged). localdev never builds one with real
+credentials: without a loopback emulator, every call is a 503. A Storage failure is a 503
 ("Photo storage is unavailable right now"), logged by class only.
 """
 
@@ -101,6 +103,24 @@ def unavailable() -> ServiceUnavailable:
     return ServiceUnavailable(STORAGE_SERVICE, 'photos')
 
 
+def _localEmulatorHost() -> str:
+    """The emulator's host:port in localdev, which never reaches a real
+    bucket: with no emulator variable, or one on a host that is no
+    loopback, it is unavailable() (a WARNING names the variable, never its
+    value)."""
+    host = emulatorHost()
+    if host is None:
+        setVariables = [v for v in EMULATOR_VARIABLES if os.getenv(v)]
+        logging.warning({
+            'event': 'photoStorageNoLocalEmulator',
+            'variable': setVariables[0] if setVariables else None,
+            'detail': 'localdev reaches Storage only through the emulator '
+                      'on a loopback host',
+        })
+        raise unavailable()
+    return host
+
+
 def _storageErrors() -> tuple:
     """What a failed Storage call raises: an API error, a transport error
     or missing credentials."""
@@ -129,14 +149,17 @@ def _storageFailure(error: Exception) -> ServiceUnavailable:
 
 
 def _bucket():
-    """Our bucket, through the one Storage client of the process: the
-    emulator's (anonymous) in localdev when it is set, else Google's with
-    the service's own credentials (google.auth.default)."""
+    """Our bucket, through the one Storage client of the process: in
+    localdev the emulator's (anonymous) only, and unavailable() without one
+    (_localEmulatorHost), so localdev never builds a client with real
+    credentials; elsewhere Google's with the service's own credentials
+    (google.auth.default)."""
     global _client
+    # Checked on every call, before the cached client is used.
+    host = _localEmulatorHost() if _isLocalDev() else None
     with _clientLock:
         if _client is None:
             from google.cloud import storage
-            host = emulatorHost()
             if host is not None:
                 from google.auth.credentials import AnonymousCredentials
                 from AuthHandler import _firebaseProjectId
@@ -283,6 +306,7 @@ def saveStorePhoto(storeId: str, photoId: str, data: bytes,
     fresh random download token, before `deadline` (time.monotonic()), and
     return its download URL. Create-only (if_generation_match=0: the path
     is a fresh id), which also lets the SDK retry the upload."""
+    from google.api_core.exceptions import PreconditionFailed
     path = storePhotoPath(storeId, photoId)
     token = secrets.token_urlsafe(24)
     try:
@@ -290,6 +314,10 @@ def saveStorePhoto(storeId: str, photoId: str, data: bytes,
         blob.metadata = {DOWNLOAD_TOKEN_KEY: token}
         blob.upload_from_string(data, content_type=STORE_PHOTO_CONTENT_TYPE,
                                 if_generation_match=0, **_limits(deadline))
+    except PreconditionFailed:
+        # A retry found the object there: the path is a fresh id, so it is
+        # the first attempt's upload, with this same token. Saved.
+        pass
     except _storageErrors() as error:
         raise _storageFailure(error) from None
     return downloadUrl(path, token)

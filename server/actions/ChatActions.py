@@ -39,8 +39,9 @@ from actions.ProductActions import _validLimit
 from actions.callSlots import slot
 from actions.StoreActions import _validText, requireOwnerStore, setUpStore
 # QUOTA_ATTEMPTS is imported for the tests, which read it here.
-from actions.usageCounters import (QUOTA_ATTEMPTS, appDay, giveBackQuota,
-                                   takeQuota, usageExpiry, usageKey)
+from actions.usageCounters import (QUOTA_ATTEMPTS, appDay, giveBackQuotas,
+                                   takeQuota, takeQuotas, usageExpiry,
+                                   usageKey)
 from mongoDb import db
 from objects import (CHAT_MESSAGE_MAX_LENGTH, CHAT_TITLE_MAX_LENGTH,
                      CHAT_TOOL_CALL_ID_MAX_LENGTH,
@@ -123,8 +124,9 @@ def _takeQuota(key: str, cap: int, expireAt: datetime.datetime) -> bool:
 
 
 def _giveBackQuota(*keys: str) -> None:
-    for key in keys:
-        giveBackQuota(CHAT_USAGE, key)
+    """Give one message back on each ChatUsage counter of `keys`; a failure
+    is logged, never raised (usageCounters.giveBackQuotas)."""
+    giveBackQuotas(CHAT_USAGE, keys)
 
 
 def _takeCustomerQuota(userId: str, storeId: str) -> tuple[str, str]:
@@ -133,13 +135,12 @@ def _takeCustomerQuota(userId: str, storeId: str) -> tuple[str, str]:
     counters' keys."""
     day = appDay(_now())
     expireAt = usageExpiry(day)
-    customerKey = usageKey('customer', userId, day)
-    storeKey = usageKey('store', storeId, day)
-    if not _takeQuota(customerKey, CUSTOMER_DAILY_CHAT_CAP, expireAt):
-        raise ValueError(CUSTOMER_CAP_REACHED)
-    if not _takeQuota(storeKey, STORE_DAILY_CHAT_CAP, expireAt):
-        _giveBackQuota(customerKey)
-        raise ValueError(STORE_CAP_REACHED)
+    customerKey, storeKey = takeQuotas(CHAT_USAGE, [
+        (usageKey('customer', userId, day), CUSTOMER_DAILY_CHAT_CAP,
+         CUSTOMER_CAP_REACHED),
+        (usageKey('store', storeId, day), STORE_DAILY_CHAT_CAP,
+         STORE_CAP_REACHED),
+    ], expireAt)
     return customerKey, storeKey
 
 

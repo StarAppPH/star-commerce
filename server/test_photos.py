@@ -6,6 +6,7 @@ No real Meta or Storage call: a FakeBucket replaces photoStorage._bucket()
 chatModel.client(), recording every images.edit call."""
 
 import base64
+import datetime
 import logging
 import time
 from types import SimpleNamespace
@@ -27,6 +28,8 @@ COLLECTIONS = ['Users', 'Bootstrap', 'Stores', 'Policies', 'GeneratedPhotos',
 ADMIN = 'ph-admin'
 BUCKET = 'ph-test-bucket.firebasestorage.app'
 JPEG = b'\xff\xd8\xff' + b'jpeg-bytes'
+# Far ahead, so no TTL monitor deletes a counter mid-test.
+FAR_EXPIRY = datetime.datetime(2099, 1, 1, tzinfo=datetime.timezone.utc)
 
 api = ApiRequests()
 
@@ -292,3 +295,97 @@ def test_editImages_skipsABadImage_andLogsAnEmptyAnswer(monkeypatch, caplog):
     events = [r.msg.get('event') for r in caplog.records
               if isinstance(r.msg, dict)]
     assert 'imageModelBadImage' in events and 'imageModelEmpty' in events
+
+
+@pytest.mark.parametrize('emulator', [None, '10.0.0.5:9199'])
+def test_localdev_withoutALoopbackEmulator_isA503_neverRealCredentials(
+        clean, monkeypatch, caplog, emulator):
+    import google.auth
+    from routeErrors import routeFailure
+
+    def realCredentials(*args, **kwargs):
+        raise AssertionError('google.auth.default must not be called')
+
+    monkeypatch.setattr(google.auth, 'default', realCredentials)
+    monkeypatch.setattr(photoStorage, '_client', None)
+    if emulator is not None:
+        monkeypatch.setenv('STORAGE_EMULATOR_HOST', emulator)
+    createTestStore(ADMIN)
+    api.updateMyStoreTheme(ADMIN, photoStyle='plain')
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(Exception) as error:
+            api.generateProductPhotos(
+                ADMIN, [downloadUrl(f'users/{ADMIN}/mug.jpg')])
+
+    assert routeFailure(error.value, status=400).status == 503
+    assert photoStorage._client is None
+    [warning] = [r.msg for r in caplog.records if isinstance(r.msg, dict)
+                 and r.msg.get('event') == 'photoStorageNoLocalEmulator']
+    assert warning['variable'] == (None if emulator is None
+                                   else 'STORAGE_EMULATOR_HOST')
+    assert '10.0.0.5' not in caplog.text
+    assert usageCounts() == [0, 0]
+
+
+def test_aRetriedUploadFinding412_isSaved(fakes, monkeypatch):
+    from google.api_core.exceptions import PreconditionFailed
+    store, url = themedStoreWithPhoto(fakes)
+    fakes.images.returned = 1
+
+    def landedThenRetried(self, data, content_type, **kwargs):
+        raise PreconditionFailed('the first attempt landed')
+
+    monkeypatch.setattr(FakeBlob, 'upload_from_string', landedThenRetried)
+
+    res = api.generateProductPhotos(ADMIN, [url])
+
+    assert len(res['photos']) == 1
+    assert len(db.read({'storeId': store['_id']}, 'GeneratedPhotos')) == 1
+
+
+def test_capAllZero_isPhotosTurnedOff(fakes, monkeypatch):
+    _, url = themedStoreWithPhoto(fakes)
+    monkeypatch.setenv(PhotoActions.PHOTO_DAILY_CAP_ALL_VARIABLE, '0')
+
+    with pytest.raises(ValueError) as error:
+        api.generateProductPhotos(ADMIN, [url])
+    assert str(error.value) == PhotoActions.PHOTOS_TURNED_OFF
+    assert usageCounts() == []
+
+
+def test_takeQuotas_aDatabaseErrorGivesBackWhatWasTaken(clean, monkeypatch):
+    from pymongo.errors import PyMongoError
+    from actions import usageCounters
+    expireAt = FAR_EXPIRY
+    real = usageCounters.takeQuota
+    calls = []
+
+    def failingSecond(collection, key, cap, expireAt, amount=1):
+        calls.append(key)
+        if len(calls) == 2:
+            raise PyMongoError('down')
+        return real(collection, key, cap, expireAt, amount)
+
+    monkeypatch.setattr(usageCounters, 'takeQuota', failingSecond)
+    with pytest.raises(PyMongoError):
+        usageCounters.takeQuotas('PhotoUsage', [('a', 5, 'A'), ('b', 5, 'B')],
+                                 expireAt, amount=3)
+    assert usageCounts() == [0]
+
+
+def test_giveBackQuotas_logsAndSwallowsAFailure(clean, monkeypatch, caplog):
+    from pymongo.errors import PyMongoError
+    from actions import usageCounters
+    given = []
+
+    def flaky(collection, key, amount=1):
+        given.append(key)
+        if key == 'a':
+            raise PyMongoError('down')
+
+    monkeypatch.setattr(usageCounters, 'giveBackQuota', flaky)
+    with caplog.at_level(logging.WARNING):
+        usageCounters.giveBackQuotas('PhotoUsage', ['a', 'b'])
+    assert given == ['a', 'b']
+    assert 'quotaRefundFailed' in caplog.text and 'down' not in caplog.text

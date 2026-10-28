@@ -5,10 +5,12 @@ A counter is one document of its collection, _id
 TTL index on expireAt (mongoDb.ensureIndexes) deletes it a day after its
 day ends. takeQuota counts against a cap atomically, so racing callers
 never pass it together; giveBackQuota takes back what a failed call
-counted.
+counted. takeQuotas and giveBackQuotas do the same for several counters
+at once (a call counted per user and per store, say).
 """
 
 import datetime
+import logging
 
 from pymongo.errors import DuplicateKeyError
 
@@ -76,3 +78,35 @@ def giveBackQuota(collection: str, key: str, amount: int = 1) -> None:
                         collection,
                         upsert=False,
                         projection={'_id': 1})
+
+
+def giveBackQuotas(collection: str, keys, amount: int = 1) -> None:
+    """giveBackQuota on each counter of `keys`. A failure is logged (its
+    class only) and swallowed, so the error that caused the refund is the
+    one the caller sees, and the other counters are still given back."""
+    for key in keys:
+        try:
+            giveBackQuota(collection, key, amount)
+        except Exception as error:
+            logging.warning({'event': 'quotaRefundFailed',
+                             'collection': collection,
+                             'errorClass': type(error).__name__})
+
+
+def takeQuotas(collection: str, counters: list[tuple[str, int, str]],
+               expireAt: datetime.datetime, amount: int = 1) -> list[str]:
+    """Count `amount` on each counter (its key, cap and refusal message), in
+    order. When one is refused, the ones already taken are given back and
+    its message is raised (a ValueError); when a take fails (a database
+    error), they are given back and the error re-raised. Returns the
+    keys."""
+    taken = []
+    try:
+        for key, cap, message in counters:
+            if not takeQuota(collection, key, cap, expireAt, amount):
+                raise ValueError(message)
+            taken.append(key)
+    except BaseException:
+        giveBackQuotas(collection, taken, amount)
+        raise
+    return taken

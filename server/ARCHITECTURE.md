@@ -720,9 +720,9 @@ Never edit one repo's copy alone: change the template in create-star-app, commit
 | `databaseName` | The database to use. Required in cloudprod (set it on the service, its jobs and the predeploy job); elsewhere it defaults to `teststarCommerce` |
 | `FIREBASE_PROJECT_ID` | Optional: the Firebase project sign-in tokens must come from (blank or unset: `sharedConstants.FIREBASE_PROJECT_ID`) |
 | `FIREBASE_AUTH_EMULATOR_HOST` | Local only (`create-star-app dev` sets it): `127.0.0.1:9099`. With `ENVIRONMENT=localdev` the server accepts the Auth emulator's unsigned tokens; every other environment ignores it. Never set it on a deployed service |
-| `FIREBASE_STORAGE_EMULATOR_HOST` | Local only (`create-star-app dev` sets it): `127.0.0.1:9199`, the Storage emulator. With `ENVIRONMENT=localdev`, photoStorage.py reads and writes the emulator (as it does with `STORAGE_EMULATOR_HOST`); every other environment ignores both |
+| `FIREBASE_STORAGE_EMULATOR_HOST` | Local only (`create-star-app dev` sets it): `127.0.0.1:9199`, the Storage emulator. With `ENVIRONMENT=localdev`, photoStorage.py reads and writes the emulator (as it does with `STORAGE_EMULATOR_HOST`), on a loopback host only; without one, localdev photo calls are a 503 and never reach a real bucket. Every other environment ignores both |
 | `FIREBASE_STORAGE_BUCKET` | Optional: the bucket of the product photos (blank or unset: `<FIREBASE_PROJECT_ID>.firebasestorage.app`) |
-| `PHOTO_DAILY_CAP_ALL` | Optional: the most product photos all stores make together per day (default 1000; 0 turns photos off; an invalid value logs `photoDailyCapAllInvalid` and uses the default) |
+| `PHOTO_DAILY_CAP_ALL` | Optional: the most product photos all stores make together per day (default 1000; 0 turns photos off, "Photo generation is turned off right now"; an invalid value logs `photoDailyCapAllInvalid` and uses the default) |
 | `MODEL_API_KEY` | Meta's Model API key, for the chat and the product photos (without it both answer a 503) |
 
 ### Running Locally

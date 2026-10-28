@@ -37,7 +37,7 @@ import imageModel
 import photoStorage
 from actions.callSlots import slot
 from actions.StoreActions import _validText, requireOwnerStore
-from actions.usageCounters import (appDay, giveBackQuota, takeQuota,
+from actions.usageCounters import (appDay, giveBackQuotas, takeQuotas,
                                    usageExpiry, usageKey)
 from mcpTools import mcp_tool
 from mongoDb import db
@@ -76,6 +76,7 @@ NO_PHOTO_STYLE = "Set your store's photo style first"
 PHOTO_CAP_REACHED = ("Your store has reached today's photo limit, try again "
                      'tomorrow')
 PHOTO_ALL_CAP_REACHED = 'Photo generation is busy today, try again tomorrow'
+PHOTOS_TURNED_OFF = 'Photo generation is turned off right now'
 IMAGE_URLS_COUNT = f'Send 1 to {PHOTO_REFERENCES_MAX} imageUrls'
 IMAGE_URLS_TWICE = 'imageUrls lists the same photo twice'
 PHOTO_COUNT = f'count is a whole number from 1 to {PHOTOS_PER_CALL_MAX}'
@@ -164,34 +165,20 @@ def dailyCapAll() -> int:
     return cap
 
 
-def _giveBack(keys: tuple[str, ...], amount: int) -> None:
-    """Give `amount` back on each counter of `keys`. A failure is logged
-    (class only), never raised, so the error that caused the refund is the
-    one the caller sees."""
-    for key in keys:
-        try:
-            giveBackQuota(PHOTO_USAGE, key, amount)
-        except Exception as error:
-            logging.warning({'event': 'photoQuotaRefundFailed',
-                             'errorClass': type(error).__name__})
-
-
-def _takePhotoQuota(storeId: str, count: int) -> tuple[str, str]:
+def _takePhotoQuota(storeId: str, count: int) -> list[str]:
     """Count `count` photos against the store's daily cap and all stores'
     (dailyCapAll), refused when either would pass (and then counted against
-    neither). Returns the two counters' keys."""
+    neither: usageCounters.takeQuotas). A cap of 0 is photos turned off.
+    Returns the two counters' keys."""
+    capAll = dailyCapAll()
+    if capAll == 0:
+        raise ValueError(PHOTOS_TURNED_OFF)
     day = appDay(_now())
-    expireAt = usageExpiry(day)
-    storeKey = usageKey('photos', storeId, day)
-    allKey = usageKey('photos', ALL_STORES, day)
-    if not takeQuota(PHOTO_USAGE, storeKey, STORE_DAILY_PHOTO_CAP, expireAt,
-                     amount=count):
-        raise ValueError(PHOTO_CAP_REACHED)
-    if not takeQuota(PHOTO_USAGE, allKey, dailyCapAll(), expireAt,
-                     amount=count):
-        _giveBack((storeKey,), count)
-        raise ValueError(PHOTO_ALL_CAP_REACHED)
-    return storeKey, allKey
+    return takeQuotas(PHOTO_USAGE, [
+        (usageKey('photos', storeId, day), STORE_DAILY_PHOTO_CAP,
+         PHOTO_CAP_REACHED),
+        (usageKey('photos', ALL_STORES, day), capAll, PHOTO_ALL_CAP_REACHED),
+    ], usageExpiry(day), amount=count)
 
 
 def _makeImages(userId: str, store: dict, paths: list[str], count: int,
@@ -216,7 +203,7 @@ def _makeImages(userId: str, store: dict, paths: list[str], count: int,
                                        count, deadline)
     finally:
         # Only the photos returned are billed: the rest are not counted.
-        _giveBack(keys, count - len(images))
+        giveBackQuotas(PHOTO_USAGE, keys, count - len(images))
     if not images:
         raise imageModel.unavailable()
     return images
