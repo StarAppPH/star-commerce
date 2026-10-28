@@ -731,6 +731,111 @@ def payOrder():
 
 
 
+@app.route('/completeOrder', methods=['POST'])
+@jwt_required()
+def completeOrder():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    orderId = data.get('orderId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(orderId, (dict, list)):
+            raise ValueError('Invalid orderId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().completeOrder(userId, orderId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'completeOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'completeOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'completeOrder', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Order completed", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/cancelStoreOrder', methods=['POST'])
+@jwt_required()
+def cancelStoreOrder():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    orderId = data.get('orderId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(orderId, (dict, list)):
+            raise ValueError('Invalid orderId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().cancelStoreOrder(userId, orderId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'cancelStoreOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'cancelStoreOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'cancelStoreOrder', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Order cancelled", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/cancelMyOrder', methods=['POST'])
+@jwt_required()
+def cancelMyOrder():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    orderId = data.get('orderId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(orderId, (dict, list)):
+            raise ValueError('Invalid orderId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().cancelMyOrder(userId, storeId, orderId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'cancelMyOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'cancelMyOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'cancelMyOrder', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Order cancelled", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 # Never compressed: the routes that issue an access token (BREACH; see
 # AppCreator._compression_block).
 NO_COMPRESSION_ENDPOINTS = frozenset(['devLogin', 'loginWithGoogle', 'startGuestSession'])

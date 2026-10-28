@@ -78,9 +78,29 @@ export type Paidat = string | null;
  */
 export type Expiresat = string;
 /**
+ * When it was handed over
+ */
+export type Completedat = string | null;
+/**
+ * When it was cancelled
+ */
+export type Cancelledat = string | null;
+/**
+ * Why it was cancelled
+ */
+export type Cancelreason = ("expired" | "byStore" | "byCustomer") | null;
+/**
+ * When its payment was refunded
+ */
+export type Refundedat = string | null;
+/**
  * The payment provider's id of the payment
  */
 export type Paymentreference = string | null;
+/**
+ * The payment provider's id of the refund
+ */
+export type Refundreference = string | null;
 
 /**
  * One order as its store's admin sees it. Each field restates
@@ -98,7 +118,12 @@ export interface StoreOrderRow {
   paymentMethod: Paymentmethod;
   paidAt: Paidat;
   expiresAt: Expiresat;
+  completedAt: Completedat;
+  cancelledAt: Cancelledat;
+  cancelReason: Cancelreason;
+  refundedAt: Refundedat;
   paymentReference: Paymentreference;
+  refundReference: Refundreference;
 }
 /**
  * One item of an order as a route sends it: OrderItem without its

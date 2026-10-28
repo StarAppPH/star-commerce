@@ -74,6 +74,22 @@ export type Paidat = string | null;
  */
 export type Expiresat = string;
 /**
+ * When it was handed over
+ */
+export type Completedat = string | null;
+/**
+ * When it was cancelled
+ */
+export type Cancelledat = string | null;
+/**
+ * Why it was cancelled
+ */
+export type Cancelreason = ("expired" | "byStore" | "byCustomer") | null;
+/**
+ * When its payment was refunded
+ */
+export type Refundedat = string | null;
+/**
  * The orders, newest first
  */
 export type Orders = MyOrderRow[];
@@ -83,7 +99,7 @@ export interface MyOrderListResponse {
 }
 /**
  * One order as the customer who placed it sees it: StoreOrderRow
- * without the contact number and the payment reference. Each field
+ * without the contact number and the payment and refund references. Each field
  * restates Order's, which test_route_response_models.py's MIRRORS keeps
  * in step.
  */
@@ -97,6 +113,10 @@ export interface MyOrderRow {
   paymentMethod: Paymentmethod;
   paidAt: Paidat;
   expiresAt: Expiresat;
+  completedAt: Completedat;
+  cancelledAt: Cancelledat;
+  cancelReason: Cancelreason;
+  refundedAt: Refundedat;
 }
 /**
  * One item of an order as a route sends it: OrderItem without its

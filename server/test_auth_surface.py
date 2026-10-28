@@ -88,6 +88,12 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     # only an order whose customerId is the caller.
     'createOrder',
     'payOrder',
+    # Fulfillment: completeOrder and cancelStoreOrder reach only the
+    # orders of the store the caller owns (requireOwnerStore);
+    # cancelMyOrder only an order whose customerId is the caller.
+    'completeOrder',
+    'cancelStoreOrder',
+    'cancelMyOrder',
 }
 
 

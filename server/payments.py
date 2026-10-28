@@ -1,6 +1,6 @@
 """payments.py: the payment provider, a demo one for now.
 
-These two functions are the one place a real gateway (PayMongo, Stripe)
+These functions are the one place a real gateway (PayMongo, Stripe)
 plugs in. They are pure logic (no db, no route): models and actions never
 import a gateway directly.
 
@@ -15,12 +15,20 @@ the next expiry sweep cancels it.
 A real gateway also needs a claim state between pending and paid (say
 'paying', resolved by a timeout or the gateway's webhook): today a process
 that dies between the claim and the charge leaves the order paid with no
-charge made.
+charge made. An admin who completes or cancels the order between the claim
+and the charge is another reason: payOrder's revert of a failed charge
+matches a paid order only, so that order stays completed or cancelled with
+no charge made.
+
+cancelStoreOrder refunds a paid order only after it turned it cancelled,
+so an order is never paid and refunded at once. A refund that fails
+leaves it cancelled with no refundedAt: a real gateway needs a retry of
+those (out of scope for the demo).
 """
 
 import secrets
 
-from objects import PAYMENT_REFERENCE_PREFIX
+from objects import PAYMENT_REFERENCE_PREFIX, REFUND_REFERENCE_PREFIX
 
 
 def newPaymentReference() -> str:
@@ -37,3 +45,21 @@ def chargeDemoPayment(orderId: str, reference: str, amount: float,
 
     A real gateway would send `orderId` as its idempotency key, so a
     retried payment of one order never charges twice."""
+
+
+def newRefundReference() -> str:
+    """The reference of a refund about to be made, refunding nothing: what
+    cancelStoreOrder stores once the refund went through."""
+    return REFUND_REFERENCE_PREFIX + secrets.token_hex(8)
+
+
+def refundDemoPayment(orderId: str, paymentReference: str,
+                      refundReference: str, amount: float,
+                      currency: str) -> None:
+    """Refund `amount` (in `currency`) of the order's payment; raises when
+    the refund does not go through. The demo refunds every payment and
+    moves nothing.
+
+    A real gateway refunds against `paymentReference` (the charge) and
+    sends `refundReference` as its idempotency key, so a retried refund of
+    one order never refunds twice."""

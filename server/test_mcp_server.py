@@ -92,11 +92,11 @@ def test_eachAudienceListsOnlyItsTools():
 
     assert asyncio.run(names('customer')) == {'listStoreProducts',
                                               'getMyOrders', 'createOrder',
-                                              'payOrder'}
+                                              'payOrder', 'cancelMyOrder'}
     assert asyncio.run(names('admin')) == {
         'getUserStore', 'createUserStore', 'addStoreProduct',
         'addStoreProducts', 'updateStoreProduct', 'listMyStoreProducts',
-        'getStoreOrders'
+        'getStoreOrders', 'completeOrder', 'cancelStoreOrder'
     }
 
 
@@ -705,9 +705,11 @@ def _orderIds(result) -> list[str]:
 
 def _withoutCreatedAt(res: dict) -> list[dict]:
     """The orders of a response, minus their times (createdAt, expiresAt,
-    paidAt): MCP sends a time as text, a direct call as a datetime."""
+    paidAt, completedAt, cancelledAt, refundedAt): MCP sends a time as
+    text, a direct call as a datetime."""
     return [{k: v for k, v in o.items()
-             if k not in ('createdAt', 'expiresAt', 'paidAt')}
+             if k not in ('createdAt', 'expiresAt', 'paidAt', 'completedAt',
+                          'cancelledAt', 'refundedAt')}
             for o in res['orders']]
 
 
