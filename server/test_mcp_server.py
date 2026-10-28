@@ -98,7 +98,8 @@ def test_eachAudienceListsOnlyItsTools():
         'getUserStore', 'createUserStore', 'addStoreProduct',
         'addStoreProducts', 'updateStoreProduct', 'listMyStoreProducts',
         'getStoreOrders', 'completeOrder', 'cancelStoreOrder',
-        'getMyStorePolicy', 'updateMyStorePolicy'
+        'getMyStorePolicy', 'updateMyStorePolicy', 'updateMyStoreTheme',
+        'generateProductPhotos'
     }
 
 

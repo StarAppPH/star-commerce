@@ -17,11 +17,14 @@ from pymongo.errors import DuplicateKeyError
 from mongoDb import db
 from mcpTools import mcp_tool
 from objects import (DEFAULT_STORE_CURRENCY, LATITUDE_LIMIT, LONGITUDE_LIMIT,
-                     PHONE_NUMBER_PATTERN, STORE_ADDRESS_MAX_LENGTH,
-                     STORE_DESCRIPTION_MAX_LENGTH, STORE_NAME_MAX_LENGTH,
-                     STORE_OPENING_HOURS_MAX_LENGTH, STORE_SLUG_MAX_LENGTH,
-                     MyStoreResponse, Policy, Store, StoreCurrency,
-                     StoreLocation, StoreResponse, projectedCopy)
+                     PHONE_NUMBER_PATTERN, PHOTO_STYLE_MAX_LENGTH,
+                     STORE_ADDRESS_MAX_LENGTH, STORE_DESCRIPTION_MAX_LENGTH,
+                     STORE_NAME_MAX_LENGTH, STORE_OPENING_HOURS_MAX_LENGTH,
+                     STORE_SLUG_MAX_LENGTH, STORE_THEME_FIELDS,
+                     AdminStoreResponse, MyStoreResponse, Policy, Store,
+                     StoreCurrency, StoreLocation, StoreResponse,
+                     StoreThemeResponse, hexColor, projectedCopy,
+                     projection_of)
 from route_config import route_config
 
 STORES = 'Stores'
@@ -44,6 +47,9 @@ STORE_NOT_FOUND = 'Store not found'
 CONTACT_NUMBER_FORMAT_EXAMPLE = '+639171234567'
 # The control characters a text field may hold: line breaks and tabs.
 ALLOWED_CONTROL_CHARACTERS = frozenset('\n\r\t')
+PHOTO_STYLE_LABEL = 'The photo style'
+NO_THEME_SENT = 'Send a photo style or a brand color to change'
+STORE_CHANGED = 'Your store just changed, try again'
 # What createUserStore writes: the details the admin gives, and the slug
 # that sets the store up.
 STORE_DETAILS = ('name', 'slug', 'currency', 'description', 'contactNumber',
@@ -206,10 +212,60 @@ class StoreActions():
         has not created one yet: then collect the store's details from the
         admin and call createUserStore."""
         requireAdmin(userId)
-        return {
-            'store':
-            db.readResponse(StoreResponse, setUpOwnerQuery(userId), STORES)
-        }
+        store = db.readResponse(AdminStoreResponse, setUpOwnerQuery(userId),
+                                STORES)
+        if store is not None:
+            # A theme field is sent only once set (AdminStoreResponse).
+            store = {key: value for key, value in store.items()
+                     if not (key in STORE_THEME_FIELDS and value is None)}
+        return {'store': store}
+
+    @mcp_tool('admin')
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Store theme saved',
+                  responseModel=StoreThemeResponse)
+    def updateMyStoreTheme(self,
+                           userId: str,
+                           photoStyle: str | None = None,
+                           primaryColor: str | None = None,
+                           secondaryColor: str | None = None) -> dict:
+        """Set the look of the store's product photos (generateProductPhotos
+        needs a photo style first). Ask the owner, in their own words, for
+        the photo style: the background, lighting and mood they want (up
+        to 300 characters, e.g. "white marble counter, soft morning light,
+        calm and airy"), and for the store's two brand colors as hex codes
+        like #1A73E8 (primaryColor and secondaryColor; the photos use them
+        only as accents in the background and props). Never invent a style
+        or a color: use only what the owner said, and confirm them with the
+        owner before calling. Send only the fields the owner wants changed:
+        a field left out keeps its value, and an empty one ("") clears it.
+        If this tool refuses, relay its message to the owner and ask
+        again."""
+        store = requireOwnerStore(userId, {'_id': 1, '_version': 1})
+        # The generated HTTP handler passes a missing body key as None, so
+        # None is "unchanged" and "" is how a field is cleared.
+        changes = {}
+        if photoStyle is not None:
+            changes['photoStyle'] = _validText(photoStyle, PHOTO_STYLE_LABEL,
+                                               PHOTO_STYLE_MAX_LENGTH,
+                                               required=False)
+        for field, value in (('primaryColor', primaryColor),
+                             ('secondaryColor', secondaryColor)):
+            if value is not None:
+                changes[field] = hexColor(value, field)
+        if not changes:
+            raise ValueError(NO_THEME_SENT)
+        updated = db.findOneAndUpdate(
+            {'_id': store['_id'], '_version': store['_version']},
+            {'$set': changes, '$inc': {'_version': 1}},
+            STORES,
+            upsert=False,
+            projection=projection_of(StoreThemeResponse))
+        if updated is None:
+            raise ValueError(STORE_CHANGED)
+        # A store from before the theme has none of its fields stored.
+        return {field: updated.get(field) for field in STORE_THEME_FIELDS}
 
     @mcp_tool('admin')
     @route_config(httpMethod='POST',

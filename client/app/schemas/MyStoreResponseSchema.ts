@@ -62,18 +62,34 @@ export type Latitude = number;
  * Degrees east (negative: west)
  */
 export type Longitude = number;
+/**
+ * The look of the store's product photos
+ */
+export type Photostyle = string | null;
+/**
+ * Main brand color, #RRGGBB
+ */
+export type Primarycolor = string | null;
+/**
+ * Second brand color, #RRGGBB
+ */
+export type Secondarycolor = string | null;
 
 export interface MyStoreResponse {
   /**
    * The admin's store; null until it is created
    */
-  store: StoreResponse | null;
+  store: AdminStoreResponse | null;
 }
 /**
- * A store as a route sends it. Each field restates Store's, which
- * test_route_response_models.py's MIRRORS keeps in step.
+ * The admin's own store: a StoreResponse plus its photo theme, which
+ * customers never get (it feeds the product photos, not the storefront).
+ * A theme field is sent only once set (a dict the route builds leaves it
+ * out, and exclude_if drops it from a dump), so a store with no theme
+ * reads exactly as a StoreResponse. Each field restates Store's
+ * (test_route_response_models.py's MIRRORS).
  */
-export interface StoreResponse {
+export interface AdminStoreResponse {
   _id: Id;
   name?: Name;
   slug?: Slug;
@@ -86,6 +102,9 @@ export interface StoreResponse {
    * Map location; null until the admin pins it
    */
   location: StoreLocationResponse | null;
+  photoStyle?: Photostyle;
+  primaryColor?: Primarycolor;
+  secondaryColor?: Secondarycolor;
 }
 /**
  * A store's map location as a route sends it. Each field restates

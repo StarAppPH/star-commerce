@@ -182,6 +182,11 @@ class mongoDb():
                                            ('seq', 1)], unique=True)
         # The daily chat counters, deleted once their day is over.
         self.db['ChatUsage'].create_index('expireAt', expireAfterSeconds=0)
+        # A store's generated photos, newest first (and the daily photo
+        # counters, deleted once their day is over).
+        self.db['GeneratedPhotos'].create_index([('storeId', 1),
+                                                 ('createdAt', -1)])
+        self.db['PhotoUsage'].create_index('expireAt', expireAfterSeconds=0)
 
     def create(self, data: dict, collection_name: str, session: Optional[ClientSession] = None) -> dict:
         """Insert a document into the collection and return the created data."""

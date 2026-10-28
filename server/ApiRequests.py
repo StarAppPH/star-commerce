@@ -75,6 +75,7 @@ from actions.CustomerActions import CustomerActions
 from actions.FulfillmentActions import FulfillmentActions
 from actions.OrderActions import OrderActions
 from actions.PaymentActions import PaymentActions
+from actions.PhotoActions import PhotoActions
 from actions.PolicyActions import PolicyActions
 from actions.ProductActions import ProductActions
 from actions.ServiceToServiceActions import ServiceToServiceActions
@@ -294,7 +295,7 @@ class RolesActions():
 class ApiRequests(AuthActions, RolesActions, StoreActions, CustomerActions,
                   ProductActions, OrderActions, PaymentActions,
                   FulfillmentActions, PolicyActions, ChatActions,
-                  ServiceToServiceActions):
+                  PhotoActions, ServiceToServiceActions):
 
     def __init__(self):
         AuthActions.__init__(self)
@@ -307,3 +308,4 @@ class ApiRequests(AuthActions, RolesActions, StoreActions, CustomerActions,
         FulfillmentActions.__init__(self)
         PolicyActions.__init__(self)
         ChatActions.__init__(self)
+        PhotoActions.__init__(self)

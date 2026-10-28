@@ -211,6 +211,46 @@ def getUserStore():
 
 
 
+@app.route('/updateMyStoreTheme', methods=['POST'])
+@jwt_required()
+def updateMyStoreTheme():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    photoStyle = data.get('photoStyle')
+    primaryColor = data.get('primaryColor')
+    secondaryColor = data.get('secondaryColor')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(photoStyle, (dict, list)):
+            raise ValueError('Invalid photoStyle')
+        if isinstance(primaryColor, (dict, list)):
+            raise ValueError('Invalid primaryColor')
+        if isinstance(secondaryColor, (dict, list)):
+            raise ValueError('Invalid secondaryColor')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().updateMyStoreTheme(userId, photoStyle, primaryColor, secondaryColor)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'updateMyStoreTheme', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'photoStyle', 'primaryColor', 'secondaryColor')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'updateMyStoreTheme', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'photoStyle', 'primaryColor', 'secondaryColor')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'updateMyStoreTheme', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'photoStyle', 'primaryColor', 'secondaryColor'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Store theme saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 @app.route('/createUserStore', methods=['POST'])
 @jwt_required()
 def createUserStore():
@@ -1136,6 +1176,46 @@ def getConversationTurns():
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Turns fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/generateProductPhotos', methods=['POST'])
+@jwt_required()
+def generateProductPhotos():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    imageUrls = data.get('imageUrls')
+    count = data.get('count')
+    notes = data.get('notes')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(count, (dict, list)):
+            raise ValueError('Invalid count')
+        if isinstance(notes, (dict, list)):
+            raise ValueError('Invalid notes')
+        if not isinstance(imageUrls, list):
+            raise ValueError('Invalid imageUrls')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().generateProductPhotos(userId, imageUrls, count, notes)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'generateProductPhotos', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrls', 'count', 'notes')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'generateProductPhotos', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrls', 'count', 'notes')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'generateProductPhotos', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrls', 'count', 'notes'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Photos created", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
     return jsonify(response.model_dump(exclude_unset=True)), response.status
 
 

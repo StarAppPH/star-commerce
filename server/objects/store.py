@@ -3,8 +3,9 @@
 Package rule (every objects module): no validator may EVER mutate a value it
 receives (see objects/__init__.py)."""
 import datetime
+import re
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from typing import Literal
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
@@ -31,6 +32,27 @@ StoreCurrency = Literal['PHP', 'USD', 'EUR', 'GBP', 'JPY', 'SGD', 'AUD',
                         'CAD', 'HKD', 'CNY', 'KRW', 'MYR', 'THB', 'IDR',
                         'VND', 'INR', 'AED']
 DEFAULT_STORE_CURRENCY = 'PHP'
+# The store's look for its product photos (imageModel): a style the admin
+# writes, and two brand colors as #RRGGBB, stored uppercase.
+PHOTO_STYLE_MAX_LENGTH = 300
+HEX_COLOR_PATTERN = r'^#[0-9A-Fa-f]{6}$'
+HEX_COLOR_EXAMPLE = '#1A73E8'
+STORE_THEME_FIELDS = ('photoStyle', 'primaryColor', 'secondaryColor')
+
+
+def hexColor(value, field: str) -> str | None:
+    """`value` as a stored brand color: a #RRGGBB hex color, uppercase.
+    None or "" is None; anything else is refused, naming `field`, never
+    quoting the value."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        if value == '':
+            return None
+        if re.fullmatch(HEX_COLOR_PATTERN, value) is not None:
+            return value.upper()
+    raise ValueError(f'{field} must be a hex color like {HEX_COLOR_EXAMPLE}')
 
 
 class StoreLocation(AppModel):
@@ -83,13 +105,26 @@ class Store(MongoModel):
         description='Opening hours, free text')
     location: StoreLocation | None = Field(
         None, description='Map location; null until the admin pins it')
+    photoStyle: str | None = Field(
+        None, min_length=1, max_length=PHOTO_STYLE_MAX_LENGTH,
+        description="The look of the store's product photos")
+    primaryColor: str | None = Field(None, pattern=HEX_COLOR_PATTERN,
+                                     description='Main brand color, #RRGGBB')
+    secondaryColor: str | None = Field(
+        None, pattern=HEX_COLOR_PATTERN,
+        description='Second brand color, #RRGGBB')
     createdAt: datetime.datetime = Field(..., description='When it was created')
 
     @field_validator('name', 'description', 'contactNumber', 'address',
-                     'openingHours', mode='before')
+                     'openingHours', 'photoStyle', mode='before')
     @classmethod
     def _strip_text(cls, v):
         return v.strip() if isinstance(v, str) else v
+
+    @field_validator('primaryColor', 'secondaryColor', mode='before')
+    @classmethod
+    def _hex_color(cls, v, info: ValidationInfo):
+        return hexColor(v, info.field_name)
 
 
 class StoreView(StoredDocumentKeys, Store):
@@ -135,9 +170,45 @@ class StoreResponse(ResponseModel):
         ..., description='Map location; null until the admin pins it')
 
 
+def _isNone(value) -> bool:
+    return value is None
+
+
+class AdminStoreResponse(StoreResponse):
+    """The admin's own store: a StoreResponse plus its photo theme, which
+    customers never get (it feeds the product photos, not the storefront).
+    A theme field is sent only once set (a dict the route builds leaves it
+    out, and exclude_if drops it from a dump), so a store with no theme
+    reads exactly as a StoreResponse. Each field restates Store's
+    (test_route_response_models.py's MIRRORS)."""
+    photoStyle: str | None = Field(
+        None, min_length=1, max_length=PHOTO_STYLE_MAX_LENGTH,
+        exclude_if=_isNone,
+        description="The look of the store's product photos")
+    primaryColor: str | None = Field(None, pattern=HEX_COLOR_PATTERN,
+                                     exclude_if=_isNone,
+                                     description='Main brand color, #RRGGBB')
+    secondaryColor: str | None = Field(
+        None, pattern=HEX_COLOR_PATTERN, exclude_if=_isNone,
+        description='Second brand color, #RRGGBB')
+
+
 class MyStoreResponse(ResponseModel):
-    store: StoreResponse | None = Field(
+    store: AdminStoreResponse | None = Field(
         ..., description="The admin's store; null until it is created")
+
+
+class StoreThemeResponse(ResponseModel):
+    """What updateMyStoreTheme sends: the store's photo theme, each field
+    null while unset. Each field restates Store's (MIRRORS)."""
+    photoStyle: str | None = Field(
+        ..., min_length=1, max_length=PHOTO_STYLE_MAX_LENGTH,
+        description="The look of the store's product photos")
+    primaryColor: str | None = Field(..., pattern=HEX_COLOR_PATTERN,
+                                     description='Main brand color, #RRGGBB')
+    secondaryColor: str | None = Field(
+        ..., pattern=HEX_COLOR_PATTERN,
+        description='Second brand color, #RRGGBB')
 
 
 class CustomerSessionResponse(ResponseModel):

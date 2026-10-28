@@ -1,0 +1,43 @@
+{
+    "$defs": {
+        "GeneratedPhotoRow": {
+            "properties": {
+                "_id": {
+                    "description": "GeneratedPhotos _id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "url": {
+                    "description": "Its download URL",
+                    "minLength": 1,
+                    "title": "Url",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "_id",
+                "url"
+            ],
+            "title": "GeneratedPhotoRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "What generateProductPhotos sends: the photos it saved.",
+    "properties": {
+        "photos": {
+            "description": "The photos made, in order",
+            "items": {
+                "$ref": "#/$defs/GeneratedPhotoRow"
+            },
+            "title": "Photos",
+            "type": "array"
+        }
+    },
+    "required": [
+        "photos"
+    ],
+    "title": "GeneratedPhotosResponse",
+    "type": "object",
+    "additionalProperties": false
+}

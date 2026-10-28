@@ -1,0 +1,22 @@
+{
+    "properties": {
+        "_id": {
+            "description": "GeneratedPhotos _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "url": {
+            "description": "Its download URL",
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+        }
+    },
+    "required": [
+        "_id",
+        "url"
+    ],
+    "title": "GeneratedPhotoRow",
+    "type": "object",
+    "additionalProperties": false
+}
