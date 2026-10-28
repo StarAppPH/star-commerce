@@ -46,18 +46,34 @@
             "type": "string"
         },
         "name": {
+            "anyOf": [
+                {
+                    "maxLength": 60,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
             "description": "Store name shown to customers",
-            "maxLength": 60,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
+            "title": "Name"
         },
         "slug": {
+            "anyOf": [
+                {
+                    "maxLength": 50,
+                    "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
             "description": "The store's link name, e.g. bakery-a",
-            "maxLength": 50,
-            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-            "title": "Slug",
-            "type": "string"
+            "title": "Slug"
         },
         "currency": {
             "description": "ISO 4217 code every price of the store is in",
@@ -84,24 +100,48 @@
             "type": "string"
         },
         "description": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
             "description": "What the store sells",
-            "maxLength": 300,
-            "minLength": 1,
-            "title": "Description",
-            "type": "string"
+            "title": "Description"
         },
         "contactNumber": {
+            "anyOf": [
+                {
+                    "pattern": "^\\+[1-9][0-9]{6,14}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
             "description": "Contact number, E.164",
-            "pattern": "^\\+[1-9][0-9]{6,14}$",
-            "title": "Contactnumber",
-            "type": "string"
+            "title": "Contactnumber"
         },
         "address": {
+            "anyOf": [
+                {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
             "description": "Street address, as the admin typed it",
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Address",
-            "type": "string"
+            "title": "Address"
         },
         "openingHours": {
             "anyOf": [
@@ -140,12 +180,7 @@
         "_id",
         "_version",
         "ownerUserId",
-        "name",
-        "slug",
         "currency",
-        "description",
-        "contactNumber",
-        "address",
         "createdAt"
     ],
     "title": "StoreView",

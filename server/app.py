@@ -836,6 +836,153 @@ def cancelMyOrder():
 
 
 
+@app.route('/getMyStorePolicy', methods=['POST'])
+@jwt_required()
+def getMyStorePolicy():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().getMyStorePolicy(userId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'getMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId',)), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'getMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId',)), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'getMyStorePolicy', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId',))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Policy fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/getStorePolicy', methods=['POST'])
+@jwt_required()
+def getStorePolicy():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().getStorePolicy(userId, storeId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'getStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'getStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'getStorePolicy', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Policy fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/updateMyStorePolicy', methods=['POST'])
+@jwt_required()
+def updateMyStorePolicy():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    acceptsReturns = data.get('acceptsReturns')
+    returnWindowDays = data.get('returnWindowDays')
+    returnConditions = data.get('returnConditions')
+    nonReturnableItems = data.get('nonReturnableItems')
+    refundMethod = data.get('refundMethod')
+    returnShippingPaidBy = data.get('returnShippingPaidBy')
+    defectReportDays = data.get('defectReportDays')
+    deliveryOptions = data.get('deliveryOptions')
+    deliveryAreas = data.get('deliveryAreas')
+    deliveryFee = data.get('deliveryFee')
+    freeDeliveryMinimum = data.get('freeDeliveryMinimum')
+    handoverDays = data.get('handoverDays')
+    acceptedPaymentMethods = data.get('acceptedPaymentMethods')
+    paidOrderCancellation = data.get('paidOrderCancellation')
+    sendsMarketingMessages = data.get('sendsMarketingMessages')
+    additionalTerms = data.get('additionalTerms')
+    clear = data.get('clear')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(acceptsReturns, (dict, list)):
+            raise ValueError('Invalid acceptsReturns')
+        if isinstance(returnWindowDays, (dict, list)):
+            raise ValueError('Invalid returnWindowDays')
+        if isinstance(returnConditions, (dict, list)):
+            raise ValueError('Invalid returnConditions')
+        if isinstance(nonReturnableItems, (dict, list)):
+            raise ValueError('Invalid nonReturnableItems')
+        if isinstance(refundMethod, (dict, list)):
+            raise ValueError('Invalid refundMethod')
+        if isinstance(returnShippingPaidBy, (dict, list)):
+            raise ValueError('Invalid returnShippingPaidBy')
+        if isinstance(defectReportDays, (dict, list)):
+            raise ValueError('Invalid defectReportDays')
+        if isinstance(deliveryAreas, (dict, list)):
+            raise ValueError('Invalid deliveryAreas')
+        if isinstance(deliveryFee, (dict, list)):
+            raise ValueError('Invalid deliveryFee')
+        if isinstance(freeDeliveryMinimum, (dict, list)):
+            raise ValueError('Invalid freeDeliveryMinimum')
+        if isinstance(handoverDays, (dict, list)):
+            raise ValueError('Invalid handoverDays')
+        if isinstance(paidOrderCancellation, (dict, list)):
+            raise ValueError('Invalid paidOrderCancellation')
+        if isinstance(sendsMarketingMessages, (dict, list)):
+            raise ValueError('Invalid sendsMarketingMessages')
+        if isinstance(additionalTerms, (dict, list)):
+            raise ValueError('Invalid additionalTerms')
+        if deliveryOptions is not None and not isinstance(deliveryOptions, list):
+            raise ValueError('Invalid deliveryOptions')
+        if acceptedPaymentMethods is not None and not isinstance(acceptedPaymentMethods, list):
+            raise ValueError('Invalid acceptedPaymentMethods')
+        if clear is not None and not isinstance(clear, list):
+            raise ValueError('Invalid clear')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().updateMyStorePolicy(userId, acceptsReturns, returnWindowDays, returnConditions, nonReturnableItems, refundMethod, returnShippingPaidBy, defectReportDays, deliveryOptions, deliveryAreas, deliveryFee, freeDeliveryMinimum, handoverDays, acceptedPaymentMethods, paidOrderCancellation, sendsMarketingMessages, additionalTerms, clear)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'deliveryFee', 'freeDeliveryMinimum', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'deliveryFee', 'freeDeliveryMinimum', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'updateMyStorePolicy', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'deliveryFee', 'freeDeliveryMinimum', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'sendsMarketingMessages', 'additionalTerms', 'clear'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Policy saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 # Never compressed: the routes that issue an access token (BREACH; see
 # AppCreator._compression_block).
 NO_COMPRESSION_ENDPOINTS = frozenset(['devLogin', 'loginWithGoogle', 'startGuestSession'])

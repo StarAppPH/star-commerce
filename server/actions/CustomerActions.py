@@ -17,6 +17,7 @@ import re
 from pymongo.errors import DuplicateKeyError
 
 from AuthHandler import verifyFirebaseIdToken
+from actions.StoreActions import SET_UP, STORE_NOT_FOUND
 from mongoDb import db
 from objects import (FIREBASE_ID_TOKEN_MAX_LENGTH, PHONE_NUMBER_PATTERN,
                      Customer, CustomerSessionResponse, PhoneVerifiedResponse,
@@ -91,9 +92,16 @@ class CustomerActions():
         claims = _verifiedClaims(idToken)
         if _signInProvider(claims) not in GUEST_SIGN_IN_PROVIDERS:
             raise PermissionError('Open the store as a guest to shop')
-        store = db.readResponse(StoreResponse, {'slug': storeSlug}, STORES)
+        # Only a set-up store has a slug, a string (StoreActions.SET_UP):
+        # a null storeSlug would match every store not set up yet. The
+        # query restates SET_UP so the partial slug index serves it.
+        store = None
+        if isinstance(storeSlug, str):
+            store = db.readResponse(
+                StoreResponse, {'slug': {'$eq': storeSlug, **SET_UP['slug']}},
+                STORES)
         if store is None:
-            raise ValueError('Store not found')
+            raise ValueError(STORE_NOT_FOUND)
         customer = _customerOf(claims)
         return {
             '_id': customer['_id'],

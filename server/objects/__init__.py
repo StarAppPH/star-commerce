@@ -187,6 +187,20 @@ from objects.order import (OrderStatus, CancelReason, PaymentMethod,
                            NewOrderItem, Order, OrderView, OrderItemRow,
                            StoreOrderRow, MyOrderRow, StoreOrderListResponse,
                            MyOrderListResponse, CreatedOrderResponse)
+from objects.policy import (DeliveryOption, RefundMethod, ReturnShippingPayer,
+                            PaidOrderCancellation, PolicyField,
+                            POLICY_TEXT_MAX_LENGTH, POLICY_TERMS_MAX_LENGTH,
+                            POLICY_DAYS_MAX, AcceptsReturns, ReturnWindowDays,
+                            ReturnConditions, NonReturnableItems,
+                            RefundMethodAnswer, ReturnShippingPaidBy,
+                            DefectReportDays, DeliveryOptions, DeliveryAreas,
+                            DeliveryFee, FreeDeliveryMinimum, HandoverDays,
+                            AcceptedPaymentMethods,
+                            PaidOrderCancellationAnswer,
+                            SendsMarketingMessages, AdditionalTerms,
+                            POLICY_RETURN_ANSWERS, POLICY_DELIVERY_ANSWERS,
+                            Policy, POLICY_ANSWER_FIELDS, PolicyView,
+                            StorePolicyResponse)
 
 
 # AppCreator (_classes_from_module) generates TS schemas only for classes

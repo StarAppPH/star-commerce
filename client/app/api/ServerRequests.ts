@@ -17,6 +17,7 @@ import type { ProductListResponse } from '../schemas/ProductListResponseSchema';
 import type { RoleListResponse } from '../schemas/RoleListResponseSchema';
 import type { StoreOrderListResponse } from '../schemas/StoreOrderListResponseSchema';
 import type { StoreOrderRow } from '../schemas/StoreOrderRowSchema';
+import type { StorePolicyResponse } from '../schemas/StorePolicyResponseSchema';
 import type { StoreResponse } from '../schemas/StoreResponseSchema';
 import type { UserResponse } from '../schemas/UserResponseSchema';
 
@@ -531,6 +532,75 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             return { message: "Failed to fetch data", status: 0, data: null };
         }
     }
+
+    async getMyStorePolicy(userId: string): Promise<ApiResponse<StorePolicyResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/getMyStorePolicy`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StorePolicyResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async getStorePolicy(userId: string, storeId: string): Promise<ApiResponse<StorePolicyResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/getStorePolicy`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StorePolicyResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async updateMyStorePolicy(userId: string, acceptsReturns: boolean | null, returnWindowDays: number | null, returnConditions: string | null, nonReturnableItems: string | null, refundMethod: string | null, returnShippingPaidBy: string | null, defectReportDays: number | null, deliveryOptions: string[] | null, deliveryAreas: string | null, deliveryFee: number | null, freeDeliveryMinimum: number | null, handoverDays: number | null, acceptedPaymentMethods: string[] | null, paidOrderCancellation: string | null, sendsMarketingMessages: boolean | null, additionalTerms: string | null, clear: string[] | null): Promise<ApiResponse<StorePolicyResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/updateMyStorePolicy`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "acceptsReturns": acceptsReturns, "returnWindowDays": returnWindowDays, "returnConditions": returnConditions, "nonReturnableItems": nonReturnableItems, "refundMethod": refundMethod, "returnShippingPaidBy": returnShippingPaidBy, "defectReportDays": defectReportDays, "deliveryOptions": deliveryOptions, "deliveryAreas": deliveryAreas, "deliveryFee": deliveryFee, "freeDeliveryMinimum": freeDeliveryMinimum, "handoverDays": handoverDays, "acceptedPaymentMethods": acceptedPaymentMethods, "paidOrderCancellation": paidOrderCancellation, "sendsMarketingMessages": sendsMarketingMessages, "additionalTerms": additionalTerms, "clear": clear}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StorePolicyResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
 }
 
 export interface RouteResponseModels {
@@ -556,6 +626,9 @@ export interface RouteResponseModels {
     completeOrder: StoreOrderRow;
     cancelStoreOrder: StoreOrderRow;
     cancelMyOrder: MyOrderRow;
+    getMyStorePolicy: StorePolicyResponse;
+    getStorePolicy: StorePolicyResponse;
+    updateMyStorePolicy: StorePolicyResponse;
 }
 
 export interface RouteRequestBodies {
@@ -581,6 +654,9 @@ export interface RouteRequestBodies {
     completeOrder: { userId: string; orderId: string };
     cancelStoreOrder: { userId: string; orderId: string };
     cancelMyOrder: { userId: string; storeId: string; orderId: string };
+    getMyStorePolicy: { userId: string };
+    getStorePolicy: { userId: string; storeId: string };
+    updateMyStorePolicy: { userId: string; acceptsReturns: boolean | null; returnWindowDays: number | null; returnConditions: string | null; nonReturnableItems: string | null; refundMethod: string | null; returnShippingPaidBy: string | null; defectReportDays: number | null; deliveryOptions: string[] | null; deliveryAreas: string | null; deliveryFee: number | null; freeDeliveryMinimum: number | null; handoverDays: number | null; acceptedPaymentMethods: string[] | null; paidOrderCancellation: string | null; sendsMarketingMessages: boolean | null; additionalTerms: string | null; clear: string[] | null };
 }
 
 export type PublicRoute =

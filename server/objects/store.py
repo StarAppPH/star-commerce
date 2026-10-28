@@ -53,23 +53,31 @@ class StoreLocationResponse(ResponseModel):
 
 class Store(MongoModel):
     """A Stores document. One per admin: ownerUserId (the admin's Users _id)
-    and slug are both unique indexes (mongoDb.ensureIndexes)."""
+    is a unique index, and so is slug among the stores that have one
+    (mongoDb.ensureIndexes).
+
+    Sign-up creates the admin's store empty: only its owner and currency.
+    A store is *set up* once its slug is a string, which createUserStore
+    sets together with the other details; until then every store reader
+    treats it as no store yet (StoreActions.SET_UP)."""
     ownerUserId: str = Field(..., min_length=1,
                              description="The admin's Users _id")
-    name: str = Field(..., min_length=1, max_length=STORE_NAME_MAX_LENGTH,
-                      description='Store name shown to customers')
-    slug: str = Field(..., max_length=STORE_SLUG_MAX_LENGTH,
-                      pattern=STORE_SLUG_PATTERN,
-                      description="The store's link name, e.g. bakery-a")
+    name: str | None = Field(None, min_length=1,
+                             max_length=STORE_NAME_MAX_LENGTH,
+                             description='Store name shown to customers')
+    slug: str | None = Field(None, max_length=STORE_SLUG_MAX_LENGTH,
+                             pattern=STORE_SLUG_PATTERN,
+                             description="The store's link name, e.g. bakery-a")
     currency: StoreCurrency = Field(
         ..., description="ISO 4217 code every price of the store is in")
-    description: str = Field(..., min_length=1,
-                             max_length=STORE_DESCRIPTION_MAX_LENGTH,
-                             description='What the store sells')
-    contactNumber: str = Field(..., pattern=PHONE_NUMBER_PATTERN,
-                               description='Contact number, E.164')
-    address: str = Field(..., min_length=1, max_length=STORE_ADDRESS_MAX_LENGTH,
-                         description='Street address, as the admin typed it')
+    description: str | None = Field(None, min_length=1,
+                                    max_length=STORE_DESCRIPTION_MAX_LENGTH,
+                                    description='What the store sells')
+    contactNumber: str | None = Field(None, pattern=PHONE_NUMBER_PATTERN,
+                                      description='Contact number, E.164')
+    address: str | None = Field(None, min_length=1,
+                                max_length=STORE_ADDRESS_MAX_LENGTH,
+                                description='Street address, as the admin typed it')
     openingHours: str | None = Field(
         None, max_length=STORE_OPENING_HOURS_MAX_LENGTH,
         description='Opening hours, free text')
@@ -104,20 +112,22 @@ class StoreResponse(ResponseModel):
     """A store as a route sends it. Each field restates Store's, which
     test_route_response_models.py's MIRRORS keeps in step."""
     id: str = Field(..., alias='_id', description='Stores _id')
-    name: str = Field(..., min_length=1, max_length=STORE_NAME_MAX_LENGTH,
-                      description='Store name shown to customers')
-    slug: str = Field(..., max_length=STORE_SLUG_MAX_LENGTH,
-                      pattern=STORE_SLUG_PATTERN,
-                      description="The store's link name, e.g. bakery-a")
+    name: str | None = Field(None, min_length=1,
+                             max_length=STORE_NAME_MAX_LENGTH,
+                             description='Store name shown to customers')
+    slug: str | None = Field(None, max_length=STORE_SLUG_MAX_LENGTH,
+                             pattern=STORE_SLUG_PATTERN,
+                             description="The store's link name, e.g. bakery-a")
     currency: StoreCurrency = Field(
         ..., description="ISO 4217 code every price of the store is in")
-    description: str = Field(..., min_length=1,
-                             max_length=STORE_DESCRIPTION_MAX_LENGTH,
-                             description='What the store sells')
-    contactNumber: str = Field(..., pattern=PHONE_NUMBER_PATTERN,
-                               description='Contact number, E.164')
-    address: str = Field(..., min_length=1, max_length=STORE_ADDRESS_MAX_LENGTH,
-                         description='Street address, as the admin typed it')
+    description: str | None = Field(None, min_length=1,
+                                    max_length=STORE_DESCRIPTION_MAX_LENGTH,
+                                    description='What the store sells')
+    contactNumber: str | None = Field(None, pattern=PHONE_NUMBER_PATTERN,
+                                      description='Contact number, E.164')
+    address: str | None = Field(None, min_length=1,
+                                max_length=STORE_ADDRESS_MAX_LENGTH,
+                                description='Street address, as the admin typed it')
     openingHours: str | None = Field(
         ..., max_length=STORE_OPENING_HOURS_MAX_LENGTH,
         description='Opening hours, free text')

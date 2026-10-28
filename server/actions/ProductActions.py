@@ -12,7 +12,7 @@ import re
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from actions.CustomerActions import requireCustomer
-from actions.StoreActions import _validText, requireOwnerStore
+from actions.StoreActions import _validText, requireOwnerStore, setUpStore
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import (PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH,
@@ -24,7 +24,6 @@ from objects import (PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH,
 from route_config import route_config
 
 PRODUCTS = 'Products'
-STORES = 'Stores'
 PRODUCT_LIST_DEFAULT_LIMIT = 10
 PRODUCT_LIST_MAX_LIMIT = 50
 PRODUCT_SEARCH_MAX_LENGTH = 80
@@ -37,12 +36,9 @@ DUPLICATE_KEY_CODE = 11000
 
 
 def storeCurrency(storeId: str) -> str:
-    """The currency of the store; refuses an unknown store."""
-    store = db.read({'_id': storeId}, STORES, projection={'currency': 1},
-                    findOne=True)
-    if store is None:
-        raise ValueError('Store not found')
-    return store['currency']
+    """The currency of the store; refuses an unknown store, or one not
+    set up yet (setUpStore): customers cannot reach it."""
+    return setUpStore(storeId, {'currency': 1})['currency']
 
 
 def _validLimit(limit: int | None) -> int:

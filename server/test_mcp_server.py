@@ -92,11 +92,13 @@ def test_eachAudienceListsOnlyItsTools():
 
     assert asyncio.run(names('customer')) == {'listStoreProducts',
                                               'getMyOrders', 'createOrder',
-                                              'payOrder', 'cancelMyOrder'}
+                                              'payOrder', 'cancelMyOrder',
+                                              'getStorePolicy'}
     assert asyncio.run(names('admin')) == {
         'getUserStore', 'createUserStore', 'addStoreProduct',
         'addStoreProducts', 'updateStoreProduct', 'listMyStoreProducts',
-        'getStoreOrders', 'completeOrder', 'cancelStoreOrder'
+        'getStoreOrders', 'completeOrder', 'cancelStoreOrder',
+        'getMyStorePolicy', 'updateMyStorePolicy'
     }
 
 
