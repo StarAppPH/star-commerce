@@ -1,0 +1,232 @@
+{
+    "$defs": {
+        "ChatStep": {
+            "description": "One message of a turn between the user's text and the reply, exactly\nas sent to Meta: an assistant message asking for tool calls, or one\ntool's result (toolCallId names the call it answers).",
+            "properties": {
+                "role": {
+                    "description": "Who sent it",
+                    "enum": [
+                        "assistant",
+                        "tool"
+                    ],
+                    "title": "Role",
+                    "type": "string"
+                },
+                "content": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Its text",
+                    "title": "Content"
+                },
+                "toolCalls": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "$ref": "#/$defs/ChatToolCall"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "An assistant message's tool calls",
+                    "title": "Toolcalls"
+                },
+                "toolCallId": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The call a tool result answers",
+                    "title": "Toolcallid"
+                }
+            },
+            "required": [
+                "role"
+            ],
+            "title": "ChatStep",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "ChatTokenUsage": {
+            "description": "The tokens a turn's model calls used, summed over its calls.",
+            "properties": {
+                "promptTokens": {
+                    "description": "Input tokens",
+                    "minimum": 0,
+                    "title": "Prompttokens",
+                    "type": "integer"
+                },
+                "completionTokens": {
+                    "description": "Output tokens",
+                    "minimum": 0,
+                    "title": "Completiontokens",
+                    "type": "integer"
+                },
+                "cachedTokens": {
+                    "description": "Input tokens read from the cache",
+                    "minimum": 0,
+                    "title": "Cachedtokens",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "promptTokens",
+                "completionTokens",
+                "cachedTokens"
+            ],
+            "title": "ChatTokenUsage",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "ChatToolCall": {
+            "description": "One tool call of the model, as Meta sent it.",
+            "properties": {
+                "id": {
+                    "description": "Meta's id of the call",
+                    "maxLength": 128,
+                    "title": "Id",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "The tool called",
+                    "maxLength": 64,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "arguments": {
+                    "description": "Its arguments, a JSON string",
+                    "maxLength": 16000,
+                    "title": "Arguments",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "arguments"
+            ],
+            "title": "ChatToolCall",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A ChatTurns document: one user message and the reply to it, with the\ntool steps in between. Replayed whole as the history of the next turns,\nso every tool_calls message is followed by its tool messages, as Meta\nrequires. Saved only once the turn succeeded. (conversationId, seq) is\nunique (mongoDb.ensureIndexes).",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "conversationId": {
+            "description": "The Conversations _id",
+            "minLength": 1,
+            "title": "Conversationid",
+            "type": "string"
+        },
+        "userId": {
+            "description": "The Users or Customers _id it belongs to",
+            "minLength": 1,
+            "title": "Userid",
+            "type": "string"
+        },
+        "storeId": {
+            "description": "The Stores _id",
+            "minLength": 1,
+            "title": "Storeid",
+            "type": "string"
+        },
+        "seq": {
+            "description": "Its place in the conversation",
+            "minimum": 0,
+            "title": "Seq",
+            "type": "integer"
+        },
+        "userText": {
+            "description": "What the user sent",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Usertext",
+            "type": "string"
+        },
+        "steps": {
+            "description": "The tool steps, in order",
+            "items": {
+                "$ref": "#/$defs/ChatStep"
+            },
+            "title": "Steps",
+            "type": "array"
+        },
+        "replyText": {
+            "description": "The assistant's reply",
+            "title": "Replytext",
+            "type": "string"
+        },
+        "toolCallCount": {
+            "description": "Tool calls it ran",
+            "minimum": 0,
+            "title": "Toolcallcount",
+            "type": "integer"
+        },
+        "usage": {
+            "allOf": [
+                {
+                    "$ref": "#/$defs/ChatTokenUsage"
+                }
+            ],
+            "description": "The tokens it used"
+        },
+        "model": {
+            "description": "The model that answered",
+            "title": "Model",
+            "type": "string"
+        },
+        "createdAt": {
+            "description": "When it was saved",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "conversationId",
+        "userId",
+        "storeId",
+        "seq",
+        "userText",
+        "steps",
+        "replyText",
+        "toolCallCount",
+        "usage",
+        "model",
+        "createdAt"
+    ],
+    "title": "ChatTurn",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -1,0 +1,31 @@
+{
+    "description": "The tokens a turn's model calls used, summed over its calls.",
+    "properties": {
+        "promptTokens": {
+            "description": "Input tokens",
+            "minimum": 0,
+            "title": "Prompttokens",
+            "type": "integer"
+        },
+        "completionTokens": {
+            "description": "Output tokens",
+            "minimum": 0,
+            "title": "Completiontokens",
+            "type": "integer"
+        },
+        "cachedTokens": {
+            "description": "Input tokens read from the cache",
+            "minimum": 0,
+            "title": "Cachedtokens",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "promptTokens",
+        "completionTokens",
+        "cachedTokens"
+    ],
+    "title": "ChatTokenUsage",
+    "type": "object",
+    "additionalProperties": false
+}

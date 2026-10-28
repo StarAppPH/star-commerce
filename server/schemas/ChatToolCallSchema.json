@@ -1,0 +1,31 @@
+{
+    "description": "One tool call of the model, as Meta sent it.",
+    "properties": {
+        "id": {
+            "description": "Meta's id of the call",
+            "maxLength": 128,
+            "title": "Id",
+            "type": "string"
+        },
+        "name": {
+            "description": "The tool called",
+            "maxLength": 64,
+            "title": "Name",
+            "type": "string"
+        },
+        "arguments": {
+            "description": "Its arguments, a JSON string",
+            "maxLength": 16000,
+            "title": "Arguments",
+            "type": "string"
+        }
+    },
+    "required": [
+        "id",
+        "name",
+        "arguments"
+    ],
+    "title": "ChatToolCall",
+    "type": "object",
+    "additionalProperties": false
+}

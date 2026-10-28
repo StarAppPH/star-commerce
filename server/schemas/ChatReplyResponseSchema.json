@@ -1,0 +1,29 @@
+{
+    "description": "What a chat route sends: the assistant's reply to the message.",
+    "properties": {
+        "conversationId": {
+            "description": "The Conversations _id",
+            "title": "Conversationid",
+            "type": "string"
+        },
+        "reply": {
+            "description": "The assistant's reply",
+            "title": "Reply",
+            "type": "string"
+        },
+        "turnSeq": {
+            "description": "The seq of the turn just saved",
+            "minimum": 0,
+            "title": "Turnseq",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "conversationId",
+        "reply",
+        "turnSeq"
+    ],
+    "title": "ChatReplyResponse",
+    "type": "object",
+    "additionalProperties": false
+}

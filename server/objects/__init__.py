@@ -201,6 +201,15 @@ from objects.policy import (DeliveryOption, RefundMethod, ReturnShippingPayer,
                             POLICY_RETURN_ANSWERS, POLICY_DELIVERY_ANSWERS,
                             Policy, POLICY_ANSWER_FIELDS, PolicyView,
                             StorePolicyResponse)
+from objects.chat import (ChatAudience, CHAT_MESSAGE_MAX_LENGTH,
+                          CHAT_TITLE_MAX_LENGTH, CHAT_TOOL_CALL_ID_MAX_LENGTH,
+                          CHAT_TOOL_NAME_MAX_LENGTH,
+                          CHAT_TOOL_ARGUMENTS_MAX_LENGTH, Conversation,
+                          ConversationView, ChatToolCall, ChatStep,
+                          ChatTokenUsage, ChatTurn, ChatUsage,
+                          ChatReplyResponse, ConversationRow,
+                          ConversationListResponse, ChatTurnRow,
+                          ConversationTurnsResponse)
 
 
 # AppCreator (_classes_from_module) generates TS schemas only for classes

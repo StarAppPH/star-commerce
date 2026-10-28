@@ -195,6 +195,8 @@ It needs node and the global json-schema-to-typescript at the major version `too
 | `Server.ts` | Config | API URL switching (local vs production) |
 | `schemas/*.ts` | objects/ | TypeScript interfaces from Pydantic models (closed: no index signature; a schema whose model is gone is deleted) |
 | `lib/generated/serverConstants.ts` | sharedConstants.py | Values shared verbatim with the browser |
+| `mcpServer.py` | The `@mcp_tool` routes (mcpCreator.py) | The local MCP servers, one per audience |
+| `chatTools.py` | The `@mcp_tool` routes (chatToolsCreator.py, the same specs) | The chat route's tools: each audience's tool list, argument models and calls (`chatModel.runTool`) |
 | `pubsub_map.json`, `PUBSUB_MAP.md` | Every repo's publishers and `PubSubRequests.py` | The fleet's Pub/Sub map (`pubSubMap.writeMap`, the last step of a full run) |
 
 ---
@@ -420,7 +422,7 @@ So a cloud process holds one real client:
 - No `testDb` exists in the cloud: only the tests use one.
 - A second `mainDb()` or `PubSubMockDb()` call returns the existing instance and builds no new client (`_initialized`).
 - A missing or empty `MONGO_URI` fails at once, never a client for a default host.
-- The Dockerfile runs one synchronous gunicorn worker per instance: keep it that way (every extra worker is another client).
+- The Dockerfile runs one gunicorn worker per instance, with 8 threads (`--threads 8`): keep it one process (every extra worker is another client). The threads share its one client (PyMongo is thread-safe), so they add pool sockets on demand, up to one per request in flight, and no monitor sockets.
 - Do not set `maxPoolSize` to fit the cap: the pool opens sockets only for concurrent operations, and a lower limit just queues them. Cap the processes instead.
 
 `create-star-app cloud-setup` creates a service with `--max-instances=10`. Size each service's max instances (and its jobs' parallelism) so the fleet's total stays under the cluster's cap; the fleet repos set their own.
@@ -667,6 +669,7 @@ assert p.category is None  # True — coerced to None
 | `Server.ts` | `ENVIRONMENT=localdev python AppCreator.py` |
 | `schemas/*.ts` | `ENVIRONMENT=localdev python AppCreator.py` |
 | `lib/generated/serverConstants.ts` | `python AppCreator.py --constants-only` |
+| `mcpServer.py`, `chatTools.py` | `ENVIRONMENT=localdev python AppCreator.py` (or `python mcpCreator.py` / `python chatToolsCreator.py` alone) |
 | `pubsub_map.json`, `PUBSUB_MAP.md` | `python pubSubMap.py --write` (AppCreator runs it too) |
 
 ### Shared files

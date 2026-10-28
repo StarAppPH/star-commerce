@@ -1,0 +1,40 @@
+{
+    "description": "A ChatUsage document: how many chat messages a customer, or a store's\ncustomers, sent on one day (UTC+8). Its _id is\n\"<customer|store>:<id>:<YYYY-MM-DD>\"; a TTL index on expireAt deletes\nit once the day is over.",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "count": {
+            "description": "Messages sent that day",
+            "minimum": 0,
+            "title": "Count",
+            "type": "integer"
+        },
+        "expireAt": {
+            "description": "When it is deleted",
+            "format": "date-time",
+            "title": "Expireat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "count",
+        "expireAt"
+    ],
+    "title": "ChatUsage",
+    "type": "object",
+    "additionalProperties": false
+}
