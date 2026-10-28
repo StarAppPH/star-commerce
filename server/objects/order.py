@@ -1,0 +1,207 @@
+"""Orders (a customer's order at one store).
+
+Package rule (every objects module): no validator may EVER mutate a value it
+receives (see objects/__init__.py)."""
+import datetime
+
+from pydantic import Field
+from typing import Literal
+
+from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
+                          ResponseModel)
+from objects.store import PHONE_NUMBER_PATTERN, StoreCurrency
+from objects.product import (PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
+                             Product)
+
+
+# ──────────────────────────────────────────────
+# Orders (a customer's order at one store)
+# ──────────────────────────────────────────────
+
+# Where an order is:
+#   pending: placed, its units held in each product's reservedInventory,
+#     awaiting payment;
+#   paid: the customer paid;
+#   completed: handed over, its units counted in each product's soldCount;
+#   cancelled: its units went back to inventory, and a paid one was
+#     refunded.
+# Every move out of pending or paid takes the order's reservation off its
+# products, so reservedInventory only holds orders still open.
+OrderStatus = Literal['pending', 'paid', 'completed', 'cancelled']
+# Why an order was cancelled: unpaid by its expiresAt, by the store's
+# admin, or by the customer while it was unpaid.
+CancelReason = Literal['expired', 'byStore', 'byCustomer']
+# How a customer pays at checkout. No cash on delivery: it cannot be paid
+# at checkout.
+PaymentMethod = Literal['card', 'gcash', 'maya', 'grabPay', 'bankTransfer']
+# The start of every reference the demo payment provider (payments.py)
+# hands out, for a payment and for a refund.
+PAYMENT_REFERENCE_PREFIX = 'DEMO-'
+REFUND_REFERENCE_PREFIX = 'DEMO-R-'
+# The most items one order holds (the checkout enforces it).
+ORDER_ITEMS_MAX = 50
+# How long a customer has to pay a placed order before it is cancelled.
+ORDER_PAYMENT_MINUTES = 30
+# The most unpaid (pending, unexpired) orders a customer holds at a store.
+MAX_PENDING_ORDERS_PER_STORE = 3
+
+
+class OrderItem(AppModel):
+    """One product of an order, a snapshot taken when the order is placed:
+    a later change of the product's name or price never rewrites it."""
+    productId: str = Field(..., min_length=1, description='The Products _id')
+    name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
+                      description='Product name when ordered')
+    price: float = Field(..., ge=0, le=PRODUCT_PRICE_MAX,
+                         description='Unit price paid, in the order currency')
+    quantity: int = Field(..., ge=1, description='Units ordered')
+
+
+class NewOrderItem(AppModel):
+    """One item of a createOrder call. Types only, no limits: the route
+    checks them, so a refusal names the item's position and never quotes
+    the value (NewProduct's reason)."""
+    productId: str = Field(..., description='The Products _id')
+    quantity: int = Field(..., description='Units to order')
+
+
+class Order(MongoModel):
+    """An Orders document, read newest first: the (storeId, status,
+    createdAt) and (customerId, storeId, createdAt) indexes
+    (mongoDb.ensureIndexes) serve the admin's and the customer's lists,
+    (status, expiresAt) and (storeId, status, expiresAt) the sweeps of
+    expired unpaid orders.
+
+    Every write to a product's inventory or reservedInventory an order
+    makes (placing, cancelling or completing it) must also $inc the
+    product's _version, or updateStoreProduct's _version lock misses it and
+    the admin's save overwrites it."""
+    storeId: str = Field(..., min_length=1, description='The Stores _id')
+    customerId: str = Field(..., min_length=1,
+                            description='The Customers _id')
+    items: list[OrderItem] = Field(..., min_length=1,
+                                   max_length=ORDER_ITEMS_MAX,
+                                   description='What was ordered')
+    total: float = Field(..., ge=0, description='What the order costs')
+    currency: StoreCurrency = Field(
+        ..., description="ISO 4217 code of the store's currency when ordered")
+    contactNumber: str = Field(..., pattern=PHONE_NUMBER_PATTERN,
+                               description="The customer's verified number")
+    status: OrderStatus = Field(..., description='Where the order is')
+    createdAt: datetime.datetime = Field(..., description='When it was placed')
+    # Stored, not derived from createdAt: a later change of
+    # ORDER_PAYMENT_MINUTES never moves a placed order's deadline.
+    expiresAt: datetime.datetime = Field(
+        ..., description='Unpaid by then, it is cancelled (UTC)')
+    paymentMethod: PaymentMethod | None = Field(
+        None, description='How the customer paid')
+    paymentReference: str | None = Field(
+        None, description="The payment provider's id of the payment")
+    paidAt: datetime.datetime | None = Field(None,
+                                             description='When it was paid')
+    cancelledAt: datetime.datetime | None = Field(
+        None, description='When it was cancelled')
+    cancelReason: CancelReason | None = Field(
+        None, description='Why it was cancelled')
+    completedAt: datetime.datetime | None = Field(
+        None, description='When it was handed over')
+    refundedAt: datetime.datetime | None = Field(
+        None, description='When its payment was refunded')
+    refundReference: str | None = Field(
+        None, description="The payment provider's id of the refund")
+
+
+class OrderView(StoredDocumentKeys, Order):
+    """An Orders document as stored."""
+
+
+class OrderItemRow(ResponseModel):
+    """One item of an order as a route sends it: OrderItem without its
+    productId. Each field restates OrderItem's, which
+    test_route_response_models.py's MIRRORS keeps in step."""
+    name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
+                      description='Product name when ordered')
+    price: float = Field(..., ge=0, le=PRODUCT_PRICE_MAX,
+                         description='Unit price paid, in the order currency')
+    quantity: int = Field(..., ge=1, description='Units ordered')
+
+
+class StoreOrderRow(ResponseModel):
+    """One order as its store's admin sees it. Each field restates
+    Order's, which test_route_response_models.py's MIRRORS keeps in
+    step."""
+    id: str = Field(..., alias='_id', description='Orders _id')
+    status: OrderStatus = Field(..., description='Where the order is')
+    items: list[OrderItemRow] = Field(..., min_length=1,
+                                      max_length=ORDER_ITEMS_MAX,
+                                      description='What was ordered')
+    total: float = Field(..., ge=0, description='What the order costs')
+    currency: StoreCurrency = Field(
+        ..., description="ISO 4217 code of the store's currency when ordered")
+    contactNumber: str = Field(..., pattern=PHONE_NUMBER_PATTERN,
+                               description="The customer's verified number")
+    createdAt: datetime.datetime = Field(..., description='When it was placed')
+    paymentMethod: PaymentMethod | None = Field(
+        ..., description='How the customer paid')
+    paidAt: datetime.datetime | None = Field(...,
+                                             description='When it was paid')
+    expiresAt: datetime.datetime = Field(
+        ..., description='Unpaid by then, it is cancelled (UTC)')
+    completedAt: datetime.datetime | None = Field(
+        ..., description='When it was handed over')
+    cancelledAt: datetime.datetime | None = Field(
+        ..., description='When it was cancelled')
+    cancelReason: CancelReason | None = Field(
+        ..., description='Why it was cancelled')
+    refundedAt: datetime.datetime | None = Field(
+        ..., description='When its payment was refunded')
+    paymentReference: str | None = Field(
+        ..., description="The payment provider's id of the payment")
+    refundReference: str | None = Field(
+        ..., description="The payment provider's id of the refund")
+
+
+class MyOrderRow(ResponseModel):
+    """One order as the customer who placed it sees it: StoreOrderRow
+    without the contact number and the payment and refund references. Each field
+    restates Order's, which test_route_response_models.py's MIRRORS keeps
+    in step."""
+    id: str = Field(..., alias='_id', description='Orders _id')
+    status: OrderStatus = Field(..., description='Where the order is')
+    items: list[OrderItemRow] = Field(..., min_length=1,
+                                      max_length=ORDER_ITEMS_MAX,
+                                      description='What was ordered')
+    total: float = Field(..., ge=0, description='What the order costs')
+    currency: StoreCurrency = Field(
+        ..., description="ISO 4217 code of the store's currency when ordered")
+    createdAt: datetime.datetime = Field(..., description='When it was placed')
+    paymentMethod: PaymentMethod | None = Field(
+        ..., description='How the customer paid')
+    paidAt: datetime.datetime | None = Field(...,
+                                             description='When it was paid')
+    expiresAt: datetime.datetime = Field(
+        ..., description='Unpaid by then, it is cancelled (UTC)')
+    completedAt: datetime.datetime | None = Field(
+        ..., description='When it was handed over')
+    cancelledAt: datetime.datetime | None = Field(
+        ..., description='When it was cancelled')
+    cancelReason: CancelReason | None = Field(
+        ..., description='Why it was cancelled')
+    refundedAt: datetime.datetime | None = Field(
+        ..., description='When its payment was refunded')
+
+
+class StoreOrderListResponse(ResponseModel):
+    orders: list[StoreOrderRow] = Field(
+        ..., description='The orders, newest first')
+
+
+class MyOrderListResponse(ResponseModel):
+    orders: list[MyOrderRow] = Field(...,
+                                     description='The orders, newest first')
+
+
+class CreatedOrderResponse(ResponseModel):
+    order: MyOrderRow = Field(..., description='The order just placed')
+    paymentMethods: list[PaymentMethod] = Field(
+        ..., description='The ways the customer can pay it')
