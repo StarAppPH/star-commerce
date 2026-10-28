@@ -2880,6 +2880,11 @@ MIRRORS = [
     # reservedQuantity is derived (the reservations summed): no Product
     # field to mirror.
     (ObjectsModule.AdminProductListRow, ObjectsModule.Product, {'id'}),
+    # items is a list of OrderItemRow on the rows, of OrderItem on the
+    # document: mirrored by the entry after these two.
+    (ObjectsModule.StoreOrderRow, ObjectsModule.Order, {'id', 'items'}),
+    (ObjectsModule.MyOrderRow, ObjectsModule.Order, {'id', 'items'}),
+    (ObjectsModule.OrderItemRow, ObjectsModule.OrderItem, set()),
 ]
 
 

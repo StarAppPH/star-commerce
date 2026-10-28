@@ -657,6 +657,45 @@ def addProduct(storeId: str, name: str, price: float, soldCount: int = 0,
     return db.create(product.model_dump(by_alias=True), 'Products')
 
 
+def addOrder(storeId: str, customerId: str, items: list[dict],
+             status: str = 'pending',
+             createdAt: datetime.datetime | None = None, *,
+             currency: str = 'PHP',
+             contactNumber: str = '+639171234567'):
+    """An Orders document, stored and returned. `items` is a list of
+    {'productId', 'name', 'price', 'quantity'} dicts; the total is summed
+    from them. createdAt defaults to now (UTC); a naive one is refused, so
+    a test cannot seed a local time 8 hours off."""
+    from objects import Order
+    if createdAt is not None and createdAt.utcoffset() is None:
+        raise ValueError('addOrder needs a timezone-aware createdAt')
+    order = Order(storeId=storeId,
+                  customerId=customerId,
+                  items=items,
+                  total=sum(i['price'] * i['quantity'] for i in items),
+                  currency=currency,
+                  contactNumber=contactNumber,
+                  status=status,
+                  createdAt=createdAt or datetime.datetime.now(
+                      tz=datetime.timezone.utc),
+                  _version=0)
+    return db.create(order.model_dump(by_alias=True), 'Orders')
+
+
+def orderIds(res: dict) -> list[str]:
+    """The _ids of an order list response, in the order sent."""
+    return [order['_id'] for order in res['orders']]
+
+
+def appTime(year: int, month: int, day: int, hour: int = 0, minute: int = 0,
+            second: int = 0, millisecond: int = 0) -> datetime.datetime:
+    """An instant on the app's wall clock (AppConfig.Timezone, UTC+8), timezone
+    aware, to millisecond precision (what MongoDB stores)."""
+    from AppConfig import Timezone
+    return datetime.datetime(year, month, day, hour, minute, second,
+                             millisecond * 1000, tzinfo=Timezone().getTimezone())
+
+
 def storeWithProducts(adminId: str, name: str = 'Bakery A',
                       currency: str = 'PHP') -> dict:
     """A store with three available products and one hidden one."""

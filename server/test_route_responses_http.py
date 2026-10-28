@@ -55,14 +55,17 @@ import pubSub as pubSubModule
 from ApiRequests import ApiRequests
 from AppCreator import (STATUS_BAD_REQUEST, STATUS_FORBIDDEN,
                         STATUS_JWT_REJECTED, STATUS_OK)
+from actions.OrderActions import (INVALID_PERIOD, INVALID_STATUS,
+                                  PERIOD_AND_DATES)
 from actions.ProductActions import PRODUCT_LIST_DEFAULT_LIMIT
 from conftest import (RAW_EMAIL, RAW_UID, STORE_DETAILS, TOKEN, TOKEN_UID,
-                      addProduct, createTestStore, createTestUser, guestAt,
+                      addOrder, addProduct, createTestStore, createTestUser, guestAt,
                       modelKeys, wipeCollections)
 from flask_jwt_extended import create_access_token, decode_token
 from mongoDb import db
-from objects import ApiResponse, UserResponse
+from objects import ApiResponse, MyOrderRow, StoreOrderRow, UserResponse
 from roles import AllRoles
+from utils import _ISO_DATE_MESSAGE
 
 _TEST_JWT_SECRET = 'rrh-http-test-jwt-secret-0123456789abcdef'
 FORGED_TOKEN = 'rrh-http-forged-firebase-token'
@@ -851,3 +854,144 @@ def test_http_adminProductRoutes_refuseAForeignUserId(monkeypatch, route,
         assert db.read({}, 'Products') == []
     finally:
         wipeCollections(STORE_COLLECTIONS)
+
+
+ORDER_COLLECTIONS = STORE_COLLECTIONS + ['Orders']
+ORDER_SENTINEL = 'ZQ-secret-7'
+ORDER_LIMIT = 'limit is a whole number from 1 to 50'
+ORDER_ITEMS = [{'productId': 'p1', 'name': 'Ube Cake', 'price': 650,
+                'quantity': 2}]
+
+
+@pytest.mark.parametrize('route, body, param', [
+    ('getStoreOrders', {'status': {'$ne': 'x'}}, 'status'),
+    ('getStoreOrders', {'status': ['pending']}, 'status'),
+    ('getStoreOrders', {'period': {'$ne': 'x'}}, 'period'),
+    ('getStoreOrders', {'period': ['today']}, 'period'),
+    ('getStoreOrders', {'startDate': {'$gt': ''}}, 'startDate'),
+    ('getStoreOrders', {'endDate': ['2026-03-10']}, 'endDate'),
+    ('getStoreOrders', {'limit': {'$gt': 0}}, 'limit'),
+    ('getMyOrders', {'status': {'$ne': 'x'}}, 'status'),
+    ('getMyOrders', {'status': ['pending']}, 'status'),
+    ('getMyOrders', {'storeId': {'$ne': None}}, 'storeId'),
+    ('getMyOrders', {'storeId': ['a']}, 'storeId'),
+    ('getMyOrders', {'limit': ['1']}, 'limit'),
+])
+def test_http_orderRoutes_anObjectOrListParam_isA400(monkeypatch, firebase,
+                                                     route, body, param):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(ORDER_COLLECTIONS)
+    try:
+        store = createTestStore(ADMIN)
+        customerId = guestAt(firebase, store, 'rrh-guest-orders')
+        addOrder(store['_id'], customerId, ORDER_ITEMS)
+        caller = ADMIN if route == 'getStoreOrders' else customerId
+        sent = {'userId': caller, 'storeId': store['_id'], **body}
+
+        res = client.post('/' + route, json=sent,
+                          headers=_bearer(_token(flaskApp, caller)))
+
+        assert _failure_body(res, STATUS_BAD_REQUEST)[
+            'message'] == f'Invalid {param}'
+    finally:
+        wipeCollections(ORDER_COLLECTIONS)
+
+
+def test_http_getStoreOrders_period_andItsRefusals(monkeypatch):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(ORDER_COLLECTIONS)
+    try:
+        store = createTestStore(ADMIN)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        recent = addOrder(store['_id'], 'rrh-customer', ORDER_ITEMS,
+                          createdAt=now)['_id']
+        addOrder(store['_id'], 'rrh-customer', ORDER_ITEMS,
+                 createdAt=now - datetime.timedelta(days=30))
+        headers = _bearer(_token(flaskApp, ADMIN))
+
+        def post(**fields):
+            return client.post('/getStoreOrders',
+                               json={'userId': ADMIN, **fields},
+                               headers=headers)
+
+        data = _success_body(post(period='last7Days'),
+                             'getStoreOrders')['data']
+        assert [o['_id'] for o in data['orders']] == [recent]
+        assert set(data['orders'][0]) == modelKeys(StoreOrderRow)
+        # Missing optional keys reach the route as None.
+        assert len(_success_body(post(), 'getStoreOrders')['data'][
+            'orders']) == 2
+        for fields, message in [
+            ({'period': ORDER_SENTINEL}, INVALID_PERIOD),
+            ({'status': ORDER_SENTINEL}, INVALID_STATUS),
+            ({'period': 'today', 'startDate': '2026-03-10'},
+             PERIOD_AND_DATES),
+            ({'startDate': ORDER_SENTINEL}, _ISO_DATE_MESSAGE),
+            ({'limit': True}, ORDER_LIMIT),
+            ({'limit': ORDER_SENTINEL}, ORDER_LIMIT),
+        ]:
+            body = _failure_body(post(**fields), STATUS_BAD_REQUEST)
+            assert body['message'] == message
+            assert ORDER_SENTINEL not in body['message']
+    finally:
+        wipeCollections(ORDER_COLLECTIONS)
+
+
+def test_http_getMyOrders_envelope_limit_andOwnOrdersOnly(monkeypatch,
+                                                          firebase):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(ORDER_COLLECTIONS)
+    try:
+        store = createTestStore(ADMIN)
+        customerId = guestAt(firebase, store, 'rrh-guest-mine')
+        otherId = guestAt(firebase, store, 'rrh-guest-theirs')
+        mine = addOrder(store['_id'], customerId, ORDER_ITEMS)['_id']
+        addOrder(store['_id'], otherId, ORDER_ITEMS)
+        headers = _bearer(_token(flaskApp, customerId))
+
+        def post(**fields):
+            return client.post('/getMyOrders',
+                               json={'userId': customerId,
+                                     'storeId': store['_id'], **fields},
+                               headers=headers)
+
+        data = _success_body(post(), 'getMyOrders')['data']
+        assert [o['_id'] for o in data['orders']] == [mine]
+        assert set(data['orders'][0]) == modelKeys(MyOrderRow)
+        assert _success_body(post(storeId='rrh-unknown'), 'getMyOrders')[
+            'data'] == {'orders': []}
+        for fields, message in [
+            ({'status': ORDER_SENTINEL}, INVALID_STATUS),
+            ({'limit': True}, ORDER_LIMIT),
+        ]:
+            body = _failure_body(post(**fields), STATUS_BAD_REQUEST)
+            assert body['message'] == message
+    finally:
+        wipeCollections(ORDER_COLLECTIONS)
+
+
+def test_http_orderRoutes_refuseTheOtherRole_with403(monkeypatch, firebase):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(ORDER_COLLECTIONS)
+    try:
+        store = createTestStore(ADMIN)
+        customerId = guestAt(firebase, store, 'rrh-guest-role')
+        addOrder(store['_id'], customerId, ORDER_ITEMS)
+
+        asCustomer = client.post(
+            '/getStoreOrders', json={'userId': customerId},
+            headers=_bearer(_token(flaskApp, customerId)))
+        asAdmin = client.post(
+            '/getMyOrders', json={'userId': ADMIN, 'storeId': store['_id']},
+            headers=_bearer(_token(flaskApp, ADMIN)))
+
+        assert _failure_body(asCustomer, STATUS_FORBIDDEN)[
+            'message'] == 'Only a store admin can do this'
+        assert _failure_body(asAdmin, STATUS_FORBIDDEN)[
+            'message'] == 'Only a customer can do this'
+    finally:
+        wipeCollections(ORDER_COLLECTIONS)

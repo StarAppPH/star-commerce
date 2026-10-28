@@ -1,0 +1,33 @@
+{
+    "description": "One item of an order as a route sends it: OrderItem without its\nproductId. Each field restates OrderItem's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+    "properties": {
+        "name": {
+            "description": "Product name when ordered",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "price": {
+            "description": "Unit price paid, in the order currency",
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        },
+        "quantity": {
+            "description": "Units ordered",
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "name",
+        "price",
+        "quantity"
+    ],
+    "title": "OrderItemRow",
+    "type": "object",
+    "additionalProperties": false
+}

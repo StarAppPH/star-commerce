@@ -12,7 +12,7 @@ import re
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from actions.CustomerActions import requireCustomer
-from actions.StoreActions import _validText, ownerStore, requireAdmin
+from actions.StoreActions import _validText, requireOwnerStore
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import (PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH,
@@ -142,8 +142,9 @@ def _newProductDocument(storeId: str, fields: dict,
 
 def _adminStore(userId: str) -> dict:
     """The _id and currency of the store the admin owns: the tenant boundary
-    of every admin product route. Refuses an admin with no store yet."""
-    return ownerStore(userId, {'_id': 1, 'currency': 1})
+    of every admin product route. Refuses a caller who is no admin, then
+    an admin with no store yet (requireOwnerStore)."""
+    return requireOwnerStore(userId, {'_id': 1, 'currency': 1})
 
 
 def _refuseOverCap(storeId: str, adding: int) -> None:
@@ -240,7 +241,6 @@ class ProductActions():
         lists several products, call addStoreProducts once instead. If this
         tool refuses a detail, relay its message to the admin so they can
         correct that detail, then call again."""
-        requireAdmin(userId)
         store = _adminStore(userId)
         # The generated HTTP handler passes a missing body key as None:
         # _validProduct applies the isAvailable default.
@@ -278,7 +278,6 @@ class ProductActions():
         for a price, say), which is refused before this tool runs and is
         counted from products.0 (products.0 is Product 1). Relay it to the
         admin, correct that product and call again with the whole list."""
-        requireAdmin(userId)
         store = _adminStore(userId)
         if (not isinstance(products, list)
                 or not 1 <= len(products) <= PRODUCT_BATCH_MAX):
@@ -361,7 +360,6 @@ class ProductActions():
         again, confirm the change with the admin against the fresh values,
         then retry. If it refuses for another reason, relay its message to
         the admin."""
-        requireAdmin(userId)
         store = _adminStore(userId)
         changes = _validProduct(name, description, price, inventory,
                                 isAvailable, isNew=False)
@@ -407,7 +405,6 @@ class ProductActions():
         text, and `limit` (1 to 50, default 10) for how many to return. Use
         it to find a product's productId before calling
         updateStoreProduct."""
-        requireAdmin(userId)
         store = _adminStore(userId)
         pipeline = [
             {'$match': {'storeId': store['_id'], **_nameSearch(search)}},

@@ -27,6 +27,8 @@ from flask_jwt_extended import (JWTManager, create_access_token,
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
+from mcp.server.mcpserver.utilities.func_metadata import func_metadata
+
 import mcpCreator
 import mcpRuntime
 import mcpServer
@@ -34,11 +36,13 @@ from ApiRequests import ApiRequests
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import NoContentResponse
-from conftest import (STORE_DETAILS, addProduct, createTestStore,
+from conftest import (STORE_DETAILS, addOrder, addProduct, createTestStore,
                       createTestUser, guestAt, storeWithProducts,
                       wipeCollections)
 
-COLLECTIONS = ['Users', 'Bootstrap', 'Stores', 'Customers', 'Products']
+COLLECTIONS = [
+    'Users', 'Bootstrap', 'Stores', 'Customers', 'Products', 'Orders'
+]
 ADMIN = 'mc-admin'
 OTHER_ADMIN = 'mc-other-admin'
 GUEST = 'mc-guest-uid'
@@ -86,16 +90,19 @@ def test_eachAudienceListsOnlyItsTools():
     async def names(audience):
         return {t.name for t in await mcpServer.servers[audience].list_tools()}
 
-    assert asyncio.run(names('customer')) == {'listStoreProducts'}
+    assert asyncio.run(names('customer')) == {'listStoreProducts',
+                                              'getMyOrders'}
     assert asyncio.run(names('admin')) == {
         'getUserStore', 'createUserStore', 'addStoreProduct',
-        'addStoreProducts', 'updateStoreProduct', 'listMyStoreProducts'
+        'addStoreProducts', 'updateStoreProduct', 'listMyStoreProducts',
+        'getStoreOrders'
     }
 
 
 def test_aToolsArguments_leaveOutTheInjectedParams():
     async def schema():
-        [tool] = await mcpServer.servers['customer'].list_tools()
+        tools = await mcpServer.servers['customer'].list_tools()
+        [tool] = [t for t in tools if t.name == 'listStoreProducts']
         return tool.input_schema
 
     properties = asyncio.run(schema())['properties']
@@ -680,3 +687,250 @@ def test_e2e_adminProducts_theAICannotPickAnotherStoreOrUser(clean):
     [stored] = db.read({}, 'Products')
     assert stored['storeId'] == db.read({'ownerUserId': ADMIN}, 'Stores',
                                         findOne=True)['_id']
+
+
+# ----------------------------- order tools ----------------------------- #
+
+ORDER_ITEMS = [{'productId': 'p1', 'name': 'Ube Cake', 'price': 650,
+                'quantity': 2}]
+ORDER_SENTINEL = 'ZQ-secret-7'
+ORDER_BASE = datetime.datetime(2026, 1, 15, 8, 0, tzinfo=datetime.timezone.utc)
+ISO_DATE_REFUSAL = 'dates must be ISO YYYY-MM-DD dates'
+
+
+def _orderIds(result) -> list[str]:
+    return [o['_id'] for o in result.structured_content['orders']]
+
+
+def _withoutCreatedAt(res: dict) -> list[dict]:
+    """The orders of a response, minus createdAt: MCP sends it as text, a
+    direct call as a datetime."""
+    return [{k: v for k, v in o.items() if k != 'createdAt'}
+            for o in res['orders']]
+
+
+def test_theOrderToolsArguments_leaveOutTheInjectedParams():
+    async def tools(audience):
+        return {t.name: t for t in await mcpServer.servers[audience].list_tools()}
+
+    admin = asyncio.run(tools('admin'))['getStoreOrders'].input_schema
+    customer = asyncio.run(tools('customer'))['getMyOrders'].input_schema
+
+    assert set(admin['properties']) == {
+        'status', 'period', 'startDate', 'endDate', 'limit'
+    }
+    assert not admin.get('required')
+    assert set(customer['properties']) == {'status', 'limit'}
+    assert not customer.get('required')
+    # status and period are plain text: the route's own check refuses a bad
+    # one with a fixed message, where the SDK's enum check would quote it.
+    assert 'enum' not in str(admin['properties']['status'])
+    assert 'enum' not in str(admin['properties']['period'])
+    assert 'enum' not in str(customer['properties']['status'])
+
+
+def test_e2e_getStoreOrders_listsTheAdminsStoreOrders(clean, firebase):
+    store = storeWithProducts(ADMIN)
+    other = createTestStore(OTHER_ADMIN, 'Coffee B')
+    customerId = guestAt(firebase, store, GUEST)
+    older, newer = [
+        addOrder(store['_id'], customerId, ORDER_ITEMS, status,
+                 ORDER_BASE + datetime.timedelta(minutes=i))['_id']
+        for i, status in enumerate(['pending', 'confirmed'])
+    ]
+    addOrder(other['_id'], customerId, ORDER_ITEMS)
+
+    everything = callTool(_auth(ADMIN), 'getStoreOrders', {},
+                          audience='admin')
+    confirmed = callTool(_auth(ADMIN), 'getStoreOrders',
+                         {'status': 'confirmed'}, audience='admin')
+    limited = callTool(_auth(ADMIN), 'getStoreOrders', {'limit': 1},
+                       audience='admin')
+
+    assert not everything.is_error, _text(everything)
+    assert _orderIds(everything) == [newer, older]
+    assert _withoutCreatedAt(everything.structured_content) == (
+        _withoutCreatedAt(api.getStoreOrders(ADMIN)))
+    assert _orderIds(confirmed) == [newer]
+    assert _orderIds(limited) == [newer]
+
+
+def test_e2e_getStoreOrders_period_onTheRealClock(clean, firebase):
+    store = storeWithProducts(ADMIN)
+    customerId = guestAt(firebase, store, GUEST)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    recent = addOrder(store['_id'], customerId, ORDER_ITEMS,
+                      createdAt=now)['_id']
+    addOrder(store['_id'], customerId, ORDER_ITEMS,
+             createdAt=now - datetime.timedelta(days=30))
+
+    week = callTool(_auth(ADMIN), 'getStoreOrders', {'period': 'last7Days'},
+                    audience='admin')
+
+    assert not week.is_error, _text(week)
+    assert _orderIds(week) == [recent]
+
+
+@pytest.mark.parametrize('arguments, message', [
+    ({'status': ORDER_SENTINEL}, 'status is one of'),
+    ({'period': ORDER_SENTINEL}, 'period is one of'),
+    ({'startDate': ORDER_SENTINEL}, ISO_DATE_REFUSAL),
+    ({'endDate': '2026-02-30'}, ISO_DATE_REFUSAL),
+    ({'period': 'today', 'startDate': '2026-03-10'}, 'not both'),
+    ({'limit': 0}, 'limit is a whole number from 1 to 50'),
+    ({'limit': ORDER_SENTINEL}, ''),
+])
+def test_e2e_getStoreOrders_aBadArgument_isAToolError_thatDoesNotQuoteIt(
+        clean, arguments, message):
+    createTestStore(ADMIN)
+
+    result = callTool(_auth(ADMIN), 'getStoreOrders', arguments,
+                      audience='admin')
+
+    assert result.is_error
+    assert message in _text(result)
+    assert ORDER_SENTINEL not in _text(result)
+
+
+def test_e2e_getMyOrders_listsTheCustomersOwnOrdersAtTheConnectionsStore(
+        clean, firebase):
+    store = storeWithProducts(ADMIN)
+    other = createTestStore(OTHER_ADMIN, 'Coffee B')
+    customerId = guestAt(firebase, store, GUEST)
+    otherCustomerId = guestAt(firebase, store, 'mc-other-guest-uid')
+    older = addOrder(store['_id'], customerId, ORDER_ITEMS,
+                     createdAt=ORDER_BASE)['_id']
+    newer = addOrder(store['_id'], customerId, ORDER_ITEMS, 'confirmed',
+                     ORDER_BASE + datetime.timedelta(minutes=1))['_id']
+    addOrder(store['_id'], otherCustomerId, ORDER_ITEMS)
+    addOrder(other['_id'], customerId, ORDER_ITEMS)
+
+    # storeId and userId sent as arguments are no tool arguments: they are
+    # dropped, and the call runs as the JWT's customer at the connection's
+    # store.
+    result = callTool(_auth(customerId, store['_id']), 'getMyOrders', {
+        'storeId': other['_id'],
+        'userId': otherCustomerId
+    })
+    confirmed = callTool(_auth(customerId, store['_id']), 'getMyOrders',
+                         {'status': 'confirmed'})
+
+    assert not result.is_error, _text(result)
+    assert _orderIds(result) == [newer, older]
+    assert all('contactNumber' not in o
+               for o in result.structured_content['orders'])
+    assert _withoutCreatedAt(result.structured_content) == _withoutCreatedAt(
+        api.getMyOrders(customerId, store['_id']))
+    assert _orderIds(confirmed) == [newer]
+
+
+@pytest.mark.parametrize('arguments, message', [
+    ({'status': ORDER_SENTINEL}, 'status is one of'),
+    ({'limit': 51}, 'limit is a whole number from 1 to 50'),
+    ({'limit': ORDER_SENTINEL}, ''),
+])
+def test_e2e_getMyOrders_aBadArgument_isAToolError_thatDoesNotQuoteIt(
+        clean, firebase, arguments, message):
+    store = storeWithProducts(ADMIN)
+    customerId = guestAt(firebase, store, GUEST)
+
+    result = callTool(_auth(customerId, store['_id']), 'getMyOrders',
+                      arguments)
+
+    assert result.is_error
+    assert message in _text(result)
+    assert ORDER_SENTINEL not in _text(result)
+
+
+def test_e2e_orderTools_refuseTheOtherRole(clean, firebase):
+    store = storeWithProducts(ADMIN)
+    customerId = guestAt(firebase, store, GUEST)
+    addOrder(store['_id'], customerId, ORDER_ITEMS)
+
+    asCustomer = callTool(_auth(customerId), 'getStoreOrders', {},
+                          audience='admin')
+    asAdmin = callTool(_auth(ADMIN, store['_id']), 'getMyOrders', {})
+
+    assert asCustomer.is_error
+    assert 'Only a store admin can do this' in _text(asCustomer)
+    assert asAdmin.is_error
+    assert 'Only a customer can do this' in _text(asAdmin)
+    # getStoreOrders is not on the customer server at all.
+    try:
+        wrongServer = callTool(_auth(customerId, store['_id']),
+                               'getStoreOrders', {}).is_error
+    except Exception:  # the SDK may raise for an unknown tool
+        wrongServer = True
+    assert wrongServer
+
+
+# ----------------------------- arguments never quoted ----------------------------- #
+
+
+def _registeredTools() -> list[tuple[str, object]]:
+    """(audience, tool) of every tool on every server, so a new tool is
+    covered without being named here."""
+    return [(audience, tool) for audience, server in mcpServer.servers.items()
+            for tool in server._tool_manager.list_tools()]
+
+
+def _toolIds() -> list[str]:
+    return [f'{audience}-{tool.name}' for audience, tool in _registeredTools()]
+
+
+@pytest.mark.parametrize('audience, tool', _registeredTools(), ids=_toolIds())
+def test_everyToolsArgumentRefusal_namesTheFieldButNeverQuotesTheValue(
+        audience, tool):
+    fields = list(tool.fn_metadata.arg_model.model_fields)
+    # A dict is the wrong type for every kind of field (str, int, bool,
+    # Literal, list), so each one is refused by the SDK's own check.
+    for field in fields:
+        result = callTool(_auth(ADMIN, 'mc-any-store'), tool.name,
+                          {field: {'k': ORDER_SENTINEL}}, audience=audience)
+
+        assert result.is_error, (tool.name, field)
+        assert field in _text(result), (tool.name, field)
+        assert ORDER_SENTINEL not in _text(result), (tool.name, field)
+
+
+def test_addStoreProducts_aBadPriceInsideAnItem_isRefusedWithoutQuotingIt():
+    result = callTool(_auth(ADMIN), 'addStoreProducts', {
+        'products': [{'name': 'Pandesal', 'price': ORDER_SENTINEL,
+                      'inventory': 1}]
+    }, audience='admin')
+
+    assert result.is_error
+    assert 'price' in _text(result)
+    assert ORDER_SENTINEL not in _text(result)
+
+
+@pytest.mark.parametrize('audience, tool', _registeredTools(), ids=_toolIds())
+def test_everyToolsArgumentModel_hidesInputInErrors_andKeepsItsSchema(
+        audience, tool):
+    argModel = tool.fn_metadata.arg_model
+    original = argModel.__bases__[0]
+
+    assert argModel.model_config.get('hide_input_in_errors') is True
+    assert argModel.__name__ == original.__name__
+    assert 'hide_input_in_errors' not in original.model_config
+    # No enum or type drift against what the function declares: the schema
+    # the SDK derives from the original function, not from our wrapper.
+    skip = [tool.context_kwarg] if tool.context_kwarg else []
+    fromFunction = func_metadata(tool.fn, skip_names=skip,
+                                 structured_output=True).arg_model
+    assert tool.parameters == fromFunction.model_json_schema(by_alias=True)
+    assert tool.parameters == original.model_json_schema()
+
+
+@pytest.mark.parametrize('products', [
+    '[{"name": "Pandesal", "price": "ZQ-secret-7", "inventory": 1}]',
+    'ZQ-secret-7',
+])
+def test_addStoreProducts_productsAsAJsonString_isRefusedWithoutQuotingIt(
+        products):
+    result = callTool(_auth(ADMIN), 'addStoreProducts',
+                      {'products': products}, audience='admin')
+
+    assert result.is_error
+    assert ORDER_SENTINEL not in _text(result)
+    assert db.read({}, 'Products') == []
