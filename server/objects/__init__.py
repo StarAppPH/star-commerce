@@ -75,7 +75,7 @@ RESPONSE MODELS (what a route declares as its responseModel):
     `kind: Literal[...]` of its own.
   - A route returns a dict with explicit keys: a list or a primitive is
     wrapped in a model with one field (`{'todos': [...]}`).
-  - Fields the route always sets are REQUIRED. Omittable but never null:
+  - Omittable but never null:
     `x: str = Field(None)`. Omittable or null: `x: str | None = None`.
   - A defaulted field is optional (`x?:`) in the generated TS type. A model
     a route ALWAYS sends with every field may opt in to
