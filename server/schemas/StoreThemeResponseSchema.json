@@ -1,0 +1,53 @@
+{
+    "description": "What updateMyStoreTheme sends: the store's photo theme, each field\nnull while unset. Each field restates Store's (MIRRORS).",
+    "properties": {
+        "photoStyle": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The look of the store's product photos",
+            "title": "Photostyle"
+        },
+        "primaryColor": {
+            "anyOf": [
+                {
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Main brand color, #RRGGBB",
+            "title": "Primarycolor"
+        },
+        "secondaryColor": {
+            "anyOf": [
+                {
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Second brand color, #RRGGBB",
+            "title": "Secondarycolor"
+        }
+    },
+    "required": [
+        "photoStyle",
+        "primaryColor",
+        "secondaryColor"
+    ],
+    "title": "StoreThemeResponse",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -9,6 +9,7 @@ import type { CreatedOrderResponse } from '../schemas/CreatedOrderResponseSchema
 import type { CustomerSessionResponse } from '../schemas/CustomerSessionResponseSchema';
 import type { DevUserListResponse } from '../schemas/DevUserListResponseSchema';
 import type { FirebaseUserObject } from '../schemas/FirebaseUserObjectSchema';
+import type { GeneratedPhotosResponse } from '../schemas/GeneratedPhotosResponseSchema';
 import type { MyOrderListResponse } from '../schemas/MyOrderListResponseSchema';
 import type { MyOrderRow } from '../schemas/MyOrderRowSchema';
 import type { MyStoreResponse } from '../schemas/MyStoreResponseSchema';
@@ -22,6 +23,7 @@ import type { StoreOrderListResponse } from '../schemas/StoreOrderListResponseSc
 import type { StoreOrderRow } from '../schemas/StoreOrderRowSchema';
 import type { StorePolicyResponse } from '../schemas/StorePolicyResponseSchema';
 import type { StoreResponse } from '../schemas/StoreResponseSchema';
+import type { StoreThemeResponse } from '../schemas/StoreThemeResponseSchema';
 import type { UserResponse } from '../schemas/UserResponseSchema';
 
     class ServerRequests extends Server {
@@ -157,6 +159,29 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             cache: 'no-store'
         });
         const data: ApiResponse<MyStoreResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async updateMyStoreTheme(userId: string, photoStyle: string | null, primaryColor: string | null, secondaryColor: string | null): Promise<ApiResponse<StoreThemeResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/updateMyStoreTheme`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "photoStyle": photoStyle, "primaryColor": primaryColor, "secondaryColor": secondaryColor}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StoreThemeResponse> & { msg?: string } = await res.json();
         if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
         
         if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
@@ -696,6 +721,29 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             return { message: "Failed to fetch data", status: 0, data: null };
         }
     }
+
+    async generateProductPhotos(userId: string, imageUrls: string[], count: number, notes: string | null): Promise<ApiResponse<GeneratedPhotosResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/generateProductPhotos`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "imageUrls": imageUrls, "count": count, "notes": notes}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<GeneratedPhotosResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
 }
 
 export interface RouteResponseModels {
@@ -705,6 +753,7 @@ export interface RouteResponseModels {
     getRoles: RoleListResponse;
     getUserRoleTypes: NoContentResponse;
     getUserStore: MyStoreResponse;
+    updateMyStoreTheme: StoreThemeResponse;
     createUserStore: StoreResponse;
     setUserStoreLocation: StoreResponse;
     startGuestSession: CustomerSessionResponse;
@@ -728,6 +777,7 @@ export interface RouteResponseModels {
     sendStoreChatMessage: ChatReplyResponse;
     listMyConversations: ConversationListResponse;
     getConversationTurns: ConversationTurnsResponse;
+    generateProductPhotos: GeneratedPhotosResponse;
 }
 
 export interface RouteRequestBodies {
@@ -737,6 +787,7 @@ export interface RouteRequestBodies {
     getRoles: { userId: string };
     getUserRoleTypes: { userId: string };
     getUserStore: { userId: string };
+    updateMyStoreTheme: { userId: string; photoStyle: string | null; primaryColor: string | null; secondaryColor: string | null };
     createUserStore: { userId: string; name: string; description: string; contactNumber: string; address: string; currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED'; openingHours: string | null };
     setUserStoreLocation: { userId: string; latitude: number; longitude: number };
     startGuestSession: { idToken: string; storeSlug: string };
@@ -760,6 +811,7 @@ export interface RouteRequestBodies {
     sendStoreChatMessage: { userId: string; storeId: string; message: string; conversationId: string | null };
     listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
     getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };
+    generateProductPhotos: { userId: string; imageUrls: string[]; count: number; notes: string | null };
 }
 
 export type PublicRoute =

@@ -4,7 +4,7 @@ flask-compress==1.25
 Brotli==1.2.0
 backports.zstd==1.7.0; python_version < "3.14"
 Flask-JWT-Extended>=4.6
-pydantic>=2.7
+pydantic>=2.11
 pymongo>=4.8
 pytest>=8.0
 pytest-xdist==3.8.0
@@ -19,4 +19,5 @@ requests>=2.31
 werkzeug>=3.0
 mcp==2.3.0
 openai==3.40.0
+google-cloud-storage==3.17.1
 PyJWT>=2.8

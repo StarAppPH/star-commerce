@@ -6,9 +6,10 @@
   only a chat call needs it, and without it the call is a 503 ("The
   assistant is unavailable right now"). The key is never logged or sent.
 - complete(): one chat completion within the turn's deadline. The SDK
-  retries nothing (CLIENT_MAX_RETRIES=0): complete() retries once
-  itself, only a connection error, a timeout, a 429 or a 5xx (504
-  included), and only with RETRY_MIN_SECONDS left after a fixed
+  retries nothing (CLIENT_MAX_RETRIES=0): callModel() (which
+  imageModel.editImages() shares) retries once itself, only a connection
+  error, a timeout, a 429 or a 5xx (504 included), and only with
+  RETRY_MIN_SECONDS left after a fixed
   RETRY_BACKOFF_SECONDS pause; it never waits for Retry-After, and never
   retries a 400/401/403/404. Any SDK error is then a ServiceUnavailable,
   which routeErrors answers with a 503 and a generic message.
@@ -30,6 +31,7 @@ import logging
 import os
 import threading
 import time
+from typing import Callable, TypeVar
 
 from pydantic import ValidationError
 from pydantic_core import to_json
@@ -93,6 +95,7 @@ CHAT_PROMPTS = {
 
 _client = None
 _clientLock = threading.Lock()
+T = TypeVar('T')
 
 
 def unavailable() -> ServiceUnavailable:
@@ -128,7 +131,7 @@ def client():
         return _client
 
 
-def _logModelError(error) -> None:
+def _logModelError(error, event: str) -> None:
     """Log an SDK error by its class and status only (its text may quote
     the request): a 4xx other than 429 (a bad key, a refused request) is
     ours to fix, so an ERROR."""
@@ -138,24 +141,53 @@ def _logModelError(error) -> None:
             and not isinstance(error, openai.RateLimitError)
             and isinstance(status, int) and 400 <= status < 500)
     logging.log(logging.ERROR if ours else logging.WARNING, {
-        'event': 'chatModelError',
+        'event': event,
         'errorClass': type(error).__name__,
         'status': status,
     })
 
 
-def complete(messages: list[dict], tools: list[dict] | None,
-             deadline: float):
-    """One chat completion of `messages`, with `tools` (None: the model
-    must answer in text), done before `deadline` (time.monotonic()): each
-    attempt waits at most min(CLIENT_TIMEOUT_SECONDS, the time left). A
-    connection error, a timeout, a 429 or a 5xx is retried once, with at
-    least RETRY_MIN_SECONDS left after a RETRY_BACKOFF_SECONDS pause; a
-    4xx other than 429 never is. Any SDK error is then raised as
-    unavailable()."""
+def callModel(request: Callable[[float], T], deadline: float,
+              attemptSeconds: float,
+              failure: Callable[[], Exception] = unavailable,
+              refusal: Callable[[Exception], Exception | None] | None = None,
+              logEvent: str = 'chatModelError') -> T:
+    """`request(timeout)` (one SDK call), done before `deadline`
+    (time.monotonic()): each attempt waits at most min(attemptSeconds, the
+    time left). A connection error, a timeout, a 429 or a 5xx is retried
+    once, with at least RETRY_MIN_SECONDS left after a
+    RETRY_BACKOFF_SECONDS pause; a 4xx other than 429 never is. An SDK
+    error `refusal` maps to an exception is raised as that one; any other
+    is then raised as failure(), and so is a passed deadline. Every SDK
+    error is logged (logEvent) by its class and status only."""
     import openai
     retryable = (openai.APIConnectionError, openai.APITimeoutError,
                  openai.RateLimitError, openai.InternalServerError)
+    for attempt in range(2):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise failure()
+        try:
+            return request(min(attemptSeconds, remaining))
+        except openai.OpenAIError as error:
+            _logModelError(error, logEvent)
+            refused = refusal(error) if refusal is not None else None
+            if refused is not None:
+                raise refused from None
+            if (attempt == 0 and isinstance(error, retryable)
+                    and deadline - time.monotonic() >=
+                    RETRY_BACKOFF_SECONDS + RETRY_MIN_SECONDS):
+                time.sleep(RETRY_BACKOFF_SECONDS)
+                continue
+            raise failure() from None
+
+
+def complete(messages: list[dict], tools: list[dict] | None,
+             deadline: float):
+    """One chat completion of `messages`, with `tools` (None: the model
+    must answer in text), done before `deadline` (time.monotonic()), each
+    attempt within CLIENT_TIMEOUT_SECONDS and retried as callModel does.
+    Any SDK error is then raised as unavailable()."""
     request = {
         'model': CHAT_MODEL,
         'messages': messages,
@@ -165,19 +197,10 @@ def complete(messages: list[dict], tools: list[dict] | None,
     if tools:
         request['tools'] = tools
         request['tool_choice'] = 'auto'
-    for attempt in range(2):
-        timeout = min(CLIENT_TIMEOUT_SECONDS, remainingSeconds(deadline))
-        try:
-            return client().chat.completions.create(**request,
-                                                    timeout=timeout)
-        except openai.OpenAIError as error:
-            _logModelError(error)
-            if (attempt == 0 and isinstance(error, retryable)
-                    and deadline - time.monotonic() >=
-                    RETRY_BACKOFF_SECONDS + RETRY_MIN_SECONDS):
-                time.sleep(RETRY_BACKOFF_SECONDS)
-                continue
-            raise unavailable() from None
+    return callModel(
+        lambda timeout: client().chat.completions.create(**request,
+                                                         timeout=timeout),
+        deadline, CLIENT_TIMEOUT_SECONDS)
 
 
 def toolError(message: str) -> str:

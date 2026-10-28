@@ -167,9 +167,13 @@ from objects.store import (STORE_NAME_MAX_LENGTH,
                            LONGITUDE_LIMIT, STORE_SLUG_PATTERN,
                            STORE_SLUG_MAX_LENGTH, PHONE_NUMBER_PATTERN,
                            StoreCurrency, DEFAULT_STORE_CURRENCY,
+                           PHOTO_STYLE_MAX_LENGTH, HEX_COLOR_PATTERN,
+                           HEX_COLOR_EXAMPLE, STORE_THEME_FIELDS, hexColor,
+                           _isNone,
                            StoreLocation, StoreLocationResponse, Store,
                            StoreView, Customer, CustomerView, StoreResponse,
-                           MyStoreResponse, CustomerSessionResponse,
+                           AdminStoreResponse, MyStoreResponse,
+                           StoreThemeResponse, CustomerSessionResponse,
                            PhoneVerifiedResponse)
 from objects.product import (PRODUCT_NAME_MAX_LENGTH,
                              PRODUCT_DESCRIPTION_MAX_LENGTH,
@@ -210,6 +214,9 @@ from objects.chat import (ChatAudience, CHAT_MESSAGE_MAX_LENGTH,
                           ChatReplyResponse, ConversationRow,
                           ConversationListResponse, ChatTurnRow,
                           ConversationTurnsResponse)
+from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
+                           PHOTOS_PER_CALL_MAX, GeneratedPhoto,
+                           GeneratedPhotoRow, GeneratedPhotosResponse)
 
 
 # AppCreator (_classes_from_module) generates TS schemas only for classes

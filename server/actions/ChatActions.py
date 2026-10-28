@@ -33,13 +33,13 @@ import logging
 import threading
 import time
 
-from pymongo.errors import DuplicateKeyError
-
 import chatModel
 from actions.OrderActions import customerAtStore
 from actions.ProductActions import _validLimit
 from actions.StoreActions import _validText, requireOwnerStore, setUpStore
-from AppConfig import Timezone
+# QUOTA_ATTEMPTS is imported for the tests, which read it here.
+from actions.usageCounters import (QUOTA_ATTEMPTS, appDay, giveBackQuota,
+                                   takeQuota, usageExpiry, usageKey)
 from mongoDb import db
 from objects import (CHAT_MESSAGE_MAX_LENGTH, CHAT_TITLE_MAX_LENGTH,
                      CHAT_TOOL_CALL_ID_MAX_LENGTH,
@@ -49,7 +49,7 @@ from objects import (CHAT_MESSAGE_MAX_LENGTH, CHAT_TITLE_MAX_LENGTH,
                      ConversationTurnsResponse)
 from route_config import route_config
 from services.__request import ServiceUnavailable
-from utils import appDayStart, generateRandomString, parseIsoInstant
+from utils import generateRandomString, parseIsoInstant
 
 CONVERSATIONS = 'Conversations'
 CHAT_TURNS = 'ChatTurns'
@@ -96,9 +96,6 @@ TOO_LONG_REPLY = ('Sorry, that answer was too long. Please ask again more '
 NO_REPLY = "Sorry, I couldn't answer that. Please ask again."
 BEFORE_SEQ = 'beforeSeq is a whole number, 0 or more'
 BEFORE_INSTANT = 'before must be an ISO 8601 date-time with a timezone'
-# A quota counter that a racing first message of the day inserted between
-# our read and write: retried once.
-QUOTA_ATTEMPTS = 2
 
 
 def _now() -> datetime.datetime:
@@ -118,61 +115,23 @@ def _validConversationId(conversationId) -> str | None:
 
 # ── Daily caps ──────────────────────────────
 
-def _appDay(now: datetime.datetime) -> datetime.date:
-    return now.astimezone(Timezone().getTimezone()).date()
-
-
-def _usageExpiry(day: datetime.date) -> datetime.datetime:
-    """When a counter of `day` is deleted: a day after the day ends."""
-    return (appDayStart(day.isoformat()) +
-            datetime.timedelta(days=2)).astimezone(UTC)
-
-
-def usageKey(kind: str, ownerId: str, day: datetime.date) -> str:
-    """The ChatUsage _id of `kind` (customer or store) `ownerId` on
-    `day`."""
-    return f'{kind}:{ownerId}:{day.isoformat()}'
-
-
 def _takeQuota(key: str, cap: int, expireAt: datetime.datetime) -> bool:
-    """Count one message on the counter `key`, unless it is at `cap`:
-    atomic, so racing messages never pass the cap together. False when it
-    is."""
-    for _ in range(QUOTA_ATTEMPTS):
-        try:
-            db.findOneAndUpdate({'_id': key, 'count': {'$lt': cap}},
-                                {'$inc': {'count': 1},
-                                 '$setOnInsert': {'expireAt': expireAt,
-                                                  '_version': 0}},
-                                CHAT_USAGE,
-                                upsert=True,
-                                projection={'_id': 1})
-            return True
-        except DuplicateKeyError:
-            # The counter is at the cap (the upsert's insert collided), or
-            # a racing first message inserted it: read which.
-            counter = db.read({'_id': key}, CHAT_USAGE,
-                              projection={'count': 1}, findOne=True)
-            if counter is None or counter['count'] >= cap:
-                return False
-    return False
+    """Count one message on the ChatUsage counter `key`, unless it is at
+    `cap` (usageCounters.takeQuota). False when it is."""
+    return takeQuota(CHAT_USAGE, key, cap, expireAt)
 
 
 def _giveBackQuota(*keys: str) -> None:
     for key in keys:
-        db.findOneAndUpdate({'_id': key, 'count': {'$gt': 0}},
-                            {'$inc': {'count': -1}},
-                            CHAT_USAGE,
-                            upsert=False,
-                            projection={'_id': 1})
+        giveBackQuota(CHAT_USAGE, key)
 
 
 def _takeCustomerQuota(userId: str, storeId: str) -> tuple[str, str]:
     """Count the customer's message against both daily caps, refused when
     either is reached (and then counted against neither). Returns the two
     counters' keys."""
-    day = _appDay(_now())
-    expireAt = _usageExpiry(day)
+    day = appDay(_now())
+    expireAt = usageExpiry(day)
     customerKey = usageKey('customer', userId, day)
     storeKey = usageKey('store', storeId, day)
     if not _takeQuota(customerKey, CUSTOMER_DAILY_CHAT_CAP, expireAt):

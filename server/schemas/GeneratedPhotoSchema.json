@@ -1,0 +1,92 @@
+{
+    "description": "A GeneratedPhotos document: one photo the image model made for a\nstore, saved at `path` in the Firebase bucket. (storeId, createdAt) is\nindexed (mongoDb.ensureIndexes), for the store's photos newest first.",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "storeId": {
+            "description": "The Stores _id",
+            "minLength": 1,
+            "title": "Storeid",
+            "type": "string"
+        },
+        "createdBy": {
+            "description": "The admin's Users _id",
+            "minLength": 1,
+            "title": "Createdby",
+            "type": "string"
+        },
+        "path": {
+            "description": "Its object path in the bucket",
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+        },
+        "url": {
+            "description": "Its download URL",
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+        },
+        "sourcePaths": {
+            "description": "The object paths of the admin's reference photos",
+            "items": {
+                "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Sourcepaths",
+            "type": "array"
+        },
+        "notes": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The admin's notes for this call",
+            "title": "Notes"
+        },
+        "model": {
+            "description": "The image model that made it",
+            "title": "Model",
+            "type": "string"
+        },
+        "createdAt": {
+            "description": "When it was saved",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "storeId",
+        "createdBy",
+        "path",
+        "url",
+        "sourcePaths",
+        "model",
+        "createdAt"
+    ],
+    "title": "GeneratedPhoto",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -1,33 +1,7 @@
 {
     "$defs": {
-        "StoreLocationResponse": {
-            "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
-            "properties": {
-                "latitude": {
-                    "description": "Degrees north (negative: south)",
-                    "maximum": 90,
-                    "minimum": -90,
-                    "title": "Latitude",
-                    "type": "number"
-                },
-                "longitude": {
-                    "description": "Degrees east (negative: west)",
-                    "maximum": 180,
-                    "minimum": -180,
-                    "title": "Longitude",
-                    "type": "number"
-                }
-            },
-            "required": [
-                "latitude",
-                "longitude"
-            ],
-            "title": "StoreLocationResponse",
-            "type": "object",
-            "additionalProperties": false
-        },
-        "StoreResponse": {
-            "description": "A store as a route sends it. Each field restates Store's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+        "AdminStoreResponse": {
+            "description": "The admin's own store: a StoreResponse plus its photo theme, which\ncustomers never get (it feeds the product photos, not the storefront).\nA theme field is sent only once set (a dict the route builds leaves it\nout, and exclude_if drops it from a dump), so a store with no theme\nreads exactly as a StoreResponse. Each field restates Store's\n(test_route_response_models.py's MIRRORS).",
             "properties": {
                 "_id": {
                     "description": "Stores _id",
@@ -155,6 +129,49 @@
                         }
                     ],
                     "description": "Map location; null until the admin pins it"
+                },
+                "photoStyle": {
+                    "anyOf": [
+                        {
+                            "maxLength": 300,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The look of the store's product photos",
+                    "title": "Photostyle"
+                },
+                "primaryColor": {
+                    "anyOf": [
+                        {
+                            "pattern": "^#[0-9A-Fa-f]{6}$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Main brand color, #RRGGBB",
+                    "title": "Primarycolor"
+                },
+                "secondaryColor": {
+                    "anyOf": [
+                        {
+                            "pattern": "^#[0-9A-Fa-f]{6}$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Second brand color, #RRGGBB",
+                    "title": "Secondarycolor"
                 }
             },
             "required": [
@@ -163,7 +180,33 @@
                 "openingHours",
                 "location"
             ],
-            "title": "StoreResponse",
+            "title": "AdminStoreResponse",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "StoreLocationResponse": {
+            "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "latitude": {
+                    "description": "Degrees north (negative: south)",
+                    "maximum": 90,
+                    "minimum": -90,
+                    "title": "Latitude",
+                    "type": "number"
+                },
+                "longitude": {
+                    "description": "Degrees east (negative: west)",
+                    "maximum": 180,
+                    "minimum": -180,
+                    "title": "Longitude",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "latitude",
+                "longitude"
+            ],
+            "title": "StoreLocationResponse",
             "type": "object",
             "additionalProperties": false
         }
@@ -172,7 +215,7 @@
         "store": {
             "anyOf": [
                 {
-                    "$ref": "#/$defs/StoreResponse"
+                    "$ref": "#/$defs/AdminStoreResponse"
                 },
                 {
                     "type": "null"

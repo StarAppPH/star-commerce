@@ -71,6 +71,18 @@ export type Latitude = number;
  */
 export type Longitude = number;
 /**
+ * The look of the store's product photos
+ */
+export type Photostyle = string | null;
+/**
+ * Main brand color, #RRGGBB
+ */
+export type Primarycolor = string | null;
+/**
+ * Second brand color, #RRGGBB
+ */
+export type Secondarycolor = string | null;
+/**
  * When it was created
  */
 export type Createdat = string;
@@ -93,6 +105,9 @@ export interface StoreView {
    * Map location; null until the admin pins it
    */
   location?: StoreLocation | null;
+  photoStyle?: Photostyle;
+  primaryColor?: Primarycolor;
+  secondaryColor?: Secondarycolor;
   createdAt: Createdat;
 }
 /**

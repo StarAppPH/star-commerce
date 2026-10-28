@@ -175,6 +175,49 @@
             "default": null,
             "description": "Map location; null until the admin pins it"
         },
+        "photoStyle": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The look of the store's product photos",
+            "title": "Photostyle"
+        },
+        "primaryColor": {
+            "anyOf": [
+                {
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Main brand color, #RRGGBB",
+            "title": "Primarycolor"
+        },
+        "secondaryColor": {
+            "anyOf": [
+                {
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Second brand color, #RRGGBB",
+            "title": "Secondarycolor"
+        },
         "createdAt": {
             "description": "When it was created",
             "format": "date-time",
