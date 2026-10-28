@@ -1,6 +1,5 @@
 """Order fulfillment, called directly: completeOrder, cancelStoreOrder,
-cancelMyOrder (FulfillmentActions), the refund (payments.py) and
-job_backfillOrderFulfillmentFields.py's main.
+cancelMyOrder (FulfillmentActions) and the refund (payments.py).
 
 Time: like test_checkout.py, every test that depends on it freezes
 OrderActions.datetime (the one clock of the order routes, FulfillmentActions'
@@ -24,7 +23,6 @@ from types import SimpleNamespace
 import pytest
 
 import actions.FulfillmentActions as fulfillmentActions
-import job_backfillOrderFulfillmentFields as backfillJob
 import mcpServer
 import payments
 from actions.FulfillmentActions import ORDER_CHANGED, _refund
@@ -810,105 +808,3 @@ def test_theFulfillmentToolDescriptions_askToConfirmFirst():
                         described['customer']['cancelMyOrder']):
         assert 'confirm' in description
     assert 'ask the store' in described['customer']['cancelMyOrder']
-
-
-# ----------------------------- the backfill job ----------------------------- #
-
-FULFILLMENT_FIELDS = ('completedAt', 'refundedAt', 'refundReference')
-
-
-def _legacyOrder(store: dict, customerId: str, product: dict,
-                 keep: dict | None = None) -> str:
-    """An order as stored before order fulfillment: its three fulfillment
-    fields are missing (except those in `keep`, set first)."""
-    orderId = _heldOrder(store, customerId, [(product, 1)], T0 - WINDOW,
-                         'cancelled', hold=False, cancelReason='byStore',
-                         cancelledAt=T0, **(keep or {}))
-    db.db['Orders'].update_one(
-        {'_id': orderId},
-        {'$unset': {f: '' for f in FULFILLMENT_FIELDS if f not in (keep or {})}})
-    return orderId
-
-
-def test_backfill_addsTheMissingFieldsAsNull_andReturnsTheCount(
-        clean, firebase, clock):
-    store, customerId, products = _shop(firebase)
-    ids = [_legacyOrder(store, customerId, products['Pandesal'])
-           for _ in range(3)]
-    before = {i: db.db['Orders'].find_one({'_id': i}) for i in ids}
-
-    assert backfillJob.main() == 3
-
-    for orderId in ids:
-        stored = db.db['Orders'].find_one({'_id': orderId})
-        assert all(stored[f] is None for f in FULFILLMENT_FIELDS)
-        assert stored['_version'] == before[orderId]['_version'] + 1
-        assert {k: v for k, v in stored.items()
-                if k not in (*FULFILLMENT_FIELDS, '_version')} == {
-                    k: v for k, v in before[orderId].items()
-                    if k not in ('_version',)}
-
-
-def test_backfill_keepsAValueAlreadyThere(clean, firebase, clock):
-    store, customerId, products = _shop(firebase)
-    refundedAt = T0 - datetime.timedelta(minutes=5)
-    orderId = _legacyOrder(
-        store, customerId, products['Pandesal'],
-        keep={'refundedAt': refundedAt,
-              'refundReference': REFUND_REFERENCE_PREFIX + 'old'})
-    version = db.db['Orders'].find_one({'_id': orderId})['_version']
-
-    assert backfillJob.main() == 1
-
-    stored = db.db['Orders'].find_one({'_id': orderId})
-    assert stored['refundedAt'] == refundedAt
-    assert stored['refundReference'] == REFUND_REFERENCE_PREFIX + 'old'
-    assert stored['completedAt'] is None
-    assert stored['_version'] == version + 1
-
-
-def test_backfill_leavesACompleteOrderAlone_andIsIdempotent(
-        clean, firebase, clock):
-    store, customerId, products = _shop(firebase)
-    complete = _fresh(store, customerId, [(products['Pandesal'], 1)])
-    legacy = _legacyOrder(store, customerId, products['Pandesal'])
-    completeBefore = db.db['Orders'].find_one({'_id': complete})
-
-    assert backfillJob.main() == 1
-    afterFirst = db.db['Orders'].find_one({'_id': legacy})
-
-    assert backfillJob.main() == 0
-    assert db.db['Orders'].find_one({'_id': complete}) == completeBefore
-    assert db.db['Orders'].find_one({'_id': legacy}) == afterFirst
-
-
-def test_backfill_readsBatchesUntilNoneIsLeft(
-        clean, firebase, clock, monkeypatch):
-    store, customerId, products = _shop(firebase)
-    ids = [_legacyOrder(store, customerId, products['Pandesal'])
-           for _ in range(5)]
-    monkeypatch.setattr(backfillJob, 'BACKFILL_BATCH', 2)
-
-    assert backfillJob.main() == 5
-
-    for orderId in ids:
-        stored = db.db['Orders'].find_one({'_id': orderId})
-        assert all(f in stored for f in FULFILLMENT_FIELDS)
-    assert backfillJob.main() == 0
-
-
-def test_backfill_logsOnlyTheCount(clean, firebase, clock, capsys):
-    store, customerId, products = _shop(firebase)
-    secret = addProduct(store['_id'], SENTINEL, 1)
-    ids = [_legacyOrder(store, customerId, secret) for _ in range(2)]
-    capsys.readouterr()
-
-    assert backfillJob.main() == 2
-
-    out = capsys.readouterr().out
-    assert out.strip().splitlines()[-1] == 'Backfilled 2 orders.'
-    for value in (SENTINEL, customerId, store['_id'], *ids):
-        assert value not in out
-    assert backfillJob.main() == 0
-    assert capsys.readouterr().out.strip().splitlines()[-1] == (
-        'Backfilled 0 orders.')
