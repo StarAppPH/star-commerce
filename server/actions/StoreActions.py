@@ -75,6 +75,14 @@ def requireAdmin(userId: str) -> None:
         raise PermissionError('Only a store admin can do this')
 
 
+def requireOwnerStore(userId: str, projection: dict) -> dict:
+    """The store the admin `userId` owns (ownerStore, with `projection`):
+    refuses a caller who is no admin first (requireAdmin), then an admin
+    with no store yet."""
+    requireAdmin(userId)
+    return ownerStore(userId, projection)
+
+
 def storeSlug(name: str) -> str:
     """The link name a store name gives: lowercase letters and digits
     joined by single hyphens, short enough to take a suffix."""

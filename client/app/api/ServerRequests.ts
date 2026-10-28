@@ -5,12 +5,14 @@ import type { AdminProductRow } from '../schemas/AdminProductRowSchema';
 import type { CustomerSessionResponse } from '../schemas/CustomerSessionResponseSchema';
 import type { DevUserListResponse } from '../schemas/DevUserListResponseSchema';
 import type { FirebaseUserObject } from '../schemas/FirebaseUserObjectSchema';
+import type { MyOrderListResponse } from '../schemas/MyOrderListResponseSchema';
 import type { MyStoreResponse } from '../schemas/MyStoreResponseSchema';
 import type { NewProduct } from '../schemas/NewProductSchema';
 import type { NoContentResponse } from '../schemas/NoContentResponseSchema';
 import type { PhoneVerifiedResponse } from '../schemas/PhoneVerifiedResponseSchema';
 import type { ProductListResponse } from '../schemas/ProductListResponseSchema';
 import type { RoleListResponse } from '../schemas/RoleListResponseSchema';
+import type { StoreOrderListResponse } from '../schemas/StoreOrderListResponseSchema';
 import type { StoreResponse } from '../schemas/StoreResponseSchema';
 import type { UserResponse } from '../schemas/UserResponseSchema';
 
@@ -364,6 +366,52 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             return { message: "Failed to fetch data", status: 0, data: null };
         }
     }
+
+    async getStoreOrders(userId: string, status: string | null, period: string | null, startDate: string | null, endDate: string | null, limit: number): Promise<ApiResponse<StoreOrderListResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/getStoreOrders`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "status": status, "period": period, "startDate": startDate, "endDate": endDate, "limit": limit}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StoreOrderListResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async getMyOrders(userId: string, storeId: string, status: string | null, limit: number): Promise<ApiResponse<MyOrderListResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/getMyOrders`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "status": status, "limit": limit}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<MyOrderListResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
 }
 
 export interface RouteResponseModels {
@@ -382,6 +430,8 @@ export interface RouteResponseModels {
     addStoreProducts: AdminProductListResponse;
     updateStoreProduct: AdminProductRow;
     listMyStoreProducts: AdminProductListResponse;
+    getStoreOrders: StoreOrderListResponse;
+    getMyOrders: MyOrderListResponse;
 }
 
 export interface RouteRequestBodies {
@@ -400,6 +450,8 @@ export interface RouteRequestBodies {
     addStoreProducts: { userId: string; products: NewProduct[] };
     updateStoreProduct: { userId: string; productId: string; name: string | null; description: string | null; price: number | null; inventory: number | null; isAvailable: boolean | null };
     listMyStoreProducts: { userId: string; search: string | null; limit: number };
+    getStoreOrders: { userId: string; status: string | null; period: string | null; startDate: string | null; endDate: string | null; limit: number };
+    getMyOrders: { userId: string; storeId: string; status: string | null; limit: number };
 }
 
 export type PublicRoute =

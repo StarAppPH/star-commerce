@@ -1,0 +1,40 @@
+{
+    "description": "One product of an order, a snapshot taken when the order is placed:\na later change of the product's name or price never rewrites it.",
+    "properties": {
+        "productId": {
+            "description": "The Products _id",
+            "minLength": 1,
+            "title": "Productid",
+            "type": "string"
+        },
+        "name": {
+            "description": "Product name when ordered",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "price": {
+            "description": "Unit price paid, in the order currency",
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        },
+        "quantity": {
+            "description": "Units ordered",
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "productId",
+        "name",
+        "price",
+        "quantity"
+    ],
+    "title": "OrderItem",
+    "type": "object",
+    "additionalProperties": false
+}

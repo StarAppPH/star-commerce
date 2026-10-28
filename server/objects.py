@@ -1283,3 +1283,109 @@ class AdminProductListResponse(ResponseModel):
         ..., description="ISO 4217 code of every price in the list")
     products: list[AdminProductListRow] = Field(...,
                                                 description='The products')
+
+
+# ──────────────────────────────────────────────
+# Orders (a customer's order at one store)
+# ──────────────────────────────────────────────
+
+# Where an order is:
+#   pending: placed, its units held in each product's reservedInventory;
+#   confirmed: the store accepted it;
+#   completed: handed over, so its units count as sold;
+#   cancelled: its units went back to the products' inventory.
+OrderStatus = Literal['pending', 'confirmed', 'completed', 'cancelled']
+# The most items one order holds (the checkout enforces it).
+ORDER_ITEMS_MAX = 50
+
+
+class OrderItem(AppModel):
+    """One product of an order, a snapshot taken when the order is placed:
+    a later change of the product's name or price never rewrites it."""
+    productId: str = Field(..., min_length=1, description='The Products _id')
+    name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
+                      description='Product name when ordered')
+    price: float = Field(..., ge=0, le=PRODUCT_PRICE_MAX,
+                         description='Unit price paid, in the order currency')
+    quantity: int = Field(..., ge=1, description='Units ordered')
+
+
+class Order(MongoModel):
+    """An Orders document, read newest first: the (storeId, status,
+    createdAt) and (customerId, storeId, createdAt) indexes
+    (mongoDb.ensureIndexes) serve the admin's and the customer's lists.
+
+    Every write to a product's inventory or reservedInventory an order
+    makes (placing, cancelling or completing it) must also $inc the
+    product's _version, or updateStoreProduct's _version lock misses it and
+    the admin's save overwrites it."""
+    storeId: str = Field(..., min_length=1, description='The Stores _id')
+    customerId: str = Field(..., min_length=1,
+                            description='The Customers _id')
+    items: list[OrderItem] = Field(..., min_length=1,
+                                   max_length=ORDER_ITEMS_MAX,
+                                   description='What was ordered')
+    total: float = Field(..., ge=0, description='What the order costs')
+    currency: StoreCurrency = Field(
+        ..., description="ISO 4217 code of the store's currency when ordered")
+    contactNumber: str = Field(..., pattern=PHONE_NUMBER_PATTERN,
+                               description="The customer's verified number")
+    status: OrderStatus = Field(..., description='Where the order is')
+    createdAt: datetime.datetime = Field(..., description='When it was placed')
+
+
+class OrderView(StoredDocumentKeys, Order):
+    """An Orders document as stored."""
+
+
+class OrderItemRow(ResponseModel):
+    """One item of an order as a route sends it: OrderItem without its
+    productId. Each field restates OrderItem's, which
+    test_route_response_models.py's MIRRORS keeps in step."""
+    name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
+                      description='Product name when ordered')
+    price: float = Field(..., ge=0, le=PRODUCT_PRICE_MAX,
+                         description='Unit price paid, in the order currency')
+    quantity: int = Field(..., ge=1, description='Units ordered')
+
+
+class StoreOrderRow(ResponseModel):
+    """One order as its store's admin sees it. Each field restates
+    Order's, which test_route_response_models.py's MIRRORS keeps in
+    step."""
+    id: str = Field(..., alias='_id', description='Orders _id')
+    status: OrderStatus = Field(..., description='Where the order is')
+    items: list[OrderItemRow] = Field(..., min_length=1,
+                                      max_length=ORDER_ITEMS_MAX,
+                                      description='What was ordered')
+    total: float = Field(..., ge=0, description='What the order costs')
+    currency: StoreCurrency = Field(
+        ..., description="ISO 4217 code of the store's currency when ordered")
+    contactNumber: str = Field(..., pattern=PHONE_NUMBER_PATTERN,
+                               description="The customer's verified number")
+    createdAt: datetime.datetime = Field(..., description='When it was placed')
+
+
+class MyOrderRow(ResponseModel):
+    """One order as the customer who placed it sees it: StoreOrderRow
+    without the contact number. Each field restates Order's, which
+    test_route_response_models.py's MIRRORS keeps in step."""
+    id: str = Field(..., alias='_id', description='Orders _id')
+    status: OrderStatus = Field(..., description='Where the order is')
+    items: list[OrderItemRow] = Field(..., min_length=1,
+                                      max_length=ORDER_ITEMS_MAX,
+                                      description='What was ordered')
+    total: float = Field(..., ge=0, description='What the order costs')
+    currency: StoreCurrency = Field(
+        ..., description="ISO 4217 code of the store's currency when ordered")
+    createdAt: datetime.datetime = Field(..., description='When it was placed')
+
+
+class StoreOrderListResponse(ResponseModel):
+    orders: list[StoreOrderRow] = Field(
+        ..., description='The orders, newest first')
+
+
+class MyOrderListResponse(ResponseModel):
+    orders: list[MyOrderRow] = Field(...,
+                                     description='The orders, newest first')

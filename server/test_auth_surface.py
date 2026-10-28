@@ -78,6 +78,12 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     'addStoreProducts',
     'updateStoreProduct',
     'listMyStoreProducts',
+    # The admin's orders: requireAdmin, and only the orders of the store
+    # the caller owns (ownerStore).
+    'getStoreOrders',
+    # A customer's own orders: requireCustomer, and only orders whose
+    # customerId is the caller.
+    'getMyOrders',
 }
 
 
@@ -921,3 +927,34 @@ def test_emulatorToken_refusesNonFiniteTimes(emulatorMode, payload):
         verifyFirebaseIdToken(token)
     assert not AuthHandlerModule._isTimestamp(float('inf'))
     assert not AuthHandlerModule._isTimestamp(float('nan'))
+
+
+def test_everyJwtRouteWithAUserIdParam_refusesAnotherUsersId(monkeypatch):
+    """The generated identity check runs before anything else of a JWT
+    route: a userId other than the JWT's is a 400, whatever the route and
+    whatever else the body holds (or lacks)."""
+    import inspect
+
+    from test_route_responses_http import (_bearer, _failure_body, _flask_app,
+                                           _token)
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    routes = [
+        name for name, func in apiRoutes().items()
+        if func.jwtRequired and 'userId' in inspect.signature(
+            getattr(ApiRequests, name)).parameters
+    ]
+    assert {'getStoreOrders', 'getMyOrders'} <= set(routes)
+
+    for name in routes:
+        # A required list param is type-checked before the identity.
+        body = {
+            param.name: []
+            for param in inspect.signature(getattr(ApiRequests, name)).parameters.values()
+            if param.name != 'userId' and param.default is param.empty
+            and 'list' in str(param.annotation)
+        }
+        res = client.post('/' + name, json={**body, 'userId': 'aa-someone-else'},
+                          headers=_bearer(_token(flaskApp, 'aa-the-caller')))
+
+        assert _failure_body(res, 400)['message'] == 'Unauthorized access', name

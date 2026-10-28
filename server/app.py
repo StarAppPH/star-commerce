@@ -568,6 +568,92 @@ def listMyStoreProducts():
 
 
 
+@app.route('/getStoreOrders', methods=['POST'])
+@jwt_required()
+def getStoreOrders():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    status = data.get('status')
+    period = data.get('period')
+    startDate = data.get('startDate')
+    endDate = data.get('endDate')
+    limit = data.get('limit')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(status, (dict, list)):
+            raise ValueError('Invalid status')
+        if isinstance(period, (dict, list)):
+            raise ValueError('Invalid period')
+        if isinstance(startDate, (dict, list)):
+            raise ValueError('Invalid startDate')
+        if isinstance(endDate, (dict, list)):
+            raise ValueError('Invalid endDate')
+        if isinstance(limit, (dict, list)):
+            raise ValueError('Invalid limit')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().getStoreOrders(userId, status, period, startDate, endDate, limit)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'getStoreOrders', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'status', 'period', 'startDate', 'endDate', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'getStoreOrders', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'status', 'period', 'startDate', 'endDate', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'getStoreOrders', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'status', 'period', 'startDate', 'endDate', 'limit'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Orders fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/getMyOrders', methods=['POST'])
+@jwt_required()
+def getMyOrders():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    status = data.get('status')
+    limit = data.get('limit')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(status, (dict, list)):
+            raise ValueError('Invalid status')
+        if isinstance(limit, (dict, list)):
+            raise ValueError('Invalid limit')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().getMyOrders(userId, storeId, status, limit)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'getMyOrders', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'status', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'getMyOrders', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'status', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'getMyOrders', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'status', 'limit'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Orders fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 # Never compressed: the routes that issue an access token (BREACH; see
 # AppCreator._compression_block).
 NO_COMPRESSION_ENDPOINTS = frozenset(['devLogin', 'loginWithGoogle', 'startGuestSession'])

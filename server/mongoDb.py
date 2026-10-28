@@ -143,6 +143,14 @@ class mongoDb():
         # two racing adds of the same name cannot both win.
         self.db['Products'].create_index([('storeId', 1), ('nameKey', 1)],
                                          unique=True)
+        # A store's orders, newest first, with or without a status
+        # (getStoreOrders matches every status with $in when none is given,
+        # so the prefix still applies).
+        self.db['Orders'].create_index([('storeId', 1), ('status', 1),
+                                        ('createdAt', -1)])
+        # A customer's orders at one store, newest first (getMyOrders).
+        self.db['Orders'].create_index([('customerId', 1), ('storeId', 1),
+                                        ('createdAt', -1)])
 
     def create(self, data: dict, collection_name: str, session: Optional[ClientSession] = None) -> dict:
         """Insert a document into the collection and return the created data."""

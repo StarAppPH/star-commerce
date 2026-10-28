@@ -7,6 +7,9 @@
   INJECTED_PARAMS), read from the connection, never from the AI.
 - callRoute: runs the route method and turns its failure into a ToolError
   the AI can read, with routeErrors' messages (a 500's text never leaks).
+- ArgumentsHidingServer: the SDK checks a tool's arguments against its
+  signature before the route runs; its refusal names the argument and what
+  it should be, never the value sent.
 - buildApp: one Starlette app serving each audience's server at
   /<audience>/mcp (streamable HTTP, stateless, JSON responses).
 """
@@ -21,6 +24,7 @@ from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from pydantic import ConfigDict
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
@@ -110,13 +114,40 @@ def callRoute(route, **kwargs) -> dict:
         raise ToolError(failure.message) from None
 
 
+def _hidingInput(argModel: type) -> type:
+    """`argModel` (the SDK's model of a tool's arguments) with
+    hide_input_in_errors: a refusal keeps the argument's name and what it
+    should be, but no longer quotes the value (input_value), nested models
+    (NewProduct) included. Same name, so the message reads the same."""
+    return type(argModel.__name__, (argModel,), {
+        '__module__': argModel.__module__,
+        'model_config': ConfigDict(**argModel.model_config,
+                                   hide_input_in_errors=True),
+    })
+
+
+class ArgumentsHidingServer(MCPServer):
+    """An MCPServer whose argument check never quotes a value. The SDK
+    validates a tool's arguments before the tool (and so the route) runs,
+    and its ToolError would otherwise carry each refused value, which may
+    be whatever the AI was told: the route's own checks never quote one
+    either. The SDK reads FuncMetadata.arg_model live on every call, so
+    swapping it after registration is enough."""
+
+    def add_tool(self, fn, name: str | None = None, **kwargs) -> None:
+        super().add_tool(fn, name=name, **kwargs)
+        tool = self._tool_manager.get_tool(name or fn.__name__)
+        tool.fn_metadata.arg_model = _hidingInput(tool.fn_metadata.arg_model)
+
+
 def _baseUrl(port: int) -> str:
     return f'http://{LOCAL_HOST}:{port}'
 
 
 def newServer(audience: str) -> MCPServer:
-    """An audience's MCP server, accepting our JWT as its bearer token."""
-    return MCPServer(
+    """An audience's MCP server, accepting our JWT as its bearer token. Its
+    argument refusals never quote a value (ArgumentsHidingServer)."""
+    return ArgumentsHidingServer(
         name=f'starCommerce-{audience}',
         token_verifier=OurJwtVerifier(),
         auth=AuthSettings(
