@@ -1293,15 +1293,22 @@ class AdminProductListResponse(ResponseModel):
 #   pending: placed, its units held in each product's reservedInventory,
 #     awaiting payment;
 #   paid: the customer paid;
-#   completed: handed over, so its units count as sold;
-#   cancelled: its units went back to the products' inventory.
+#   completed: handed over, its units counted in each product's soldCount;
+#   cancelled: its units went back to inventory, and a paid one was
+#     refunded.
+# Every move out of pending or paid takes the order's reservation off its
+# products, so reservedInventory only holds orders still open.
 OrderStatus = Literal['pending', 'paid', 'completed', 'cancelled']
+# Why an order was cancelled: unpaid by its expiresAt, by the store's
+# admin, or by the customer while it was unpaid.
+CancelReason = Literal['expired', 'byStore', 'byCustomer']
 # How a customer pays at checkout. No cash on delivery: it cannot be paid
 # at checkout.
 PaymentMethod = Literal['card', 'gcash', 'maya', 'grabPay', 'bankTransfer']
 # The start of every reference the demo payment provider (payments.py)
-# hands out.
+# hands out, for a payment and for a refund.
 PAYMENT_REFERENCE_PREFIX = 'DEMO-'
+REFUND_REFERENCE_PREFIX = 'DEMO-R-'
 # The most items one order holds (the checkout enforces it).
 ORDER_ITEMS_MAX = 50
 # How long a customer has to pay a placed order before it is cancelled.
@@ -1365,8 +1372,14 @@ class Order(MongoModel):
                                              description='When it was paid')
     cancelledAt: datetime.datetime | None = Field(
         None, description='When it was cancelled')
-    cancelReason: Literal['expired'] | None = Field(
+    cancelReason: CancelReason | None = Field(
         None, description='Why it was cancelled')
+    completedAt: datetime.datetime | None = Field(
+        None, description='When it was handed over')
+    refundedAt: datetime.datetime | None = Field(
+        None, description='When its payment was refunded')
+    refundReference: str | None = Field(
+        None, description="The payment provider's id of the refund")
 
 
 class OrderView(StoredDocumentKeys, Order):
@@ -1405,13 +1418,23 @@ class StoreOrderRow(ResponseModel):
                                              description='When it was paid')
     expiresAt: datetime.datetime = Field(
         ..., description='Unpaid by then, it is cancelled (UTC)')
+    completedAt: datetime.datetime | None = Field(
+        ..., description='When it was handed over')
+    cancelledAt: datetime.datetime | None = Field(
+        ..., description='When it was cancelled')
+    cancelReason: CancelReason | None = Field(
+        ..., description='Why it was cancelled')
+    refundedAt: datetime.datetime | None = Field(
+        ..., description='When its payment was refunded')
     paymentReference: str | None = Field(
         ..., description="The payment provider's id of the payment")
+    refundReference: str | None = Field(
+        ..., description="The payment provider's id of the refund")
 
 
 class MyOrderRow(ResponseModel):
     """One order as the customer who placed it sees it: StoreOrderRow
-    without the contact number and the payment reference. Each field
+    without the contact number and the payment and refund references. Each field
     restates Order's, which test_route_response_models.py's MIRRORS keeps
     in step."""
     id: str = Field(..., alias='_id', description='Orders _id')
@@ -1429,6 +1452,14 @@ class MyOrderRow(ResponseModel):
                                              description='When it was paid')
     expiresAt: datetime.datetime = Field(
         ..., description='Unpaid by then, it is cancelled (UTC)')
+    completedAt: datetime.datetime | None = Field(
+        ..., description='When it was handed over')
+    cancelledAt: datetime.datetime | None = Field(
+        ..., description='When it was cancelled')
+    cancelReason: CancelReason | None = Field(
+        ..., description='Why it was cancelled')
+    refundedAt: datetime.datetime | None = Field(
+        ..., description='When its payment was refunded')
 
 
 class StoreOrderListResponse(ResponseModel):

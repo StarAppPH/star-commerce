@@ -1,7 +1,7 @@
 {
     "$defs": {
         "MyOrderRow": {
-            "description": "One order as the customer who placed it sees it: StoreOrderRow\nwithout the contact number and the payment reference. Each field\nrestates Order's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "description": "One order as the customer who placed it sees it: StoreOrderRow\nwithout the contact number and the payment and refund references. Each field\nrestates Order's, which test_route_response_models.py's MIRRORS keeps\nin step.",
             "properties": {
                 "_id": {
                     "description": "Orders _id",
@@ -102,6 +102,62 @@
                     "format": "date-time",
                     "title": "Expiresat",
                     "type": "string"
+                },
+                "completedAt": {
+                    "anyOf": [
+                        {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "When it was handed over",
+                    "title": "Completedat"
+                },
+                "cancelledAt": {
+                    "anyOf": [
+                        {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "When it was cancelled",
+                    "title": "Cancelledat"
+                },
+                "cancelReason": {
+                    "anyOf": [
+                        {
+                            "enum": [
+                                "expired",
+                                "byStore",
+                                "byCustomer"
+                            ],
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Why it was cancelled",
+                    "title": "Cancelreason"
+                },
+                "refundedAt": {
+                    "anyOf": [
+                        {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "When its payment was refunded",
+                    "title": "Refundedat"
                 }
             },
             "required": [
@@ -113,7 +169,11 @@
                 "createdAt",
                 "paymentMethod",
                 "paidAt",
-                "expiresAt"
+                "expiresAt",
+                "completedAt",
+                "cancelledAt",
+                "cancelReason",
+                "refundedAt"
             ],
             "title": "MyOrderRow",
             "type": "object",

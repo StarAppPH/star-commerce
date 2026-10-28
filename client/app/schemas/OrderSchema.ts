@@ -98,7 +98,19 @@ export type Cancelledat = string | null;
 /**
  * Why it was cancelled
  */
-export type Cancelreason = "expired" | null;
+export type Cancelreason = ("expired" | "byStore" | "byCustomer") | null;
+/**
+ * When it was handed over
+ */
+export type Completedat = string | null;
+/**
+ * When its payment was refunded
+ */
+export type Refundedat = string | null;
+/**
+ * The payment provider's id of the refund
+ */
+export type Refundreference = string | null;
 
 /**
  * An Orders document, read newest first: the (storeId, status,
@@ -129,6 +141,9 @@ export interface Order {
   paidAt?: Paidat;
   cancelledAt?: Cancelledat;
   cancelReason?: Cancelreason;
+  completedAt?: Completedat;
+  refundedAt?: Refundedat;
+  refundReference?: Refundreference;
 }
 /**
  * One product of an order, a snapshot taken when the order is placed:

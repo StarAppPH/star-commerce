@@ -204,7 +204,11 @@
         "cancelReason": {
             "anyOf": [
                 {
-                    "const": "expired",
+                    "enum": [
+                        "expired",
+                        "byStore",
+                        "byCustomer"
+                    ],
                     "type": "string"
                 },
                 {
@@ -214,6 +218,47 @@
             "default": null,
             "description": "Why it was cancelled",
             "title": "Cancelreason"
+        },
+        "completedAt": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "When it was handed over",
+            "title": "Completedat"
+        },
+        "refundedAt": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "When its payment was refunded",
+            "title": "Refundedat"
+        },
+        "refundReference": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The payment provider's id of the refund",
+            "title": "Refundreference"
         }
     },
     "required": [
