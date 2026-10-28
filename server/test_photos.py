@@ -5,23 +5,37 @@ No real Meta or Storage call: a FakeBucket replaces photoStorage._bucket()
 (an in-memory object store), and a FakeImages client replaces
 chatModel.client(), recording every images.edit call."""
 
+import asyncio
 import base64
 import datetime
+import importlib
 import logging
 import time
 from types import SimpleNamespace
 from urllib.parse import quote
 
+import httpx2 as httpx
+import openai
 import pytest
+from flask_jwt_extended import create_access_token
 
 import chatModel
 import imageModel
+import mcpServer
 import photoStorage
-from actions import PhotoActions
+import pubSub as pubSubModule
+from actions import PhotoActions, usageCounters
+from actions.StoreActions import NO_STORE_YET, NO_THEME_SENT
 from ApiRequests import ApiRequests
-from conftest import assertExactShape, createTestStore, wipeCollections
+from conftest import (assertExactShape, createTestStore, createTestUser,
+                      modelKeys, wipeCollections)
 from mongoDb import db
-from objects import GeneratedPhotosResponse, MyStoreResponse, StoreThemeResponse
+from objects import (PHOTO_NOTES_MAX_LENGTH, AdminStoreResponse,
+                     GeneratedPhotosResponse, MyStoreResponse, StoreResponse,
+                     StoreThemeResponse)
+from objects.store import PHOTO_STYLE_MAX_LENGTH, STORE_THEME_FIELDS
+from routeErrors import routeFailure
+from services.__request import ServiceUnavailable
 
 COLLECTIONS = ['Users', 'Bootstrap', 'Stores', 'Policies', 'GeneratedPhotos',
                'PhotoUsage']
@@ -389,3 +403,1009 @@ def test_giveBackQuotas_logsAndSwallowsAFailure(clean, monkeypatch, caplog):
         usageCounters.giveBackQuotas('PhotoUsage', ['a', 'b'])
     assert given == ['a', 'b']
     assert 'quotaRefundFailed' in caplog.text and 'down' not in caplog.text
+
+
+# ======================= security-review coverage ======================= #
+
+OTHER = 'ph-other-admin'
+CUSTOMER = 'ph-customer'
+NO_STORE_ADMIN = 'ph-no-store'
+MINE = f'users/{ADMIN}/mug.jpg'
+MAX = photoStorage.MAX_IMAGE_BYTES
+FAR_NOW = datetime.datetime(2099, 6, 15, 12, 0, tzinfo=datetime.timezone.utc)
+FAR_DAY = datetime.date(2099, 6, 15)  # FAR_NOW in UTC+8 (20:00)
+MODEL_URL = 'https://api.meta.ai/v1/images/edits'
+SENTINEL_NOTES = 'SENTINEL-NOTES-TEXT'
+SENTINEL_STYLE = 'SENTINEL-STYLE-TEXT'
+LEAKY_ERROR = f'https://leak.example/{MINE} {SENTINEL_NOTES}'
+JWT_SECRET = 'ph-http-test-jwt-secret-0123456789abcdefghij'
+
+
+@pytest.fixture
+def frozen(monkeypatch):
+    """The photo route's clock stopped on FAR_DAY (far ahead, so no TTL
+    monitor deletes a counter mid-test)."""
+    monkeypatch.setattr(PhotoActions, '_now', lambda: FAR_NOW)
+
+
+def counterKey(owner: str, day: datetime.date = FAR_DAY) -> str:
+    return usageCounters.usageKey('photos', owner, day)
+
+
+def counterValue(owner: str, day: datetime.date = FAR_DAY) -> int | None:
+    doc = db.read({'_id': counterKey(owner, day)}, PhotoActions.PHOTO_USAGE,
+                  findOne=True)
+    return None if doc is None else doc['count']
+
+
+def slotsFree() -> int:
+    """How many photo slots are free (taken and given back again)."""
+    got = 0
+    while PhotoActions._photoSlots.acquire(blocking=False):
+        got += 1
+    for _ in range(got):
+        PhotoActions._photoSlots.release()
+    return got
+
+
+def sdkError(kind, status=None, body=None):
+    request = httpx.Request('POST', MODEL_URL)
+    if kind is openai.APIConnectionError:
+        return openai.APIConnectionError(request=request)
+    if kind is openai.APITimeoutError:
+        return openai.APITimeoutError(request=request)
+    return kind(LEAKY_ERROR,
+                response=httpx.Response(status, request=request),
+                body=body)
+
+
+def policyError(key='code'):
+    return sdkError(openai.BadRequestError, 400,
+                    {key: imageModel.CONTENT_POLICY_VIOLATION})
+
+
+class ScriptedImages:
+    """images.edit plays its outcomes in order: an exception is raised, a
+    number is that many images returned."""
+
+    def __init__(self, *outcomes):
+        self.outcomes = list(outcomes)
+        self.calls = []
+
+    def edit(self, **kwargs):
+        self.calls.append(kwargs)
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        encoded = base64.b64encode(JPEG).decode()
+        return SimpleNamespace(data=[SimpleNamespace(b64_json=encoded)
+                                     for _ in range(outcome)])
+
+
+def useImages(monkeypatch, images):
+    monkeypatch.setattr(chatModel, 'client',
+                        lambda: SimpleNamespace(images=images))
+    return images
+
+
+@pytest.fixture
+def noSleep(monkeypatch):
+    """chatModel's retry pause costs no time; the pauses are recorded."""
+    slept = []
+    monkeypatch.setattr(chatModel, 'time', SimpleNamespace(
+        monotonic=time.monotonic, sleep=slept.append))
+    return slept
+
+
+def putObject(fakes, path, data=JPEG, **stored):
+    fakes.bucket.objects[path] = {'data': data, 'contentType': 'image/jpeg',
+                                  'metadata': None, **stored}
+    return downloadUrl(path)
+
+
+def emulatorUrl(path, host='127.0.0.1:9199', scheme='http', bucket=BUCKET):
+    return (f'{scheme}://{host}/v0/b/{bucket}/o/{quote(path, safe="")}'
+            '?alt=media&token=t')
+
+
+def readOne(fakes, path=MINE, **stored):
+    putObject(fakes, path, **stored)
+    return photoStorage.readOwnImages(ADMIN, [('imageUrls[0]', path)],
+                                      time.monotonic() + 60)
+
+
+def httpPost(monkeypatch, route, identity, body):
+    """POST to the generated Flask app with a JWT for `identity`:
+    (status code, body)."""
+    monkeypatch.setenv('JWT_SECRET_KEY', JWT_SECRET)
+
+    def noGcp(*args, **kwargs):
+        raise AssertionError('a test tried to create the Pub/Sub clients')
+
+    monkeypatch.setattr(pubSubModule.pubSub, '_ensureClients', noGcp)
+    flaskApp = importlib.import_module('app').app
+    with flaskApp.app_context():
+        token = create_access_token(identity=identity)
+    res = flaskApp.test_client().post(
+        f'/{route}', json=body, headers={'Authorization': f'Bearer {token}'})
+    return res.status_code, res.get_json()
+
+
+def theme(**fields) -> dict:
+    return api.updateMyStoreTheme(ADMIN, **fields)
+
+
+def storedTheme(store: dict) -> dict:
+    doc = db.read({'_id': store['_id']}, 'Stores', findOne=True)
+    return {field: doc.get(field) for field in STORE_THEME_FIELDS}
+
+
+# ------------------------------ URL checks ------------------------------ #
+
+HOSTILE_URLS = {
+    'userinfo': downloadUrl(MINE).replace('https://', 'https://user:pw@'),
+    'userinfoLookalike': downloadUrl(MINE).replace(
+        'https://firebasestorage.googleapis.com',
+        'https://firebasestorage.googleapis.com@evil.example'),
+    'explicitPort': downloadUrl(MINE).replace(
+        photoStorage.DOWNLOAD_HOST, f'{photoStorage.DOWNLOAD_HOST}:443'),
+    'malformedPort': downloadUrl(MINE).replace(
+        photoStorage.DOWNLOAD_HOST, f'{photoStorage.DOWNLOAD_HOST}:abc'),
+    'rawSlashesInObject': (f'https://{photoStorage.DOWNLOAD_HOST}/v0/b/'
+                           f'{BUCKET}/o/{MINE}?alt=media'),
+    'notTheObjectEndpoint': downloadUrl(MINE).replace('/o/', '/x/'),
+    'encodedTraversal': downloadUrl(f'users/{ADMIN}/../{OTHER}/a.jpg'),
+    'encodedTraversalUp': downloadUrl(f'users/{ADMIN}/../../x/a.jpg'),
+    'doubleEncodedTraversal': downloadUrl(
+        f'users/{ADMIN}/../{OTHER}/a.jpg').replace('%2F', '%252F'),
+    'otherUid': downloadUrl(f'users/{OTHER}/mug.jpg'),
+    'prefixLookalike': downloadUrl(f'users/{ADMIN}X/mug.jpg'),
+    'encodedBucketSuffix': downloadUrl(MINE).replace(BUCKET,
+                                                     f'{BUCKET}%2Fx'),
+    'upperCaseBucket': downloadUrl(MINE).replace(BUCKET, BUCKET.upper()),
+    'emptySegment': downloadUrl(f'users/{ADMIN}//mug.jpg'),
+    'dotSegment': downloadUrl(f'users/{ADMIN}/./mug.jpg'),
+    'backslash': downloadUrl(f'users/{ADMIN}/a\\b.jpg'),
+    'controlCharacter': downloadUrl(f'users/{ADMIN}/a\x01b.jpg'),
+    'heicUpperCase': downloadUrl(f'users/{ADMIN}/mug.HEIC'),
+    'heif': downloadUrl(f'users/{ADMIN}/mug.heif'),
+    'storesFolder': downloadUrl('stores/s1/photos/p.jpg'),
+}
+
+
+@pytest.mark.parametrize('url', HOSTILE_URLS.values(),
+                         ids=HOSTILE_URLS.keys())
+def test_imageUrls_hostileUrl_refused_withoutQuotingIt(clean, url):
+    with pytest.raises(ValueError) as error:
+        PhotoActions._validImageUrls(ADMIN, [url])
+
+    assert str(error.value).startswith('imageUrls[0]')
+    assert url not in str(error.value)
+
+
+@pytest.mark.parametrize('value', [5, None, ['u'], {'u': 1}, b'bytes'])
+def test_imageUrls_aNonStringUrl_isRefused(clean, value):
+    with pytest.raises(ValueError, match='^imageUrls.0. must be text'):
+        PhotoActions._validImageUrls(ADMIN, [value])
+
+
+def test_imageUrls_tokenQueryAndWhitespaceAreIgnored_nestedFolderIsMine(
+        clean):
+    nested = f'users/{ADMIN}/shop/mug.png'
+    urls = [downloadUrl(MINE) + '&token=another&x=1#frag',
+            f'  {downloadUrl(nested)}\n']
+
+    assert PhotoActions._validImageUrls(ADMIN, urls) == [MINE, nested]
+
+
+@pytest.mark.parametrize('envHost, url', [
+    # the wrong port
+    ('127.0.0.1:9199', emulatorUrl(MINE, host='127.0.0.1:9200')),
+    # a host that is no loopback
+    ('127.0.0.1:9199', emulatorUrl(MINE, host='10.0.0.5:9199')),
+    # the emulator's own address, but a non-loopback emulator host is none
+    ('10.0.0.5:9199', emulatorUrl(MINE, host='10.0.0.5:9199')),
+    # https against the emulator
+    ('127.0.0.1:9199', emulatorUrl(MINE, scheme='https')),
+    ('127.0.0.1:9199', emulatorUrl(MINE).replace('http://',
+                                                 'http://user@')),
+    ('127.0.0.1:9199', emulatorUrl(MINE, bucket='other-bucket')),
+    # no emulator set at all
+    (None, emulatorUrl(MINE)),
+])
+def test_objectPathFromUrl_localdevEmulatorUrl_onlyOnTheLoopbackEmulator(
+        clean, monkeypatch, envHost, url):
+    if envHost is not None:
+        monkeypatch.setenv('STORAGE_EMULATOR_HOST', envHost)
+
+    with pytest.raises(ValueError, match='^u is not a photo') as error:
+        photoStorage.objectPathFromUrl(url, 'u')
+    assert url not in str(error.value)
+
+
+def test_objectPathFromUrl_theEmulatorUrl_worksOnlyInLocalDev(clean,
+                                                               monkeypatch):
+    monkeypatch.setenv('STORAGE_EMULATOR_HOST', '127.0.0.1:9199')
+    for host in ('127.0.0.1:9199', 'localhost:9199'):
+        assert photoStorage.objectPathFromUrl(emulatorUrl(MINE, host=host),
+                                              'u') == MINE
+
+    monkeypatch.setattr(photoStorage, '_isLocalDev', lambda: False)
+    url = emulatorUrl(MINE)
+    with pytest.raises(ValueError, match='^u is not a photo') as error:
+        photoStorage.objectPathFromUrl(url, 'u')
+    assert url not in str(error.value)
+    # And the download URL is the only form left.
+    assert photoStorage.objectPathFromUrl(downloadUrl(MINE), 'u') == MINE
+
+
+@pytest.mark.parametrize('uid, path', [
+    (ADMIN, f'users/{OTHER}/a.jpg'),
+    (ADMIN, f'users/{ADMIN}X/a.jpg'),
+    (ADMIN, f'users/{ADMIN}'),
+    (ADMIN, f'users/{ADMIN}/'),
+    (ADMIN, f'users/{ADMIN}/../a.jpg'),
+    (ADMIN, f'users/{ADMIN}/.'),
+    (ADMIN, f'users//{ADMIN}/a.jpg'),
+    (ADMIN, f'users/{ADMIN}//a.jpg'),
+    (ADMIN, f'/users/{ADMIN}/a.jpg'),
+    (ADMIN, f'stores/{ADMIN}/a.jpg'),
+    (ADMIN, f'users/{ADMIN}/a\\b.jpg'),
+    (ADMIN, f'users/{ADMIN}/a\x00b.jpg'),
+    (ADMIN, f'users/{ADMIN}/a\nb.jpg'),
+    (ADMIN, 5),
+    (ADMIN, None),
+    ('', 'users//a.jpg'),
+    ('a/b', 'users/a/b/c.jpg'),
+    (None, 'users/None/a.jpg'),
+    (5, 'users/5/a.jpg'),
+])
+def test_ownImagePath_refusesWhatIsNotUnderTheCallersFolder(uid, path):
+    with pytest.raises(ValueError,
+                       match='^imageUrls.0. must be a photo you uploaded'):
+        photoStorage.ownImagePath(uid, path, 'imageUrls[0]')
+
+
+@pytest.mark.parametrize('name', ['a.HEIC', 'a.heic', 'a.HeIf', 'a.heif'])
+def test_ownImagePath_heicByName_asksToConvert(name):
+    path = f'users/{ADMIN}/{name}'
+
+    with pytest.raises(ValueError) as error:
+        photoStorage.ownImagePath(ADMIN, path, 'imageUrls[0]')
+    assert photoStorage.CONVERT_PHOTO in str(error.value)
+    assert path not in str(error.value)
+
+
+# ----------------------------- photo checks ----------------------------- #
+
+
+@pytest.mark.parametrize('stored', [
+    {'size': MAX},
+    {'contentType': 'image/JPEG; charset=x'},
+    {'contentType': 'image/png'},
+    {'data': b'x' * MAX, 'size': MAX},
+])
+def test_readOwnImages_acceptsTheBoundaries(fakes, stored):
+    [(data, contentType)] = readOne(fakes, **stored)
+
+    assert len(data) == len(stored.get('data', JPEG))
+    assert contentType in photoStorage.IMAGE_CONTENT_TYPES
+
+
+@pytest.mark.parametrize('stored, message', [
+    ({'size': MAX + 1}, 'is over 10 MB'),
+    ({'size': None}, 'is over 10 MB'),
+    # The metadata understates it: the read bound (end + 1 byte) catches it.
+    ({'data': b'x' * (MAX + 5), 'size': 10}, 'is over 10 MB'),
+    ({'contentType': None}, 'must be a JPG or PNG photo'),
+    ({'contentType': 'image/webp'}, 'must be a JPG or PNG photo'),
+    ({'contentType': 'image/gif'}, 'must be a JPG or PNG photo'),
+    ({'contentType': 'application/pdf'}, 'must be a JPG or PNG photo'),
+    ({'contentType': 'image/heic'}, photoStorage.CONVERT_PHOTO),
+    ({'contentType': 'image/HEIF; charset=x'}, photoStorage.CONVERT_PHOTO),
+])
+def test_readOwnImages_refusesABadObject_withoutQuotingItsPath(fakes, stored,
+                                                               message):
+    with pytest.raises(ValueError) as error:
+        readOne(fakes, **stored)
+
+    assert message in str(error.value)
+    assert str(error.value).startswith('imageUrls[0]')
+    assert MINE not in str(error.value)
+
+
+def test_readOwnImages_downloadsAtMostOneByteOverTheLimit(fakes, monkeypatch):
+    seen = []
+    real = FakeBlob.download_as_bytes
+
+    def spy(self, end, **kwargs):
+        seen.append(end)
+        return real(self, end, **kwargs)
+
+    monkeypatch.setattr(FakeBlob, 'download_as_bytes', spy)
+
+    readOne(fakes)
+
+    # The SDK's end is inclusive: end=MAX is at most MAX + 1 bytes.
+    assert seen == [MAX]
+
+
+def test_readOwnImages_aMissingObject_isAValueError(fakes):
+    with pytest.raises(ValueError, match='^imageUrls.0. was not found') as e:
+        photoStorage.readOwnImages(ADMIN, [('imageUrls[0]', MINE)],
+                                   time.monotonic() + 60)
+    assert MINE not in str(e.value)
+
+
+def test_readOwnImages_anObjectGoneBeforeTheDownload_isAValueError(
+        fakes, monkeypatch):
+    from google.api_core.exceptions import NotFound
+
+    def gone(self, end, **kwargs):
+        raise NotFound('gone')
+
+    monkeypatch.setattr(FakeBlob, 'download_as_bytes', gone)
+
+    with pytest.raises(ValueError, match='^imageUrls.0. was not found'):
+        readOne(fakes)
+
+
+@pytest.mark.parametrize('where', ['metadata', 'download'])
+def test_readOwnImages_aStorageError_isA503(fakes, monkeypatch, caplog, where):
+    from google.api_core.exceptions import ServiceUnavailable as GoogleDown
+    error = GoogleDown('SENTINEL-STORAGE-DETAIL')
+
+    def fail(*args, **kwargs):
+        raise error
+
+    putObject(fakes, MINE)
+    if where == 'metadata':
+        monkeypatch.setattr(FakeBucket, 'get_blob', fail)
+    else:
+        monkeypatch.setattr(FakeBlob, 'download_as_bytes', fail)
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(ServiceUnavailable) as raised:
+            photoStorage.readOwnImages(ADMIN, [('imageUrls[0]', MINE)],
+                                       time.monotonic() + 60)
+
+    assert routeFailure(raised.value, status=400).status == 503
+    assert 'SENTINEL-STORAGE-DETAIL' not in caplog.text
+    assert MINE not in caplog.text
+
+
+def test_readOwnImages_aPassedDeadline_isA503(fakes):
+    putObject(fakes, MINE)
+
+    with pytest.raises(ServiceUnavailable):
+        photoStorage.readOwnImages(ADMIN, [('imageUrls[0]', MINE)],
+                                   time.monotonic() - 1)
+
+
+# --------------------------- the imageUrls list --------------------------- #
+
+
+@pytest.mark.parametrize('imageUrls', [[], 'x', None, {}, 5])
+def test_generate_imageUrlsShape_refused(fakes, imageUrls):
+    themedStoreWithPhoto(fakes)
+
+    with pytest.raises(ValueError) as error:
+        api.generateProductPhotos(ADMIN, imageUrls)
+
+    assert str(error.value) == PhotoActions.IMAGE_URLS_COUNT
+    assert usageCounts() == [] and fakes.images.calls == []
+
+
+def test_generate_tenUrlsWork_elevenAreRefused(fakes):
+    themedStoreWithPhoto(fakes)
+    urls = [putObject(fakes, f'users/{ADMIN}/p{i}.jpg') for i in range(11)]
+    fakes.images.returned = 1
+
+    with pytest.raises(ValueError) as error:
+        api.generateProductPhotos(ADMIN, urls)
+    assert str(error.value) == PhotoActions.IMAGE_URLS_COUNT
+    assert usageCounts() == [] and fakes.images.calls == []
+
+    res = api.generateProductPhotos(ADMIN, urls[:10])
+    assert len(res['photos']) == 1
+    [call] = fakes.images.calls
+    assert len(call['image']) == 10
+
+
+@pytest.mark.parametrize('second', [
+    downloadUrl(MINE),
+    # Two tokens of one object.
+    downloadUrl(MINE).replace('token=t', 'token=another'),
+    # The same path spelled with lowercase hex.
+    downloadUrl(MINE).replace('%2F', '%2f'),
+], ids=['same', 'otherToken', 'lowerHex'])
+def test_generate_theSamePhotoTwice_isRefused_beforeAnyQuota(fakes, second):
+    themedStoreWithPhoto(fakes)
+
+    with pytest.raises(ValueError) as error:
+        api.generateProductPhotos(ADMIN, [downloadUrl(MINE), second])
+
+    assert str(error.value) == PhotoActions.IMAGE_URLS_TWICE
+    assert usageCounts() == [] and fakes.images.calls == []
+
+
+@pytest.mark.parametrize('count', [0, 5, -1, True, False, '2', 2.0, [2]])
+def test_generate_badCount_refused_beforeAnyQuota(fakes, count):
+    _, url = themedStoreWithPhoto(fakes)
+
+    with pytest.raises(ValueError) as error:
+        api.generateProductPhotos(ADMIN, [url], count=count)
+
+    assert str(error.value) == PhotoActions.PHOTO_COUNT
+    assert usageCounts() == [] and fakes.images.calls == []
+
+
+@pytest.mark.parametrize('count', [0, 5, True, '2'])
+def test_generate_badCountOverHttp_is400_andNothingIsCounted(
+        fakes, monkeypatch, count):
+    _, url = themedStoreWithPhoto(fakes)
+
+    status, body = httpPost(monkeypatch, 'generateProductPhotos', ADMIN,
+                            {'userId': ADMIN, 'imageUrls': [url],
+                             'count': count})
+
+    assert status == 400 and body['status'] == 400
+    assert body['message'] == PhotoActions.PHOTO_COUNT
+    assert body['data'] is None
+    assert usageCounts() == [] and fakes.images.calls == []
+
+
+def test_generate_aMissingCountOverHttp_isOne(fakes, monkeypatch):
+    _, url = themedStoreWithPhoto(fakes)
+    fakes.images.returned = 1
+
+    status, body = httpPost(monkeypatch, 'generateProductPhotos', ADMIN,
+                            {'userId': ADMIN, 'imageUrls': [url]})
+
+    assert status == 200
+    assert fakes.images.calls[0]['n'] == 1
+    assert len(body['data']['photos']) == 1
+
+
+def test_generate_notes_whitespaceIsNone_overLengthAndNonTextRefused(fakes):
+    store, url = themedStoreWithPhoto(fakes)
+
+    api.generateProductPhotos(ADMIN, [url], notes='  \n ')
+    [call] = fakes.images.calls
+    assert 'Notes:' not in call['prompt']
+    [saved, *_] = db.read({'storeId': store['_id']}, 'GeneratedPhotos')
+    assert saved['notes'] is None
+
+    before = usageCounts()
+    for notes in ('n' * (PHOTO_NOTES_MAX_LENGTH + 1), 5, ['x']):
+        with pytest.raises(ValueError):
+            api.generateProductPhotos(ADMIN, [url], notes=notes)
+    assert usageCounts() == before and len(fakes.images.calls) == 1
+
+
+@pytest.mark.parametrize('clear', [None, '', '   '])
+def test_generate_withoutAPhotoStyle_isRefused_beforeAnyQuota(fakes, clear):
+    if clear is None:
+        createTestStore(ADMIN)
+        url = putObject(fakes, MINE)
+    else:
+        _, url = themedStoreWithPhoto(fakes)
+        theme(photoStyle=clear)
+
+    with pytest.raises(ValueError) as error:
+        api.generateProductPhotos(ADMIN, [url])
+
+    assert str(error.value) == PhotoActions.NO_PHOTO_STYLE
+    assert usageCounts() == [] and fakes.images.calls == []
+
+
+def test_generate_withColorsButNoStyle_isStillRefused(fakes):
+    createTestStore(ADMIN)
+    theme(primaryColor='#112233')
+    url = putObject(fakes, MINE)
+
+    with pytest.raises(ValueError) as error:
+        api.generateProductPhotos(ADMIN, [url])
+    assert str(error.value) == PhotoActions.NO_PHOTO_STYLE
+
+
+# -------------------------------- access -------------------------------- #
+
+
+@pytest.mark.parametrize('route, caller, status, message', [
+    ('generateProductPhotos', 'customer', 403, 'Only a store admin'),
+    ('updateMyStoreTheme', 'customer', 403, 'Only a store admin'),
+    ('generateProductPhotos', 'noStore', 400, NO_STORE_YET),
+    ('updateMyStoreTheme', 'noStore', 400, NO_STORE_YET),
+])
+def test_access_aCustomerOrAnAdminWithoutAStore_isRefused(
+        fakes, monkeypatch, route, caller, status, message):
+    store, url = themedStoreWithPhoto(fakes)
+    createTestUser(NO_STORE_ADMIN)
+    identity = CUSTOMER if caller == 'customer' else NO_STORE_ADMIN
+    body = ({'imageUrls': [url]} if route == 'generateProductPhotos'
+            else {'photoStyle': 'x'})
+
+    code, res = httpPost(monkeypatch, route, identity,
+                         {'userId': identity, **body})
+
+    assert code == status and res['status'] == status
+    assert message in res['message'] and res['data'] is None
+    assert usageCounts() == [] and fakes.images.calls == []
+    assert storedTheme(store)['photoStyle'] == 'plain'
+
+
+def test_access_aBodyUserIdThatIsNotTheJwtIdentity_is400(fakes, monkeypatch):
+    _, url = themedStoreWithPhoto(fakes)
+    createTestStore(OTHER, name='Bakery B')
+
+    code, res = httpPost(monkeypatch, 'generateProductPhotos', OTHER,
+                         {'userId': ADMIN, 'imageUrls': [url]})
+
+    assert code == 400 and 'Unauthorized access' in res['message']
+    assert usageCounts() == [] and fakes.images.calls == []
+
+
+# ---------------------------- logs and errors ---------------------------- #
+
+
+def assertNothingSensitiveLogged(caplog, *extra):
+    for text in (MINE, 'mug.jpg', SENTINEL_NOTES, SENTINEL_STYLE,
+                 'leak.example', 'token=', *extra):
+        assert text not in caplog.text, text
+
+
+def test_generate_logsNeverAUrlPathNotesOrStyle(fakes, caplog):
+    store = createTestStore(ADMIN)
+    theme(photoStyle=SENTINEL_STYLE)
+    url = putObject(fakes, MINE)
+
+    with caplog.at_level(logging.INFO):
+        res = api.generateProductPhotos(ADMIN, [url], count=2,
+                                        notes=SENTINEL_NOTES)
+
+    assertNothingSensitiveLogged(caplog, url,
+                                 *(p['url'] for p in res['photos']))
+    [line] = [r.msg for r in caplog.records if isinstance(r.msg, dict)
+              and r.msg.get('event') == 'productPhotos']
+    assert line['storeId'] == store['_id'] and line['count'] == 2
+    assert line['returned'] == 2 and 'durationMs' in line
+
+
+@pytest.mark.parametrize('key', ['code', 'type'])
+def test_generate_contentPolicyViolation_isTheFixed400_notRetried(
+        fakes, monkeypatch, noSleep, caplog, frozen, key):
+    store = createTestStore(ADMIN)
+    theme(photoStyle=SENTINEL_STYLE)
+    url = putObject(fakes, MINE)
+    images = useImages(monkeypatch, ScriptedImages(policyError(key)))
+
+    with caplog.at_level(logging.INFO):
+        with pytest.raises(ValueError) as error:
+            api.generateProductPhotos(ADMIN, [url], count=3,
+                                      notes=SENTINEL_NOTES)
+
+    assert str(error.value) == imageModel.PHOTO_REQUEST_DECLINED
+    assert len(images.calls) == 1 and noSleep == []
+    assert routeFailure(error.value, status=400).status == 400
+    assert counterValue(store['_id']) == 0
+    assert counterValue(PhotoActions.ALL_STORES) == 0
+    assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
+    assertNothingSensitiveLogged(caplog, url)
+
+
+def edit(deadline=None):
+    return imageModel.editImages([('r.jpg', JPEG, 'image/jpeg')], 'prompt', 1,
+                                 deadline or time.monotonic() + 60)
+
+
+@pytest.mark.parametrize('first', [
+    (openai.InternalServerError, 500), (openai.InternalServerError, 504),
+    (openai.RateLimitError, 429), (openai.APIConnectionError, None),
+    (openai.APITimeoutError, None)],
+    ids=['500', '504', '429', 'connection', 'timeout'])
+def test_editImages_aRetryableError_isRetriedOnce(monkeypatch, noSleep,
+                                                  caplog, first):
+    images = useImages(monkeypatch, ScriptedImages(sdkError(*first), 1))
+
+    with caplog.at_level(logging.INFO):
+        assert edit() == [JPEG]
+
+    assert len(images.calls) == 2
+    assert noSleep == [chatModel.RETRY_BACKOFF_SECONDS]
+    assertNothingSensitiveLogged(caplog)
+
+
+def test_editImages_twoServerErrorsInARow_is503_afterTwoCalls(
+        monkeypatch, noSleep, caplog):
+    images = useImages(monkeypatch, ScriptedImages(
+        sdkError(openai.InternalServerError, 500),
+        sdkError(openai.InternalServerError, 502)))
+
+    with caplog.at_level(logging.INFO):
+        with pytest.raises(ServiceUnavailable) as error:
+            edit()
+
+    assert len(images.calls) == 2 and len(noSleep) == 1
+    assert error.value.service == imageModel.PHOTO_SERVICE
+    assertNothingSensitiveLogged(caplog)
+
+
+@pytest.mark.parametrize('kind, status', [
+    (openai.BadRequestError, 400), (openai.AuthenticationError, 401),
+    (openai.PermissionDeniedError, 403), (openai.NotFoundError, 404),
+    (openai.UnprocessableEntityError, 422)])
+def test_editImages_otherClientErrors_areNotRetried_andAre503(
+        monkeypatch, noSleep, caplog, kind, status):
+    images = useImages(monkeypatch, ScriptedImages(sdkError(kind, status),
+                                                   1))
+
+    with caplog.at_level(logging.INFO):
+        with pytest.raises(ServiceUnavailable):
+            edit()
+
+    assert len(images.calls) == 1 and noSleep == []
+    assertNothingSensitiveLogged(caplog)
+
+
+@pytest.mark.parametrize('body', [None, {}, {'code': 'invalid_size'},
+                                  {'type': 'invalid_request'}])
+def test_editImages_aOther400_isNotAPolicyRefusal(monkeypatch, noSleep, body):
+    useImages(monkeypatch,
+              ScriptedImages(sdkError(openai.BadRequestError, 400, body)))
+
+    with pytest.raises(ServiceUnavailable):
+        edit()
+
+
+def test_editImages_eachAttemptWaitsAtMostTheTimeLeft(monkeypatch, noSleep):
+    images = useImages(monkeypatch, ScriptedImages(1, 1))
+
+    edit(time.monotonic() + 600)
+    edit(time.monotonic() + 10)
+
+    first, second = (call['timeout'] for call in images.calls)
+    assert first == imageModel.IMAGE_TIMEOUT_SECONDS
+    assert 0 < second <= 10
+
+
+def test_editImages_aPassedDeadline_makesNoCall(monkeypatch, noSleep):
+    images = useImages(monkeypatch, ScriptedImages(1))
+
+    with pytest.raises(ServiceUnavailable):
+        edit(time.monotonic() - 1)
+    assert images.calls == []
+
+
+def test_generate_aMissingModelApiKey_is503_andRefunded(
+        clean, frozen, monkeypatch):
+    bucket = FakeBucket()
+    monkeypatch.setattr(photoStorage, '_bucket', lambda: bucket)
+    monkeypatch.delenv(chatModel.API_KEY_VARIABLE, raising=False)
+    monkeypatch.setattr(chatModel, '_client', None)
+    store, url = themedStoreWithPhoto(SimpleNamespace(bucket=bucket))
+
+    with pytest.raises(ServiceUnavailable) as error:
+        api.generateProductPhotos(ADMIN, [url], count=2)
+
+    assert error.value.service == imageModel.PHOTO_SERVICE
+    assert routeFailure(error.value, status=400).status == 503
+    assert counterValue(store['_id']) == 0
+    assert counterValue(PhotoActions.ALL_STORES) == 0
+    assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
+    assert db.read({}, 'GeneratedPhotos') == []
+
+
+# ------------------------------- the theme ------------------------------- #
+
+FULL_THEME = {'photoStyle': 'old style', 'primaryColor': '#111111',
+              'secondaryColor': '#222222'}
+
+
+@pytest.mark.parametrize('field, sent, stored', [
+    ('photoStyle', 'new style', 'new style'),
+    ('photoStyle', '', None),
+    ('photoStyle', '   ', None),
+    ('primaryColor', '#abcdef', '#ABCDEF'),
+    ('primaryColor', '', None),
+    ('secondaryColor', ' #AbCdEf ', '#ABCDEF'),
+    ('secondaryColor', '', None),
+    ('secondaryColor', '  ', None),
+])
+def test_theme_aFieldIsSetOrClearedAlone_theOthersAreUntouched(
+        clean, field, sent, stored):
+    store = createTestStore(ADMIN)
+    theme(**FULL_THEME)
+
+    res = theme(**{field: sent})
+
+    assertExactShape(StoreThemeResponse, res)
+    expected = {**FULL_THEME, field: stored}
+    assert res == expected
+    assert storedTheme(store) == expected
+
+
+def test_theme_nothingSent_isRefused_andChangesNothing(clean):
+    store = createTestStore(ADMIN)
+    theme(**FULL_THEME)
+    before = db.read({'_id': store['_id']}, 'Stores', findOne=True)
+
+    with pytest.raises(ValueError) as error:
+        theme()
+
+    assert str(error.value) == NO_THEME_SENT
+    assert db.read({'_id': store['_id']}, 'Stores', findOne=True) == before
+
+
+def test_theme_aStyleOf300CharactersWorks_301IsRefused(clean):
+    store = createTestStore(ADMIN)
+
+    assert theme(photoStyle='x' * PHOTO_STYLE_MAX_LENGTH)['photoStyle']
+    for style in ('y' * (PHOTO_STYLE_MAX_LENGTH + 1), 'a\x00b', 5, ['x']):
+        with pytest.raises(ValueError) as error:
+            theme(photoStyle=style)
+        assert 'yyy' not in str(error.value)
+    assert storedTheme(store)['photoStyle'] == 'x' * PHOTO_STYLE_MAX_LENGTH
+
+
+@pytest.mark.parametrize('color', [
+    '1A73E8', '#12345', '#1234567', '#GGGGGG', '##123456', 'red',
+    'rgb(1,2,3)', '#SENTINEL', '＃112233', 5, 1.5, True, ['#112233'],
+    {'c': '#112233'}])
+@pytest.mark.parametrize('field', ['primaryColor', 'secondaryColor'])
+def test_theme_aBadColor_isRefused_andNothingIsSaved(clean, field, color):
+    store = createTestStore(ADMIN)
+
+    with pytest.raises(ValueError) as error:
+        # The good style rides along: a refusal saves none of it.
+        theme(photoStyle='fine', **{field: color})
+
+    assert str(error.value) == f'{field} must be a hex color like #1A73E8'
+    assert storedTheme(store) == {f: None for f in STORE_THEME_FIELDS}
+
+
+def test_theme_colorIsStoredUppercase(clean):
+    store = createTestStore(ADMIN)
+
+    res = theme(primaryColor='#1a73e8', secondaryColor='#00ff7f')
+
+    assert res['primaryColor'] == '#1A73E8'
+    assert res['secondaryColor'] == '#00FF7F'
+    assert storedTheme(store)['primaryColor'] == '#1A73E8'
+
+
+def test_theme_onlyTheCallersOwnStoreChanges(clean):
+    mine = createTestStore(ADMIN)
+    theme(**FULL_THEME)
+    theirs = createTestStore(OTHER, name='Bakery B')
+
+    api.updateMyStoreTheme(OTHER, photoStyle='their style')
+
+    assert storedTheme(mine) == FULL_THEME
+    assert storedTheme(theirs)['photoStyle'] == 'their style'
+
+
+def test_theme_aCustomerOrAnAdminWithoutAStore_changesNothing(clean):
+    store = createTestStore(ADMIN)
+    createTestUser(NO_STORE_ADMIN)
+
+    with pytest.raises(PermissionError):
+        api.updateMyStoreTheme(CUSTOMER, photoStyle='x')
+    with pytest.raises(ValueError, match=NO_STORE_YET):
+        api.updateMyStoreTheme(NO_STORE_ADMIN, photoStyle='x')
+    assert storedTheme(store) == {f: None for f in STORE_THEME_FIELDS}
+
+
+def test_theResponsesACustomerCanSee_carryNoThemeField(clean):
+    store = createTestStore(ADMIN)
+    theme(**FULL_THEME)
+
+    located = api.setUserStoreLocation(ADMIN, 14.6, 121.0)
+
+    assertExactShape(StoreResponse, located)
+    assert not set(STORE_THEME_FIELDS) & set(located)
+    assert not set(STORE_THEME_FIELDS) & modelKeys(StoreResponse)
+    assert set(STORE_THEME_FIELDS) <= modelKeys(AdminStoreResponse)
+    # Only the owner's own view has them.
+    mine = api.getUserStore(ADMIN)['store']
+    assert {f: mine[f] for f in STORE_THEME_FIELDS} == FULL_THEME
+    assert store['_id'] == mine['_id']
+
+
+def test_theOwnersView_ofAStoreWithNoTheme_leavesTheFieldsOut(clean):
+    createTestStore(ADMIN)
+
+    mine = api.getUserStore(ADMIN)['store']
+
+    assert not set(STORE_THEME_FIELDS) & set(mine)
+
+
+@pytest.mark.parametrize('colors, expected, absent', [
+    ({}, [], ['Brand colors', 'primary', 'secondary']),
+    ({'primaryColor': '#112233'}, ['Brand colors: primary #112233'],
+     ['secondary']),
+    ({'secondaryColor': '#445566'}, ['Brand colors: secondary #445566'],
+     ['primary']),
+    ({'primaryColor': '#112233', 'secondaryColor': '#445566'},
+     ['Brand colors: primary #112233, secondary #445566'], []),
+])
+def test_photoPrompt_hasTheColorsLineOnlyWhenAColorIsSet(colors, expected,
+                                                         absent):
+    prompt = PhotoActions.photoPrompt({'photoStyle': 'calm', **colors}, None)
+
+    assert prompt.startswith(PhotoActions.PHOTO_INSTRUCTION)
+    assert 'Style: calm' in prompt and 'Notes:' not in prompt
+    for text in expected:
+        assert text in prompt
+    for text in absent:
+        assert text not in prompt
+
+
+def test_generate_withNoColors_thePromptHasNoColorsLine(fakes):
+    _, url = themedStoreWithPhoto(fakes)
+
+    api.generateProductPhotos(ADMIN, [url])
+
+    assert 'Brand colors' not in fakes.images.calls[0]['prompt']
+
+
+def test_mcp_generateProductPhotos_hasNoUserIdInItsSchema():
+    async def schemas():
+        tools = await mcpServer.servers['admin'].list_tools()
+        return {t.name: t.input_schema for t in tools}
+
+    byName = asyncio.run(schemas())
+
+    assert set(byName['generateProductPhotos']['properties']) == {
+        'imageUrls', 'count', 'notes'}
+    assert 'userId' not in byName['updateMyStoreTheme']['properties']
+
+
+# -------------------------------- quota --------------------------------- #
+
+
+def test_quota_98Used_aRequestFor4IsRefused_andTheSlotIsReleased(fakes,
+                                                                  frozen):
+    store, url = themedStoreWithPhoto(fakes)
+    usageCounters.takeQuota(PhotoActions.PHOTO_USAGE,
+                            counterKey(store['_id']),
+                            PhotoActions.STORE_DAILY_PHOTO_CAP, FAR_EXPIRY,
+                            amount=98)
+    fakes.images.returned = 4
+
+    with pytest.raises(ValueError) as error:
+        api.generateProductPhotos(ADMIN, [url], count=4)
+
+    assert str(error.value) == PhotoActions.PHOTO_CAP_REACHED
+    assert counterValue(store['_id']) == 98
+    assert counterValue(PhotoActions.ALL_STORES) is None
+    assert fakes.images.calls == []
+    assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
+
+    # The slot is free again, and the 2 left are still there to take.
+    fakes.images.returned = 2
+    assert len(api.generateProductPhotos(ADMIN, [url],
+                                         count=2)['photos']) == 2
+    assert counterValue(store['_id']) == 100
+    with pytest.raises(ValueError) as again:
+        api.generateProductPhotos(ADMIN, [url], count=1)
+    assert str(again.value) == PhotoActions.PHOTO_CAP_REACHED
+    assert counterValue(store['_id']) == 100
+    assert counterValue(PhotoActions.ALL_STORES) == 2
+
+
+def test_slots_bothHeld_theNextCallIs503_beforeAnyQuotaOrRead(fakes, frozen,
+                                                              monkeypatch):
+    store, url = themedStoreWithPhoto(fakes)
+    monkeypatch.setattr(photoStorage, '_bucket',
+                        lambda: pytest.fail('storage read'))
+    slots = PhotoActions._photoSlots
+    held = 0
+    while slots.acquire(blocking=False):
+        held += 1
+    try:
+        assert held == PhotoActions.PHOTO_CALLS_AT_ONCE
+        with pytest.raises(ServiceUnavailable) as error:
+            api.generateProductPhotos(ADMIN, [url], count=2)
+        assert error.value.service == imageModel.PHOTO_SERVICE
+        assert counterValue(store['_id']) is None
+        assert counterValue(PhotoActions.ALL_STORES) is None
+        assert usageCounts() == [] and fakes.images.calls == []
+    finally:
+        for _ in range(held):
+            slots.release()
+    assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
+
+
+def test_slots_aCallSucceedsAfterMoreFailuresThanThereAreSlots(
+        fakes, monkeypatch, noSleep):
+    _, url = themedStoreWithPhoto(fakes)
+    failures = PhotoActions.PHOTO_CALLS_AT_ONCE + 1
+    images = useImages(monkeypatch, ScriptedImages(
+        *[sdkError(openai.BadRequestError, 400) for _ in range(failures)],
+        1))
+
+    for _ in range(failures):
+        with pytest.raises(ServiceUnavailable):
+            api.generateProductPhotos(ADMIN, [url])
+        assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
+
+    assert len(api.generateProductPhotos(ADMIN, [url])['photos']) == 1
+    assert len(images.calls) == failures + 1
+
+
+@pytest.mark.parametrize('instant, day', [
+    (datetime.datetime(2099, 1, 1, 15, 59, 59, tzinfo=datetime.timezone.utc),
+     datetime.date(2099, 1, 1)),
+    (datetime.datetime(2099, 1, 1, 16, 0, 0, tzinfo=datetime.timezone.utc),
+     datetime.date(2099, 1, 2)),
+])
+def test_quota_theDayKeyRollsAt16UtcWhichIsMidnightUtcPlus8(
+        fakes, monkeypatch, instant, day):
+    store, url = themedStoreWithPhoto(fakes)
+    fakes.images.returned = 1
+    monkeypatch.setattr(PhotoActions, '_now', lambda: instant)
+
+    api.generateProductPhotos(ADMIN, [url])
+
+    ids = {doc['_id'] for doc in db.read({}, PhotoActions.PHOTO_USAGE)}
+    assert ids == {counterKey(store['_id'], day),
+                   counterKey(PhotoActions.ALL_STORES, day)}
+
+
+@pytest.mark.parametrize('failure, expected', [
+    ('policy', ValueError), ('model503', ServiceUnavailable),
+    ('noImages', ServiceUnavailable)])
+def test_quota_aFailedModelCall_givesEverythingBack_onBothCounters(
+        fakes, frozen, monkeypatch, noSleep, failure, expected):
+    store, url = themedStoreWithPhoto(fakes)
+    useImages(monkeypatch, ScriptedImages({
+        'policy': policyError(),
+        'model503': sdkError(openai.BadRequestError, 400),
+        'noImages': 0}[failure]))
+
+    with pytest.raises(expected):
+        api.generateProductPhotos(ADMIN, [url], count=3)
+
+    assert counterValue(store['_id']) == 0
+    assert counterValue(PhotoActions.ALL_STORES) == 0
+    assert db.read({}, 'GeneratedPhotos') == []
+    assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
+
+
+def test_quota_2Of4Returned_gives2Back_onBothCounters(fakes, frozen):
+    store, url = themedStoreWithPhoto(fakes)
+    fakes.images.returned = 2
+
+    res = api.generateProductPhotos(ADMIN, [url], count=4)
+
+    assert len(res['photos']) == 2
+    assert counterValue(store['_id']) == 2
+    assert counterValue(PhotoActions.ALL_STORES) == 2
+
+
+@pytest.mark.parametrize('where', ['missing', 'storage503'])
+def test_quota_aReferenceReadFailure_refundsAll_andReleasesTheSlot(
+        fakes, frozen, monkeypatch, where):
+    from google.api_core.exceptions import ServiceUnavailable as GoogleDown
+    store, url = themedStoreWithPhoto(fakes)
+    if where == 'missing':
+        url = downloadUrl(f'users/{ADMIN}/gone.jpg')
+        expected = ValueError
+    else:
+        expected = ServiceUnavailable
+
+        def down(self, *args, **kwargs):
+            raise GoogleDown('down')
+
+        monkeypatch.setattr(FakeBucket, 'get_blob', down)
+
+    with pytest.raises(expected) as error:
+        api.generateProductPhotos(ADMIN, [url], count=3)
+
+    if where == 'missing':
+        assert 'was not found' in str(error.value)
+    assert counterValue(store['_id']) == 0
+    assert counterValue(PhotoActions.ALL_STORES) == 0
+    assert fakes.images.calls == []
+    assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
