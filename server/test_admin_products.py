@@ -14,14 +14,15 @@ import pytest
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 import actions.ProductActions as productActions
-from actions.ProductActions import NAME_TAKEN, PRODUCT_NOT_FOUND, _validProduct
+from actions.ProductActions import (INVENTORY_WITH_RESERVED, NAME_TAKEN,
+                                    PRODUCT_NOT_FOUND, _validProduct)
 from actions.StoreActions import ownerStore
 from ApiRequests import ApiRequests
 from conftest import (addProduct, assertExactShape, assertRowKeys,
                       createTestStore, createTestUser, guestAt,
                       storeWithProducts, wipeCollections)
 from mongoDb import OutdatedDataError, db
-from objects import (AdminProductListResponse, AdminProductListRow,
+from objects import (PRODUCT_INVENTORY_MAX, AdminProductListResponse, AdminProductListRow,
                      AdminProductRow, NewProduct, ProductView)
 
 COLLECTIONS = ['Users', 'Bootstrap', 'Stores', 'Customers', 'Products']
@@ -844,3 +845,24 @@ def test_ownerStore_returnsOnlyTheProjection_orRefusesAnAdminWithoutAStore(
     store = createTestStore(OTHER_ADMIN)
     assert ownerStore(OTHER_ADMIN, {'_id': 1, 'currency': 1}) == {
         '_id': store['_id'], 'currency': 'PHP'}
+
+
+def test_updateStoreProduct_inventoryPlusReservedUnits_staysWithinTheMax(
+        clean):
+    """An order's cancel gives its units back, so the inventory set now
+    plus what orders hold may not pass PRODUCT_INVENTORY_MAX."""
+    store = createTestStore(ADMIN)
+    held = [{'orderId': 'o1', 'quantity': 4}, {'orderId': 'o2', 'quantity': 6}]
+    ok = addProduct(store['_id'], 'Fits', 5, reservedInventory=held)
+    over = addProduct(store['_id'], 'Over', 5, inventory=3,
+                      reservedInventory=held)
+
+    res = api.updateStoreProduct(ADMIN, ok['_id'],
+                                 inventory=PRODUCT_INVENTORY_MAX - 10)
+    assert res['inventory'] == PRODUCT_INVENTORY_MAX - 10
+
+    with pytest.raises(ValueError, match=exactly(INVENTORY_WITH_RESERVED)):
+        api.updateStoreProduct(ADMIN, over['_id'],
+                               inventory=PRODUCT_INVENTORY_MAX - 5)
+    stored = db.read({'_id': over['_id']}, 'Products', findOne=True)
+    assert stored == over

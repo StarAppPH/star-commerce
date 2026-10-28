@@ -2,11 +2,14 @@ import Server from "./Server";
 import type { ApiResponse } from "./ApiResponse";
 import type { AdminProductListResponse } from '../schemas/AdminProductListResponseSchema';
 import type { AdminProductRow } from '../schemas/AdminProductRowSchema';
+import type { CreatedOrderResponse } from '../schemas/CreatedOrderResponseSchema';
 import type { CustomerSessionResponse } from '../schemas/CustomerSessionResponseSchema';
 import type { DevUserListResponse } from '../schemas/DevUserListResponseSchema';
 import type { FirebaseUserObject } from '../schemas/FirebaseUserObjectSchema';
 import type { MyOrderListResponse } from '../schemas/MyOrderListResponseSchema';
+import type { MyOrderRow } from '../schemas/MyOrderRowSchema';
 import type { MyStoreResponse } from '../schemas/MyStoreResponseSchema';
+import type { NewOrderItem } from '../schemas/NewOrderItemSchema';
 import type { NewProduct } from '../schemas/NewProductSchema';
 import type { NoContentResponse } from '../schemas/NoContentResponseSchema';
 import type { PhoneVerifiedResponse } from '../schemas/PhoneVerifiedResponseSchema';
@@ -412,6 +415,52 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             return { message: "Failed to fetch data", status: 0, data: null };
         }
     }
+
+    async createOrder(userId: string, storeId: string, items: NewOrderItem[]): Promise<ApiResponse<CreatedOrderResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/createOrder`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "items": items}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<CreatedOrderResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async payOrder(userId: string, storeId: string, orderId: string, paymentMethod: string): Promise<ApiResponse<MyOrderRow>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/payOrder`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "orderId": orderId, "paymentMethod": paymentMethod}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<MyOrderRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
 }
 
 export interface RouteResponseModels {
@@ -432,6 +481,8 @@ export interface RouteResponseModels {
     listMyStoreProducts: AdminProductListResponse;
     getStoreOrders: StoreOrderListResponse;
     getMyOrders: MyOrderListResponse;
+    createOrder: CreatedOrderResponse;
+    payOrder: MyOrderRow;
 }
 
 export interface RouteRequestBodies {
@@ -452,6 +503,8 @@ export interface RouteRequestBodies {
     listMyStoreProducts: { userId: string; search: string | null; limit: number };
     getStoreOrders: { userId: string; status: string | null; period: string | null; startDate: string | null; endDate: string | null; limit: number };
     getMyOrders: { userId: string; storeId: string; status: string | null; limit: number };
+    createOrder: { userId: string; storeId: string; items: NewOrderItem[] };
+    payOrder: { userId: string; storeId: string; orderId: string; paymentMethod: string };
 }
 
 export type PublicRoute =

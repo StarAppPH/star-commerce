@@ -1290,13 +1290,24 @@ class AdminProductListResponse(ResponseModel):
 # ──────────────────────────────────────────────
 
 # Where an order is:
-#   pending: placed, its units held in each product's reservedInventory;
-#   confirmed: the store accepted it;
+#   pending: placed, its units held in each product's reservedInventory,
+#     awaiting payment;
+#   paid: the customer paid;
 #   completed: handed over, so its units count as sold;
 #   cancelled: its units went back to the products' inventory.
-OrderStatus = Literal['pending', 'confirmed', 'completed', 'cancelled']
+OrderStatus = Literal['pending', 'paid', 'completed', 'cancelled']
+# How a customer pays at checkout. No cash on delivery: it cannot be paid
+# at checkout.
+PaymentMethod = Literal['card', 'gcash', 'maya', 'grabPay', 'bankTransfer']
+# The start of every reference the demo payment provider (payments.py)
+# hands out.
+PAYMENT_REFERENCE_PREFIX = 'DEMO-'
 # The most items one order holds (the checkout enforces it).
 ORDER_ITEMS_MAX = 50
+# How long a customer has to pay a placed order before it is cancelled.
+ORDER_PAYMENT_MINUTES = 30
+# The most unpaid (pending, unexpired) orders a customer holds at a store.
+MAX_PENDING_ORDERS_PER_STORE = 3
 
 
 class OrderItem(AppModel):
@@ -1310,10 +1321,20 @@ class OrderItem(AppModel):
     quantity: int = Field(..., ge=1, description='Units ordered')
 
 
+class NewOrderItem(AppModel):
+    """One item of a createOrder call. Types only, no limits: the route
+    checks them, so a refusal names the item's position and never quotes
+    the value (NewProduct's reason)."""
+    productId: str = Field(..., description='The Products _id')
+    quantity: int = Field(..., description='Units to order')
+
+
 class Order(MongoModel):
     """An Orders document, read newest first: the (storeId, status,
     createdAt) and (customerId, storeId, createdAt) indexes
-    (mongoDb.ensureIndexes) serve the admin's and the customer's lists.
+    (mongoDb.ensureIndexes) serve the admin's and the customer's lists,
+    (status, expiresAt) and (storeId, status, expiresAt) the sweeps of
+    expired unpaid orders.
 
     Every write to a product's inventory or reservedInventory an order
     makes (placing, cancelling or completing it) must also $inc the
@@ -1332,6 +1353,20 @@ class Order(MongoModel):
                                description="The customer's verified number")
     status: OrderStatus = Field(..., description='Where the order is')
     createdAt: datetime.datetime = Field(..., description='When it was placed')
+    # Stored, not derived from createdAt: a later change of
+    # ORDER_PAYMENT_MINUTES never moves a placed order's deadline.
+    expiresAt: datetime.datetime = Field(
+        ..., description='Unpaid by then, it is cancelled (UTC)')
+    paymentMethod: PaymentMethod | None = Field(
+        None, description='How the customer paid')
+    paymentReference: str | None = Field(
+        None, description="The payment provider's id of the payment")
+    paidAt: datetime.datetime | None = Field(None,
+                                             description='When it was paid')
+    cancelledAt: datetime.datetime | None = Field(
+        None, description='When it was cancelled')
+    cancelReason: Literal['expired'] | None = Field(
+        None, description='Why it was cancelled')
 
 
 class OrderView(StoredDocumentKeys, Order):
@@ -1364,12 +1399,21 @@ class StoreOrderRow(ResponseModel):
     contactNumber: str = Field(..., pattern=PHONE_NUMBER_PATTERN,
                                description="The customer's verified number")
     createdAt: datetime.datetime = Field(..., description='When it was placed')
+    paymentMethod: PaymentMethod | None = Field(
+        ..., description='How the customer paid')
+    paidAt: datetime.datetime | None = Field(...,
+                                             description='When it was paid')
+    expiresAt: datetime.datetime = Field(
+        ..., description='Unpaid by then, it is cancelled (UTC)')
+    paymentReference: str | None = Field(
+        ..., description="The payment provider's id of the payment")
 
 
 class MyOrderRow(ResponseModel):
     """One order as the customer who placed it sees it: StoreOrderRow
-    without the contact number. Each field restates Order's, which
-    test_route_response_models.py's MIRRORS keeps in step."""
+    without the contact number and the payment reference. Each field
+    restates Order's, which test_route_response_models.py's MIRRORS keeps
+    in step."""
     id: str = Field(..., alias='_id', description='Orders _id')
     status: OrderStatus = Field(..., description='Where the order is')
     items: list[OrderItemRow] = Field(..., min_length=1,
@@ -1379,6 +1423,12 @@ class MyOrderRow(ResponseModel):
     currency: StoreCurrency = Field(
         ..., description="ISO 4217 code of the store's currency when ordered")
     createdAt: datetime.datetime = Field(..., description='When it was placed')
+    paymentMethod: PaymentMethod | None = Field(
+        ..., description='How the customer paid')
+    paidAt: datetime.datetime | None = Field(...,
+                                             description='When it was paid')
+    expiresAt: datetime.datetime = Field(
+        ..., description='Unpaid by then, it is cancelled (UTC)')
 
 
 class StoreOrderListResponse(ResponseModel):
@@ -1389,3 +1439,9 @@ class StoreOrderListResponse(ResponseModel):
 class MyOrderListResponse(ResponseModel):
     orders: list[MyOrderRow] = Field(...,
                                      description='The orders, newest first')
+
+
+class CreatedOrderResponse(ResponseModel):
+    order: MyOrderRow = Field(..., description='The order just placed')
+    paymentMethods: list[PaymentMethod] = Field(
+        ..., description='The ways the customer can pay it')

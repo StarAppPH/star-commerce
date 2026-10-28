@@ -12,7 +12,7 @@ export type Id = string;
 /**
  * Where the order is
  */
-export type Status = "pending" | "confirmed" | "completed" | "cancelled";
+export type Status = "pending" | "paid" | "completed" | "cancelled";
 /**
  * What was ordered
  *
@@ -65,6 +65,22 @@ export type Contactnumber = string;
  * When it was placed
  */
 export type Createdat = string;
+/**
+ * How the customer paid
+ */
+export type Paymentmethod = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+/**
+ * When it was paid
+ */
+export type Paidat = string | null;
+/**
+ * Unpaid by then, it is cancelled (UTC)
+ */
+export type Expiresat = string;
+/**
+ * The payment provider's id of the payment
+ */
+export type Paymentreference = string | null;
 
 /**
  * One order as its store's admin sees it. Each field restates
@@ -79,6 +95,10 @@ export interface StoreOrderRow {
   currency: Currency;
   contactNumber: Contactnumber;
   createdAt: Createdat;
+  paymentMethod: Paymentmethod;
+  paidAt: Paidat;
+  expiresAt: Expiresat;
+  paymentReference: Paymentreference;
 }
 /**
  * One item of an order as a route sends it: OrderItem without its

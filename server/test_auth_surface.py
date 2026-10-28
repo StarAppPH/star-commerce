@@ -84,6 +84,10 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     # A customer's own orders: requireCustomer, and only orders whose
     # customerId is the caller.
     'getMyOrders',
+    # Checkout: requireCustomer at the connection's store; payOrder pays
+    # only an order whose customerId is the caller.
+    'createOrder',
+    'payOrder',
 }
 
 

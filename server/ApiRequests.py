@@ -72,6 +72,7 @@ from pydantic import ValidationError
 from route_config import route_config
 from actions.CustomerActions import CustomerActions
 from actions.OrderActions import OrderActions
+from actions.PaymentActions import PaymentActions
 from actions.ProductActions import ProductActions
 from actions.ServiceToServiceActions import ServiceToServiceActions
 from actions.StoreActions import StoreActions
@@ -288,7 +289,8 @@ class RolesActions():
 
 
 class ApiRequests(AuthActions, RolesActions, StoreActions, CustomerActions,
-                  ProductActions, OrderActions, ServiceToServiceActions):
+                  ProductActions, OrderActions, PaymentActions,
+                  ServiceToServiceActions):
 
     def __init__(self):
         AuthActions.__init__(self)
@@ -297,3 +299,4 @@ class ApiRequests(AuthActions, RolesActions, StoreActions, CustomerActions,
         CustomerActions.__init__(self)
         ProductActions.__init__(self)
         OrderActions.__init__(self)
+        PaymentActions.__init__(self)

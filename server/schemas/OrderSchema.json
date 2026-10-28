@@ -41,7 +41,7 @@
             "additionalProperties": false
         }
     },
-    "description": "An Orders document, read newest first: the (storeId, status,\ncreatedAt) and (customerId, storeId, createdAt) indexes\n(mongoDb.ensureIndexes) serve the admin's and the customer's lists.\n\nEvery write to a product's inventory or reservedInventory an order\nmakes (placing, cancelling or completing it) must also $inc the\nproduct's _version, or updateStoreProduct's _version lock misses it and\nthe admin's save overwrites it.",
+    "description": "An Orders document, read newest first: the (storeId, status,\ncreatedAt) and (customerId, storeId, createdAt) indexes\n(mongoDb.ensureIndexes) serve the admin's and the customer's lists,\n(status, expiresAt) and (storeId, status, expiresAt) the sweeps of\nexpired unpaid orders.\n\nEvery write to a product's inventory or reservedInventory an order\nmakes (placing, cancelling or completing it) must also $inc the\nproduct's _version, or updateStoreProduct's _version lock misses it and\nthe admin's save overwrites it.",
     "properties": {
         "_id": {
             "title": "Id",
@@ -121,7 +121,7 @@
             "description": "Where the order is",
             "enum": [
                 "pending",
-                "confirmed",
+                "paid",
                 "completed",
                 "cancelled"
             ],
@@ -133,6 +133,87 @@
             "format": "date-time",
             "title": "Createdat",
             "type": "string"
+        },
+        "expiresAt": {
+            "description": "Unpaid by then, it is cancelled (UTC)",
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+        },
+        "paymentMethod": {
+            "anyOf": [
+                {
+                    "enum": [
+                        "card",
+                        "gcash",
+                        "maya",
+                        "grabPay",
+                        "bankTransfer"
+                    ],
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "How the customer paid",
+            "title": "Paymentmethod"
+        },
+        "paymentReference": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The payment provider's id of the payment",
+            "title": "Paymentreference"
+        },
+        "paidAt": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "When it was paid",
+            "title": "Paidat"
+        },
+        "cancelledAt": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "When it was cancelled",
+            "title": "Cancelledat"
+        },
+        "cancelReason": {
+            "anyOf": [
+                {
+                    "const": "expired",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Why it was cancelled",
+            "title": "Cancelreason"
         }
     },
     "required": [
@@ -143,7 +224,8 @@
         "currency",
         "contactNumber",
         "status",
-        "createdAt"
+        "createdAt",
+        "expiresAt"
     ],
     "title": "Order",
     "type": "object",

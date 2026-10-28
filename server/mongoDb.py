@@ -151,6 +151,12 @@ class mongoDb():
         # A customer's orders at one store, newest first (getMyOrders).
         self.db['Orders'].create_index([('customerId', 1), ('storeId', 1),
                                         ('createdAt', -1)])
+        # The pending orders past their payment deadline, at every store
+        # (job_cancelExpiredOrders.py's sweep) and at one store (the sweep
+        # the order routes run first).
+        self.db['Orders'].create_index([('status', 1), ('expiresAt', 1)])
+        self.db['Orders'].create_index([('storeId', 1), ('status', 1),
+                                        ('expiresAt', 1)])
 
     def create(self, data: dict, collection_name: str, session: Optional[ClientSession] = None) -> dict:
         """Insert a document into the collection and return the created data."""
@@ -512,10 +518,14 @@ class mongoDb():
                          update,
                          collectionName,
                          upsert=True,
-                         session=None) -> dict:
+                         session=None,
+                         projection=None) -> dict:
+        """The document after `update`; `projection` (None: the whole
+        document) limits what comes back."""
         result = self.db[collectionName].find_one_and_update(
             query,  # Filter: find a document with the specified unit.
             update,  # Update: increment the sequence field by 1.
+            projection=projection,
             upsert=upsert,  # Create the document if it doesn't exist.
             return_document=ReturnDocument.AFTER,
             session=session  # Return the document after applying the update.

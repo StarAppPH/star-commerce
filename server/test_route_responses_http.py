@@ -60,6 +60,7 @@ from actions.OrderActions import (INVALID_PERIOD, INVALID_STATUS,
 from actions.ProductActions import PRODUCT_LIST_DEFAULT_LIMIT
 from conftest import (RAW_EMAIL, RAW_UID, STORE_DETAILS, TOKEN, TOKEN_UID,
                       addOrder, addProduct, createTestStore, createTestUser, guestAt,
+                      verifiedGuestAt,
                       modelKeys, wipeCollections)
 from flask_jwt_extended import create_access_token, decode_token
 from mongoDb import db
@@ -993,5 +994,46 @@ def test_http_orderRoutes_refuseTheOtherRole_with403(monkeypatch, firebase):
             'message'] == 'Only a store admin can do this'
         assert _failure_body(asAdmin, STATUS_FORBIDDEN)[
             'message'] == 'Only a customer can do this'
+    finally:
+        wipeCollections(ORDER_COLLECTIONS)
+
+
+def test_http_createOrder_itemsAsAnObjectIsA400_andADictItemWorks(
+        monkeypatch, firebase):
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(ORDER_COLLECTIONS)
+    try:
+        store = createTestStore(ADMIN)
+        pandesal = addProduct(store['_id'], 'Rrh Pandesal', 5)
+        customerId = verifiedGuestAt(firebase, store, 'rrh-guest-checkout')
+        headers = _bearer(_token(flaskApp, customerId))
+
+        def post(items):
+            return client.post('/createOrder',
+                               json={'userId': customerId,
+                                     'storeId': store['_id'],
+                                     'items': items}, headers=headers)
+
+        res = post({'productId': pandesal['_id'], 'quantity': 1})
+        assert _failure_body(res, STATUS_BAD_REQUEST)
+        assert db.read({}, 'Orders') == []
+
+        data = _success_body(post([{'productId': pandesal['_id'],
+                                    'quantity': 2}]), 'createOrder')['data']
+        assert data['order']['status'] == 'pending'
+        assert data['paymentMethods'][0] == 'card'
+
+        def pay(method):
+            return client.post('/payOrder',
+                               json={'userId': customerId,
+                                     'storeId': store['_id'],
+                                     'orderId': data['order']['_id'],
+                                     'paymentMethod': method},
+                               headers=headers)
+
+        assert _failure_body(pay(['card']), STATUS_BAD_REQUEST)
+        assert _success_body(pay('card'), 'payOrder')['data'][
+            'status'] == 'paid'
     finally:
         wipeCollections(ORDER_COLLECTIONS)

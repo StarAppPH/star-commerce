@@ -12,7 +12,7 @@ export type Id = string;
 /**
  * Where the order is
  */
-export type Status = "pending" | "confirmed" | "completed" | "cancelled";
+export type Status = "pending" | "paid" | "completed" | "cancelled";
 /**
  * What was ordered
  *
@@ -62,6 +62,18 @@ export type Currency =
  */
 export type Createdat = string;
 /**
+ * How the customer paid
+ */
+export type Paymentmethod = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+/**
+ * When it was paid
+ */
+export type Paidat = string | null;
+/**
+ * Unpaid by then, it is cancelled (UTC)
+ */
+export type Expiresat = string;
+/**
  * The orders, newest first
  */
 export type Orders = MyOrderRow[];
@@ -71,8 +83,9 @@ export interface MyOrderListResponse {
 }
 /**
  * One order as the customer who placed it sees it: StoreOrderRow
- * without the contact number. Each field restates Order's, which
- * test_route_response_models.py's MIRRORS keeps in step.
+ * without the contact number and the payment reference. Each field
+ * restates Order's, which test_route_response_models.py's MIRRORS keeps
+ * in step.
  */
 export interface MyOrderRow {
   _id: Id;
@@ -81,6 +94,9 @@ export interface MyOrderRow {
   total: Total;
   currency: Currency;
   createdAt: Createdat;
+  paymentMethod: Paymentmethod;
+  paidAt: Paidat;
+  expiresAt: Expiresat;
 }
 /**
  * One item of an order as a route sends it: OrderItem without its

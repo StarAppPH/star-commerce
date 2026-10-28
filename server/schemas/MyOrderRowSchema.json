@@ -34,7 +34,7 @@
             "additionalProperties": false
         }
     },
-    "description": "One order as the customer who placed it sees it: StoreOrderRow\nwithout the contact number. Each field restates Order's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+    "description": "One order as the customer who placed it sees it: StoreOrderRow\nwithout the contact number and the payment reference. Each field\nrestates Order's, which test_route_response_models.py's MIRRORS keeps\nin step.",
     "properties": {
         "_id": {
             "description": "Orders _id",
@@ -45,7 +45,7 @@
             "description": "Where the order is",
             "enum": [
                 "pending",
-                "confirmed",
+                "paid",
                 "completed",
                 "cancelled"
             ],
@@ -97,6 +97,44 @@
             "format": "date-time",
             "title": "Createdat",
             "type": "string"
+        },
+        "paymentMethod": {
+            "anyOf": [
+                {
+                    "enum": [
+                        "card",
+                        "gcash",
+                        "maya",
+                        "grabPay",
+                        "bankTransfer"
+                    ],
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "How the customer paid",
+            "title": "Paymentmethod"
+        },
+        "paidAt": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "When it was paid",
+            "title": "Paidat"
+        },
+        "expiresAt": {
+            "description": "Unpaid by then, it is cancelled (UTC)",
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
         }
     },
     "required": [
@@ -105,7 +143,10 @@
         "items",
         "total",
         "currency",
-        "createdAt"
+        "createdAt",
+        "paymentMethod",
+        "paidAt",
+        "expiresAt"
     ],
     "title": "MyOrderRow",
     "type": "object",

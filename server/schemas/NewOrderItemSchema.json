@@ -1,0 +1,22 @@
+{
+    "description": "One item of a createOrder call. Types only, no limits: the route\nchecks them, so a refusal names the item's position and never quotes\nthe value (NewProduct's reason).",
+    "properties": {
+        "productId": {
+            "description": "The Products _id",
+            "title": "Productid",
+            "type": "string"
+        },
+        "quantity": {
+            "description": "Units to order",
+            "title": "Quantity",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "productId",
+        "quantity"
+    ],
+    "title": "NewOrderItem",
+    "type": "object",
+    "additionalProperties": false
+}

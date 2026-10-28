@@ -54,6 +54,9 @@ BASE = datetime.datetime(2026, 1, 15, 8, 0, tzinfo=UTC)
 ITEMS = [{'productId': 'p1', 'name': 'Ube Cake', 'price': 650, 'quantity': 2}]
 
 api = ApiRequests()
+# The real expiry sweep, kept for the one test the autouse stub below would
+# make vacuous.
+_REAL_SWEEP = orderActions.cancelExpiredOrders
 
 
 def exactly(message: str) -> str:
@@ -65,6 +68,12 @@ def clean():
     wipeCollections(COLLECTIONS)
     yield
     wipeCollections(COLLECTIONS)
+
+
+@pytest.fixture(autouse=True)
+def _listFiltersOnly(noExpirySweep):
+    """These tests seed pending orders at fixed past instants; the expiry
+    sweep the lists run first is test_checkout.py's."""
 
 
 def _minute(index: int) -> datetime.datetime:
@@ -123,6 +132,7 @@ def _orderData(**fields) -> dict:
         'contactNumber': '+639171234567',
         'status': 'pending',
         'createdAt': BASE,
+        'expiresAt': BASE + datetime.timedelta(minutes=30),
         **fields
     }
 
@@ -220,13 +230,13 @@ def test_getStoreOrders_statusAndPeriod_combine(clean, firebase, monkeypatch):
     store, customerId = _storeAndCustomer(firebase)
     _freeze(monkeypatch, CLOCKS[0])
     today = appTime(2026, 3, 10, 9)
-    keep = addOrder(store['_id'], customerId, ITEMS, 'confirmed',
+    keep = addOrder(store['_id'], customerId, ITEMS, 'paid',
                     today)['_id']
     addOrder(store['_id'], customerId, ITEMS, 'pending', today)
-    addOrder(store['_id'], customerId, ITEMS, 'confirmed',
+    addOrder(store['_id'], customerId, ITEMS, 'paid',
              appTime(2026, 3, 9, 9))
 
-    res = api.getStoreOrders(ADMIN, status='confirmed', period='today')
+    res = api.getStoreOrders(ADMIN, status='paid', period='today')
 
     assert orderIds(res) == [keep]
 
@@ -434,7 +444,7 @@ def test_getStoreOrders_rowShape_isTheItemSnapshot(clean, firebase):
     addOrder(store['_id'], customerId, [
         {'productId': 'p1', 'name': 'Ube Cake', 'price': 650.5, 'quantity': 2},
         {'productId': 'p2', 'name': 'Tea', 'price': 3, 'quantity': 1},
-    ], 'confirmed', _minute(0), currency='PHP', contactNumber='+639179999999')
+    ], 'paid', _minute(0), currency='PHP', contactNumber='+639179999999')
 
     res = api.getStoreOrders(ADMIN)
 
@@ -447,7 +457,7 @@ def test_getStoreOrders_rowShape_isTheItemSnapshot(clean, firebase):
         {'name': 'Tea', 'price': 3, 'quantity': 1},
     ]
     assert row['total'] == 1304
-    assert row['status'] == 'confirmed'
+    assert row['status'] == 'paid'
     assert row['contactNumber'] == '+639179999999'
     assert row['createdAt'].utcoffset() == datetime.timedelta(0)
     assert row['createdAt'] == _minute(0)
@@ -456,9 +466,21 @@ def test_getStoreOrders_rowShape_isTheItemSnapshot(clean, firebase):
         assert f'"{key}"' not in sent
 
 
-def test_orderRoutes_doNotWrite(clean, firebase):
+def test_orderRoutes_doNotWrite(clean, firebase, monkeypatch):
+    # Exempt from the autouse stub: the routes run the real expiry sweep,
+    # which must find nothing to write. The orders are seeded in-window
+    # (placed minutes ago), and a spy proves each route ran the sweep.
+    sweeps = []
+
+    def spy(storeId=None):
+        sweeps.append(storeId)
+        return _REAL_SWEEP(storeId)
+
+    monkeypatch.setattr(orderActions, 'cancelExpiredOrders', spy)
     store, customerId = _storeAndCustomer(firebase)
-    _seed(store['_id'], customerId, 3)
+    for minutes in range(3):
+        addOrder(store['_id'], customerId, ITEMS,
+                 createdAt=utcNow() - datetime.timedelta(minutes=minutes))
     before = db.read({}, 'Orders')
 
     api.getStoreOrders(ADMIN, period='last30Days')
@@ -466,6 +488,7 @@ def test_orderRoutes_doNotWrite(clean, firebase):
 
     assert db.read({}, 'Orders') == before
     assert {o['_version'] for o in before} == {0}
+    assert sweeps == [store['_id'], store['_id']]
 
 
 # ----------------------------- getMyOrders ----------------------------- #
