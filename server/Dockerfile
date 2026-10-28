@@ -42,5 +42,8 @@ ENV BUILD_COMMIT_SHA=$COMMIT_SHA
 # deploy in the Cloud Run job <service>-predeploy (job_predeploy.py), which
 # cloudbuild.yaml runs before it deploys this image, not on every cold start.
 # exec makes gunicorn PID 1, so Cloud Run's SIGTERM reaches it. --timeout 120:
-# the 30 s default can kill a worker while it imports the app.
-CMD ["sh", "-c", "exec gunicorn -b 0.0.0.0:8080 --timeout 120 app:app"]
+# the 30 s default can kill a worker while it imports the app. --threads 8:
+# one worker process (one MongoClient, which is thread-safe: the connection
+# budget is unchanged) serves 8 requests at once, so a chat turn waiting on
+# the model does not block the others.
+CMD ["sh", "-c", "exec gunicorn -b 0.0.0.0:8080 --timeout 120 --threads 8 app:app"]

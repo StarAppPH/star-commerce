@@ -41,16 +41,17 @@ def storeCurrency(storeId: str) -> str:
     return setUpStore(storeId, {'currency': 1})['currency']
 
 
-def _validLimit(limit: int | None) -> int:
-    """How many rows a list returns. The generated HTTP handler passes a
-    missing body key as None, so the route's default applies to direct and
-    MCP calls only: None is the default here."""
+def _validLimit(limit: int | None,
+                default: int = PRODUCT_LIST_DEFAULT_LIMIT,
+                maximum: int = PRODUCT_LIST_MAX_LIMIT) -> int:
+    """How many rows a list returns: 1 to `maximum`. The generated HTTP
+    handler passes a missing body key as None, so the route's default
+    applies to direct and MCP calls only: None is `default` here."""
     if limit is None:
-        return PRODUCT_LIST_DEFAULT_LIMIT
+        return default
     if (not isinstance(limit, int) or isinstance(limit, bool)
-            or not 1 <= limit <= PRODUCT_LIST_MAX_LIMIT):
-        raise ValueError(
-            f'limit is a whole number from 1 to {PRODUCT_LIST_MAX_LIMIT}')
+            or not 1 <= limit <= maximum):
+        raise ValueError(f'limit is a whole number from 1 to {maximum}')
     return limit
 
 

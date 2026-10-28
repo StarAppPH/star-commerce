@@ -983,6 +983,163 @@ def updateMyStorePolicy():
 
 
 
+@app.route('/sendAdminChatMessage', methods=['POST'])
+@jwt_required()
+def sendAdminChatMessage():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    message = data.get('message')
+    conversationId = data.get('conversationId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(message, (dict, list)):
+            raise ValueError('Invalid message')
+        if isinstance(conversationId, (dict, list)):
+            raise ValueError('Invalid conversationId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().sendAdminChatMessage(userId, message, conversationId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'sendAdminChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'message', 'conversationId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'sendAdminChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'message', 'conversationId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'sendAdminChatMessage', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'message', 'conversationId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Reply sent", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/sendStoreChatMessage', methods=['POST'])
+@jwt_required()
+def sendStoreChatMessage():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    message = data.get('message')
+    conversationId = data.get('conversationId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(message, (dict, list)):
+            raise ValueError('Invalid message')
+        if isinstance(conversationId, (dict, list)):
+            raise ValueError('Invalid conversationId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().sendStoreChatMessage(userId, storeId, message, conversationId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'sendStoreChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'message', 'conversationId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'sendStoreChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'message', 'conversationId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'sendStoreChatMessage', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'message', 'conversationId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Reply sent", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/listMyConversations', methods=['POST'])
+@jwt_required()
+def listMyConversations():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    before = data.get('before')
+    limit = data.get('limit')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(before, (dict, list)):
+            raise ValueError('Invalid before')
+        if isinstance(limit, (dict, list)):
+            raise ValueError('Invalid limit')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().listMyConversations(userId, storeId, before, limit)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'listMyConversations', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'before', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'listMyConversations', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'before', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'listMyConversations', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'before', 'limit'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Conversations fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/getConversationTurns', methods=['POST'])
+@jwt_required()
+def getConversationTurns():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    conversationId = data.get('conversationId')
+    beforeSeq = data.get('beforeSeq')
+    limit = data.get('limit')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(conversationId, (dict, list)):
+            raise ValueError('Invalid conversationId')
+        if isinstance(beforeSeq, (dict, list)):
+            raise ValueError('Invalid beforeSeq')
+        if isinstance(limit, (dict, list)):
+            raise ValueError('Invalid limit')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().getConversationTurns(userId, conversationId, beforeSeq, limit)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'getConversationTurns', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'conversationId', 'beforeSeq', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'getConversationTurns', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'conversationId', 'beforeSeq', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'getConversationTurns', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'conversationId', 'beforeSeq', 'limit'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Turns fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 # Never compressed: the routes that issue an access token (BREACH; see
 # AppCreator._compression_block).
 NO_COMPRESSION_ENDPOINTS = frozenset(['devLogin', 'loginWithGoogle', 'startGuestSession'])

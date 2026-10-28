@@ -1,0 +1,99 @@
+{
+    "description": "A Conversations document: one chat of one user at one store. Its\nturns are ChatTurns documents, one per user message, so a long\nconversation never nears MongoDB's document size limit. Kept forever.\n\nAn admin's conversation is at the store the admin owns; a customer's at\nthe store being visited. busyUntil is the lock a turn holds while the\nassistant answers, so two messages of one conversation never run at\nonce; null (or past) when none is running.",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "userId": {
+            "description": "The Users or Customers _id it belongs to",
+            "minLength": 1,
+            "title": "Userid",
+            "type": "string"
+        },
+        "audience": {
+            "description": "Who the assistant talks to",
+            "enum": [
+                "admin",
+                "customer"
+            ],
+            "title": "Audience",
+            "type": "string"
+        },
+        "storeId": {
+            "description": "The Stores _id",
+            "minLength": 1,
+            "title": "Storeid",
+            "type": "string"
+        },
+        "title": {
+            "anyOf": [
+                {
+                    "maxLength": 80,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The first message, cut short",
+            "title": "Title"
+        },
+        "turnCount": {
+            "description": "How many turns it holds",
+            "minimum": 0,
+            "title": "Turncount",
+            "type": "integer"
+        },
+        "createdAt": {
+            "description": "When it started",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        },
+        "lastMessageAt": {
+            "description": "When its last turn was saved",
+            "format": "date-time",
+            "title": "Lastmessageat",
+            "type": "string"
+        },
+        "busyUntil": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "A turn is running until then",
+            "title": "Busyuntil"
+        }
+    },
+    "required": [
+        "userId",
+        "audience",
+        "storeId",
+        "turnCount",
+        "createdAt",
+        "lastMessageAt"
+    ],
+    "title": "Conversation",
+    "type": "object",
+    "additionalProperties": false
+}

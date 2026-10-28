@@ -172,6 +172,16 @@ class mongoDb():
         self.db['Orders'].create_index([('status', 1), ('expiresAt', 1)])
         self.db['Orders'].create_index([('storeId', 1), ('status', 1),
                                         ('expiresAt', 1)])
+        # A user's conversations at one store, newest first
+        # (listMyConversations).
+        self.db['Conversations'].create_index([('userId', 1), ('storeId', 1),
+                                               ('lastMessageAt', -1)])
+        # One turn per place in a conversation, read in order (the chat
+        # history, getConversationTurns).
+        self.db['ChatTurns'].create_index([('conversationId', 1),
+                                           ('seq', 1)], unique=True)
+        # The daily chat counters, deleted once their day is over.
+        self.db['ChatUsage'].create_index('expireAt', expireAfterSeconds=0)
 
     def create(self, data: dict, collection_name: str, session: Optional[ClientSession] = None) -> dict:
         """Insert a document into the collection and return the created data."""

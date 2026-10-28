@@ -1,0 +1,44 @@
+{
+    "description": "One conversation of listMyConversations. Each field restates\nConversation's.",
+    "properties": {
+        "_id": {
+            "description": "Conversations _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "title": {
+            "anyOf": [
+                {
+                    "maxLength": 80,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The first message, cut short",
+            "title": "Title"
+        },
+        "lastMessageAt": {
+            "description": "When its last turn was saved",
+            "format": "date-time",
+            "title": "Lastmessageat",
+            "type": "string"
+        },
+        "turnCount": {
+            "description": "How many turns it holds",
+            "minimum": 0,
+            "title": "Turncount",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "_id",
+        "title",
+        "lastMessageAt",
+        "turnCount"
+    ],
+    "title": "ConversationRow",
+    "type": "object",
+    "additionalProperties": false
+}

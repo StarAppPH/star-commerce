@@ -1396,8 +1396,12 @@ if __name__ == '__main__':
     creator.validateRoutes()
     # The MCP tools (mcpCreator.py, the @mcp_tool routes): checked with the
     # routes, before any file is rewritten; written after app.py below.
+    # The chat route's tools (chatToolsCreator.py) come from the same specs.
+    import chatToolsCreator
     import mcpCreator
-    mcpSource = mcpCreator.generatedSource()
+    toolSpecs = mcpCreator.toolSpecs(ApiRequests)
+    mcpSource = mcpCreator.render(toolSpecs)
+    chatToolsSource = chatToolsCreator.render(toolSpecs)
     # The payload model of every topic this repo publishes (pubSubModels.py;
     # test_pubSubModels.py enforces it), read from the imported app before any
     # file is rewritten: a publisher without one stops the run here. Written
@@ -1413,6 +1417,8 @@ if __name__ == '__main__':
     creator.generateAPI('appPubSub')
     if mcpCreator.write(mcpSource):
         print('Generated mcpServer.py')
+    if chatToolsCreator.write(chatToolsSource):
+        print('Generated chatTools.py')
     # Last: refresh server/pubsub_map.json and PUBSUB_MAP.md, the fleet's Pub/Sub
     # map (pubSubMap.py; test_pubSubMap.py enforces it). Imported here so that
     # --constants-only stays import-free; a hard error (an unparsable source file,

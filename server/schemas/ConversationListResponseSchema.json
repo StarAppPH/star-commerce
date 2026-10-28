@@ -1,0 +1,77 @@
+{
+    "$defs": {
+        "ConversationRow": {
+            "description": "One conversation of listMyConversations. Each field restates\nConversation's.",
+            "properties": {
+                "_id": {
+                    "description": "Conversations _id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "title": {
+                    "anyOf": [
+                        {
+                            "maxLength": 80,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The first message, cut short",
+                    "title": "Title"
+                },
+                "lastMessageAt": {
+                    "description": "When its last turn was saved",
+                    "format": "date-time",
+                    "title": "Lastmessageat",
+                    "type": "string"
+                },
+                "turnCount": {
+                    "description": "How many turns it holds",
+                    "minimum": 0,
+                    "title": "Turncount",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "_id",
+                "title",
+                "lastMessageAt",
+                "turnCount"
+            ],
+            "title": "ConversationRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "properties": {
+        "conversations": {
+            "description": "The conversations, newest first",
+            "items": {
+                "$ref": "#/$defs/ConversationRow"
+            },
+            "title": "Conversations",
+            "type": "array"
+        },
+        "nextBefore": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The next page's `before`, sent back verbatim: the last row's lastMessageAt as ISO 8601 UTC with milliseconds; null when this page is the last",
+            "title": "Nextbefore"
+        }
+    },
+    "required": [
+        "conversations",
+        "nextBefore"
+    ],
+    "title": "ConversationListResponse",
+    "type": "object",
+    "additionalProperties": false
+}

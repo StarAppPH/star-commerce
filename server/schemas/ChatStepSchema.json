@@ -1,0 +1,95 @@
+{
+    "$defs": {
+        "ChatToolCall": {
+            "description": "One tool call of the model, as Meta sent it.",
+            "properties": {
+                "id": {
+                    "description": "Meta's id of the call",
+                    "maxLength": 128,
+                    "title": "Id",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "The tool called",
+                    "maxLength": 64,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "arguments": {
+                    "description": "Its arguments, a JSON string",
+                    "maxLength": 16000,
+                    "title": "Arguments",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "arguments"
+            ],
+            "title": "ChatToolCall",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "One message of a turn between the user's text and the reply, exactly\nas sent to Meta: an assistant message asking for tool calls, or one\ntool's result (toolCallId names the call it answers).",
+    "properties": {
+        "role": {
+            "description": "Who sent it",
+            "enum": [
+                "assistant",
+                "tool"
+            ],
+            "title": "Role",
+            "type": "string"
+        },
+        "content": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Its text",
+            "title": "Content"
+        },
+        "toolCalls": {
+            "anyOf": [
+                {
+                    "items": {
+                        "$ref": "#/$defs/ChatToolCall"
+                    },
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "An assistant message's tool calls",
+            "title": "Toolcalls"
+        },
+        "toolCallId": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The call a tool result answers",
+            "title": "Toolcallid"
+        }
+    },
+    "required": [
+        "role"
+    ],
+    "title": "ChatStep",
+    "type": "object",
+    "additionalProperties": false
+}

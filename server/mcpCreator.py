@@ -192,6 +192,17 @@ _INJECTED_SOURCE = {
 }
 
 
+def callSource(routeName: str, arguments: list) -> list:
+    """The lines of a generated tool's body: `return callRoute(...)` of
+    the route `routeName` with `arguments` (each `name=source`), one per
+    line. chatToolsCreator writes the same call."""
+    lines = [f'{INDENT}return callRoute(ApiRequests().{routeName},']
+    for i, argument in enumerate(arguments):
+        end = ')' if i == len(arguments) - 1 else ','
+        lines.append(f'{INDENT}                 {argument}{end}')
+    return lines
+
+
 def _toolSource(spec: ToolSpec) -> str:
     lines = [
         f"@servers[{audience!r}].tool(name={spec.name!r}, "
@@ -207,11 +218,7 @@ def _toolSource(spec: ToolSpec) -> str:
     arguments = [f'{param}={_INJECTED_SOURCE[param]}'
                  for param in spec.injected
                  ] + [f'{p.name}={p.name}' for p in spec.params]
-    call = f'ApiRequests().{spec.name}'
-    lines.append(f'{INDENT}return callRoute({call},')
-    for i, argument in enumerate(arguments):
-        end = ')' if i == len(arguments) - 1 else ','
-        lines.append(f'{INDENT}                 {argument}{end}')
+    lines += callSource(spec.name, arguments)
     return '\n'.join(lines)
 
 
@@ -250,17 +257,23 @@ def generatedSource() -> str:
     return render(toolSpecs(ApiRequests))
 
 
-def write(source: str) -> bool:
-    """Write mcpServer.py; True when it changed."""
+def writeIfChanged(path: str, source: str) -> bool:
+    """Write `source` to `path` unless it already holds it; True when it
+    changed."""
     try:
-        with open(OUTPUT_PATH, encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             if f.read() == source:
                 return False
     except FileNotFoundError:
         pass
-    with open(OUTPUT_PATH, 'w', encoding='utf-8', newline='\n') as f:
+    with open(path, 'w', encoding='utf-8', newline='\n') as f:
         f.write(source)
     return True
+
+
+def write(source: str) -> bool:
+    """Write mcpServer.py; True when it changed."""
+    return writeIfChanged(OUTPUT_PATH, source)
 
 
 if __name__ == '__main__':

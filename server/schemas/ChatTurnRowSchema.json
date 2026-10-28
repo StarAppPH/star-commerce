@@ -1,0 +1,38 @@
+{
+    "description": "One turn of getConversationTurns: the user's text and the reply,\nnever the tool steps. Each field restates ChatTurn's.",
+    "properties": {
+        "seq": {
+            "description": "Its place in the conversation",
+            "minimum": 0,
+            "title": "Seq",
+            "type": "integer"
+        },
+        "userText": {
+            "description": "What the user sent",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Usertext",
+            "type": "string"
+        },
+        "replyText": {
+            "description": "The assistant's reply",
+            "title": "Replytext",
+            "type": "string"
+        },
+        "createdAt": {
+            "description": "When it was saved",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "seq",
+        "userText",
+        "replyText",
+        "createdAt"
+    ],
+    "title": "ChatTurnRow",
+    "type": "object",
+    "additionalProperties": false
+}

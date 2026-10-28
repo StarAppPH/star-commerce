@@ -2,6 +2,9 @@ import Server from "./Server";
 import type { ApiResponse } from "./ApiResponse";
 import type { AdminProductListResponse } from '../schemas/AdminProductListResponseSchema';
 import type { AdminProductRow } from '../schemas/AdminProductRowSchema';
+import type { ChatReplyResponse } from '../schemas/ChatReplyResponseSchema';
+import type { ConversationListResponse } from '../schemas/ConversationListResponseSchema';
+import type { ConversationTurnsResponse } from '../schemas/ConversationTurnsResponseSchema';
 import type { CreatedOrderResponse } from '../schemas/CreatedOrderResponseSchema';
 import type { CustomerSessionResponse } from '../schemas/CustomerSessionResponseSchema';
 import type { DevUserListResponse } from '../schemas/DevUserListResponseSchema';
@@ -601,6 +604,98 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             return { message: "Failed to fetch data", status: 0, data: null };
         }
     }
+
+    async sendAdminChatMessage(userId: string, message: string, conversationId: string | null): Promise<ApiResponse<ChatReplyResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/sendAdminChatMessage`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "message": message, "conversationId": conversationId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<ChatReplyResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async sendStoreChatMessage(userId: string, storeId: string, message: string, conversationId: string | null): Promise<ApiResponse<ChatReplyResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/sendStoreChatMessage`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "message": message, "conversationId": conversationId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<ChatReplyResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async listMyConversations(userId: string, storeId: string | null, before: string | null, limit: number): Promise<ApiResponse<ConversationListResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/listMyConversations`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "before": before, "limit": limit}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<ConversationListResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async getConversationTurns(userId: string, conversationId: string, beforeSeq: number | null, limit: number): Promise<ApiResponse<ConversationTurnsResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/getConversationTurns`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "conversationId": conversationId, "beforeSeq": beforeSeq, "limit": limit}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<ConversationTurnsResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
 }
 
 export interface RouteResponseModels {
@@ -629,6 +724,10 @@ export interface RouteResponseModels {
     getMyStorePolicy: StorePolicyResponse;
     getStorePolicy: StorePolicyResponse;
     updateMyStorePolicy: StorePolicyResponse;
+    sendAdminChatMessage: ChatReplyResponse;
+    sendStoreChatMessage: ChatReplyResponse;
+    listMyConversations: ConversationListResponse;
+    getConversationTurns: ConversationTurnsResponse;
 }
 
 export interface RouteRequestBodies {
@@ -657,6 +756,10 @@ export interface RouteRequestBodies {
     getMyStorePolicy: { userId: string };
     getStorePolicy: { userId: string; storeId: string };
     updateMyStorePolicy: { userId: string; acceptsReturns: boolean | null; returnWindowDays: number | null; returnConditions: string | null; nonReturnableItems: string | null; refundMethod: string | null; returnShippingPaidBy: string | null; defectReportDays: number | null; deliveryOptions: string[] | null; deliveryAreas: string | null; deliveryFee: number | null; freeDeliveryMinimum: number | null; handoverDays: number | null; acceptedPaymentMethods: string[] | null; paidOrderCancellation: string | null; sendsMarketingMessages: boolean | null; additionalTerms: string | null; clear: string[] | null };
+    sendAdminChatMessage: { userId: string; message: string; conversationId: string | null };
+    sendStoreChatMessage: { userId: string; storeId: string; message: string; conversationId: string | null };
+    listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
+    getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };
 }
 
 export type PublicRoute =

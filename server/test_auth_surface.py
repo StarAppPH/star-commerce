@@ -100,6 +100,14 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     'getMyStorePolicy',
     'updateMyStorePolicy',
     'getStorePolicy',
+    # Chat: an admin chats at the store they own (requireOwnerStore), a
+    # customer at the store being visited (requireCustomer); a conversation
+    # is reached only by its owner (its userId), and the tools run as the
+    # caller.
+    'sendAdminChatMessage',
+    'sendStoreChatMessage',
+    'listMyConversations',
+    'getConversationTurns',
 }
 
 

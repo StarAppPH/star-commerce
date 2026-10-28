@@ -1,0 +1,95 @@
+{
+    "description": "A Conversations document as stored.",
+    "properties": {
+        "_id": {
+            "description": "Document _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "description": "Optimistic-lock version",
+            "title": "Version",
+            "type": "integer"
+        },
+        "userId": {
+            "description": "The Users or Customers _id it belongs to",
+            "minLength": 1,
+            "title": "Userid",
+            "type": "string"
+        },
+        "audience": {
+            "description": "Who the assistant talks to",
+            "enum": [
+                "admin",
+                "customer"
+            ],
+            "title": "Audience",
+            "type": "string"
+        },
+        "storeId": {
+            "description": "The Stores _id",
+            "minLength": 1,
+            "title": "Storeid",
+            "type": "string"
+        },
+        "title": {
+            "anyOf": [
+                {
+                    "maxLength": 80,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The first message, cut short",
+            "title": "Title"
+        },
+        "turnCount": {
+            "description": "How many turns it holds",
+            "minimum": 0,
+            "title": "Turncount",
+            "type": "integer"
+        },
+        "createdAt": {
+            "description": "When it started",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        },
+        "lastMessageAt": {
+            "description": "When its last turn was saved",
+            "format": "date-time",
+            "title": "Lastmessageat",
+            "type": "string"
+        },
+        "busyUntil": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "A turn is running until then",
+            "title": "Busyuntil"
+        }
+    },
+    "required": [
+        "_id",
+        "_version",
+        "userId",
+        "audience",
+        "storeId",
+        "turnCount",
+        "createdAt",
+        "lastMessageAt"
+    ],
+    "title": "ConversationView",
+    "type": "object",
+    "additionalProperties": false
+}
