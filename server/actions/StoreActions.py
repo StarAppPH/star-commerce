@@ -636,10 +636,12 @@ class StoreActions():
         except Exception as error:
             # The swap is done: what is left of the old id is unreachable,
             # and this id is what a cleanup deletes. The files go anyway.
+            _, storageFailures = _deleteResetFiles(old['_id'], userId,
+                                                   chatPaths)
             logging.error({'event': 'storeResetIncomplete',
                            'oldStoreId': old['_id'],
-                           'errorClass': type(error).__name__})
-            _deleteResetFiles(old['_id'], userId, chatPaths)
+                           'errorClass': type(error).__name__,
+                           'storageFailures': storageFailures})
             raise
         files, storageFailures = _deleteResetFiles(old['_id'], userId,
                                                    chatPaths)
