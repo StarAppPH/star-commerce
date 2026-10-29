@@ -26,6 +26,8 @@ bucket. Every other environment ignores both.
 - saveStorePhoto(): writes stores/<storeId>/photos/<photoId>.jpg, which
   storage.rules lets anyone get (never list) and only the server (admin
   credentials) write, and returns its download URL.
+- deletePrefix(): deletes every file of one folder, a store's
+  (storeFolder) or a user's (userFolder): what a store reset removes.
 
 A refusal names the field (imageUrls[0]), never a URL or a path. The client
 is one per process, built on first use under a lock (it is no Mongo client:
@@ -78,6 +80,9 @@ GONE = 'gone'
 REFUSED = 'refused'
 STORE_PHOTO_CONTENT_TYPE = 'image/jpeg'
 DOWNLOAD_TOKEN_KEY = 'firebaseStorageDownloadTokens'
+# The one folder deletePrefix may empty: stores/<id>/ or users/<id>/, the
+# id one segment with no backslash or control character.
+FOLDER_PREFIX_PATTERN = re.compile(r'(stores|users)/([^/\\\x00-\x1f\x7f]+)/')
 # What routeErrors' 503 names: "Photo storage is unavailable right now".
 STORAGE_SERVICE = 'photo storage'
 CONVERT_PHOTO = 'Convert the photo to JPG or PNG before uploading'
@@ -495,3 +500,40 @@ def saveStorePhoto(storeId: str, photoId: str, data: bytes,
     except _storageErrors() as error:
         raise _storageFailure(error) from None
     return downloadUrl(path, token)
+
+
+def storeFolder(storeId: str) -> str:
+    """The folder of the store `storeId`'s files (its photos), with its
+    trailing slash."""
+    return f'stores/{storeId}/'
+
+
+def userFolder(uid: str) -> str:
+    """The folder of the user `uid`'s own uploads, with its trailing
+    slash."""
+    return f'users/{uid}/'
+
+
+def deletePrefix(prefix: str, deadline: float) -> int:
+    """Delete every file under `prefix`, one folder (storeFolder or
+    userFolder) and nothing else: anything else, an empty id, "." or ".."
+    included, is a ValueError before Storage is reached. Lists then deletes
+    before `deadline` (time.monotonic()) and returns how many it deleted (a
+    file already gone is not counted). A Storage failure, or the deadline,
+    is a 503."""
+    from google.api_core.exceptions import NotFound
+    match = (FOLDER_PREFIX_PATTERN.fullmatch(prefix)
+             if isinstance(prefix, str) else None)
+    if match is None or match.group(2) in ('.', '..'):
+        raise ValueError('Not a folder Storage may delete')
+    deleted = 0
+    try:
+        for blob in _bucket().list_blobs(prefix=prefix, **_limits(deadline)):
+            try:
+                blob.delete(**_limits(deadline))
+            except NotFound:
+                continue
+            deleted += 1
+    except _storageErrors() as error:
+        raise _storageFailure(error) from None
+    return deleted

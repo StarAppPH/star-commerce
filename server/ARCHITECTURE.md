@@ -24,7 +24,7 @@ server/
 ├── sharedConstantsTS.py    — Renders sharedConstants.py as serverConstants.ts, refusing secrets (AppCreator calls it)
 ├── mongoDb.py              — MongoDB singleton with CRUD, transactions, versioning
 ├── AuthHandler.py          — Firebase ID token verification + signInIdentity
-├── photoStorage.py         — Product photos in Firebase Storage: download URL parsing, the admin's own reference photos, saving store photos
+├── photoStorage.py         — Product photos in Firebase Storage: download URL parsing, the admin's own reference photos, saving store photos, deleting a store's or a user's folder
 ├── imageModel.py           — Meta's Muse Image model (editImages), through chatModel's client and retry
 ├── AppConfig.py            — Environment config (dev/prod, timezone, DB, Pub/Sub)
 ├── roles.py                — Role definitions and access control
@@ -764,6 +764,20 @@ A chat reply carries `components` (objects/chatComponents.py), the cards and for
 - **Answers**: a form, or a card that takes a choice (products to order, a payment method, paid orders to hand over, a requested return to decide), has a `formId`. The client sends its answer as the chat route's `form` (one of the `*Answer` models), in that conversation. Under the conversation's lock, `chatForms.answerTurn` checks it against the component it answers (in this conversation, of the matching kind, answered once, its picks on the card), and turns it into the user's turn: `userText`, the summary the user sees (also in the reply), and `userContent`, the summary and the details the model reads (`Form answer: {...}`) and acts on with the matching tool. History replays `userContent`.
 - **Setup**: an admin whose store is not set up yet (the empty store sign-up creates) chats with `chatForms.SETUP_TOOLSET` (getUserStore, createUserStore) and its own prompt, which asks the details one at a time and creates the store once the owner confirms a summary; `listMyConversations` lists those chats too.
 - Phone verification runs in the browser (Firebase phone sign-in linked to the shopper's anonymous account, then `verifyCustomerPhone`), since only a Firebase ID token proves a number; its answer only tells the model it is done.
+
+## Store reset
+
+`resetMyStore(confirmName)` (actions/StoreActions.py, an admin route with no `@mcp_tool`, so neither the chat nor the MCP servers have it) lets an admin delete their store and start over, keeping their sign-in. It works until `STORE_RESET_ENDS_AT` (sharedConstants.py, `2026-11-05T00:00:00+08:00`, also in `client/lib/generated/serverConstants.ts`): from that instant, read through the module's `_now()` seam, it is a 403 ("Store reset is no longer available") before any read or write, in every environment, and the client hides the button. After that date the route, the dialog and the constant can go.
+
+Steps:
+1. `requireAdmin` (a customer's JWT is a 403), then the caller's store by `ownerQuery`, set up or not: none is a 400 ("You have no store to reset").
+2. `confirmName` must be the store's name (NFKC, trimmed, case-folded), or `reset` for a store not set up yet (it has no name), else a 400 ("Type your store's name to confirm").
+3. One `db.createTransaction` deletes the old Stores document on `_id` + `_version` (a change since the read is `STORE_CHANGED`) and creates a new empty store with a **new `_id`** and its empty policy (`createEmptyStore`, which sign-up uses too). Every reader finds a store by its owner or by a set-up id, so once this commits the old id reaches nothing: a write racing the reset (an order, a chat turn) lands only on the old id and never shows up in the new store. On a standalone mongod there is no transaction; a failure between the two writes leaves the admin with no store, which `createUserStore` makes up for.
+4. The old id's documents go after the swap: ChatTurns by the ids of its Conversations (in batches of 500, on the `(conversationId, seq)` index), then Conversations, Products, Orders, OrderLocks, Returns, Policies and GeneratedPhotos by `storeId`. A failure here is logged as an ERROR (`storeResetIncomplete`, with the old store id, for a cleanup) and the route fails; what is left is unreachable.
+5. Storage: `photoStorage.deletePrefix` lists and deletes `stores/<oldStoreId>/` (the generated photos) and `users/<adminUid>/` (the admin's uploads: reference photos, chat attachments) within 60 seconds. It refuses any prefix that is not exactly one such folder with its trailing slash. A failure is logged (`storeResetStorageFailed`, the folder's kind and the error class) and the reset still answers 200.
+6. The answer is `getUserStore`'s (`myStoreResponse`): `store: null`, the new store not being set up, so the client lands at store setup.
+
+Kept: Users, Customers, Bootstrap (the superAdmin claim is not re-run), ExchangeRates, the daily usage counters (ChatUsage, PhotoUsage, VoiceUsage: a reset never gives a day's quota back) and customers' uploads under their own `users/<uid>/`, which may belong to chats with other stores. The `storeReset` log line carries the old and new store ids, the count deleted per collection and the files deleted; never a name, the confirmation text, a path or another user's id.
 
 ---
 

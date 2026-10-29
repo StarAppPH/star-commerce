@@ -20,9 +20,9 @@ import requests
 from pymongo.errors import DuplicateKeyError
 
 from AppConfig import Environment
-from actions.StoreActions import POLICIES, STORES, emptyPolicy
+from actions.StoreActions import createEmptyStore
 from mongoDb import db
-from objects import DEFAULT_STORE_CURRENCY, Store, User
+from objects import User
 from roles import AllRoles, UserRoles
 from sharedConstants import FIREBASE_PROJECT_ID
 
@@ -374,19 +374,11 @@ def signInIdentity(firebaseUserId: str, email: str, displayName: str) -> dict:
     if (_claimSuperAdmin(firebaseUserId)
             if firstUser else _holdsSuperAdminClaim(firebaseUserId)):
         user.setRole('superAdmin')
-    createdAt = user.createdAt
-    store = Store(ownerUserId=firebaseUserId,
-                  currency=DEFAULT_STORE_CURRENCY,
-                  location=None,
-                  createdAt=createdAt,
-                  _version=0)
 
     def createAll(session):
         created = db.create(user.model_dump(by_alias=True), 'Users',
                             session=session)
-        db.create(store.model_dump(by_alias=True), STORES, session=session)
-        db.create(emptyPolicy(store.id, createdAt), POLICIES,
-                  session=session)
+        createEmptyStore(firebaseUserId, user.createdAt, session)
         return created
 
     return db.createTransaction(createAll)
