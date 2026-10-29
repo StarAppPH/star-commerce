@@ -14,6 +14,10 @@ export type Fulfillment = "pickup" | "delivery";
  */
 export type Deliveryfee = number;
 /**
+ * Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on
+ */
+export type Deliverydistancekm = number | null;
+/**
  * Where it is delivered, as the customer typed it
  */
 export type Deliveryaddress = string | null;
@@ -123,6 +127,7 @@ export type Refundedat = string | null;
 export interface MyOrderRow {
   fulfillment: Fulfillment;
   deliveryFee: Deliveryfee;
+  deliveryDistanceKm: Deliverydistancekm;
   deliveryAddress: Deliveryaddress;
   deliveryLatitude: Deliverylatitude;
   deliveryLongitude: Deliverylongitude;

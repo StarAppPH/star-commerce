@@ -19,6 +19,20 @@
                     "title": "Deliveryfee",
                     "type": "number"
                 },
+                "deliveryDistanceKm": {
+                    "anyOf": [
+                        {
+                            "maximum": 20100,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on",
+                    "title": "Deliverydistancekm"
+                },
                 "deliveryAddress": {
                     "anyOf": [
                         {
@@ -220,6 +234,7 @@
             "required": [
                 "fulfillment",
                 "deliveryFee",
+                "deliveryDistanceKm",
                 "deliveryAddress",
                 "deliveryLatitude",
                 "deliveryLongitude",
@@ -536,6 +551,20 @@
                     "title": "Deliveryfee",
                     "type": "number"
                 },
+                "deliveryDistanceKm": {
+                    "anyOf": [
+                        {
+                            "maximum": 20100,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on",
+                    "title": "Deliverydistancekm"
+                },
                 "deliveryAddress": {
                     "anyOf": [
                         {
@@ -723,6 +752,7 @@
             "required": [
                 "fulfillment",
                 "deliveryFee",
+                "deliveryDistanceKm",
                 "deliveryAddress",
                 "deliveryLatitude",
                 "deliveryLongitude",
@@ -1230,10 +1260,9 @@
                     "description": "Where the store delivers",
                     "title": "Deliveryareas"
                 },
-                "deliveryFee": {
+                "deliveryFeePerKm": {
                     "anyOf": [
                         {
-                            "maximum": 10000000,
                             "minimum": 0,
                             "type": "number"
                         },
@@ -1241,8 +1270,8 @@
                             "type": "null"
                         }
                     ],
-                    "description": "What delivery costs, in the store's currency",
-                    "title": "Deliveryfee"
+                    "description": "What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read",
+                    "title": "Deliveryfeeperkm"
                 },
                 "freeDeliveryMinimum": {
                     "anyOf": [
@@ -1269,7 +1298,7 @@
                             "type": "null"
                         }
                     ],
-                    "description": "Days from payment until the order is handed over or delivered",
+                    "description": "Days from payment until the order is ready for pickup or delivered",
                     "title": "Handoverdays"
                 }
             },
@@ -1281,7 +1310,7 @@
                 "storeAddress",
                 "storeLocation",
                 "deliveryAreas",
-                "deliveryFee",
+                "deliveryFeePerKm",
                 "freeDeliveryMinimum",
                 "handoverDays"
             ],
@@ -1760,19 +1789,17 @@
                     "description": "Where the store delivers",
                     "title": "Deliveryareas"
                 },
-                "deliveryFee": {
+                "offersFreeDelivery": {
                     "anyOf": [
                         {
-                            "maximum": 10000000,
-                            "minimum": 0,
-                            "type": "number"
+                            "type": "boolean"
                         },
                         {
                             "type": "null"
                         }
                     ],
-                    "description": "What delivery costs, in the store's currency",
-                    "title": "Deliveryfee"
+                    "description": "Whether delivery is free from an order total (freeDeliveryMinimum)",
+                    "title": "Offersfreedelivery"
                 },
                 "freeDeliveryMinimum": {
                     "anyOf": [
@@ -1799,7 +1826,7 @@
                             "type": "null"
                         }
                     ],
-                    "description": "Days from payment until the order is handed over or delivered",
+                    "description": "Days from payment until the order is ready for pickup or delivered",
                     "title": "Handoverdays"
                 },
                 "acceptedPaymentMethods": {
@@ -1866,6 +1893,19 @@
                     ],
                     "description": "Any other terms, as the admin gave them",
                     "title": "Additionalterms"
+                },
+                "deliveryFeePerKm": {
+                    "anyOf": [
+                        {
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read",
+                    "title": "Deliveryfeeperkm"
                 }
             },
             "required": [
@@ -1880,13 +1920,14 @@
                 "defectReportDays",
                 "deliveryOptions",
                 "deliveryAreas",
-                "deliveryFee",
+                "offersFreeDelivery",
                 "freeDeliveryMinimum",
                 "handoverDays",
                 "acceptedPaymentMethods",
                 "paidOrderCancellation",
                 "sendsMarketingMessages",
-                "additionalTerms"
+                "additionalTerms",
+                "deliveryFeePerKm"
             ],
             "title": "PolicyCard",
             "type": "object",
@@ -2078,19 +2119,17 @@
                     "description": "Where the store delivers",
                     "title": "Deliveryareas"
                 },
-                "deliveryFee": {
+                "offersFreeDelivery": {
                     "anyOf": [
                         {
-                            "maximum": 10000000,
-                            "minimum": 0,
-                            "type": "number"
+                            "type": "boolean"
                         },
                         {
                             "type": "null"
                         }
                     ],
-                    "description": "What delivery costs, in the store's currency",
-                    "title": "Deliveryfee"
+                    "description": "Whether delivery is free from an order total (freeDeliveryMinimum)",
+                    "title": "Offersfreedelivery"
                 },
                 "freeDeliveryMinimum": {
                     "anyOf": [
@@ -2117,7 +2156,7 @@
                             "type": "null"
                         }
                     ],
-                    "description": "Days from payment until the order is handed over or delivered",
+                    "description": "Days from payment until the order is ready for pickup or delivered",
                     "title": "Handoverdays"
                 },
                 "acceptedPaymentMethods": {
@@ -2184,6 +2223,19 @@
                     ],
                     "description": "Any other terms, as the admin gave them",
                     "title": "Additionalterms"
+                },
+                "deliveryFeePerKm": {
+                    "anyOf": [
+                        {
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read",
+                    "title": "Deliveryfeeperkm"
                 }
             },
             "required": [
@@ -2200,13 +2252,14 @@
                 "defectReportDays",
                 "deliveryOptions",
                 "deliveryAreas",
-                "deliveryFee",
+                "offersFreeDelivery",
                 "freeDeliveryMinimum",
                 "handoverDays",
                 "acceptedPaymentMethods",
                 "paidOrderCancellation",
                 "sendsMarketingMessages",
-                "additionalTerms"
+                "additionalTerms",
+                "deliveryFeePerKm"
             ],
             "title": "PolicyForm",
             "type": "object",

@@ -58,15 +58,15 @@ export type Longitude = number;
  */
 export type Deliveryareas = string | null;
 /**
- * What delivery costs, in the store's currency
+ * What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read
  */
-export type Deliveryfee = number | null;
+export type Deliveryfeeperkm = number | null;
 /**
  * The order total from which delivery is free, in the store's currency
  */
 export type Freedeliveryminimum = number | null;
 /**
- * Days from payment until the order is handed over or delivered
+ * Days from payment until the order is ready for pickup or delivered
  */
 export type Handoverdays = number | null;
 
@@ -85,7 +85,7 @@ export interface FulfillmentForm {
    */
   storeLocation: StoreLocationResponse | null;
   deliveryAreas: Deliveryareas;
-  deliveryFee: Deliveryfee;
+  deliveryFeePerKm: Deliveryfeeperkm;
   freeDeliveryMinimum: Freedeliveryminimum;
   handoverDays: Handoverdays;
 }

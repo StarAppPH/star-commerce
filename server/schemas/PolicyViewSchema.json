@@ -161,20 +161,18 @@
             "description": "Where the store delivers",
             "title": "Deliveryareas"
         },
-        "deliveryFee": {
+        "offersFreeDelivery": {
             "anyOf": [
                 {
-                    "maximum": 10000000,
-                    "minimum": 0,
-                    "type": "number"
+                    "type": "boolean"
                 },
                 {
                     "type": "null"
                 }
             ],
             "default": null,
-            "description": "What delivery costs, in the store's currency",
-            "title": "Deliveryfee"
+            "description": "Whether delivery is free from an order total (freeDeliveryMinimum)",
+            "title": "Offersfreedelivery"
         },
         "freeDeliveryMinimum": {
             "anyOf": [
@@ -203,7 +201,7 @@
                 }
             ],
             "default": null,
-            "description": "Days from payment until the order is handed over or delivered",
+            "description": "Days from payment until the order is ready for pickup or delivered",
             "title": "Handoverdays"
         },
         "acceptedPaymentMethods": {

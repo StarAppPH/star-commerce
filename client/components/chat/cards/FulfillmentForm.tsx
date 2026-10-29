@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 import { ChatCard, SentNote } from './ChatCard';
-import { formatMoney } from './format';
+import { deliveryPerKmText, formatMoney } from './format';
 import { DEFAULT_MAP_START, MapPicker, type MapPoint } from './MapPicker';
 import { mapLink } from './OrderDelivery';
 import type { AnswerOf, ComponentProps } from './types';
@@ -43,10 +43,8 @@ export function FulfillmentForm({ component, answered, busy, onAnswer }: Compone
   const ready = choice === 'pickup' || (choice === 'delivery' && address.trim() !== '');
 
   const deliveryTerms = [
-    component.deliveryFee === null ? null : component.deliveryFee > 0 ? `${money(component.deliveryFee)} fee` : 'Free',
-    component.freeDeliveryMinimum !== null && component.deliveryFee !== 0
-      ? `free from ${money(component.freeDeliveryMinimum)}`
-      : null,
+    `${deliveryPerKmText(component.deliveryFeePerKm, component.currency)} from the store`,
+    component.freeDeliveryMinimum !== null ? `free from ${money(component.freeDeliveryMinimum)}` : null,
     component.deliveryAreas ? `to ${component.deliveryAreas}` : null,
   ].filter(Boolean).join(' · ');
 

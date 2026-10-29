@@ -1,0 +1,42 @@
+{
+    "description": "The ExchangeRates document of USD_RATES_ID: what one US dollar buys\nin each currency, as exchangeRates.fetchUsdRates read it at fetchedAt\n(actions/deliveryPricing.py refreshes it daily).",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "rates": {
+            "additionalProperties": {
+                "type": "number"
+            },
+            "description": "Units of each currency (ISO 4217) per US dollar",
+            "title": "Rates",
+            "type": "object"
+        },
+        "fetchedAt": {
+            "description": "When the rates were read",
+            "format": "date-time",
+            "title": "Fetchedat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "rates",
+        "fetchedAt"
+    ],
+    "title": "ExchangeRates",
+    "type": "object",
+    "additionalProperties": false
+}

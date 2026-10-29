@@ -28,9 +28,10 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from actions.CustomerActions import CUSTOMERS
 from actions.OrderActions import (DELIVERY_FOR_PICKUP, DELIVERY_REQUIRED,
-                                  NO_DELIVERY_FEE_YET, ORDERS,
+                                  NO_STORE_PIN_YET, ORDERS,
                                   bookableFulfillments, storeDelivery)
 from actions.PolicyActions import _storePolicy
+from actions.deliveryPricing import shownFeePerKm
 from actions.StoreActions import STORES, ownerQuery
 from mongoDb import db
 from objects import (CHAT_ANSWER_ID_MAX_LENGTH, CHAT_CONTACT_NUMBER_MAX_LENGTH,
@@ -83,7 +84,7 @@ _COMPONENT = TypeAdapter(ChatComponent)
 # The policy questions each section of the policy form asks.
 POLICY_SECTION_FIELDS: dict[str, tuple[str, ...]] = {
     'payment': ('acceptedPaymentMethods', 'paidOrderCancellation'),
-    'delivery': ('deliveryOptions', 'deliveryAreas', 'deliveryFee',
+    'delivery': ('deliveryOptions', 'deliveryAreas', 'offersFreeDelivery',
                  'freeDeliveryMinimum', 'handoverDays'),
     'returns': ('acceptsReturns', 'returnWindowDays', 'returnConditions',
                 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy',
@@ -129,9 +130,9 @@ _POLICY_LABELS = {
     'defectReportDays': 'Days to report a defect',
     'deliveryOptions': 'Delivery options',
     'deliveryAreas': 'Delivery areas',
-    'deliveryFee': 'Delivery fee',
+    'offersFreeDelivery': 'Free delivery',
     'freeDeliveryMinimum': 'Free delivery from',
-    'handoverDays': 'Days to hand over',
+    'handoverDays': 'Days until ready for pickup or delivered',
     'acceptedPaymentMethods': 'Payment methods',
     'paidOrderCancellation': 'Cancelling a paid order',
     'sendsMarketingMessages': 'Sends offers',
@@ -314,6 +315,7 @@ def _policyForm(userId: str, storeId: str, args: ShowPolicyFormArgs) -> dict:
     policy = _storePolicy(store)
     return {'kind': 'policyForm', 'formId': newFormId(),
             'section': args.section, 'currency': store['currency'],
+            'deliveryFeePerKm': policy['deliveryFeePerKm'],
             **{field: policy[field] for field in POLICY_ANSWER_FIELDS}}
 
 
@@ -360,7 +362,7 @@ def _fulfillmentForm(userId: str, storeId: str,
     delivery = storeDelivery(storeId)
     options = bookableFulfillments(delivery)
     if not options:
-        raise FormRefused(NO_DELIVERY_FEE_YET)
+        raise FormRefused(NO_STORE_PIN_YET)
     if options == ['pickup']:
         raise FormRefused(PICKUP_ONLY)
     store = db.read({'_id': storeId}, STORES,
@@ -379,7 +381,7 @@ def _fulfillmentForm(userId: str, storeId: str,
                            'longitude': location['longitude']}
                           if location else None),
         'deliveryAreas': delivery['deliveryAreas'],
-        'deliveryFee': delivery['deliveryFee'],
+        'deliveryFeePerKm': shownFeePerKm(store['currency']),
         'freeDeliveryMinimum': delivery['freeDeliveryMinimum'],
         'handoverDays': delivery['handoverDays'],
     }
@@ -590,7 +592,7 @@ def _policy(answer, component, userId) -> tuple[str, dict]:
     lines = []
     for field, value in values.items():
         shown = _label(value)
-        if field in ('deliveryFee', 'freeDeliveryMinimum'):
+        if field == 'freeDeliveryMinimum':
             shown = f'{value:g} {currency}'
         lines.append(f'- {_POLICY_LABELS[field]}: {shown}')
     return ('Policy answers:\n' + '\n'.join(lines),
