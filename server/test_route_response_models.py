@@ -2920,7 +2920,10 @@ MIRRORS = [
     (ObjectsModule.ReturnItemRow, ObjectsModule.ReturnItem, set()),
     # attachments is a list of ChatAttachmentRow on the row, of
     # ChatAttachment on the document: mirrored by the entry after this one.
-    (ObjectsModule.ChatTurnRow, ObjectsModule.ChatTurn, {'attachments'}),
+    # components: the document caps a turn's at 6 when saving it; the row
+    # sends back what was saved.
+    (ObjectsModule.ChatTurnRow, ObjectsModule.ChatTurn,
+     {'attachments', 'components'}),
     (ObjectsModule.ChatAttachmentRow, ObjectsModule.ChatAttachment, set()),
 ]
 
