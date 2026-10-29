@@ -1,7 +1,9 @@
 """The chat's cards and forms (chatCards.py, chatForms.py): the toolsets,
 the setup chat of an admin whose store is not set up yet, the cards built
-from what the tools returned, the forms the form tools open, and form
-answers, checked against what they answer and acted on by the model.
+from what the tools returned, the forms the form tools open, form answers,
+checked against what they answer and acted on by the model, and what the
+model asks in chat and then does with the route tools directly (the store's
+details, a policy section, a return).
 
 No real Meta call: test_chat.py's FakeModel plays scripted completions (its
 fixtures are imported here: the clock, the offline guard and the frozen now
@@ -23,8 +25,8 @@ from conftest import (TOKEN, addOrder, assertExactShape, createTestStore,
                       firebaseClaims, guestAt, storeWithProducts,
                       verifiedGuestAt, wipeCollections)
 from mongoDb import db
-from objects import (CHAT_COMPONENTS_PER_TURN_MAX, ChatReplyResponse,
-                     ConversationTurnsResponse)
+from objects import (CHAT_COMPONENTS_PER_TURN_MAX, POLICY_ANSWER_FIELDS,
+                     ChatReplyResponse, ConversationTurnsResponse)
 from test_chat import (ADMIN, GUEST, calls, clean, clock, frozenNow, model,
                        offline, reply, stubTool)
 
@@ -91,13 +93,35 @@ def formAnswerDetails(content: str) -> dict:
 
 def test_setupToolset_isTheStoreSetupOnly():
     names = [t['function']['name'] for t in chatTools.TOOLS['adminSetup']]
-    assert names == ['createUserStore', 'getUserStore',
-                     'showStoreDetailsForm']
+    assert names == ['createUserStore', 'getUserStore']
     assert set(chatTools.TOOL_CALLS['adminSetup']) == set(
         chatForms.SETUP_ROUTE_TOOLS)
+    assert chatForms.formToolNames('adminSetup') == set()
     assert 'adminSetup' in chatModel.CHAT_PROMPTS
     assert 'decline in one short sentence' in chatModel.CHAT_PROMPTS[
         'adminSetup']
+
+
+def test_thePrompts_askInChat_andNameOnlyTheFormsLeft():
+    """Store details, the policy, a return and pickup or delivery are
+    asked in chat, one question per message; the prompts name only the
+    form tools their toolset has."""
+    retired = ('showStoreDetailsForm', 'showPolicyForm', 'showReturnForm',
+               'showFulfillmentForm')
+    for toolset, prompt in chatModel.CHAT_PROMPTS.items():
+        assert 'one short question per message' in prompt
+        assert not any(name in prompt for name in retired)
+        named = set(re.findall(r'show[A-Z][A-Za-z]+', prompt))
+        assert named <= chatForms.formToolNames(toolset), toolset
+    assert 'createUserStore' in chatModel.CHAT_PROMPTS['adminSetup']
+    assert 'updateMyStorePolicy' in chatModel.CHAT_PROMPTS['admin']
+    customer = chatModel.CHAT_PROMPTS['customer']
+    assert 'requestReturn' in customer and 'showDeliveryPinForm' in customer
+    for toolset in ('admin', 'customer'):
+        for name in chatForms.FORM_TOOLS:
+            if toolset in chatForms.FORM_TOOLS[name].toolsets:
+                assert name in chatModel.CHAT_PROMPTS[toolset], name
+    assert set(chatForms.ANSWERS_TO.values()) <= chatForms.COMPONENT_KINDS
 
 
 def test_formTools_areTheChatsOwn_neverOnTheMcpServers():
@@ -125,7 +149,8 @@ def test_formToolSchemas_takeNoIdentity():
 
 
 def test_bothPrompts_tellTheModelAboutCardsAndFormAnswers():
-    for toolset in ('admin', 'customer', 'adminSetup'):
+    # The setup chat opens no form: its prompt has no form answer rule.
+    for toolset in ('admin', 'customer'):
         assert '"Form answer:"' in chatModel.CHAT_PROMPTS[toolset]
     assert 'never repeat what a card shows' in chatModel.CHAT_PROMPTS['admin']
     assert 'never repeat what a card shows' in chatModel.CHAT_PROMPTS[
@@ -138,10 +163,7 @@ def test_bothPrompts_tellTheModelAboutCardsAndFormAnswers():
 def test_anAdminWithAnUnsetStore_chatsWithTheSetupTools(wiped, firebase,
                                                         model):
     adminId = signedUpAdmin(firebase)
-    fake = model(
-        calls(('c1', 'showStoreDetailsForm',
-               json.dumps({'name': 'Kalye Coffee', 'currency': 'USD'}))),
-        reply('Fill in your store details below.'))
+    fake = model(reply('Nice! What is your store called?'))
 
     res = adminSays('I want to sell coffee online', userId=adminId)
 
@@ -150,105 +172,122 @@ def test_anAdminWithAnUnsetStore_chatsWithTheSetupTools(wiped, firebase,
     assert request['messages'][0]['content'] == chatModel.CHAT_PROMPTS[
         'adminSetup']
     assert request['tools'] == chatTools.TOOLS['adminSetup']
-    assert json.loads(fake.requests[1]['messages'][-1]['content']) == {
-        'result': chatForms.FORM_SHOWN}
-    [form] = res['components']
-    assert form['kind'] == 'storeDetailsForm'
-    assert form['name'] == 'Kalye Coffee' and form['currency'] == 'USD'
-    assert form['description'] is None and form['contactNumber'] is None
-    assert form['formId']
+    assert res['components'] == []
     # The setup chat is listed like any other.
     listed = api.listMyConversations(adminId, None, None, 10)
     assert [row['_id'] for row in listed['conversations']] == [
         res['conversationId']]
 
 
-def test_theStoreDetailsAnswer_isActedOnByTheModel(wiped, firebase, model):
+def test_theStoreDetailsAskedInChat_createTheStore(wiped, firebase, model):
+    """The owner answers one question per message; on their yes the model
+    calls createUserStore with what they said (no opening hours: skipped)."""
     adminId = signedUpAdmin(firebase)
-    model(calls(('c1', 'showStoreDetailsForm', '{}')), reply('Fill it in.'))
+    model(reply('What is your store called?'))
     first = adminSays('Set up my store', userId=adminId)
-    formId = first['components'][0]['formId']
-    answer = {'kind': 'storeDetails', 'formId': formId,
-              'name': 'Kalye Coffee', 'description': 'Small-batch coffee',
-              'currency': 'PHP', 'contactNumber': '+639171234567',
-              'address': '14 Maginhawa St', 'openingHours': ''}
-    created = json.dumps({key: answer[key] for key in (
-        'name', 'description', 'currency', 'contactNumber', 'address')})
-    fake = model(calls(('c2', 'createUserStore', created)),
-                 reply('Your store is live.'))
+    cid = first['conversationId']
+    for said, asked in (('Kalye Coffee', 'What do you sell?'),
+                        ('Small-batch coffee', 'Prices in PHP, right?'),
+                        ('Yes', 'Your contact number? Customers see it.'),
+                        ('+639171234567', 'Your address? Customers see it.'),
+                        ('14 Maginhawa St', 'Opening hours? You can skip.'),
+                        ('skip', 'Kalye Coffee, PHP, ... Create it?')):
+        model(reply(asked))
+        adminSays(said, cid, userId=adminId)
+    created = json.dumps({'name': 'Kalye Coffee',
+                          'description': 'Small-batch coffee',
+                          'currency': 'PHP', 'contactNumber': '+639171234567',
+                          'address': '14 Maginhawa St'})
+    model(calls(('c1', 'createUserStore', created)),
+          reply('Your store is live.'))
 
-    res = adminSays(None, first['conversationId'], answer, userId=adminId)
+    res = adminSays('Yes', cid, userId=adminId)
 
-    content = fake.requests[0]['messages'][-1]['content']
-    assert content.startswith('Store details: Kalye Coffee · PHP · '
-                              '+639171234567 · 14 Maginhawa St')
-    # The reply carries the summary the user sees in place of the form.
-    assert res['userText'] == content.split('\n\n')[0]
-    details = formAnswerDetails(content)
-    assert details['kind'] == 'storeDetails'
-    assert details['openingHours'] is None  # "" is no answer
     [card] = res['components']
     assert card['kind'] == 'store' and card['name'] == 'Kalye Coffee'
-    assert isinstance(card['slug'], str)
-    saved = turns(first['conversationId'])
-    assert saved[1]['userText'].startswith('Store details: Kalye Coffee')
-    assert saved[1]['userContent'] == content
-    assert saved[1]['formAnswer']['formId'] == formId
+    assert card['openingHours'] is None and isinstance(card['slug'], str)
+    assert api.getUserStore(adminId)['store']['address'] == '14 Maginhawa St'
     # The store is set up now: the next message gets the admin's tools.
     fake = model(reply('What next?'))
-    adminSays('Thanks', first['conversationId'], userId=adminId)
+    adminSays('Thanks', cid, userId=adminId)
     assert fake.requests[0]['tools'] == chatTools.TOOLS['admin']
     assert fake.requests[0]['messages'][0]['content'] == (
         chatModel.CHAT_PROMPTS['admin'])
-    # The form answer is replayed to the model as it read it.
-    history = [m['content'] for m in fake.requests[0]['messages']
-               if m['role'] == 'user']
-    assert content in history
 
 
-def test_aFormAnswer_isRefusedBeforeTheModelRuns(wiped, firebase, model):
+def test_aRefusedStoreDetail_goesBackToTheModel(wiped, firebase, model):
     adminId = signedUpAdmin(firebase)
-    model(calls(('c1', 'showStoreDetailsForm', '{}')), reply('Fill it in.'))
-    first = adminSays('Set up my store', userId=adminId)
+    bad = json.dumps({'name': 'Kalye Coffee', 'description': 'Coffee',
+                      'currency': 'PHP', 'contactNumber': 'call me',
+                      'address': '14 Maginhawa St'})
+    fake = model(calls(('c1', 'createUserStore', bad)),
+                 reply('That number does not look right. What is it?'))
+
+    res = adminSays('Yes, create it', userId=adminId)
+
+    assert res['components'] == []
+    tool = json.loads(fake.requests[1]['messages'][-1]['content'])
+    assert set(tool) == {'error'} and 'call me' not in tool['error']
+    assert api.getUserStore(adminId)['store'] is None  # still not set up
+
+
+def test_aFormAnswer_isRefusedBeforeTheModelRuns(wiped, model):
+    createTestStore(ADMIN)
+    model(calls(('c1', 'showStoreLocationForm', '{}')), reply('Pin it.'))
+    first = adminSays('Pin my store')
     cid = first['conversationId']
     formId = first['components'][0]['formId']
-    good = {'kind': 'storeDetails', 'formId': formId, 'name': 'A',
-            'description': 'B', 'currency': 'PHP',
-            'contactNumber': '+639171234567', 'address': 'C'}
+    good = {'kind': 'location', 'formId': formId, 'latitude': 14.55,
+            'longitude': 121.02}
     fake = model()
 
     refusals = [
-        (lambda: adminSays(None, cid, {**good, 'formId': 'no-such-form'},
-                           userId=adminId), chatForms.FORM_NOT_FOUND),
-        (lambda: adminSays(None, cid, {'kind': 'location', 'formId': formId,
-                                       'latitude': 1, 'longitude': 2},
-                           userId=adminId), chatForms.FORM_DOES_NOT_MATCH),
-        (lambda: adminSays('hello', cid, good, userId=adminId),
-         chatForms.MESSAGE_AND_FORM),
-        (lambda: adminSays(None, None, good, userId=adminId),
+        (lambda: adminSays(None, cid, {**good, 'formId': 'no-such-form'}),
+         chatForms.FORM_NOT_FOUND),
+        (lambda: adminSays(None, cid, {'kind': 'phoneVerified',
+                                       'formId': formId}),
+         chatForms.FORM_DOES_NOT_MATCH),
+        (lambda: adminSays('hello', cid, good), chatForms.MESSAGE_AND_FORM),
+        (lambda: adminSays(None, None, good),
          chatForms.FORM_NEEDS_CONVERSATION),
     ]
     for send, message in refusals:
         with pytest.raises(ValueError, match='^' + re.escape(message) + '$'):
             send()
     with pytest.raises(ValueError) as error:
-        adminSays(None, cid, {**good, 'name': 'SECRET-VALUE' * 50},
-                  userId=adminId)
+        adminSays(None, cid, {**good, 'latitude': 'SECRET-VALUE' * 50})
     assert str(error.value) == chatForms.FORM_ANSWER_INVALID.format(
-        fields='storeDetails.name')
+        fields='location.latitude')
     assert 'SECRET-VALUE' not in str(error.value)
     with pytest.raises(ValueError, match='^That form answer is not valid'):
-        adminSays(None, cid, {'kind': 'nope', 'formId': formId},
-                  userId=adminId)
+        adminSays(None, cid, {'kind': 'storeDetails', 'formId': formId})
     assert fake.requests == []
     # Refused under the lock, which it released: the conversation goes on.
-    model(calls(('c2', 'getUserStore', '{}')), reply('ok'))
-    adminSays(None, cid, good, userId=adminId)
+    fake = model(calls(('c2', 'getUserStore', '{}')), reply('ok'))
+    res = adminSays(None, cid, good)
+    assert res['userText'] == 'Pinned the store at 14.55000, 121.02000'
+    assert formAnswerDetails(fake.requests[0]['messages'][-1]['content']) == {
+        'kind': 'location', 'latitude': 14.55, 'longitude': 121.02}
     # A form is answered once.
     model()
     with pytest.raises(ValueError,
                        match='^' + chatForms.FORM_ALREADY_ANSWERED + '$'):
-        adminSays(None, cid, good, userId=adminId)
+        adminSays(None, cid, good)
+
+
+def test_aRetiredComponentKind_isLeftOutOfTheTurnsPage(wiped, model):
+    """A turn saved with a form since retired (store details, policy,
+    return, fulfillment) still loads: the rest of its components show."""
+    createTestStore(ADMIN)
+    model(calls(('c1', 'getMyStorePolicy', '{}')), reply('Your policy.'))
+    res = adminSays('Policy?')
+    db.db['ChatTurns'].update_one(
+        {'conversationId': res['conversationId']},
+        {'$push': {'components': {'kind': 'policyForm', 'formId': 'old-form',
+                                  'section': 'payment'}}})
+    page = api.getConversationTurns(ADMIN, res['conversationId'])
+    assertExactShape(ConversationTurnsResponse, page)
+    assert [c['kind'] for c in page['turns'][0]['components']] == ['policy']
 
 
 def test_anAdminWithNoStoreAtAll_isStillRefused(wiped, model):
@@ -477,8 +516,7 @@ def test_aTurn_keepsItsLatestComponents(wiped, model):
 
 def test_formTools_openTheirForms(wiped, firebase, model):
     store = storeWithProducts(ADMIN)
-    model(calls(('c1', 'showPolicyForm', json.dumps({'section': 'delivery'})),
-                ('c2', 'showNewProductsForm', json.dumps({'products': [
+    model(calls(('c2', 'showNewProductsForm', json.dumps({'products': [
                     {'name': 'Barako', 'price': 520},
                     {'name': 'Bad price', 'price': -3}]})),
                 ('c3', 'showStoreLocationForm', '{}'),
@@ -487,10 +525,8 @@ def test_formTools_openTheirForms(wiped, firebase, model):
     res = adminSays('Set up delivery and add products')
     kinds = [c['kind'] for c in res['components']]
     # No photo style yet: the photo form refused, the others opened.
-    assert kinds == ['policyForm', 'newProductsForm', 'locationForm']
-    policyForm, productsForm, locationForm = res['components']
-    assert policyForm['section'] == 'delivery'
-    assert policyForm['deliveryOptions'] is None
+    assert kinds == ['newProductsForm', 'locationForm']
+    productsForm, locationForm = res['components']
     assert productsForm['products'][0] == {
         'name': 'Barako', 'price': 520, 'inventory': None,
         'description': None}
@@ -499,9 +535,11 @@ def test_formTools_openTheirForms(wiped, firebase, model):
     assert locationForm['address'] == store['address']
 
     customerId = guestAt(firebase, store, GUEST)
-    model(calls(('c5', 'showPhoneVerification', '{}')),
+    model(calls(('c5', 'showPhoneVerification', '{}'),
+                ('c6', 'showReturnForm', json.dumps({'orderId': 'o1'}))),
           reply('Verify your number below.'))
     shown = customerSays(customerId, store['_id'], 'Order a cake')
+    # A retired form tool is no tool: only phone verification opened.
     [verify] = shown['components']
     assert verify['kind'] == 'phoneVerificationForm'
     model()
@@ -511,30 +549,70 @@ def test_formTools_openTheirForms(wiped, firebase, model):
                      {'kind': 'phoneVerified', 'formId': verify['formId']})
 
 
-def test_aPolicyAnswer_keepsItsSectionsFields(wiped, model):
+def test_aPolicySectionAskedInChat_isSavedByTheModel(wiped, model):
+    """The owner answers the payment section one question at a time; the
+    model reads it back, then saves only those answers."""
     createTestStore(ADMIN)
-    model(calls(('c1', 'showPolicyForm', json.dumps({'section': 'payment'}))),
-          reply('Answer below.'))
-    res = adminSays('Payment policy')
-    form = res['components'][0]
-    fake = model(reply('Saved.'))
-    adminSays(None, res['conversationId'], {
-        'kind': 'policy', 'formId': form['formId'],
+    api.updateMyStorePolicy(ADMIN, handoverDays=2)
+    model(reply('Which payment methods do you take?'))
+    cid = adminSays('Let us do the policy')['conversationId']
+    model(reply('Can a customer cancel a paid order?'))
+    adminSays('GCash and card', cid)
+    model(reply('GCash and card; cancel before handover. Save?'))
+    adminSays('Before handover', cid)
+    model(calls(('c1', 'updateMyStorePolicy', json.dumps({
         'acceptedPaymentMethods': ['gcash', 'card'],
-        'paidOrderCancellation': 'beforeHandover',
-        # Not asked by the payment section: dropped.
-        'deliveryFee': 50})
-    content = fake.requests[0]['messages'][-1]['content']
-    assert formAnswerDetails(content) == {
-        'kind': 'policy', 'acceptedPaymentMethods': ['gcash', 'card'],
-        'paidOrderCancellation': 'beforeHandover'}
-    assert 'Payment methods: GCash, card' in content
-    model()
-    with pytest.raises(ValueError,
-                       match='^' + chatForms.FORM_ALREADY_ANSWERED + '$'):
-        adminSays(None, res['conversationId'],
-                  {'kind': 'policy', 'formId': form['formId'],
-                   'paidOrderCancellation': 'notAllowed'})
+        'paidOrderCancellation': 'beforeHandover'}))),
+        reply('Saved. Next: delivery.'))
+
+    res = adminSays('Yes', cid)
+
+    [card] = res['components']
+    assert card['kind'] == 'policy'
+    assert card['acceptedPaymentMethods'] == ['gcash', 'card']
+    assert card['paidOrderCancellation'] == 'beforeHandover'
+    # An answer of another section is kept.
+    assert card['handoverDays'] == 2
+    assert api.getMyStorePolicy(ADMIN)['acceptedPaymentMethods'] == [
+        'gcash', 'card']
+
+
+def test_aReturnAskedInChat_isRequestedByTheModel(wiped, firebase, model):
+    """The customer names the items, the reason and a note in chat; the
+    model confirms, then calls requestReturn with the order's item
+    positions."""
+    import datetime
+    store = storeWithProducts(ADMIN)
+    api.updateMyStorePolicy(ADMIN, defectReportDays=7)
+    customerId = verifiedGuestAt(firebase, store, GUEST)
+    pandesal = db.read({'storeId': store['_id'], 'name': 'Pandesal'},
+                       'Products', findOne=True)
+    order = addOrder(store['_id'], customerId, [
+        {'productId': pandesal['_id'], 'name': 'Pandesal',
+         'price': pandesal['price'], 'quantity': 3}], status='completed',
+        completedAt=datetime.datetime.now(tz=datetime.timezone.utc))
+    model(reply('Which items, and how many?'))
+    cid = customerSays(customerId, store['_id'],
+                       'I want to return some pandesal')['conversationId']
+    model(reply('Why are they going back?'))
+    customerSays(customerId, store['_id'], 'Two of them', cid)
+    model(reply('2 Pandesal, defective, note "stale". Request it?'))
+    customerSays(customerId, store['_id'], 'They were stale', cid)
+    model(calls(('c1', 'requestReturn', json.dumps({
+        'orderId': order['_id'], 'items': [{'item': 1, 'quantity': 2}],
+        'reason': 'defective', 'note': 'stale'}))),
+        reply('Requested: the store will decide.'))
+
+    res = customerSays(customerId, store['_id'], 'Yes', cid)
+
+    [card] = res['components']
+    assert card['kind'] == 'myReturns'
+    [ret] = card['returns']
+    assert (ret['status'], ret['reason']) == ('requested', 'defective')
+    assert ret['items'] == [{'name': 'Pandesal', 'price': pandesal['price'],
+                             'quantity': 2}]
+    saved = db.read({'orderId': order['_id']}, 'Returns', findOne=True)
+    assert saved['note'] == 'stale'
 
 
 def test_cards_fromEveryCardTool_fitTheirModels():
@@ -561,10 +639,7 @@ def test_cards_fromEveryCardTool_fitTheirModels():
     adminProduct = {'_id': 'p1', 'name': 'A', 'description': None,
                     'price': 1, 'inventory': 2, 'reservedQuantity': 1,
                     'isAvailable': True, 'soldCount': 0}
-    policy = {field: None for field in chatForms.POLICY_SECTION_FIELDS[
-        'returns'] + chatForms.POLICY_SECTION_FIELDS['payment']
-        + chatForms.POLICY_SECTION_FIELDS['delivery']
-        + chatForms.POLICY_SECTION_FIELDS['other']}
+    policy = {field: None for field in POLICY_ANSWER_FIELDS}
     store = {'_id': 's1', 'name': 'A', 'slug': 'a', 'currency': 'PHP',
              'description': 'd', 'contactNumber': '+639171234567',
              'address': 'x', 'openingHours': None,

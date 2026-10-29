@@ -1,8 +1,9 @@
 """Delivery on orders: createOrder's fulfillment (pickup or delivery, as the
 store's policy offers it), the delivery fee in the order's total, the
 address, pin and notes a delivery keeps, orders stored before delivery
-existed (read as pickups), and the chat's fulfillment form
-(showFulfillmentForm and its answer).
+existed (read as pickups), and the chat's delivery: pickup or delivery
+asked in chat, the pin-only map card (showDeliveryPinForm and its answer),
+then the address asked in chat and the order placed by the model.
 
 No real Meta call: test_chat.py's FakeModel plays scripted completions (its
 fixtures are imported here: the clock, the offline guard and the frozen now
@@ -19,7 +20,7 @@ from actions.OrderActions import (CHOOSE_FULFILLMENT, DELIVERY_FOR_PICKUP,
                                   INVALID_FULFILLMENT, NO_DELIVERY_FEE_YET,
                                   NOT_OFFERED)
 from ApiRequests import ApiRequests
-from conftest import (STORE_DETAILS, addOrder, addProduct, assertExactShape,
+from conftest import (addOrder, addProduct, assertExactShape,
                       storeWithProducts, verifiedGuestAt, wipeCollections)
 from mongoDb import db
 from objects import (DELIVERY_ADDRESS_MAX_LENGTH, DELIVERY_NOTES_MAX_LENGTH,
@@ -303,7 +304,7 @@ def test_payOrder_chargesTheTotalWithTheFee(clean, firebase, monkeypatch):
     assert (orderId, amount, currency) == (order['_id'], 55, 'PHP')
 
 
-# ----------------------------- B. the fulfillment form ----------------------------- #
+# ----------------------------- B. the delivery pin ----------------------------- #
 
 
 def customerSays(customerId, storeId, text, conversationId=None,
@@ -312,48 +313,45 @@ def customerSays(customerId, storeId, text, conversationId=None,
                                     conversationId, form)
 
 
-def openForm(model, customerId: str, store: dict) -> dict:
-    model(calls(('c1', 'showFulfillmentForm', '{}')),
-          reply('Pickup or delivery?'))
-    return customerSays(customerId, store['_id'], 'Two pandesal please')
+def openPin(model, customerId: str, store: dict) -> dict:
+    model(calls(('c1', 'showDeliveryPinForm', '{}')),
+          reply('Pin where it goes.'))
+    return customerSays(customerId, store['_id'], 'Delivery please')
 
 
-def test_theFulfillmentForm_showsWhatTheStoreOffers(clean, firebase, model):
+def pinOf(form: dict, place: dict = HOME) -> dict:
+    return {'kind': 'deliveryPin', 'formId': form['formId'],
+            'latitude': place['latitude'], 'longitude': place['longitude']}
+
+
+def test_theDeliveryPinForm_isTheMapOnly(clean, firebase, model):
     store, customerId, _ = shop(firebase, **DELIVERS,
                                 deliveryAreas='Makati and Taguig',
                                 handoverDays=2)
     api.setUserStoreLocation(ADMIN, 14.55, 121.02)
 
-    res = openForm(model, customerId, store)
+    res = openPin(model, customerId, store)
 
     assertExactShape(ChatReplyResponse, res)
     [form] = res['components']
-    assert form['kind'] == 'fulfillmentForm' and form['formId']
-    assert {key: value for key, value in form.items()
-            if key not in ('kind', 'formId')} == {
-        'options': ['pickup', 'delivery'],
-        'currency': 'PHP',
-        'storeAddress': STORE_DETAILS['address'],
-        'storeLocation': {'latitude': 14.55, 'longitude': 121.02},
-        'deliveryAreas': 'Makati and Taguig',
-        'deliveryFee': 50,
-        'freeDeliveryMinimum': 1000,
-        'handoverDays': 2,
-    }
+    assert form['kind'] == 'deliveryPinForm' and form['formId']
+    assert form == {'kind': 'deliveryPinForm', 'formId': form['formId'],
+                    'storeLocation': {'latitude': 14.55, 'longitude': 121.02}}
 
 
 @pytest.mark.parametrize('policy, refusal', [
-    ({}, chatForms.PICKUP_ONLY),
-    ({'deliveryOptions': ['pickup', 'delivery']}, chatForms.PICKUP_ONLY),
+    ({}, NOT_OFFERED['delivery']),
+    ({'deliveryOptions': ['pickup']}, NOT_OFFERED['delivery']),
+    ({'deliveryOptions': ['pickup', 'delivery']}, NO_DELIVERY_FEE_YET),
     ({'deliveryOptions': ['delivery']}, NO_DELIVERY_FEE_YET),
 ])
-def test_theFulfillmentForm_opensOnlyWhenThereIsAChoiceOrAnAddress(
+def test_theDeliveryPinForm_opensOnlyWhereADeliveryCanBeBooked(
         clean, firebase, model, policy, refusal):
     store, customerId, _ = shop(firebase, **policy)
-    fake = model(calls(('c1', 'showFulfillmentForm', '{}')),
+    fake = model(calls(('c1', 'showDeliveryPinForm', '{}')),
                  reply('Pickup it is.'))
 
-    res = customerSays(customerId, store['_id'], 'Two pandesal please')
+    res = customerSays(customerId, store['_id'], 'Deliver it please')
 
     assert res['components'] == []
     toolMessage = fake.requests[1]['messages'][-1]
@@ -361,93 +359,89 @@ def test_theFulfillmentForm_opensOnlyWhenThereIsAChoiceOrAnAddress(
     assert json.loads(toolMessage['content']) == {'error': refusal}
 
 
-def test_aStoreThatOnlyDelivers_opensTheFormForTheAddress(clean, firebase,
-                                                         model):
+def test_aStoreThatOnlyDelivers_opensThePinWithoutAStorePin(clean, firebase,
+                                                           model):
     store, customerId, _ = shop(firebase, deliveryOptions=['delivery'],
                                 deliveryFee=30)
 
-    [form] = openForm(model, customerId, store)['components']
+    [form] = openPin(model, customerId, store)['components']
 
-    assert form['options'] == ['delivery']
     assert form['storeLocation'] is None
 
 
-def test_aDeliveryAnswer_isTheTurn_andTheModelPlacesTheOrder(clean, firebase,
-                                                             model):
+def test_aPin_thenTheAddressInChat_placesTheDelivery(clean, firebase, model):
+    """The pin is the customer's turn; the model asks for the address in
+    chat, then places the order with the typed address, the pin and the
+    notes."""
     store, customerId, products = shop(firebase, **DELIVERS)
-    first = openForm(model, customerId, store)
+    first = openPin(model, customerId, store)
     [form] = first['components']
+    fake = model(reply('House number, street and a landmark?'))
+
+    second = customerSays(customerId, store['_id'], None,
+                          first['conversationId'], pinOf(form))
+
+    assert second['userText'] == 'Deliver to my pin at 14.55470, 121.02440'
+    assert formAnswerDetails(fake.requests[0]['messages'][-1]['content']) == {
+        'kind': 'deliveryPin', 'latitude': HOME['latitude'],
+        'longitude': HOME['longitude']}
+    assert second['components'] == []
     picked = items(products['Pandesal'], 2)
-    fake = model(calls(('c2', 'createOrder', json.dumps({
+    model(calls(('c2', 'createOrder', json.dumps({
         'items': picked, 'fulfillment': 'delivery', 'delivery': HOME}))),
         reply('Placed: pay below.'))
 
-    second = customerSays(customerId, store['_id'], None,
-                          first['conversationId'],
-                          {'kind': 'fulfillment', 'formId': form['formId'],
-                           'fulfillment': 'delivery',
-                           'delivery': {**HOME, 'notes': '  Blue gate  '}})
+    third = customerSays(customerId, store['_id'],
+                         '7 Mabini St, Makati. Blue gate',
+                         first['conversationId'])
 
-    content = fake.requests[0]['messages'][-1]['content']
-    assert second['userText'] == 'Deliver it to 7 Mabini St, Makati. Notes: Blue gate'
-    assert formAnswerDetails(content) == {
-        'kind': 'fulfillment', 'fulfillment': 'delivery', 'delivery': HOME}
-    [checkout] = second['components']
+    [checkout] = third['components']
     assert checkout['kind'] == 'checkout'
     order = checkout['order']
     assert (order['fulfillment'], order['deliveryFee'], order['total']) == (
         'delivery', 50, 60)
     assert order['deliveryAddress'] == HOME['address']
+    assert order['deliveryNotes'] == HOME['notes']
     assert (order['deliveryLatitude'], order['deliveryLongitude']) == (
         HOME['latitude'], HOME['longitude'])
 
 
-def test_aPickupAnswer_carriesNoAddress(clean, firebase, model):
-    store, customerId, _ = shop(firebase, **DELIVERS)
-    first = openForm(model, customerId, store)
-    [form] = first['components']
-    fake = model(reply('Pickup it is.'))
+def test_aPickupChosenInChat_isPlacedWithoutAnAddress(clean, firebase,
+                                                     model):
+    store, customerId, products = shop(firebase, **DELIVERS)
+    model(calls(('c1', 'createOrder', json.dumps({
+        'items': items(products['Pandesal']), 'fulfillment': 'pickup'}))),
+        reply('Placed: pay below.'))
 
-    second = customerSays(customerId, store['_id'], None,
-                          first['conversationId'],
-                          {'kind': 'fulfillment', 'formId': form['formId'],
-                           'fulfillment': 'pickup'})
+    res = customerSays(customerId, store['_id'], 'Pickup, yes')
 
-    assert second['userText'] == 'I’ll pick it up at the store.'
-    assert formAnswerDetails(fake.requests[0]['messages'][-1]['content']) == {
-        'kind': 'fulfillment', 'fulfillment': 'pickup', 'delivery': None}
+    [checkout] = res['components']
+    assert deliveryOf(checkout['order']) == PICKUP_FIELDS
 
 
-def test_aFulfillmentAnswer_isCheckedAgainstItsForm(clean, firebase, model):
+def test_aPinAnswer_isCheckedAgainstItsForm(clean, firebase, model):
     store, customerId, _ = shop(firebase, deliveryOptions=['delivery'],
                                 deliveryFee=30)
-    first = openForm(model, customerId, store)
+    first = openPin(model, customerId, store)
+    cid = first['conversationId']
     [form] = first['components']
     model()
 
-    for answer, message in (
-            ({'fulfillment': 'pickup'}, chatForms.NOT_ON_THE_CARD),
-            ({'fulfillment': 'delivery'}, DELIVERY_REQUIRED)):
-        with pytest.raises(ValueError, match=exactly(message)):
-            customerSays(customerId, store['_id'], None,
-                         first['conversationId'],
-                         {'kind': 'fulfillment', 'formId': form['formId'],
-                          **answer})
+    with pytest.raises(ValueError, match=exactly(chatForms.FORM_DOES_NOT_MATCH)):
+        customerSays(customerId, store['_id'], None, cid,
+                     {'kind': 'phoneVerified', 'formId': form['formId']})
+    with pytest.raises(ValueError, match=exactly(
+            chatForms.FORM_ANSWER_INVALID.format(
+                fields='deliveryPin.latitude'))):
+        customerSays(customerId, store['_id'], None, cid,
+                     {**pinOf(form), 'latitude': SENTINEL})
     with pytest.raises(ValueError, match='^That form answer is not valid'):
-        customerSays(customerId, store['_id'], None, first['conversationId'],
+        customerSays(customerId, store['_id'], None, cid,
                      {'kind': 'fulfillment', 'formId': form['formId'],
-                      'fulfillment': 'delivery',
-                      'delivery': {**HOME, 'address': 'x' * (
-                          DELIVERY_ADDRESS_MAX_LENGTH + 1)}})
-
-
-def test_aPickupAnswerWithAnAddress_isRefused(clean, firebase, model):
-    store, customerId, _ = shop(firebase, **DELIVERS)
-    first = openForm(model, customerId, store)
-    [form] = first['components']
+                      'fulfillment': 'delivery', 'delivery': HOME})
+    model(reply('Your address?'))
+    customerSays(customerId, store['_id'], None, cid, pinOf(form))
     model()
-
-    with pytest.raises(ValueError, match=exactly(DELIVERY_FOR_PICKUP)):
-        customerSays(customerId, store['_id'], None, first['conversationId'],
-                     {'kind': 'fulfillment', 'formId': form['formId'],
-                      'fulfillment': 'pickup', 'delivery': HOME})
+    with pytest.raises(ValueError,
+                       match=exactly(chatForms.FORM_ALREADY_ANSWERED)):
+        customerSays(customerId, store['_id'], None, cid, pinOf(form))

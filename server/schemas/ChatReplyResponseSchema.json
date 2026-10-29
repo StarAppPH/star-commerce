@@ -418,43 +418,6 @@
             "type": "object",
             "additionalProperties": false
         },
-        "ChatReturnableItem": {
-            "description": "An item of the order a return form is about.",
-            "properties": {
-                "item": {
-                    "description": "Its position in the order",
-                    "minimum": 1,
-                    "title": "Item",
-                    "type": "integer"
-                },
-                "name": {
-                    "description": "Product name when ordered",
-                    "title": "Name",
-                    "type": "string"
-                },
-                "price": {
-                    "description": "Unit price paid",
-                    "minimum": 0,
-                    "title": "Price",
-                    "type": "number"
-                },
-                "quantity": {
-                    "description": "Units ordered",
-                    "minimum": 1,
-                    "title": "Quantity",
-                    "type": "integer"
-                }
-            },
-            "required": [
-                "item",
-                "name",
-                "price",
-                "quantity"
-            ],
-            "title": "ChatReturnableItem",
-            "type": "object",
-            "additionalProperties": false
-        },
         "ChatShopProductRow": {
             "description": "A product on a shop card.",
             "properties": {
@@ -1001,11 +964,11 @@
             "type": "object",
             "additionalProperties": false
         },
-        "FulfillmentForm": {
-            "description": "Asks the shopper how they get their order: picked up at the store,\nor delivered to the address they pin. Answered with FulfillmentAnswer.",
+        "DeliveryPinForm": {
+            "description": "Asks the shopper to pin where their delivery goes: a map and \"use\nwhere I am\", nothing typed (the model asks for the address in chat).\nAnswered with DeliveryPinAnswer.",
             "properties": {
                 "kind": {
-                    "const": "fulfillmentForm",
+                    "const": "deliveryPinForm",
                     "description": "The form",
                     "title": "Kind",
                     "type": "string"
@@ -1017,56 +980,6 @@
                     "title": "Formid",
                     "type": "string"
                 },
-                "options": {
-                    "description": "The ways the order can be booked",
-                    "items": {
-                        "enum": [
-                            "pickup",
-                            "delivery"
-                        ],
-                        "type": "string"
-                    },
-                    "maxItems": 2,
-                    "minItems": 1,
-                    "title": "Options",
-                    "type": "array"
-                },
-                "currency": {
-                    "description": "Fees are in it",
-                    "enum": [
-                        "PHP",
-                        "USD",
-                        "EUR",
-                        "GBP",
-                        "JPY",
-                        "SGD",
-                        "AUD",
-                        "CAD",
-                        "HKD",
-                        "CNY",
-                        "KRW",
-                        "MYR",
-                        "THB",
-                        "IDR",
-                        "VND",
-                        "INR",
-                        "AED"
-                    ],
-                    "title": "Currency",
-                    "type": "string"
-                },
-                "storeAddress": {
-                    "anyOf": [
-                        {
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Where to pick it up",
-                    "title": "Storeaddress"
-                },
                 "storeLocation": {
                     "anyOf": [
                         {
@@ -1076,78 +989,15 @@
                             "type": "null"
                         }
                     ],
-                    "description": "The store's pin; null until pinned"
-                },
-                "deliveryAreas": {
-                    "anyOf": [
-                        {
-                            "maxLength": 300,
-                            "minLength": 1,
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Where the store delivers",
-                    "title": "Deliveryareas"
-                },
-                "deliveryFee": {
-                    "anyOf": [
-                        {
-                            "maximum": 10000000,
-                            "minimum": 0,
-                            "type": "number"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "What delivery costs, in the store's currency",
-                    "title": "Deliveryfee"
-                },
-                "freeDeliveryMinimum": {
-                    "anyOf": [
-                        {
-                            "maximum": 10000000,
-                            "minimum": 0,
-                            "type": "number"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "The order total from which delivery is free, in the store's currency",
-                    "title": "Freedeliveryminimum"
-                },
-                "handoverDays": {
-                    "anyOf": [
-                        {
-                            "maximum": 365,
-                            "minimum": 0,
-                            "type": "integer"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Days from payment until the order is handed over or delivered",
-                    "title": "Handoverdays"
+                    "description": "The store's pin, where the map opens; null until pinned"
                 }
             },
             "required": [
                 "kind",
                 "formId",
-                "options",
-                "currency",
-                "storeAddress",
-                "storeLocation",
-                "deliveryAreas",
-                "deliveryFee",
-                "freeDeliveryMinimum",
-                "handoverDays"
+                "storeLocation"
             ],
-            "title": "FulfillmentForm",
+            "title": "DeliveryPinForm",
             "type": "object",
             "additionalProperties": false
         },
@@ -1754,392 +1604,6 @@
             "type": "object",
             "additionalProperties": false
         },
-        "PolicyForm": {
-            "description": "Asks the admin one section of the store's policy, with its current\nanswers. Answered with PolicyAnswer.",
-            "properties": {
-                "kind": {
-                    "const": "policyForm",
-                    "description": "The form",
-                    "title": "Kind",
-                    "type": "string"
-                },
-                "formId": {
-                    "description": "Answer it with this id",
-                    "maxLength": 64,
-                    "minLength": 1,
-                    "title": "Formid",
-                    "type": "string"
-                },
-                "section": {
-                    "description": "The questions it asks",
-                    "enum": [
-                        "payment",
-                        "delivery",
-                        "returns",
-                        "other"
-                    ],
-                    "title": "Section",
-                    "type": "string"
-                },
-                "currency": {
-                    "description": "Fees are in it",
-                    "enum": [
-                        "PHP",
-                        "USD",
-                        "EUR",
-                        "GBP",
-                        "JPY",
-                        "SGD",
-                        "AUD",
-                        "CAD",
-                        "HKD",
-                        "CNY",
-                        "KRW",
-                        "MYR",
-                        "THB",
-                        "IDR",
-                        "VND",
-                        "INR",
-                        "AED"
-                    ],
-                    "title": "Currency",
-                    "type": "string"
-                },
-                "acceptsReturns": {
-                    "anyOf": [
-                        {
-                            "type": "boolean"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Whether a customer can return an item that is not defective",
-                    "title": "Acceptsreturns"
-                },
-                "returnWindowDays": {
-                    "anyOf": [
-                        {
-                            "maximum": 365,
-                            "minimum": 1,
-                            "type": "integer"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Days after handover a customer can return an item",
-                    "title": "Returnwindowdays"
-                },
-                "returnConditions": {
-                    "anyOf": [
-                        {
-                            "maxLength": 300,
-                            "minLength": 1,
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "What a returned item must be like, e.g. unused with tags",
-                    "title": "Returnconditions"
-                },
-                "nonReturnableItems": {
-                    "anyOf": [
-                        {
-                            "maxLength": 300,
-                            "minLength": 1,
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "The items that can never be returned",
-                    "title": "Nonreturnableitems"
-                },
-                "refundMethod": {
-                    "anyOf": [
-                        {
-                            "enum": [
-                                "originalPayment",
-                                "storeCredit",
-                                "exchange"
-                            ],
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "How a returned item is refunded",
-                    "title": "Refundmethod"
-                },
-                "returnShippingPaidBy": {
-                    "anyOf": [
-                        {
-                            "enum": [
-                                "customer",
-                                "store"
-                            ],
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Who pays the shipping of a returned item",
-                    "title": "Returnshippingpaidby"
-                },
-                "defectReportDays": {
-                    "anyOf": [
-                        {
-                            "maximum": 365,
-                            "minimum": 1,
-                            "type": "integer"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Days after handover a customer has to report a defective or wrong item",
-                    "title": "Defectreportdays"
-                },
-                "deliveryOptions": {
-                    "anyOf": [
-                        {
-                            "items": {
-                                "enum": [
-                                    "pickup",
-                                    "delivery"
-                                ],
-                                "type": "string"
-                            },
-                            "minItems": 1,
-                            "type": "array"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "How a customer can get an order",
-                    "title": "Deliveryoptions"
-                },
-                "deliveryAreas": {
-                    "anyOf": [
-                        {
-                            "maxLength": 300,
-                            "minLength": 1,
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Where the store delivers",
-                    "title": "Deliveryareas"
-                },
-                "deliveryFee": {
-                    "anyOf": [
-                        {
-                            "maximum": 10000000,
-                            "minimum": 0,
-                            "type": "number"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "What delivery costs, in the store's currency",
-                    "title": "Deliveryfee"
-                },
-                "freeDeliveryMinimum": {
-                    "anyOf": [
-                        {
-                            "maximum": 10000000,
-                            "minimum": 0,
-                            "type": "number"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "The order total from which delivery is free, in the store's currency",
-                    "title": "Freedeliveryminimum"
-                },
-                "handoverDays": {
-                    "anyOf": [
-                        {
-                            "maximum": 365,
-                            "minimum": 0,
-                            "type": "integer"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Days from payment until the order is handed over or delivered",
-                    "title": "Handoverdays"
-                },
-                "acceptedPaymentMethods": {
-                    "anyOf": [
-                        {
-                            "items": {
-                                "enum": [
-                                    "card",
-                                    "gcash",
-                                    "maya",
-                                    "grabPay",
-                                    "bankTransfer"
-                                ],
-                                "type": "string"
-                            },
-                            "minItems": 1,
-                            "type": "array"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "The ways a customer can pay",
-                    "title": "Acceptedpaymentmethods"
-                },
-                "paidOrderCancellation": {
-                    "anyOf": [
-                        {
-                            "enum": [
-                                "notAllowed",
-                                "beforeHandover"
-                            ],
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Whether a customer can cancel a paid order",
-                    "title": "Paidordercancellation"
-                },
-                "sendsMarketingMessages": {
-                    "anyOf": [
-                        {
-                            "type": "boolean"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Whether the store messages customers about offers",
-                    "title": "Sendsmarketingmessages"
-                },
-                "additionalTerms": {
-                    "anyOf": [
-                        {
-                            "maxLength": 1000,
-                            "minLength": 1,
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Any other terms, as the admin gave them",
-                    "title": "Additionalterms"
-                }
-            },
-            "required": [
-                "kind",
-                "formId",
-                "section",
-                "currency",
-                "acceptsReturns",
-                "returnWindowDays",
-                "returnConditions",
-                "nonReturnableItems",
-                "refundMethod",
-                "returnShippingPaidBy",
-                "defectReportDays",
-                "deliveryOptions",
-                "deliveryAreas",
-                "deliveryFee",
-                "freeDeliveryMinimum",
-                "handoverDays",
-                "acceptedPaymentMethods",
-                "paidOrderCancellation",
-                "sendsMarketingMessages",
-                "additionalTerms"
-            ],
-            "title": "PolicyForm",
-            "type": "object",
-            "additionalProperties": false
-        },
-        "ReturnForm": {
-            "description": "Asks the shopper which items of a completed order go back and why.\nAnswered with ReturnAnswer.",
-            "properties": {
-                "kind": {
-                    "const": "returnForm",
-                    "description": "The form",
-                    "title": "Kind",
-                    "type": "string"
-                },
-                "formId": {
-                    "description": "Answer it with this id",
-                    "maxLength": 64,
-                    "minLength": 1,
-                    "title": "Formid",
-                    "type": "string"
-                },
-                "orderId": {
-                    "description": "The Orders _id",
-                    "title": "Orderid",
-                    "type": "string"
-                },
-                "currency": {
-                    "description": "The order's currency",
-                    "enum": [
-                        "PHP",
-                        "USD",
-                        "EUR",
-                        "GBP",
-                        "JPY",
-                        "SGD",
-                        "AUD",
-                        "CAD",
-                        "HKD",
-                        "CNY",
-                        "KRW",
-                        "MYR",
-                        "THB",
-                        "IDR",
-                        "VND",
-                        "INR",
-                        "AED"
-                    ],
-                    "title": "Currency",
-                    "type": "string"
-                },
-                "items": {
-                    "description": "The order's items (never none)",
-                    "items": {
-                        "$ref": "#/$defs/ChatReturnableItem"
-                    },
-                    "maxItems": 50,
-                    "title": "Items",
-                    "type": "array"
-                }
-            },
-            "required": [
-                "kind",
-                "formId",
-                "orderId",
-                "currency",
-                "items"
-            ],
-            "title": "ReturnForm",
-            "type": "object",
-            "additionalProperties": false
-        },
         "ReturnItemRow": {
             "description": "One item of a return as a route sends it: ReturnItem without its\nproductId.",
             "properties": {
@@ -2365,121 +1829,6 @@
             "type": "object",
             "additionalProperties": false
         },
-        "StoreDetailsForm": {
-            "description": "Asks the admin for the store's details, prefilled with what they\nsaid. Answered with StoreDetailsAnswer.",
-            "properties": {
-                "kind": {
-                    "const": "storeDetailsForm",
-                    "description": "The form",
-                    "title": "Kind",
-                    "type": "string"
-                },
-                "formId": {
-                    "description": "Answer it with this id",
-                    "maxLength": 64,
-                    "minLength": 1,
-                    "title": "Formid",
-                    "type": "string"
-                },
-                "name": {
-                    "anyOf": [
-                        {
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Store name, prefilled",
-                    "title": "Name"
-                },
-                "description": {
-                    "anyOf": [
-                        {
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "What it sells",
-                    "title": "Description"
-                },
-                "currency": {
-                    "description": "Prefilled currency",
-                    "enum": [
-                        "PHP",
-                        "USD",
-                        "EUR",
-                        "GBP",
-                        "JPY",
-                        "SGD",
-                        "AUD",
-                        "CAD",
-                        "HKD",
-                        "CNY",
-                        "KRW",
-                        "MYR",
-                        "THB",
-                        "IDR",
-                        "VND",
-                        "INR",
-                        "AED"
-                    ],
-                    "title": "Currency",
-                    "type": "string"
-                },
-                "contactNumber": {
-                    "anyOf": [
-                        {
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Contact number",
-                    "title": "Contactnumber"
-                },
-                "address": {
-                    "anyOf": [
-                        {
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Street address",
-                    "title": "Address"
-                },
-                "openingHours": {
-                    "anyOf": [
-                        {
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Opening hours",
-                    "title": "Openinghours"
-                }
-            },
-            "required": [
-                "kind",
-                "formId",
-                "name",
-                "description",
-                "currency",
-                "contactNumber",
-                "address",
-                "openingHours"
-            ],
-            "title": "StoreDetailsForm",
-            "type": "object",
-            "additionalProperties": false
-        },
         "StoreLocationResponse": {
             "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
             "properties": {
@@ -2668,7 +2017,7 @@
                 "discriminator": {
                     "mapping": {
                         "checkout": "#/$defs/CheckoutCard",
-                        "fulfillmentForm": "#/$defs/FulfillmentForm",
+                        "deliveryPinForm": "#/$defs/DeliveryPinForm",
                         "locationForm": "#/$defs/LocationForm",
                         "myOrders": "#/$defs/MyOrdersCard",
                         "myReturns": "#/$defs/MyReturnsCard",
@@ -2677,11 +2026,8 @@
                         "photoRequestForm": "#/$defs/PhotoRequestForm",
                         "photos": "#/$defs/PhotosCard",
                         "policy": "#/$defs/PolicyCard",
-                        "policyForm": "#/$defs/PolicyForm",
-                        "returnForm": "#/$defs/ReturnForm",
                         "shopProducts": "#/$defs/ShopProductsCard",
                         "store": "#/$defs/StoreCard",
-                        "storeDetailsForm": "#/$defs/StoreDetailsForm",
                         "storeOrders": "#/$defs/StoreOrdersCard",
                         "storeProducts": "#/$defs/StoreProductsCard",
                         "storeReturns": "#/$defs/StoreReturnsCard"
@@ -2720,19 +2066,10 @@
                         "$ref": "#/$defs/StoreCard"
                     },
                     {
-                        "$ref": "#/$defs/StoreDetailsForm"
-                    },
-                    {
                         "$ref": "#/$defs/LocationForm"
                     },
                     {
                         "$ref": "#/$defs/NewProductsForm"
-                    },
-                    {
-                        "$ref": "#/$defs/PolicyForm"
-                    },
-                    {
-                        "$ref": "#/$defs/ReturnForm"
                     },
                     {
                         "$ref": "#/$defs/PhoneVerificationForm"
@@ -2741,7 +2078,7 @@
                         "$ref": "#/$defs/PhotoRequestForm"
                     },
                     {
-                        "$ref": "#/$defs/FulfillmentForm"
+                        "$ref": "#/$defs/DeliveryPinForm"
                     }
                 ]
             },

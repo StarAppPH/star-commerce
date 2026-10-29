@@ -20,9 +20,7 @@ from typing import Annotated, Literal, Union
 from pydantic import Field
 
 from objects.base import AppModel, ResponseModel
-from objects.order import (DELIVERY_ADDRESS_MAX_LENGTH,
-                           DELIVERY_NOTES_MAX_LENGTH, ORDER_ITEMS_MAX,
-                           CancelReason, Fulfillment, NewOrderItem,
+from objects.order import (ORDER_ITEMS_MAX, CancelReason, NewOrderItem,
                            OrderDeliveryRow, OrderItemRow, OrderStatus,
                            PaymentMethod)
 from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
@@ -35,14 +33,9 @@ from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
                             ReturnConditions, ReturnShippingPaidBy,
                             ReturnWindowDays, SendsMarketingMessages)
 from objects.product import PRODUCT_BATCH_MAX, NewProduct
-from objects.returns import (RETURN_NOTE_MAX_LENGTH,
-                             RETURN_REJECT_REASON_MAX_LENGTH, NewReturnItem,
+from objects.returns import (RETURN_REJECT_REASON_MAX_LENGTH,
                              ReturnItemRow, ReturnReason, ReturnStatus)
-from objects.store import (STORE_ADDRESS_MAX_LENGTH,
-                           STORE_DESCRIPTION_MAX_LENGTH,
-                           STORE_NAME_MAX_LENGTH,
-                           STORE_OPENING_HOURS_MAX_LENGTH, StoreCurrency,
-                           StoreLocationResponse)
+from objects.store import StoreCurrency, StoreLocationResponse
 
 # The most components one turn shows: past it, the earliest are dropped.
 CHAT_COMPONENTS_PER_TURN_MAX = 6
@@ -50,14 +43,10 @@ CHAT_COMPONENTS_PER_TURN_MAX = 6
 CHAT_CARD_ROWS_MAX = 50
 # A formId: generateRandomString's length, with room to spare.
 CHAT_FORM_ID_MAX_LENGTH = 64
-# The policy questions a policy form asks at once.
-PolicySection = Literal['payment', 'delivery', 'returns', 'other']
 # The longest id a form answer may name (a product, an order, a return).
 CHAT_ANSWER_ID_MAX_LENGTH = 64
 # A photo URL in a photo request.
 CHAT_PHOTO_URL_MAX_LENGTH = 2048
-# A contact number as typed, before the route checks its format.
-CHAT_CONTACT_NUMBER_MAX_LENGTH = 32
 
 FormId = Annotated[str, Field(min_length=1, max_length=CHAT_FORM_ID_MAX_LENGTH,
                               description='Answer it with this id')]
@@ -280,19 +269,6 @@ class StoreCard(ResponseModel):
 # Forms: opened by the model's form tools
 # ──────────────────────────────────────────────
 
-class StoreDetailsForm(ResponseModel):
-    """Asks the admin for the store's details, prefilled with what they
-    said. Answered with StoreDetailsAnswer."""
-    kind: Literal['storeDetailsForm'] = Field(..., description='The form')
-    formId: FormId
-    name: str | None = Field(..., description='Store name, prefilled')
-    description: str | None = Field(..., description='What it sells')
-    currency: StoreCurrency = Field(..., description='Prefilled currency')
-    contactNumber: str | None = Field(..., description='Contact number')
-    address: str | None = Field(..., description='Street address')
-    openingHours: str | None = Field(..., description='Opening hours')
-
-
 class LocationForm(ResponseModel):
     """Asks the admin to pin the store on a map. Answered with
     LocationAnswer."""
@@ -321,51 +297,6 @@ class NewProductsForm(ResponseModel):
         ..., max_length=PRODUCT_BATCH_MAX, description='Prefilled rows')
 
 
-class PolicyForm(ResponseModel):
-    """Asks the admin one section of the store's policy, with its current
-    answers. Answered with PolicyAnswer."""
-    kind: Literal['policyForm'] = Field(..., description='The form')
-    formId: FormId
-    section: PolicySection = Field(..., description='The questions it asks')
-    currency: StoreCurrency = Field(..., description='Fees are in it')
-    acceptsReturns: AcceptsReturns
-    returnWindowDays: ReturnWindowDays
-    returnConditions: ReturnConditions
-    nonReturnableItems: NonReturnableItems
-    refundMethod: RefundMethodAnswer
-    returnShippingPaidBy: ReturnShippingPaidBy
-    defectReportDays: DefectReportDays
-    deliveryOptions: DeliveryOptions
-    deliveryAreas: DeliveryAreas
-    deliveryFee: DeliveryFee
-    freeDeliveryMinimum: FreeDeliveryMinimum
-    handoverDays: HandoverDays
-    acceptedPaymentMethods: AcceptedPaymentMethods
-    paidOrderCancellation: PaidOrderCancellationAnswer
-    sendsMarketingMessages: SendsMarketingMessages
-    additionalTerms: AdditionalTerms
-
-
-class ChatReturnableItem(ResponseModel):
-    """An item of the order a return form is about."""
-    item: int = Field(..., ge=1, description="Its position in the order")
-    name: str = Field(..., description='Product name when ordered')
-    price: float = Field(..., ge=0, description='Unit price paid')
-    quantity: int = Field(..., ge=1, description='Units ordered')
-
-
-class ReturnForm(ResponseModel):
-    """Asks the shopper which items of a completed order go back and why.
-    Answered with ReturnAnswer."""
-    kind: Literal['returnForm'] = Field(..., description='The form')
-    formId: FormId
-    orderId: str = Field(..., description='The Orders _id')
-    currency: StoreCurrency = Field(..., description="The order's currency")
-    items: list[ChatReturnableItem] = Field(
-        ..., max_length=ORDER_ITEMS_MAX,
-        description="The order's items (never none)")
-
-
 class PhoneVerificationForm(ResponseModel):
     """Asks the shopper to verify their phone number (Firebase sends the
     code). Answered with PhoneVerifiedAnswer once verifyCustomerPhone
@@ -383,29 +314,22 @@ class PhotoRequestForm(ResponseModel):
                        description='How many photos to make, prefilled')
 
 
-class FulfillmentForm(ResponseModel):
-    """Asks the shopper how they get their order: picked up at the store,
-    or delivered to the address they pin. Answered with FulfillmentAnswer."""
-    kind: Literal['fulfillmentForm'] = Field(..., description='The form')
+class DeliveryPinForm(ResponseModel):
+    """Asks the shopper to pin where their delivery goes: a map and "use
+    where I am", nothing typed (the model asks for the address in chat).
+    Answered with DeliveryPinAnswer."""
+    kind: Literal['deliveryPinForm'] = Field(..., description='The form')
     formId: FormId
-    options: list[Fulfillment] = Field(
-        ..., min_length=1, max_length=2,
-        description='The ways the order can be booked')
-    currency: StoreCurrency = Field(..., description='Fees are in it')
-    storeAddress: str | None = Field(..., description='Where to pick it up')
     storeLocation: StoreLocationResponse | None = Field(
-        ..., description="The store's pin; null until pinned")
-    deliveryAreas: DeliveryAreas
-    deliveryFee: DeliveryFee
-    freeDeliveryMinimum: FreeDeliveryMinimum
-    handoverDays: HandoverDays
+        ..., description="The store's pin, where the map opens; null until "
+        'pinned')
 
 
 ChatComponent = Annotated[Union[
     ShopProductsCard, StoreProductsCard, StoreOrdersCard, MyOrdersCard,
     CheckoutCard, StoreReturnsCard, MyReturnsCard, PolicyCard, PhotosCard,
-    StoreCard, StoreDetailsForm, LocationForm, NewProductsForm, PolicyForm,
-    ReturnForm, PhoneVerificationForm, PhotoRequestForm, FulfillmentForm,
+    StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
+    PhotoRequestForm, DeliveryPinForm,
 ], Field(discriminator='kind')]
 
 
@@ -417,24 +341,6 @@ ChatComponent = Annotated[Union[
 
 AnswerId = Annotated[str, Field(min_length=1,
                                 max_length=CHAT_ANSWER_ID_MAX_LENGTH)]
-
-
-class StoreDetailsAnswer(AppModel):
-    """A StoreDetailsForm, filled in."""
-    kind: Literal['storeDetails'] = Field(..., description='The answer')
-    formId: FormId
-    name: str = Field(..., max_length=STORE_NAME_MAX_LENGTH,
-                      description='Store name')
-    description: str = Field(..., max_length=STORE_DESCRIPTION_MAX_LENGTH,
-                             description='What it sells')
-    currency: StoreCurrency = Field(..., description="The store's currency")
-    contactNumber: str = Field(..., max_length=CHAT_CONTACT_NUMBER_MAX_LENGTH,
-                               description='Contact number')
-    address: str = Field(..., max_length=STORE_ADDRESS_MAX_LENGTH,
-                         description='Street address')
-    openingHours: str | None = Field(
-        None, max_length=STORE_OPENING_HOURS_MAX_LENGTH,
-        description='Opening hours')
 
 
 class LocationAnswer(AppModel):
@@ -452,40 +358,6 @@ class NewProductsAnswer(AppModel):
     products: list[NewProduct] = Field(..., min_length=1,
                                        max_length=PRODUCT_BATCH_MAX,
                                        description='The products to add')
-
-
-class PolicyAnswer(AppModel):
-    """A PolicyForm's answers: a field left null keeps its answer."""
-    kind: Literal['policy'] = Field(..., description='The answer')
-    formId: FormId
-    acceptsReturns: AcceptsReturns = None
-    returnWindowDays: ReturnWindowDays = None
-    returnConditions: ReturnConditions = None
-    nonReturnableItems: NonReturnableItems = None
-    refundMethod: RefundMethodAnswer = None
-    returnShippingPaidBy: ReturnShippingPaidBy = None
-    defectReportDays: DefectReportDays = None
-    deliveryOptions: DeliveryOptions = None
-    deliveryAreas: DeliveryAreas = None
-    deliveryFee: DeliveryFee = None
-    freeDeliveryMinimum: FreeDeliveryMinimum = None
-    handoverDays: HandoverDays = None
-    acceptedPaymentMethods: AcceptedPaymentMethods = None
-    paidOrderCancellation: PaidOrderCancellationAnswer = None
-    sendsMarketingMessages: SendsMarketingMessages = None
-    additionalTerms: AdditionalTerms = None
-
-
-class ReturnAnswer(AppModel):
-    """A ReturnForm, filled in."""
-    kind: Literal['return'] = Field(..., description='The answer')
-    formId: FormId
-    items: list[NewReturnItem] = Field(..., min_length=1,
-                                       max_length=ORDER_ITEMS_MAX,
-                                       description='What goes back')
-    reason: ReturnReason = Field(..., description='Why it goes back')
-    note: str | None = Field(None, max_length=RETURN_NOTE_MAX_LENGTH,
-                             description='For the store')
 
 
 class PhoneVerifiedAnswer(AppModel):
@@ -545,30 +417,17 @@ class ReturnDecisionAnswer(AppModel):
                                description='Why it is rejected')
 
 
-class DeliveryAnswer(AppModel):
-    """Where a delivery goes, as the shopper gave it."""
-    address: str = Field(..., max_length=DELIVERY_ADDRESS_MAX_LENGTH,
-                         description='The street address')
-    latitude: float = Field(..., description="The pin's degrees north")
-    longitude: float = Field(..., description="The pin's degrees east")
-    notes: str | None = Field(None, max_length=DELIVERY_NOTES_MAX_LENGTH,
-                              description='For the delivery')
-
-
-class FulfillmentAnswer(AppModel):
-    """A FulfillmentForm's choice: a delivery comes with where it goes."""
-    kind: Literal['fulfillment'] = Field(..., description='The answer')
+class DeliveryPinAnswer(AppModel):
+    """A DeliveryPinForm's pin: where the delivery goes."""
+    kind: Literal['deliveryPin'] = Field(..., description='The answer')
     formId: FormId
-    fulfillment: Fulfillment = Field(..., description='Pickup or delivery')
-    delivery: DeliveryAnswer | None = Field(
-        None, description='Where a delivery goes; null for a pickup')
+    latitude: float = Field(..., description='Degrees north')
+    longitude: float = Field(..., description='Degrees east')
 
 
 # The chat route's `form` param (a plain union: a route param cannot be
 # Annotated); ChatFormAnswerTagged reads it by its kind.
-ChatFormAnswer = (StoreDetailsAnswer | LocationAnswer | NewProductsAnswer
-                  | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer
+ChatFormAnswer = (LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer
                   | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer
-                  | HandoverAnswer | ReturnDecisionAnswer
-                  | FulfillmentAnswer)
+                  | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer)
 ChatFormAnswerTagged = Annotated[ChatFormAnswer, Field(discriminator='kind')]

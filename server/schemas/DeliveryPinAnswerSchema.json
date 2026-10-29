@@ -1,0 +1,37 @@
+{
+    "description": "A DeliveryPinForm's pin: where the delivery goes.",
+    "properties": {
+        "kind": {
+            "const": "deliveryPin",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "latitude": {
+            "description": "Degrees north",
+            "title": "Latitude",
+            "type": "number"
+        },
+        "longitude": {
+            "description": "Degrees east",
+            "title": "Longitude",
+            "type": "number"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "latitude",
+        "longitude"
+    ],
+    "title": "DeliveryPinAnswer",
+    "type": "object",
+    "additionalProperties": false
+}
