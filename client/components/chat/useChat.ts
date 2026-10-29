@@ -49,17 +49,15 @@ interface UseChatOptions {
 // What a form answer says until the server's summary arrives.
 function answerLabel(form: ChatFormAnswer): string {
   switch (form.kind) {
-    case 'storeDetails': return `Store details: ${form.name}`;
     case 'location': return 'Here is the store’s pin.';
     case 'newProducts': return `Add ${form.products.length === 1 ? 'this product' : `these ${form.products.length} products`}.`;
-    case 'policy': return 'Here are my policy answers.';
-    case 'return': return 'I want to return these items.';
     case 'phoneVerified': return 'I verified my phone number.';
     case 'photoRequest': return `Make ${form.count} product ${form.count === 1 ? 'photo' : 'photos'}.`;
     case 'orderItems': return 'I’d like to order these.';
     case 'payment': return 'I’ll pay now.';
     case 'handover': return `Mark ${form.orderIds.length === 1 ? 'this order' : `these ${form.orderIds.length} orders`} handed over.`;
     case 'returnDecision': return form.decision === 'approve' ? 'Approve this return.' : 'Reject this return.';
+    case 'deliveryPin': return 'Deliver to my pin.';
     default: return 'Here is my answer.';
   }
 }

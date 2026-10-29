@@ -1,0 +1,65 @@
+{
+    "$defs": {
+        "StoreLocationResponse": {
+            "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "latitude": {
+                    "description": "Degrees north (negative: south)",
+                    "maximum": 90,
+                    "minimum": -90,
+                    "title": "Latitude",
+                    "type": "number"
+                },
+                "longitude": {
+                    "description": "Degrees east (negative: west)",
+                    "maximum": 180,
+                    "minimum": -180,
+                    "title": "Longitude",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "latitude",
+                "longitude"
+            ],
+            "title": "StoreLocationResponse",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "Asks the shopper to pin where their delivery goes: a map and \"use\nwhere I am\", nothing typed (the model asks for the address in chat).\nAnswered with DeliveryPinAnswer.",
+    "properties": {
+        "kind": {
+            "const": "deliveryPinForm",
+            "description": "The form",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "storeLocation": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/StoreLocationResponse"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The store's pin, where the map opens; null until pinned"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "storeLocation"
+    ],
+    "title": "DeliveryPinForm",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -697,21 +697,25 @@ export type Longitude = number;
 /**
  * The form
  */
-export type Kind10 = "storeDetailsForm";
+export type Kind10 = "locationForm";
 /**
  * Answer it with this id
  */
 export type Formid4 = string;
 /**
- * Store name, prefilled
+ * The store's address
  */
-export type Name5 = string | null;
+export type Address1 = string | null;
 /**
- * What it sells
+ * The form
  */
-export type Description2 = string | null;
+export type Kind11 = "newProductsForm";
 /**
- * Prefilled currency
+ * Answer it with this id
+ */
+export type Formid5 = string;
+/**
+ * Prices are in it
  */
 export type Currency8 =
   | "PHP"
@@ -732,62 +736,9 @@ export type Currency8 =
   | "INR"
   | "AED";
 /**
- * Contact number
- */
-export type Contactnumber3 = string | null;
-/**
- * Street address
- */
-export type Address1 = string | null;
-/**
- * Opening hours
- */
-export type Openinghours1 = string | null;
-/**
- * The form
- */
-export type Kind11 = "locationForm";
-/**
- * Answer it with this id
- */
-export type Formid5 = string;
-/**
- * The store's address
- */
-export type Address2 = string | null;
-/**
- * The form
- */
-export type Kind12 = "newProductsForm";
-/**
- * Answer it with this id
- */
-export type Formid6 = string;
-/**
- * Prices are in it
- */
-export type Currency9 =
-  | "PHP"
-  | "USD"
-  | "EUR"
-  | "GBP"
-  | "JPY"
-  | "SGD"
-  | "AUD"
-  | "CAD"
-  | "HKD"
-  | "CNY"
-  | "KRW"
-  | "MYR"
-  | "THB"
-  | "IDR"
-  | "VND"
-  | "INR"
-  | "AED";
-/**
  * Product name
  */
-export type Name6 = string | null;
+export type Name5 = string | null;
 /**
  * Price
  */
@@ -799,7 +750,7 @@ export type Inventory2 = number | null;
 /**
  * What it is
  */
-export type Description3 = string | null;
+export type Description2 = string | null;
 /**
  * Prefilled rows
  *
@@ -809,180 +760,19 @@ export type Products2 = ChatProductDraft[];
 /**
  * The form
  */
-export type Kind13 = "policyForm";
+export type Kind12 = "phoneVerificationForm";
+/**
+ * Answer it with this id
+ */
+export type Formid6 = string;
+/**
+ * The form
+ */
+export type Kind13 = "photoRequestForm";
 /**
  * Answer it with this id
  */
 export type Formid7 = string;
-/**
- * The questions it asks
- */
-export type Section = "payment" | "delivery" | "returns" | "other";
-/**
- * Fees are in it
- */
-export type Currency10 =
-  | "PHP"
-  | "USD"
-  | "EUR"
-  | "GBP"
-  | "JPY"
-  | "SGD"
-  | "AUD"
-  | "CAD"
-  | "HKD"
-  | "CNY"
-  | "KRW"
-  | "MYR"
-  | "THB"
-  | "IDR"
-  | "VND"
-  | "INR"
-  | "AED";
-/**
- * Whether a customer can return an item that is not defective
- */
-export type Acceptsreturns1 = boolean | null;
-/**
- * Days after handover a customer can return an item
- */
-export type Returnwindowdays1 = number | null;
-/**
- * What a returned item must be like, e.g. unused with tags
- */
-export type Returnconditions1 = string | null;
-/**
- * The items that can never be returned
- */
-export type Nonreturnableitems1 = string | null;
-/**
- * How a returned item is refunded
- */
-export type Refundmethod1 = ("originalPayment" | "storeCredit" | "exchange") | null;
-/**
- * Who pays the shipping of a returned item
- */
-export type Returnshippingpaidby1 = ("customer" | "store") | null;
-/**
- * Days after handover a customer has to report a defective or wrong item
- */
-export type Defectreportdays1 = number | null;
-/**
- * How a customer can get an order
- */
-export type Deliveryoptions1 = ["pickup" | "delivery", ...("pickup" | "delivery")[]] | null;
-/**
- * Where the store delivers
- */
-export type Deliveryareas1 = string | null;
-/**
- * Whether delivery is free from an order total (freeDeliveryMinimum)
- */
-export type Offersfreedelivery1 = boolean | null;
-/**
- * The order total from which delivery is free, in the store's currency
- */
-export type Freedeliveryminimum1 = number | null;
-/**
- * Days from payment until the order is ready for pickup or delivered
- */
-export type Handoverdays1 = number | null;
-/**
- * The ways a customer can pay
- */
-export type Acceptedpaymentmethods1 =
-  | [
-      "card" | "gcash" | "maya" | "grabPay" | "bankTransfer",
-      ...("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[]
-    ]
-  | null;
-/**
- * Whether a customer can cancel a paid order
- */
-export type Paidordercancellation1 = ("notAllowed" | "beforeHandover") | null;
-/**
- * Whether the store messages customers about offers
- */
-export type Sendsmarketingmessages1 = boolean | null;
-/**
- * Any other terms, as the admin gave them
- */
-export type Additionalterms1 = string | null;
-/**
- * What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read
- */
-export type Deliveryfeeperkm1 = number | null;
-/**
- * The form
- */
-export type Kind14 = "returnForm";
-/**
- * Answer it with this id
- */
-export type Formid8 = string;
-/**
- * The Orders _id
- */
-export type Orderid1 = string;
-/**
- * The order's currency
- */
-export type Currency11 =
-  | "PHP"
-  | "USD"
-  | "EUR"
-  | "GBP"
-  | "JPY"
-  | "SGD"
-  | "AUD"
-  | "CAD"
-  | "HKD"
-  | "CNY"
-  | "KRW"
-  | "MYR"
-  | "THB"
-  | "IDR"
-  | "VND"
-  | "INR"
-  | "AED";
-/**
- * Its position in the order
- */
-export type Item = number;
-/**
- * Product name when ordered
- */
-export type Name7 = string;
-/**
- * Unit price paid
- */
-export type Price5 = number;
-/**
- * Units ordered
- */
-export type Quantity2 = number;
-/**
- * The order's items (never none)
- *
- * @maxItems 50
- */
-export type Items4 = ChatReturnableItem[];
-/**
- * The form
- */
-export type Kind15 = "phoneVerificationForm";
-/**
- * Answer it with this id
- */
-export type Formid9 = string;
-/**
- * The form
- */
-export type Kind16 = "photoRequestForm";
-/**
- * Answer it with this id
- */
-export type Formid10 = string;
 /**
  * How many photos to make, prefilled
  */
@@ -990,59 +780,11 @@ export type Count = number;
 /**
  * The form
  */
-export type Kind17 = "fulfillmentForm";
+export type Kind14 = "deliveryPinForm";
 /**
  * Answer it with this id
  */
-export type Formid11 = string;
-/**
- * The ways the order can be booked
- *
- * @minItems 1
- * @maxItems 2
- */
-export type Options = ["pickup" | "delivery"] | ["pickup" | "delivery", "pickup" | "delivery"];
-/**
- * Fees are in it
- */
-export type Currency12 =
-  | "PHP"
-  | "USD"
-  | "EUR"
-  | "GBP"
-  | "JPY"
-  | "SGD"
-  | "AUD"
-  | "CAD"
-  | "HKD"
-  | "CNY"
-  | "KRW"
-  | "MYR"
-  | "THB"
-  | "IDR"
-  | "VND"
-  | "INR"
-  | "AED";
-/**
- * Where to pick it up
- */
-export type Storeaddress = string | null;
-/**
- * Where the store delivers
- */
-export type Deliveryareas2 = string | null;
-/**
- * What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read
- */
-export type Deliveryfeeperkm2 = number | null;
-/**
- * The order total from which delivery is free, in the store's currency
- */
-export type Freedeliveryminimum2 = number | null;
-/**
- * Days from payment until the order is ready for pickup or delivered
- */
-export type Handoverdays2 = number | null;
+export type Formid8 = string;
 /**
  * The cards and forms shown under the reply
  */
@@ -1057,14 +799,11 @@ export type Components = (
   | PolicyCard
   | PhotosCard
   | StoreCard
-  | StoreDetailsForm
   | LocationForm
   | NewProductsForm
-  | PolicyForm
-  | ReturnForm
   | PhoneVerificationForm
   | PhotoRequestForm
-  | FulfillmentForm
+  | DeliveryPinForm
 )[];
 /**
  * The form this turn answered
@@ -1337,39 +1076,25 @@ export interface StoreLocationResponse {
   longitude: Longitude;
 }
 /**
- * Asks the admin for the store's details, prefilled with what they
- * said. Answered with StoreDetailsAnswer.
- */
-export interface StoreDetailsForm {
-  kind: Kind10;
-  formId: Formid4;
-  name: Name5;
-  description: Description2;
-  currency: Currency8;
-  contactNumber: Contactnumber3;
-  address: Address1;
-  openingHours: Openinghours1;
-}
-/**
  * Asks the admin to pin the store on a map. Answered with
  * LocationAnswer.
  */
 export interface LocationForm {
-  kind: Kind11;
-  formId: Formid5;
+  kind: Kind10;
+  formId: Formid4;
   /**
    * The pin so far; null when there is none
    */
   location: StoreLocationResponse | null;
-  address: Address2;
+  address: Address1;
 }
 /**
  * Asks the admin for new products. Answered with NewProductsAnswer.
  */
 export interface NewProductsForm {
-  kind: Kind12;
-  formId: Formid6;
-  currency: Currency9;
+  kind: Kind11;
+  formId: Formid5;
+  currency: Currency8;
   products: Products2;
 }
 /**
@@ -1377,57 +1102,10 @@ export interface NewProductsForm {
  * form.
  */
 export interface ChatProductDraft {
-  name: Name6;
+  name: Name5;
   price: Price4;
   inventory: Inventory2;
-  description: Description3;
-}
-/**
- * Asks the admin one section of the store's policy, with its current
- * answers. Answered with PolicyAnswer.
- */
-export interface PolicyForm {
-  kind: Kind13;
-  formId: Formid7;
-  section: Section;
-  currency: Currency10;
-  acceptsReturns: Acceptsreturns1;
-  returnWindowDays: Returnwindowdays1;
-  returnConditions: Returnconditions1;
-  nonReturnableItems: Nonreturnableitems1;
-  refundMethod: Refundmethod1;
-  returnShippingPaidBy: Returnshippingpaidby1;
-  defectReportDays: Defectreportdays1;
-  deliveryOptions: Deliveryoptions1;
-  deliveryAreas: Deliveryareas1;
-  offersFreeDelivery: Offersfreedelivery1;
-  freeDeliveryMinimum: Freedeliveryminimum1;
-  handoverDays: Handoverdays1;
-  acceptedPaymentMethods: Acceptedpaymentmethods1;
-  paidOrderCancellation: Paidordercancellation1;
-  sendsMarketingMessages: Sendsmarketingmessages1;
-  additionalTerms: Additionalterms1;
-  deliveryFeePerKm: Deliveryfeeperkm1;
-}
-/**
- * Asks the shopper which items of a completed order go back and why.
- * Answered with ReturnAnswer.
- */
-export interface ReturnForm {
-  kind: Kind14;
-  formId: Formid8;
-  orderId: Orderid1;
-  currency: Currency11;
-  items: Items4;
-}
-/**
- * An item of the order a return form is about.
- */
-export interface ChatReturnableItem {
-  item: Item;
-  name: Name7;
-  price: Price5;
-  quantity: Quantity2;
+  description: Description2;
 }
 /**
  * Asks the shopper to verify their phone number (Firebase sends the
@@ -1435,34 +1113,28 @@ export interface ChatReturnableItem {
  * stored it.
  */
 export interface PhoneVerificationForm {
-  kind: Kind15;
-  formId: Formid9;
+  kind: Kind12;
+  formId: Formid6;
 }
 /**
  * Asks the admin for photos of one item to turn into product photos.
  * Answered with PhotoRequestAnswer.
  */
 export interface PhotoRequestForm {
-  kind: Kind16;
-  formId: Formid10;
+  kind: Kind13;
+  formId: Formid7;
   count: Count;
 }
 /**
- * Asks the shopper how they get their order: picked up at the store,
- * or delivered to the address they pin. Answered with FulfillmentAnswer.
+ * Asks the shopper to pin where their delivery goes: a map and "use
+ * where I am", nothing typed (the model asks for the address in chat).
+ * Answered with DeliveryPinAnswer.
  */
-export interface FulfillmentForm {
-  kind: Kind17;
-  formId: Formid11;
-  options: Options;
-  currency: Currency12;
-  storeAddress: Storeaddress;
+export interface DeliveryPinForm {
+  kind: Kind14;
+  formId: Formid8;
   /**
-   * The store's pin; null until pinned
+   * The store's pin, where the map opens; null until pinned
    */
   storeLocation: StoreLocationResponse | null;
-  deliveryAreas: Deliveryareas2;
-  deliveryFeePerKm: Deliveryfeeperkm2;
-  freeDeliveryMinimum: Freedeliveryminimum2;
-  handoverDays: Handoverdays2;
 }

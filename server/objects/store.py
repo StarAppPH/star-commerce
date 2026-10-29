@@ -6,7 +6,7 @@ import datetime
 import re
 
 from pydantic import Field, ValidationInfo, field_validator
-from typing import Literal
+from typing import Annotated, Literal
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
                           ResponseModel)
@@ -22,6 +22,9 @@ STORE_ADDRESS_MAX_LENGTH = 200
 STORE_OPENING_HOURS_MAX_LENGTH = 100
 LATITUDE_LIMIT = 90
 LONGITUDE_LIMIT = 180
+# A map pin's coordinates (NaN and infinity are out of range too).
+Latitude = Annotated[float, Field(ge=-LATITUDE_LIMIT, le=LATITUDE_LIMIT)]
+Longitude = Annotated[float, Field(ge=-LONGITUDE_LIMIT, le=LONGITUDE_LIMIT)]
 # The store's link name: lowercase letters and digits, single hyphens between.
 STORE_SLUG_PATTERN = r'^[a-z0-9]+(-[a-z0-9]+)*$'
 STORE_SLUG_MAX_LENGTH = 50
@@ -63,20 +66,20 @@ def hexColor(value, field: str) -> str | None:
 
 class StoreLocation(AppModel):
     """Where a store is on the map, pinned by its admin."""
-    latitude: float = Field(..., ge=-LATITUDE_LIMIT, le=LATITUDE_LIMIT,
-                            description='Degrees north (negative: south)')
-    longitude: float = Field(..., ge=-LONGITUDE_LIMIT, le=LONGITUDE_LIMIT,
-                             description='Degrees east (negative: west)')
+    latitude: Latitude = Field(...,
+                               description='Degrees north (negative: south)')
+    longitude: Longitude = Field(...,
+                                 description='Degrees east (negative: west)')
 
 
 class StoreLocationResponse(ResponseModel):
     """A store's map location as a route sends it. Each field restates
     StoreLocation's, which test_route_response_models.py's MIRRORS keeps
     in step."""
-    latitude: float = Field(..., ge=-LATITUDE_LIMIT, le=LATITUDE_LIMIT,
-                            description='Degrees north (negative: south)')
-    longitude: float = Field(..., ge=-LONGITUDE_LIMIT, le=LONGITUDE_LIMIT,
-                             description='Degrees east (negative: west)')
+    latitude: Latitude = Field(...,
+                               description='Degrees north (negative: south)')
+    longitude: Longitude = Field(...,
+                                 description='Degrees east (negative: west)')
 
 
 class Store(MongoModel):

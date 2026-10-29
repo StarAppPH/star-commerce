@@ -602,9 +602,11 @@ least 1). Take every productId from listStoreProducts, never invent or guess
 one, and list each product once. Before calling, confirm the items and
 quantities with the customer. `fulfillment` is pickup or delivery: when the
 store offers both (getStorePolicy's deliveryOptions), ask the customer
-first, with showFulfillmentForm, which also collects a delivery's
-`delivery` (address, latitude and longitude of the map pin, notes). Send
-exactly what the customer gave, never an address of your own. Delivery
+first. A delivery needs `delivery`: `address`, as the customer gave it
+(house number, street, a landmark), `latitude` and `longitude`, the spot
+they pinned on the map (in the store's chat, showDeliveryPinForm), and
+`notes`, anything for the rider (optional). Send exactly what the customer
+gave, never an address of your own. Delivery
 costs {DELIVERY_USD_PER_KM} US dollars per km in a straight line from the
 store to the delivery pin, in the store's currency at today's rate
 (getStorePolicy's deliveryFeePerKm), nothing from its freeDeliveryMinimum

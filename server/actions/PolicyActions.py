@@ -112,7 +112,8 @@ TEXT_LIMITS = {
 
 
 UPDATE_POLICY_DESCRIPTION = f"""Save answers of the admin's store policies.
-Ask the admin one section at a time:
+Ask the admin one section at a time, one question per message (the admin
+may skip any):
 - payment: acceptedPaymentMethods (a list, {_oneOf(PaymentMethod)}) and
   paidOrderCancellation, whether a customer can cancel a paid order
   ({_oneOf(PaidOrderCancellation)});
