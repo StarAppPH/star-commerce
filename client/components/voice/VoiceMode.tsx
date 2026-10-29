@@ -43,6 +43,11 @@ const STATUS: Record<VoiceState, string> = {
   unsupported: 'Voice isn’t available here',
 };
 
+// How long a pause ends what was said, and how long listening waits for a
+// first word before giving up.
+const END_OF_SPEECH_MS = 1500;
+const NO_SPEECH_MS = 8000;
+
 // Full-screen voice mode: a breathing glow around the screen while it
 // listens, the words appearing as they are spoken, and the reply read aloud
 // and shown in large type.
@@ -91,7 +96,14 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     const instance = new Recognition();
     instance.lang = lang;
     instance.interimResults = true;
-    instance.continuous = false;
+    // Continuous, so a stutter or a breath does not end the turn: it ends
+    // after END_OF_SPEECH_MS without new words (or a tap on the orb).
+    instance.continuous = true;
+    let silenceTimer = window.setTimeout(() => instance.stop(), NO_SPEECH_MS);
+    const stopAfter = (ms: number) => {
+      window.clearTimeout(silenceTimer);
+      silenceTimer = window.setTimeout(() => instance.stop(), ms);
+    };
     instance.onresult = (event) => {
       let live = '';
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -101,11 +113,13 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
       }
       setHeard(finalText);
       setInterim(live);
+      stopAfter(END_OF_SPEECH_MS);
     };
     instance.onerror = () => {
       finalText = '';
     };
     instance.onend = () => {
+      window.clearTimeout(silenceTimer);
       recognition.current = null;
       setInterim('');
       finish(finalText);
