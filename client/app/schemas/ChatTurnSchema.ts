@@ -24,9 +24,36 @@ export type Storeid = string;
  */
 export type Seq = number;
 /**
- * What the user sent
+ * What the user sent ("" when only files were)
  */
 export type Usertext = string;
+/**
+ * The files the user sent with it (none on a turn stored before attachments)
+ *
+ * @maxItems 4
+ */
+export type Attachments =
+  | []
+  | [ChatAttachment]
+  | [ChatAttachment, ChatAttachment]
+  | [ChatAttachment, ChatAttachment, ChatAttachment]
+  | [ChatAttachment, ChatAttachment, ChatAttachment, ChatAttachment];
+/**
+ * Its Storage path, users/<uid>/...
+ */
+export type Path = string;
+/**
+ * Its type
+ */
+export type Contenttype = "image/jpeg" | "image/png" | "application/pdf";
+/**
+ * Its file name, from the path's last segment, sanitised
+ */
+export type Name = string;
+/**
+ * Its size in bytes
+ */
+export type Size = number;
 /**
  * Who sent it
  */
@@ -46,7 +73,7 @@ export type Id1 = string;
 /**
  * The tool called
  */
-export type Name = string;
+export type Name1 = string;
 /**
  * Its arguments, a JSON string
  */
@@ -103,6 +130,7 @@ export interface ChatTurn {
   storeId: Storeid;
   seq: Seq;
   userText: Usertext;
+  attachments?: Attachments;
   steps: Steps;
   replyText: Replytext;
   toolCallCount: Toolcallcount;
@@ -112,6 +140,16 @@ export interface ChatTurn {
   usage: ChatTokenUsage;
   model: Model;
   createdAt: Createdat;
+}
+/**
+ * One file a turn's user message carried, as stored: never its bytes,
+ * which stay in Storage at `path`.
+ */
+export interface ChatAttachment {
+  path: Path;
+  contentType: Contenttype;
+  name: Name;
+  size: Size;
 }
 /**
  * One message of a turn between the user's text and the reply, exactly
@@ -129,7 +167,7 @@ export interface ChatStep {
  */
 export interface ChatToolCall {
   id: Id1;
-  name: Name;
+  name: Name1;
   arguments: Arguments;
 }
 /**

@@ -2908,6 +2908,10 @@ MIRRORS = [
     (ObjectsModule.MyReturnRow, ObjectsModule.Return, {'id', 'items'}),
     (ObjectsModule.StoreReturnRow, ObjectsModule.Return, {'id', 'items'}),
     (ObjectsModule.ReturnItemRow, ObjectsModule.ReturnItem, set()),
+    # attachments is a list of ChatAttachmentRow on the row, of
+    # ChatAttachment on the document: mirrored by the entry after this one.
+    (ObjectsModule.ChatTurnRow, ObjectsModule.ChatTurn, {'attachments'}),
+    (ObjectsModule.ChatAttachmentRow, ObjectsModule.ChatAttachment, set()),
 ]
 
 

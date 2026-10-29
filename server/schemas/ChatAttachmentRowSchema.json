@@ -1,0 +1,36 @@
+{
+    "description": "One file of a turn of getConversationTurns, which the client reads\nthrough the Storage SDK by its path (the owner's own folder). Each\nfield restates ChatAttachment's.",
+    "properties": {
+        "path": {
+            "description": "Its Storage path, users/<uid>/...",
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+        },
+        "contentType": {
+            "description": "Its type",
+            "enum": [
+                "image/jpeg",
+                "image/png",
+                "application/pdf"
+            ],
+            "title": "Contenttype",
+            "type": "string"
+        },
+        "name": {
+            "description": "Its file name, from the path's last segment, sanitised",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        }
+    },
+    "required": [
+        "path",
+        "contentType",
+        "name"
+    ],
+    "title": "ChatAttachmentRow",
+    "type": "object",
+    "additionalProperties": false
+}

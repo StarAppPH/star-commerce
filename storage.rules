@@ -6,16 +6,16 @@ rules_version = '2';
 //   firebase deploy --only storage
 //
 // A signed-in user may read and delete only the files under users/<their
-// uid>/, and upload there only a JPEG or PNG under 10 MB (the apps accept no
-// other image type; HEIC/HEIF must be converted first). Everything else is
+// uid>/, and upload there only a JPEG, PNG or PDF under 10 MB (the apps
+// accept no other image type; HEIC/HEIF must be converted first). Product
+// photo references are JPEG or PNG; chat attachments (users/<uid>/chat/)
+// may also be PDFs, and the server checks each file's type itself. Everything else is
 // denied: no match below allows it. The product photos the server makes
 // (server/photoStorage.py) are under stores/<storeId>/photos/: anyone may
 // get one by its path (customers see them) but nobody may list the folder
 // (a store's drafts stay unlisted), and only the server writes there (its
 // admin credentials bypass these rules).
 //
-// To accept PDFs too, widen the type test:
-//   request.resource.contentType.matches('image/(jpeg|png)|application/pdf')
 // To open another path, add a match block, e.g. product images anyone may
 // read and any signed-in user may upload:
 //   match /products/{allPaths=**} {
@@ -30,7 +30,7 @@ service firebase.storage {
       allow read, delete: if request.auth != null && request.auth.uid == uid;
       allow create, update: if request.auth != null && request.auth.uid == uid
                             && request.resource.size < 10 * 1024 * 1024
-                            && request.resource.contentType.matches('image/(jpeg|png)');
+                            && request.resource.contentType.matches('image/(jpeg|png)|application/pdf');
     }
     match /stores/{storeId}/photos/{file} {
       allow get: if true;

@@ -1,0 +1,43 @@
+{
+    "description": "One file a turn's user message carried, as stored: never its bytes,\nwhich stay in Storage at `path`.",
+    "properties": {
+        "path": {
+            "description": "Its Storage path, users/<uid>/...",
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+        },
+        "contentType": {
+            "description": "Its type",
+            "enum": [
+                "image/jpeg",
+                "image/png",
+                "application/pdf"
+            ],
+            "title": "Contenttype",
+            "type": "string"
+        },
+        "name": {
+            "description": "Its file name, from the path's last segment, sanitised",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "size": {
+            "description": "Its size in bytes",
+            "minimum": 0,
+            "title": "Size",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "path",
+        "contentType",
+        "name",
+        "size"
+    ],
+    "title": "ChatAttachment",
+    "type": "object",
+    "additionalProperties": false
+}

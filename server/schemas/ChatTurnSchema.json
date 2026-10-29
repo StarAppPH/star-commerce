@@ -1,5 +1,48 @@
 {
     "$defs": {
+        "ChatAttachment": {
+            "description": "One file a turn's user message carried, as stored: never its bytes,\nwhich stay in Storage at `path`.",
+            "properties": {
+                "path": {
+                    "description": "Its Storage path, users/<uid>/...",
+                    "minLength": 1,
+                    "title": "Path",
+                    "type": "string"
+                },
+                "contentType": {
+                    "description": "Its type",
+                    "enum": [
+                        "image/jpeg",
+                        "image/png",
+                        "application/pdf"
+                    ],
+                    "title": "Contenttype",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Its file name, from the path's last segment, sanitised",
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "size": {
+                    "description": "Its size in bytes",
+                    "minimum": 0,
+                    "title": "Size",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "path",
+                "contentType",
+                "name",
+                "size"
+            ],
+            "title": "ChatAttachment",
+            "type": "object",
+            "additionalProperties": false
+        },
         "ChatStep": {
             "description": "One message of a turn between the user's text and the reply, exactly\nas sent to Meta: an assistant message asking for tool calls, or one\ntool's result (toolCallId names the call it answers).",
             "properties": {
@@ -168,11 +211,20 @@
             "type": "integer"
         },
         "userText": {
-            "description": "What the user sent",
+            "description": "What the user sent (\"\" when only files were)",
             "maxLength": 2000,
-            "minLength": 1,
             "title": "Usertext",
             "type": "string"
+        },
+        "attachments": {
+            "default": [],
+            "description": "The files the user sent with it (none on a turn stored before attachments)",
+            "items": {
+                "$ref": "#/$defs/ChatAttachment"
+            },
+            "maxItems": 4,
+            "title": "Attachments",
+            "type": "array"
         },
         "steps": {
             "description": "The tool steps, in order",

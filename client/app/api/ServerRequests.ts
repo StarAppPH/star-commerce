@@ -799,7 +799,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendAdminChatMessage(userId: string, message: string, conversationId: string | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendAdminChatMessage(userId: string, message: string, conversationId: string | null, attachments: string[] | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendAdminChatMessage`, {
             method: 'POST',
@@ -807,7 +807,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "message": message, "conversationId": conversationId}),
+            body: JSON.stringify({"userId": userId, "message": message, "conversationId": conversationId, "attachments": attachments}),
             cache: 'no-store'
         });
         const data: ApiResponse<ChatReplyResponse> & { msg?: string } = await res.json();
@@ -822,7 +822,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendStoreChatMessage(userId: string, storeId: string, message: string, conversationId: string | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendStoreChatMessage(userId: string, storeId: string, message: string, conversationId: string | null, attachments: string[] | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendStoreChatMessage`, {
             method: 'POST',
@@ -830,7 +830,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "storeId": storeId, "message": message, "conversationId": conversationId}),
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "message": message, "conversationId": conversationId, "attachments": attachments}),
             cache: 'no-store'
         });
         const data: ApiResponse<ChatReplyResponse> & { msg?: string } = await res.json();
@@ -1086,8 +1086,8 @@ export interface RouteRequestBodies {
     getMyStorePolicy: { userId: string };
     getStorePolicy: { userId: string; storeId: string };
     updateMyStorePolicy: { userId: string; acceptsReturns: boolean | null; returnWindowDays: number | null; returnConditions: string | null; nonReturnableItems: string | null; refundMethod: string | null; returnShippingPaidBy: string | null; defectReportDays: number | null; deliveryOptions: string[] | null; deliveryAreas: string | null; deliveryFee: number | null; freeDeliveryMinimum: number | null; handoverDays: number | null; acceptedPaymentMethods: string[] | null; paidOrderCancellation: string | null; sendsMarketingMessages: boolean | null; additionalTerms: string | null; clear: string[] | null };
-    sendAdminChatMessage: { userId: string; message: string; conversationId: string | null };
-    sendStoreChatMessage: { userId: string; storeId: string; message: string; conversationId: string | null };
+    sendAdminChatMessage: { userId: string; message: string; conversationId: string | null; attachments: string[] | null };
+    sendStoreChatMessage: { userId: string; storeId: string; message: string; conversationId: string | null; attachments: string[] | null };
     listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
     getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };
     sendAdminVoiceMessage: { userId: string; audio: string; conversationId: string | null };

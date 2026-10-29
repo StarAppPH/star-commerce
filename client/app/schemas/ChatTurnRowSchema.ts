@@ -10,9 +10,32 @@
  */
 export type Seq = number;
 /**
- * What the user sent
+ * What the user sent ("" when only files were)
  */
 export type Usertext = string;
+/**
+ * The files the user sent with it (none on a turn stored before attachments)
+ *
+ * @maxItems 4
+ */
+export type Attachments =
+  | []
+  | [ChatAttachmentRow]
+  | [ChatAttachmentRow, ChatAttachmentRow]
+  | [ChatAttachmentRow, ChatAttachmentRow, ChatAttachmentRow]
+  | [ChatAttachmentRow, ChatAttachmentRow, ChatAttachmentRow, ChatAttachmentRow];
+/**
+ * Its Storage path, users/<uid>/...
+ */
+export type Path = string;
+/**
+ * Its type
+ */
+export type Contenttype = "image/jpeg" | "image/png" | "application/pdf";
+/**
+ * Its file name, from the path's last segment, sanitised
+ */
+export type Name = string;
 /**
  * The assistant's reply
  */
@@ -23,12 +46,24 @@ export type Replytext = string;
 export type Createdat = string;
 
 /**
- * One turn of getConversationTurns: the user's text and the reply,
- * never the tool steps. Each field restates ChatTurn's.
+ * One turn of getConversationTurns: the user's text, the files sent
+ * with it and the reply, never the tool steps. Each field restates
+ * ChatTurn's.
  */
 export interface ChatTurnRow {
   seq: Seq;
   userText: Usertext;
+  attachments?: Attachments;
   replyText: Replytext;
   createdAt: Createdat;
+}
+/**
+ * One file of a turn of getConversationTurns, which the client reads
+ * through the Storage SDK by its path (the owner's own folder). Each
+ * field restates ChatAttachment's.
+ */
+export interface ChatAttachmentRow {
+  path: Path;
+  contentType: Contenttype;
+  name: Name;
 }
