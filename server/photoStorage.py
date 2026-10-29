@@ -11,12 +11,15 @@ bucket. Every other environment ignores both.
   bucket (https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>,
   plus the emulator's http://<host>/v0/b/... in localdev only). Any other
   scheme, host or bucket is refused.
-- readOwnImages(): JPEGs or PNGs of at most MAX_IMAGE_BYTES each (and
-  PHOTO_REFERENCES_MAX_TOTAL_BYTES together) under the caller's own
-  users/<uid>/ folder, read by bucket and path through the
-  Storage SDK. Nothing is ever fetched by URL, so no request can make the
-  server fetch an address of its choosing. HEIC/HEIF is refused by name
-  and by type.
+- readOwnFiles(): files of the allowed types and sizes under the caller's
+  own users/<uid>/ folder, read by bucket and path through the Storage
+  SDK. Nothing is ever fetched by URL, so no request can make the server
+  fetch an address of its choosing. HEIC/HEIF is refused by name and by
+  type. readOwnImages() is it for photos: JPEGs or PNGs of at most
+  MAX_IMAGE_BYTES each (and PHOTO_REFERENCES_MAX_TOTAL_BYTES together);
+  the chat's attachments add PDFs.
+- publicPathUrl(): the canonical download URL of a path, without a token
+  (objectPathFromUrl reads it back).
 - saveStorePhoto(): writes stores/<storeId>/photos/<photoId>.jpg, which
   storage.rules lets anyone get (never list) and only the server (admin
   credentials) write, and returns its download URL.
@@ -180,10 +183,11 @@ def _bucket():
         return _client.bucket(bucketName())
 
 
-def objectPathFromUrl(url, label: str) -> str:
+def objectPathFromUrl(url, label: str, kind: str = 'photo') -> str:
     """The object path in our bucket of the download URL `url` (`label`
-    names it in a refusal, which never quotes it)."""
-    notOurs = ValueError(f"{label} is not a photo uploaded to this app")
+    names it in a refusal, which never quotes it; `kind` says what it
+    is)."""
+    notOurs = ValueError(f"{label} is not a {kind} uploaded to this app")
     if not isinstance(url, str):
         raise ValueError(f'{label} must be text')
     try:
@@ -216,15 +220,22 @@ def _emulatorNames(emulator: str) -> set[str]:
     return {f'{host}:{port}' for host in EMULATOR_LOOPBACK_HOSTS}
 
 
+def hasExtension(name: str, extensions: tuple[str, ...]) -> bool:
+    """Whether the file name (or path) `name` ends with one of
+    `extensions` (lower case, with their dot), whatever its case."""
+    return name.lower().endswith(extensions)
+
+
 def _isHeic(name: str) -> bool:
-    return name.lower().endswith(HEIC_EXTENSIONS)
+    return hasExtension(name, HEIC_EXTENSIONS)
 
 
-def ownImagePath(uid: str, path: str, label: str) -> str:
+def ownImagePath(uid: str, path: str, label: str, kind: str = 'photo') -> str:
     """`path`, refused unless it is a file under users/<uid>/: no empty,
     "." or ".." segment, no backslash or control character, no other
-    user's folder. A HEIC/HEIF name is refused (CONVERT_PHOTO)."""
-    notYours = ValueError(f'{label} must be a photo you uploaded')
+    user's folder. A HEIC/HEIF name is refused (CONVERT_PHOTO). `kind`
+    says what it is in a refusal."""
+    notYours = ValueError(f'{label} must be a {kind} you uploaded')
     if (not isinstance(uid, str) or not uid or '/' in uid
             or not isinstance(path, str) or '\\' in path
             or any(unicodedata.category(c) == 'Cc' for c in path)):
@@ -238,10 +249,25 @@ def ownImagePath(uid: str, path: str, label: str) -> str:
     return path
 
 
-def _ownImageBlob(uid: str, path: str, label: str, deadline: float):
-    """The blob of the photo at `path` under the caller `uid`'s own folder
-    (ownImagePath), with its content type: it must exist, be a JPEG or PNG
-    and be at most MAX_IMAGE_BYTES."""
+def _megabytes(size: int) -> str:
+    return f'{size // (1024 * 1024)} MB'
+
+
+def fileExtension(path: str) -> str:
+    """The extension of the path's file name, lower case, with its dot
+    ('' without one)."""
+    name = path.rpartition('/')[2]
+    return name[name.rfind('.'):].lower() if '.' in name else ''
+
+
+def _ownBlob(uid: str, path: str, label: str, allowedTypes: tuple[str, ...],
+             wrongType: str, maxBytes: int,
+             extensionTypes: dict[str, str] | None, deadline: float):
+    """The blob of the file at `path` under the caller `uid`'s own folder
+    (ownImagePath), with its content type: it must exist, be of
+    `allowedTypes` (else `wrongType`, after the label) and, with
+    `extensionTypes` (extension: type), the type its name's extension
+    names, and be at most `maxBytes`."""
     path = ownImagePath(uid, path, label)
     blob = _bucket().get_blob(path, **_limits(deadline))
     if blob is None:
@@ -249,36 +275,70 @@ def _ownImageBlob(uid: str, path: str, label: str, deadline: float):
     contentType = (blob.content_type or '').split(';')[0].strip().lower()
     if contentType in HEIC_CONTENT_TYPES:
         raise ValueError(f'{label} is a HEIC or HEIF photo. {CONVERT_PHOTO}')
-    if contentType not in IMAGE_CONTENT_TYPES:
-        raise ValueError(f'{label} must be a JPG or PNG photo')
-    if blob.size is None or blob.size > MAX_IMAGE_BYTES:
-        raise ValueError(f'{label} is over 10 MB')
+    if contentType not in allowedTypes or (
+            extensionTypes is not None
+            and extensionTypes.get(fileExtension(path)) != contentType):
+        raise ValueError(f'{label} {wrongType}')
+    if blob.size is None or blob.size > maxBytes:
+        raise ValueError(f'{label} is over {_megabytes(maxBytes)}')
     return blob, contentType
 
 
-def readOwnImages(uid: str, photos: list[tuple[str, str]],
-                  deadline: float) -> list[tuple[bytes, str]]:
-    """The bytes and content type of each photo (its label and path) under
-    the caller `uid`'s own folder (_ownImageBlob), read before `deadline`
-    (time.monotonic()). Every photo's metadata is checked before any is
-    downloaded, their sizes together included
-    (PHOTO_REFERENCES_MAX_TOTAL_BYTES)."""
+def readOwnFiles(uid: str, files: list[tuple[str, str]],
+                 allowedTypes: tuple[str, ...], maxBytes: int,
+                 maxTotalBytes: int, deadline: float, *, wrongType: str,
+                 totalTooLarge: str,
+                 extensionTypes: dict[str, str] | None = None,
+                 skipUnreadable: bool = False
+                 ) -> list[tuple[bytes, str] | None]:
+    """The bytes and content type of each file (its label and path) under
+    the caller `uid`'s own folder (_ownBlob: of `allowedTypes`, at most
+    `maxBytes`), read before `deadline` (time.monotonic()). Every file's
+    metadata is checked before any is downloaded, their sizes together
+    included (`maxTotalBytes`, else `totalTooLarge`).
+
+    With `skipUnreadable`, a file that would be refused (gone, of another
+    type, too large, or past `maxTotalBytes` with the files before it) is
+    None instead, and the others are still read: `files` come in the order
+    they take the budget. A Storage failure is a 503 either way."""
     from google.api_core.exceptions import NotFound
     label = None
     try:
-        blobs = []
-        for label, path in photos:
-            blobs.append((label, *_ownImageBlob(uid, path, label, deadline)))
-        total = sum(blob.size for _, blob, _ in blobs)
-        if total > PHOTO_REFERENCES_MAX_TOTAL_BYTES:
-            raise ValueError(REFERENCES_TOO_LARGE)
+        blobs, total = [], 0
+        for label, path in files:
+            try:
+                blob, contentType = _ownBlob(uid, path, label, allowedTypes,
+                                             wrongType, maxBytes,
+                                             extensionTypes, deadline)
+                if skipUnreadable and total + blob.size > maxTotalBytes:
+                    raise ValueError(totalTooLarge)
+            except ValueError:
+                if not skipUnreadable:
+                    raise
+                blobs.append(None)
+                continue
+            total += blob.size
+            blobs.append((label, blob, contentType))
+        if total > maxTotalBytes:
+            raise ValueError(totalTooLarge)
         read = []
-        for label, blob, contentType in blobs:
-            # At most one byte past the limit, should it have grown since.
-            data = blob.download_as_bytes(end=MAX_IMAGE_BYTES,
-                                          **_limits(deadline))
-            if len(data) > MAX_IMAGE_BYTES:
-                raise ValueError(f'{label} is over 10 MB')
+        for entry in blobs:
+            if entry is None:
+                read.append(None)
+                continue
+            label, blob, contentType = entry
+            try:
+                # At most one byte past the limit, should it have grown
+                # since.
+                data = blob.download_as_bytes(end=maxBytes,
+                                              **_limits(deadline))
+                if len(data) > maxBytes:
+                    raise ValueError(f'{label} is over {_megabytes(maxBytes)}')
+            except (NotFound, ValueError):
+                if not skipUnreadable:
+                    raise
+                read.append(None)
+                continue
             read.append((data, contentType))
     except NotFound:
         raise ValueError(f'{label} was not found: upload it again') from None
@@ -287,8 +347,29 @@ def readOwnImages(uid: str, photos: list[tuple[str, str]],
     return read
 
 
+def readOwnImages(uid: str, photos: list[tuple[str, str]],
+                  deadline: float) -> list[tuple[bytes, str]]:
+    """The bytes and content type of each photo (its label and path) under
+    the caller `uid`'s own folder: JPEGs or PNGs of at most MAX_IMAGE_BYTES
+    each and PHOTO_REFERENCES_MAX_TOTAL_BYTES together (readOwnFiles), read
+    before `deadline` (time.monotonic())."""
+    return readOwnFiles(uid, photos, IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES,
+                        PHOTO_REFERENCES_MAX_TOTAL_BYTES, deadline,
+                        wrongType='must be a JPG or PNG photo',
+                        totalTooLarge=REFERENCES_TOO_LARGE)
+
+
 def storePhotoPath(storeId: str, photoId: str) -> str:
     return f'stores/{storeId}/photos/{photoId}.jpg'
+
+
+def publicPathUrl(path: str) -> str:
+    """The canonical download URL of `path` in our bucket
+    (https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>),
+    without a token: objectPathFromUrl reads it back, and Storage serves it
+    only to a caller its rules let read the path."""
+    return (f'https://{DOWNLOAD_HOST}/v0/b/{quote(bucketName(), safe="")}/o/'
+            f'{quote(path, safe="")}')
 
 
 def downloadUrl(path: str, token: str) -> str:
