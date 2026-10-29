@@ -27,7 +27,9 @@ bucket. Every other environment ignores both.
   storage.rules lets anyone get (never list) and only the server (admin
   credentials) write, and returns its download URL.
 - deletePrefix(): deletes every file of one folder, a store's
-  (storeFolder) or a user's (userFolder): what a store reset removes.
+  (storeFolder) or a user's (userFolder, but never its chat/ subfolder);
+  deleteOwnChatFiles() deletes named files of a user's chat/ subfolder:
+  what a store reset removes.
 
 A refusal names the field (imageUrls[0]), never a URL or a path. The client
 is one per process, built on first use under a lock (it is no Mongo client:
@@ -80,9 +82,16 @@ GONE = 'gone'
 REFUSED = 'refused'
 STORE_PHOTO_CONTENT_TYPE = 'image/jpeg'
 DOWNLOAD_TOKEN_KEY = 'firebaseStorageDownloadTokens'
+# The top folders: a store's files (its photos) and a user's own uploads,
+# the chat's attachments in the user's chat/ subfolder.
+STORE_FOLDER = 'stores'
+USER_FOLDER = 'users'
+USER_CHAT_FOLDER = 'chat'
 # The one folder deletePrefix may empty: stores/<id>/ or users/<id>/, the
 # id one segment with no backslash or control character.
-FOLDER_PREFIX_PATTERN = re.compile(r'(stores|users)/([^/\\\x00-\x1f\x7f]+)/')
+FOLDER_PREFIX_PATTERN = re.compile(
+    rf'({re.escape(STORE_FOLDER)}|{re.escape(USER_FOLDER)})'
+    r'/([^/\\\x00-\x1f\x7f]+)/')
 # What routeErrors' 503 names: "Photo storage is unavailable right now".
 STORAGE_SERVICE = 'photo storage'
 CONVERT_PHOTO = 'Convert the photo to JPG or PNG before uploading'
@@ -261,7 +270,7 @@ def ownImagePath(uid: str, path: str, label: str, kind: str = 'photo') -> str:
             or any(unicodedata.category(c) == 'Cc' for c in path)):
         raise notYours
     segments = path.split('/')
-    if (len(segments) < 3 or segments[:2] != ['users', uid]
+    if (len(segments) < 3 or segments[:2] != [USER_FOLDER, uid]
             or any(s in ('', '.', '..') for s in segments)):
         raise notYours
     if _isHeic(path):
@@ -458,7 +467,7 @@ def readOwnImages(uid: str, photos: list[tuple[str, str]],
 
 
 def storePhotoPath(storeId: str, photoId: str) -> str:
-    return f'stores/{storeId}/photos/{photoId}.jpg'
+    return f'{storeFolder(storeId)}photos/{photoId}.jpg'
 
 
 def publicPathUrl(path: str) -> str:
@@ -505,35 +514,78 @@ def saveStorePhoto(storeId: str, photoId: str, data: bytes,
 def storeFolder(storeId: str) -> str:
     """The folder of the store `storeId`'s files (its photos), with its
     trailing slash."""
-    return f'stores/{storeId}/'
+    return f'{STORE_FOLDER}/{storeId}/'
 
 
 def userFolder(uid: str) -> str:
     """The folder of the user `uid`'s own uploads, with its trailing
     slash."""
-    return f'users/{uid}/'
+    return f'{USER_FOLDER}/{uid}/'
+
+
+def userChatFolder(uid: str) -> str:
+    """The subfolder of the user `uid`'s chat attachments, with its
+    trailing slash."""
+    return f'{userFolder(uid)}{USER_CHAT_FOLDER}/'
+
+
+def _deleteBlob(blob, deadline: float) -> bool:
+    """Delete `blob` before `deadline`: False when it was already
+    gone."""
+    from google.api_core.exceptions import NotFound
+    try:
+        blob.delete(**_limits(deadline))
+    except NotFound:
+        return False
+    return True
 
 
 def deletePrefix(prefix: str, deadline: float) -> int:
     """Delete every file under `prefix`, one folder (storeFolder or
     userFolder) and nothing else: anything else, an empty id, "." or ".."
-    included, is a ValueError before Storage is reached. Lists then deletes
-    before `deadline` (time.monotonic()) and returns how many it deleted (a
-    file already gone is not counted). A Storage failure, or the deadline,
-    is a 503."""
-    from google.api_core.exceptions import NotFound
+    included, is a ValueError before Storage is reached. A user folder's
+    chat/ subfolder is kept (userChatFolder): the user's chats at other
+    stores refer to it (deleteOwnChatFiles deletes named files there).
+    Lists then deletes before `deadline` (time.monotonic()) and returns how
+    many it deleted (a file already gone is not counted). A Storage
+    failure, or the deadline, is a 503."""
     match = (FOLDER_PREFIX_PATTERN.fullmatch(prefix)
              if isinstance(prefix, str) else None)
     if match is None or match.group(2) in ('.', '..'):
         raise ValueError('Not a folder Storage may delete')
+    kept = (userChatFolder(match.group(2))
+            if match.group(1) == USER_FOLDER else None)
     deleted = 0
     try:
         for blob in _bucket().list_blobs(prefix=prefix, **_limits(deadline)):
-            try:
-                blob.delete(**_limits(deadline))
-            except NotFound:
+            if kept is not None and blob.name.startswith(kept):
                 continue
-            deleted += 1
+            deleted += _deleteBlob(blob, deadline)
+    except _storageErrors() as error:
+        raise _storageFailure(error) from None
+    return deleted
+
+
+def deleteOwnChatFiles(uid: str, paths, deadline: float) -> int:
+    """Delete each file of `paths` that is under the user `uid`'s chat/
+    subfolder (userChatFolder, and a path ownImagePath accepts); any other
+    path is skipped, never deleted. Before `deadline` (time.monotonic());
+    returns how many it deleted (a file already gone is not counted). A
+    Storage failure, or the deadline, is a 503."""
+    folder = userChatFolder(uid)
+    owned = []
+    for path in dict.fromkeys(paths):
+        try:
+            ownImagePath(uid, path, 'attachment')
+        except ValueError:
+            continue
+        if path.startswith(folder):
+            owned.append(path)
+    deleted = 0
+    try:
+        bucket = _bucket() if owned else None
+        for path in owned:
+            deleted += _deleteBlob(bucket.blob(path), deadline)
     except _storageErrors() as error:
         raise _storageFailure(error) from None
     return deleted

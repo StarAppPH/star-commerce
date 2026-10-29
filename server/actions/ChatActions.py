@@ -113,6 +113,11 @@ from utils import generateRandomString, parseIsoInstant
 CONVERSATIONS = 'Conversations'
 CHAT_TURNS = chatForms.CHAT_TURNS
 CHAT_USAGE = 'ChatUsage'
+# The per-store daily counters' kinds: messages and attachments.
+STORE_CHAT_KIND = 'store'
+STORE_ATTACHMENTS_KIND = 'attachmentsStore'
+# What a store reset carries over to the new store (StoreActions).
+STORE_USAGE_KINDS = (CHAT_USAGE, (STORE_CHAT_KIND, STORE_ATTACHMENTS_KIND))
 # Read at import, so it stays the real timezone when a test replaces this
 # module's `datetime`.
 UTC = datetime.timezone.utc
@@ -243,7 +248,7 @@ def _customerCounters(userId: str, storeId: str,
     return [
         (usageKey('customer', userId, day), CUSTOMER_DAILY_CHAT_CAP,
          CUSTOMER_CAP_REACHED),
-        (usageKey('store', storeId, day), STORE_DAILY_CHAT_CAP,
+        (usageKey(STORE_CHAT_KIND, storeId, day), STORE_DAILY_CHAT_CAP,
          STORE_CAP_REACHED),
     ]
 
@@ -271,7 +276,8 @@ def _takeAttachmentQuota(audience: str, userId: str, storeId: str,
         counters.append(('attachmentsCustomer', userId,
                          CUSTOMER_DAILY_ATTACHMENT_CAP,
                          ATTACHMENT_CAP_REACHED))
-    counters.append(('attachmentsStore', storeId, STORE_DAILY_ATTACHMENT_CAP,
+    counters.append((STORE_ATTACHMENTS_KIND, storeId,
+                     STORE_DAILY_ATTACHMENT_CAP,
                      STORE_ATTACHMENT_CAP_REACHED))
     return takeDailyQuotas(CHAT_USAGE, counters,
                            ('attachmentsAll', STORE_ATTACHMENT_CAP_REACHED),

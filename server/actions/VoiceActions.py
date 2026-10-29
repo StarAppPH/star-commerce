@@ -93,6 +93,17 @@ VOICE_LIMITS = {
     TTS: (CUSTOMER_DAILY_TTS_CHARS, STORE_DAILY_TTS_CHARS,
           VOICE_DAILY_CHARS_ALL_VARIABLE, DEFAULT_VOICE_DAILY_CHARS_ALL),
 }
+
+
+def storeVoiceKind(direction: str) -> str:
+    """The kind of a store's daily counter of `direction` (STT, TTS)."""
+    return f'{direction}Store'
+
+
+# What a store reset carries over to the new store (StoreActions).
+STORE_USAGE_KINDS = (VOICE_USAGE,
+                     tuple(storeVoiceKind(direction)
+                           for direction in VOICE_LIMITS))
 # The speakChatTurn calls one process runs at once: each holds one of
 # gunicorn's 8 threads for up to TTS_DEADLINE_SECONDS.
 SPEAK_CALLS_AT_ONCE = 2
@@ -133,7 +144,7 @@ def _takeVoiceQuota(direction: str, audience: str, userId: str,
     if audience == 'customer':
         counters.append((f'{direction}Customer', userId, customerCap,
                          VOICE_CAP_REACHED))
-    counters.append((f'{direction}Store', storeId, storeCap,
+    counters.append((storeVoiceKind(direction), storeId, storeCap,
                      VOICE_CAP_REACHED))
     return takeDailyQuotas(VOICE_USAGE, counters,
                            (f'{direction}All', VOICE_CAP_REACHED),

@@ -35,7 +35,7 @@ from objects import (DEFAULT_STORE_CURRENCY, LATITUDE_LIMIT, LONGITUDE_LIMIT,
                      StoreThemeResponse, hexColor, projectedCopy,
                      projection_of)
 from route_config import route_config
-from services.__request import ServiceUnavailable
+from actions.usageCounters import appDay
 from sharedConstants import STORE_RESET_ENDS_AT
 from utils import parseIsoInstant
 
@@ -240,46 +240,100 @@ def _deletedCount(result: int | str) -> int:
     return result if isinstance(result, int) else 0
 
 
-def _deleteStoreData(storeId: str) -> dict:
+def _carryOverUsage(oldStoreId: str, newStoreId: str, day: datetime.date,
+                    session) -> None:
+    """Copy the old store's daily counters of `day` (chat, attachments,
+    photos, voice: each module's STORE_USAGE_KINDS) to the new store, in
+    `session`, so a reset never gives a day's quota back."""
+    # Imported here: each of these modules imports this one.
+    from actions import ChatActions, PhotoActions, VoiceActions
+    from actions.usageCounters import usageExpiry, usageKey
+    for collection, kinds in (ChatActions.STORE_USAGE_KINDS,
+                              PhotoActions.STORE_USAGE_KINDS,
+                              VoiceActions.STORE_USAGE_KINDS):
+        for kind in kinds:
+            counter = db.read({'_id': usageKey(kind, oldStoreId, day)},
+                              collection,
+                              projection={'count': 1, 'expireAt': 1},
+                              session=session,
+                              findOne=True)
+            if counter is None or not counter.get('count'):
+                continue
+            db.findOneAndUpdate(
+                {'_id': usageKey(kind, newStoreId, day)},
+                {'$max': {'count': counter['count']},
+                 '$setOnInsert': {'expireAt': (counter.get('expireAt')
+                                               or usageExpiry(day)),
+                                  '_version': 0}},
+                collection,
+                upsert=True,
+                session=session,
+                projection={'_id': 1})
+
+
+def _deleteStoreData(storeId: str, chatPaths: list[str]) -> dict:
     """Delete every document of the store `storeId`: its products, orders
     (and their locks), returns, policy, generated photos and conversations,
     the turns of those conversations with them (by conversationId, in
-    batches). Returns the count deleted per collection. Never the usage
-    counters, Users, Customers, Bootstrap or ExchangeRates."""
+    batches). The attachment paths those turns carried are added to
+    `chatPaths` as each batch is read, so a failure part way still leaves
+    them for _deleteResetFiles. Returns the count deleted per collection.
+    Never the usage counters, Users, Customers, Bootstrap or
+    ExchangeRates."""
     # Imported here: each of these modules imports this one.
     from actions.ChatActions import CHAT_TURNS, CONVERSATIONS
     from actions.OrderActions import ORDER_LOCKS, ORDERS
     from actions.PhotoActions import GENERATED_PHOTOS
     from actions.ProductActions import PRODUCTS
     from actions.ReturnActions import RETURNS
-    deleted = {}
+    deleted = {CHAT_TURNS: 0, CONVERSATIONS: 0}
     conversationIds = [
         conversation['_id'] for conversation in db.read(
             {'storeId': storeId}, CONVERSATIONS, projection={'_id': 1})]
-    deleted[CHAT_TURNS] = 0
     for start in range(0, len(conversationIds), RESET_TURNS_BATCH):
         batch = conversationIds[start:start + RESET_TURNS_BATCH]
+        for turn in db.read({'conversationId': {'$in': batch},
+                             'attachments.0': {'$exists': True}},
+                            CHAT_TURNS, projection={'attachments.path': 1}):
+            chatPaths.extend(attachment['path']
+                             for attachment in turn['attachments']
+                             if isinstance(attachment.get('path'), str))
         deleted[CHAT_TURNS] += _deletedCount(
             db.deleteMany({'conversationId': {'$in': batch}}, CHAT_TURNS))
-    for collection in (CONVERSATIONS, PRODUCTS, ORDERS, ORDER_LOCKS, RETURNS,
-                       POLICIES, GENERATED_PHOTOS):
+        deleted[CONVERSATIONS] += _deletedCount(
+            db.deleteMany({'_id': {'$in': batch}}, CONVERSATIONS))
+    # OrderLocks has no storeId index: an accepted collection scan, once
+    # per reset (the route ends at STORE_RESET_ENDS_AT).
+    for collection in (PRODUCTS, ORDERS, ORDER_LOCKS, RETURNS, POLICIES,
+                       GENERATED_PHOTOS):
         deleted[collection] = _deletedCount(
             db.deleteMany({'storeId': storeId}, collection))
     return deleted
 
 
-def _deleteResetFiles(storeId: str, userId: str) -> tuple[int, int]:
-    """Delete the old store `storeId`'s files and the admin `userId`'s own
-    uploads from Storage, within RESET_STORAGE_SECONDS. A folder that fails
-    is logged (by kind and error class only) and skipped: the reset still
-    succeeds. Returns the files deleted and the folders that failed."""
+def _deleteResetFiles(storeId: str, userId: str,
+                      chatPaths: list[str]) -> tuple[int, int]:
+    """Delete from Storage, within RESET_STORAGE_SECONDS, the old store
+    `storeId`'s files, the admin `userId`'s own uploads but their chat/
+    subfolder (their chats at other stores refer to it), and of that
+    subfolder the files of `chatPaths` (the deleted store's turns' own).
+    A customer's files are never among them. A step that fails is logged
+    (by kind and error class only) and skipped: this never raises. Returns
+    the files deleted and the steps that failed."""
     deadline = time.monotonic() + RESET_STORAGE_SECONDS
     files = failed = 0
-    for kind, folder in (('store', photoStorage.storeFolder(storeId)),
-                         ('user', photoStorage.userFolder(userId))):
+    steps = (
+        ('store', lambda: photoStorage.deletePrefix(
+            photoStorage.storeFolder(storeId), deadline)),
+        ('user', lambda: photoStorage.deletePrefix(
+            photoStorage.userFolder(userId), deadline)),
+        ('chat', lambda: photoStorage.deleteOwnChatFiles(
+            userId, chatPaths, deadline)),
+    )
+    for kind, step in steps:
         try:
-            files += photoStorage.deletePrefix(folder, deadline)
-        except (ServiceUnavailable, ValueError) as error:
+            files += step()
+        except Exception as error:
             failed += 1
             logging.warning({'event': 'storeResetStorageFailed',
                              'folder': kind,
@@ -570,19 +624,25 @@ class StoreActions():
                     {'_id': old['_id'], '_version': old['_version']},
                     STORES, session=session)) != 1:
                 raise ValueError(STORE_CHANGED)
-            return createEmptyStore(userId, createdAt, session)
+            new = createEmptyStore(userId, createdAt, session)
+            _carryOverUsage(old['_id'], new['_id'], appDay(createdAt),
+                            session)
+            return new
 
         new = db.createTransaction(swap)
+        chatPaths = []
         try:
-            deleted = _deleteStoreData(old['_id'])
+            deleted = _deleteStoreData(old['_id'], chatPaths)
         except Exception as error:
             # The swap is done: what is left of the old id is unreachable,
-            # and this id is what a cleanup deletes.
+            # and this id is what a cleanup deletes. The files go anyway.
             logging.error({'event': 'storeResetIncomplete',
                            'oldStoreId': old['_id'],
                            'errorClass': type(error).__name__})
+            _deleteResetFiles(old['_id'], userId, chatPaths)
             raise
-        files, storageFailures = _deleteResetFiles(old['_id'], userId)
+        files, storageFailures = _deleteResetFiles(old['_id'], userId,
+                                                   chatPaths)
         logging.info({'event': 'storeReset',
                       'oldStoreId': old['_id'],
                       'newStoreId': new['_id'],
