@@ -35,6 +35,7 @@ export function ResetStoreDialog({ open, onOpenChange }: { open: boolean; onOpen
   const store = storeState.status === 'ready' ? storeState.store : null;
   const expected = store?.name ?? SETUP_CONFIRM_WORD;
   const matches = foldName(typed) === foldName(expected);
+  const canSubmit = storeState.status === 'ready' && matches && !working;
 
   const changeOpen = (next: boolean) => {
     if (working) return;
@@ -43,7 +44,7 @@ export function ResetStoreDialog({ open, onOpenChange }: { open: boolean; onOpen
   };
 
   const resetStore = async () => {
-    if (!matches || working) return;
+    if (!canSubmit) return;
     setWorking(true);
     try {
       const res = await adminRequest(() => server.resetMyStore(userId, typed.trim()));
@@ -51,7 +52,12 @@ export function ResetStoreDialog({ open, onOpenChange }: { open: boolean; onOpen
       // A failure may still have reset the store, so the screen reloads either way.
       await reloadStore();
       await reloadConversations();
-      if (res.status !== 200) return;
+      if (res.status !== 200) {
+        // Clear the text so the label shows what to type now: the store's
+        // name, or "reset" if the reset did happen.
+        setTyped('');
+        return;
+      }
       changeOpen(false);
       router.replace('/admin/chat');
     } finally {
@@ -108,7 +114,7 @@ export function ResetStoreDialog({ open, onOpenChange }: { open: boolean; onOpen
               type="submit"
               variant="destructive"
               loading={working}
-              disabled={!matches || working}
+              disabled={!canSubmit}
             >
               Reset my store
             </Button>
