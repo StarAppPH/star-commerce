@@ -1,0 +1,105 @@
+{
+    "$defs": {
+        "ChatReturnableItem": {
+            "description": "An item of the order a return form is about.",
+            "properties": {
+                "item": {
+                    "description": "Its position in the order",
+                    "minimum": 1,
+                    "title": "Item",
+                    "type": "integer"
+                },
+                "name": {
+                    "description": "Product name when ordered",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "price": {
+                    "description": "Unit price paid",
+                    "minimum": 0,
+                    "title": "Price",
+                    "type": "number"
+                },
+                "quantity": {
+                    "description": "Units ordered",
+                    "minimum": 1,
+                    "title": "Quantity",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "item",
+                "name",
+                "price",
+                "quantity"
+            ],
+            "title": "ChatReturnableItem",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "Asks the shopper which items of a completed order go back and why.\nAnswered with ReturnAnswer.",
+    "properties": {
+        "kind": {
+            "const": "returnForm",
+            "description": "The form",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "orderId": {
+            "description": "The Orders _id",
+            "title": "Orderid",
+            "type": "string"
+        },
+        "currency": {
+            "description": "The order's currency",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "items": {
+            "description": "The order's items (never none)",
+            "items": {
+                "$ref": "#/$defs/ChatReturnableItem"
+            },
+            "maxItems": 50,
+            "title": "Items",
+            "type": "array"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "orderId",
+        "currency",
+        "items"
+    ],
+    "title": "ReturnForm",
+    "type": "object",
+    "additionalProperties": false
+}

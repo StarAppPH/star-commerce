@@ -25,6 +25,33 @@ const eslintConfig = defineConfig([
       }],
     },
   },
+  // Every image is next/image (optimized, resized and cached by Vercel):
+  // never a raw <img>, Base UI's avatar <img>, a CSS background image, or an
+  // unoptimized next/image without a stated reason.
+  {
+    files: ["**/*.{js,jsx,mjs,ts,tsx}"],
+    rules: {
+      "@next/next/no-img-element": "error",
+      "no-restricted-syntax": ["error",
+        {
+          selector: "JSXAttribute[name.name='unoptimized']",
+          message: "next/image optimizes every image: drop `unoptimized`. Only an image no server can fetch (a blob: preview) may keep it, with an eslint-disable comment saying why.",
+        },
+        {
+          selector: "JSXMemberExpression[object.name='AvatarPrimitive'][property.name='Image']",
+          message: "Use AvatarImage from '@/components/ui/avatar': it renders next/image.",
+        },
+        {
+          selector: "Property[key.name='backgroundImage']",
+          message: "Render images with next/image, not a CSS background image.",
+        },
+        {
+          selector: "Literal[value=/bg-\\[url\\(/], TemplateElement[value.raw=/bg-\\[url\\(/]",
+          message: "Render images with next/image, not a Tailwind url() background.",
+        },
+      ],
+    },
+  },
   // Generated files carry a blanket eslint-disable that is often unused:
   // never report it there (the generator, not a person, owns them).
   {

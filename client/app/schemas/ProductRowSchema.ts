@@ -25,6 +25,10 @@ export type Price = number;
  * Units free to sell; 0 is sold out
  */
 export type Inventory = number;
+/**
+ * The photo the shop shows: the url of one of the store's GeneratedPhotos (setProductPhoto)
+ */
+export type Photourl = string | null;
 
 /**
  * One product as a customer's list sends it. Each field restates
@@ -37,4 +41,5 @@ export interface ProductRow {
   description?: Description;
   price: Price;
   inventory: Inventory;
+  photoUrl?: Photourl;
 }

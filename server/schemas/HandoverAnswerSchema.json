@@ -1,0 +1,38 @@
+{
+    "description": "A StoreOrdersCard's orders handed over.",
+    "properties": {
+        "kind": {
+            "const": "handover",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "orderIds": {
+            "description": "The orders handed over",
+            "items": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Orderids",
+            "type": "array"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "orderIds"
+    ],
+    "title": "HandoverAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

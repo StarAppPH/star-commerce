@@ -1,0 +1,123 @@
+{
+    "$defs": {
+        "ChatStoreProductRow": {
+            "description": "A product on the admin's product card.",
+            "properties": {
+                "_id": {
+                    "description": "Products _id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Product name",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "price": {
+                    "description": "Price in the store's currency",
+                    "minimum": 0,
+                    "title": "Price",
+                    "type": "number"
+                },
+                "inventory": {
+                    "description": "Units free to sell",
+                    "minimum": 0,
+                    "title": "Inventory",
+                    "type": "integer"
+                },
+                "reservedQuantity": {
+                    "description": "Units unpaid orders hold",
+                    "minimum": 0,
+                    "title": "Reservedquantity",
+                    "type": "integer"
+                },
+                "isAvailable": {
+                    "description": "Shown to customers",
+                    "title": "Isavailable",
+                    "type": "boolean"
+                },
+                "soldCount": {
+                    "description": "Units sold so far",
+                    "minimum": 0,
+                    "title": "Soldcount",
+                    "type": "integer"
+                },
+                "photoUrl": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Its photo; null when it has none",
+                    "title": "Photourl"
+                }
+            },
+            "required": [
+                "_id",
+                "name",
+                "price",
+                "inventory",
+                "reservedQuantity",
+                "isAvailable",
+                "soldCount",
+                "photoUrl"
+            ],
+            "title": "ChatStoreProductRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "The admin's products a tool listed, added or changed.",
+    "properties": {
+        "kind": {
+            "const": "storeProducts",
+            "description": "The card",
+            "title": "Kind",
+            "type": "string"
+        },
+        "currency": {
+            "description": "Every price is in it",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "products": {
+            "description": "The products",
+            "items": {
+                "$ref": "#/$defs/ChatStoreProductRow"
+            },
+            "maxItems": 50,
+            "title": "Products",
+            "type": "array"
+        }
+    },
+    "required": [
+        "kind",
+        "currency",
+        "products"
+    ],
+    "title": "StoreProductsCard",
+    "type": "object",
+    "additionalProperties": false
+}

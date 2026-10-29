@@ -253,6 +253,84 @@
             "default": null,
             "description": "The payment provider's id of the refund",
             "title": "Refundreference"
+        },
+        "fulfillment": {
+            "default": "pickup",
+            "description": "How the customer gets it: pickup or delivery",
+            "enum": [
+                "pickup",
+                "delivery"
+            ],
+            "title": "Fulfillment",
+            "type": "string"
+        },
+        "deliveryFee": {
+            "default": 0,
+            "description": "What delivery adds to the total",
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Deliveryfee",
+            "type": "number"
+        },
+        "deliveryAddress": {
+            "anyOf": [
+                {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Where it is delivered, as the customer typed it",
+            "title": "Deliveryaddress"
+        },
+        "deliveryLatitude": {
+            "anyOf": [
+                {
+                    "maximum": 90,
+                    "minimum": -90,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The delivery pin's degrees north",
+            "title": "Deliverylatitude"
+        },
+        "deliveryLongitude": {
+            "anyOf": [
+                {
+                    "maximum": 180,
+                    "minimum": -180,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The delivery pin's degrees east",
+            "title": "Deliverylongitude"
+        },
+        "deliveryNotes": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The customer's notes for the delivery",
+            "title": "Deliverynotes"
         }
     },
     "required": [

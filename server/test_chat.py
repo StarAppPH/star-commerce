@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from pydantic_core import to_json
 from pymongo.errors import DuplicateKeyError
 
+import chatForms
 import chatModel
 import chatTools
 import chatToolsCreator
@@ -354,14 +355,21 @@ ADMIN_TOOLS = {
     'updateStoreProduct', 'listMyStoreProducts', 'getStoreOrders',
     'completeOrder', 'cancelStoreOrder', 'getMyStorePolicy',
     'updateMyStorePolicy', 'updateMyStoreTheme', 'generateProductPhotos',
-    'getStoreReturns', 'approveReturn', 'rejectReturn', 'receiveReturn',
-    'listVoices'
+    'setProductPhoto', 'getStoreReturns', 'approveReturn', 'rejectReturn',
+    'receiveReturn', 'listVoices'
 }
 CUSTOMER_TOOLS = {
     'listStoreProducts', 'getMyOrders', 'createOrder', 'payOrder',
     'cancelMyOrder', 'getStorePolicy', 'requestReturn', 'getMyReturns',
     'cancelMyReturn'
 }
+# The chat-only form tools (chatForms.py), never on the MCP servers.
+ADMIN_FORM_TOOLS = {
+    'showStoreLocationForm', 'showNewProductsForm', 'showPolicyForm',
+    'showPhotoRequestForm'
+}
+CUSTOMER_FORM_TOOLS = {'showReturnForm', 'showPhoneVerification',
+                       'showFulfillmentForm'}
 
 
 # ----------------------------- A. generated tools ----------------------------- #
@@ -369,12 +377,12 @@ CUSTOMER_TOOLS = {
 
 def test_toolLists_haveExactlyTheAudiencesTools():
     names = {
-        audience: [t['function']['name'] for t in chatTools.TOOLS[audience]]
-        for audience in ('admin', 'customer')
+        toolset: [t['function']['name'] for t in chatTools.TOOLS[toolset]]
+        for toolset in chatTools.TOOLS
     }
-    assert set(names['admin']) == ADMIN_TOOLS
-    assert set(names['customer']) == CUSTOMER_TOOLS
-    assert len(names['admin']) == 18 and len(names['customer']) == 9
+    assert set(names['admin']) == ADMIN_TOOLS | ADMIN_FORM_TOOLS
+    assert set(names['customer']) == CUSTOMER_TOOLS | CUSTOMER_FORM_TOOLS
+    assert len(names['admin']) == 23 and len(names['customer']) == 12
     for audience, tools in chatTools.TOOLS.items():
         assert [t['function']['name'] for t in tools] == sorted(names[audience])
         for tool in tools:
@@ -396,9 +404,12 @@ def test_toolLists_matchTheMcpServers():
 
     for audience in ('admin', 'customer'):
         byName = asyncio.run(listed(audience))
-        assert [t['function']['name']
-                for t in chatTools.TOOLS[audience]] == sorted(byName)
-        for tool in chatTools.TOOLS[audience]:
+        # The form tools are the chat's own: the MCP servers list the
+        # route tools.
+        routeTools = [t for t in chatTools.TOOLS[audience]
+                      if t['function']['name'] not in chatForms.FORM_TOOLS]
+        assert [t['function']['name'] for t in routeTools] == sorted(byName)
+        for tool in routeTools:
             mcpTool = byName[tool['function']['name']]
             assert tool['function']['description'] == mcpTool.description
             assert tool['function']['parameters'] == mcpTool.input_schema
@@ -1942,7 +1953,11 @@ def test_getConversationTurns_pagesByBeforeSeq(clean, firebase):
     assertExactShape(ConversationTurnsResponse, res)
     assert [t['seq'] for t in res['turns']] == [4, 3, 2, 1, 0]
     assert set(res['turns'][0]) == {'seq', 'userText', 'replyText',
+                                    'components', 'answeredFormId',
                                     'createdAt'}
+    # Saved before turns had components: none, and no form answered.
+    assert res['turns'][0]['components'] == []
+    assert res['turns'][0]['answeredFormId'] is None
     assert res['turns'][0]['userText'] == 'q4'
     assert res['turns'][0]['replyText'] == 'a4'
     assert 'SECRET' not in json.dumps(res, default=str)

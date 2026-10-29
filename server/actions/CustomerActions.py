@@ -21,7 +21,7 @@ from actions.StoreActions import SET_UP, STORE_NOT_FOUND
 from mongoDb import db
 from objects import (FIREBASE_ID_TOKEN_MAX_LENGTH, PHONE_NUMBER_PATTERN,
                      Customer, CustomerSessionResponse, PhoneVerifiedResponse,
-                     StoreResponse)
+                     ShopStoreResponse)
 from route_config import route_config
 
 CUSTOMERS = 'Customers'
@@ -29,6 +29,8 @@ STORES = 'Stores'
 # The Firebase sign-ins a customer may visit a store with: the anonymous
 # guest, or a phone sign-in (a returning customer on another device).
 GUEST_SIGN_IN_PROVIDERS = ('anonymous', 'phone')
+# The store's brand colors, which the shop is drawn in (ShopStoreResponse).
+SHOP_THEME_FIELDS = ('primaryColor', 'secondaryColor')
 
 
 def _verifiedClaims(idToken: str) -> dict:
@@ -98,10 +100,13 @@ class CustomerActions():
         store = None
         if isinstance(storeSlug, str):
             store = db.readResponse(
-                StoreResponse, {'slug': {'$eq': storeSlug, **SET_UP['slug']}},
-                STORES)
+                ShopStoreResponse,
+                {'slug': {'$eq': storeSlug, **SET_UP['slug']}}, STORES)
         if store is None:
             raise ValueError(STORE_NOT_FOUND)
+        # A brand color is sent only once set (ShopStoreResponse).
+        store = {key: value for key, value in store.items()
+                 if not (key in SHOP_THEME_FIELDS and value is None)}
         customer = _customerOf(claims)
         return {
             '_id': customer['_id'],

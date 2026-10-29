@@ -1,0 +1,57 @@
+{
+    "description": "A StoreReturnsCard's decision on one requested return.",
+    "properties": {
+        "kind": {
+            "const": "returnDecision",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "returnId": {
+            "description": "The Returns _id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Returnid",
+            "type": "string"
+        },
+        "decision": {
+            "description": "The decision",
+            "enum": [
+                "approve",
+                "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+        },
+        "reason": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Why it is rejected",
+            "title": "Reason"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "returnId",
+        "decision"
+    ],
+    "title": "ReturnDecisionAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

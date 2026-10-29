@@ -12,11 +12,11 @@ leaves a failed charge unreverted (the revert matches a paid order only).
 from actions.OrderActions import (NOT_MOVABLE, ORDER_EXPIRED,
                                   ORDER_NOT_FOUND, ORDERS, PAYMENT_METHODS,
                                   PAYMENT_METHODS_TEXT, _cancelExpiredOrder,
-                                  _now, customerAtStore, isExpired,
+                                  _now, customerAtStore, isExpired, orderRow,
                                   unexpiredBy, validOrderId)
 from mcpTools import mcp_tool
 from mongoDb import db
-from objects import ORDER_PAYMENT_MINUTES, MyOrderRow, projectedCopy
+from objects import ORDER_PAYMENT_MINUTES, MyOrderRow
 from payments import chargeDemoPayment, newPaymentReference
 from route_config import route_config
 
@@ -129,4 +129,4 @@ class PaymentActions():
                  '$inc': {'_version': 1}},
                 ORDERS, upsert=False)
             raise ValueError(PAYMENT_FAILED) from error
-        return projectedCopy(MyOrderRow, paid)
+        return orderRow(MyOrderRow, paid)

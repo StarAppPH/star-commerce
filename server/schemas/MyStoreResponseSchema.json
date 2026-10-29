@@ -1,7 +1,7 @@
 {
     "$defs": {
         "AdminStoreResponse": {
-            "description": "The admin's own store: a StoreResponse plus its photo theme and\nvoice, which customers never get (they feed the product photos and the\nspoken replies, not the storefront). Each is sent only once set (a dict the route builds leaves it\nout, and exclude_if drops it from a dump), so a store with no theme\nreads exactly as a StoreResponse. Each field restates Store's\n(test_route_response_models.py's MIRRORS).",
+            "description": "The admin's own store: a StoreResponse plus its photo theme and\nvoice. The photo style feeds the product photos and the voice the\nspoken replies, and customers never get either; they get the brand\ncolors (ShopStoreResponse). Each is sent only once set (a dict the\nroute builds leaves it out, and exclude_if drops it from a dump), so a\nstore with none reads exactly as a StoreResponse. Each field restates\nStore's (test_route_response_models.py's MIRRORS).",
             "properties": {
                 "_id": {
                     "description": "Stores _id",

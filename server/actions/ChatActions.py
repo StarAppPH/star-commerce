@@ -1,14 +1,24 @@
 """ChatActions: the chat with the store's assistant (Meta's Muse model).
 
-A message goes to the model with its audience's tools (chatTools.py,
-generated from the @mcp_tool routes), and the model's tool calls run here,
-in-process, as the signed-in user at the conversation's store
-(chatModel.runTool). The loop ends at the model's text reply, and the turn
-is saved: a Conversations document per chat, a ChatTurns document per
-message (objects/chat.py). Conversations are kept forever.
+A message goes to the model with its toolset's tools (chatTools.py,
+generated from the @mcp_tool routes and chatForms.py's form tools), and the
+model's tool calls run here, in-process, as the signed-in user at the
+conversation's store (chatModel.runTool, chatForms.runFormTool). The loop
+ends at the model's text reply, the turn's cards and forms are built from
+what its tools returned (chatCards.py), and the turn is saved: a
+Conversations document per chat, a ChatTurns document per message
+(objects/chat.py). Conversations are kept forever.
+
+A user's turn is a message, or the answer to a form or a card shown in the
+same conversation (`form`, chatForms.answerTurn): checked against the
+component it answers, once, under the conversation's lock. The model reads
+its details (userContent) and acts on them.
+
+An admin whose store is not set up yet (the empty store sign-up creates)
+chats with the setup toolset only (chatForms.SETUP_TOOLSET).
 
 Who and where come only from the JWT's userId and the conversation's
-storeId: an admin chats at the store they own (requireOwnerStore), a
+storeId: an admin chats at the store they own (requireAnyOwnerStore), a
 customer at the store being visited (customerAtStore, setUpStore). The
 model never chooses either.
 
@@ -33,18 +43,21 @@ import logging
 import threading
 import time
 
+import chatCards
+import chatForms
 import chatModel
 from actions.OrderActions import customerAtStore
 from actions.ProductActions import _validLimit
 from actions.callSlots import slot
-from actions.StoreActions import _validText, requireOwnerStore, setUpStore
+from actions.StoreActions import (_validText, isSetUp, requireAnyOwnerStore,
+                                  setUpStore)
 # QUOTA_ATTEMPTS is imported for the tests, which read it here.
 from actions.usageCounters import (QUOTA_ATTEMPTS, appDay, giveBackQuotas,
                                    takeQuota, takeQuotas, usageExpiry,
                                    usageKey)
 from mongoDb import db
 from objects import (CHAT_MESSAGE_MAX_LENGTH, CHAT_TITLE_MAX_LENGTH,
-                     CHAT_TOOL_CALL_ID_MAX_LENGTH,
+                     CHAT_TOOL_CALL_ID_MAX_LENGTH, ChatFormAnswer,
                      ChatReplyResponse, ChatStep, ChatTokenUsage,
                      ChatToolCall, ChatTurn, ChatTurnRow, Conversation,
                      ConversationListResponse, ConversationRow,
@@ -54,7 +67,7 @@ from services.__request import ServiceUnavailable
 from utils import generateRandomString, parseIsoInstant
 
 CONVERSATIONS = 'Conversations'
-CHAT_TURNS = 'ChatTurns'
+CHAT_TURNS = chatForms.CHAT_TURNS
 CHAT_USAGE = 'ChatUsage'
 # Read at import, so it stays the real timezone when a test replaces this
 # module's `datetime`.
@@ -249,9 +262,11 @@ def _stepMessage(step: dict) -> dict:
 
 
 def _turnMessages(turn: dict) -> list[dict]:
-    """A stored turn as messages: the user's text, its steps (as read: none
-    for an older turn), then the reply."""
-    return [{'role': 'user', 'content': turn['userText']},
+    """A stored turn as messages: the user's turn as the model read it (a
+    form answer's userContent, else its text), its steps (as read: none for
+    an older turn), then the reply."""
+    return [{'role': 'user',
+             'content': turn.get('userContent') or turn['userText']},
             *[_stepMessage(step) for step in turn['steps']],
             {'role': 'assistant', 'content': turn['replyText']}]
 
@@ -267,6 +282,7 @@ def _history(conversationId: str, seq: int) -> list[dict]:
         {'$limit': HISTORY_TURNS},
         {'$project': {
             'userText': 1,
+            'userContent': 1,
             'replyText': 1,
             'steps': {'$cond': [
                 {'$gte': ['$seq', seq - HISTORY_TOOL_STEP_TURNS]},
@@ -338,21 +354,25 @@ class _Usage:
                               cachedTokens=self.cached)
 
 
-def _runModel(audience: str, userId: str, storeId: str,
+def _runModel(toolset: str, userId: str, storeId: str,
               messages: list[dict], progress: dict) -> dict:
-    """Call the model until it replies in text, running its tool calls in
-    between (at most MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call
-    without tools). Returns the reply, the steps, the tools called (as the
-    log names them) and the usage. Sets progress['answered'] once the model
-    answered (before any tool runs). Raises unavailable() past
-    TURN_DEADLINE_SECONDS."""
+    """Call the model with the tools of `toolset` (chatTools.TOOLS) until
+    it replies in text, running its tool calls in between (at most
+    MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call without tools): a
+    route tool through chatModel.runTool, a form tool through
+    chatForms.runFormTool. Returns the reply, the steps, the forms opened
+    (by tool call id), the tools called (as the log names them) and the
+    usage. Sets progress['answered'] once the model answered (before any
+    tool runs). Raises unavailable() past TURN_DEADLINE_SECONDS."""
     from chatTools import TOOLS
     deadline = time.monotonic() + TURN_DEADLINE_SECONDS
     steps, toolNames, usage = [], [], _Usage()
+    forms = {}
+    formTools = chatForms.formToolNames(toolset)
     toolsAllowed = True
     while True:
         completion = chatModel.complete(
-            messages, TOOLS[audience] if toolsAllowed else None, deadline)
+            messages, TOOLS[toolset] if toolsAllowed else None, deadline)
         progress['answered'] = True
         usage.add(completion.usage)
         choice = completion.choices[0] if completion.choices else None
@@ -368,11 +388,19 @@ def _runModel(audience: str, userId: str, storeId: str,
                 elif call['id'] in refusals:
                     toolNames.append(chatModel.UNKNOWN_TOOL)
                     content = chatModel.toolError(refusals[call['id']])
+                elif call['name'] in formTools:
+                    toolNames.append(call['name'])
+                    chatModel.remainingSeconds(deadline)
+                    content, form = chatForms.runFormTool(
+                        toolset, call['name'], call['arguments'], userId,
+                        storeId)
+                    if form is not None:
+                        forms[call['id']] = form
                 else:
-                    toolNames.append(chatModel.toolLogName(audience,
+                    toolNames.append(chatModel.toolLogName(toolset,
                                                            call['name']))
                     chatModel.remainingSeconds(deadline)
-                    content = chatModel.runTool(audience, call['name'],
+                    content = chatModel.runTool(toolset, call['name'],
                                                 call['arguments'], userId,
                                                 storeId)
                 toolStep = _toolStep(call['id'], content)
@@ -384,12 +412,13 @@ def _runModel(audience: str, userId: str, storeId: str,
         if not reply:
             reply = (TOO_LONG_REPLY if choice is not None
                      and choice.finish_reason == 'length' else NO_REPLY)
-        return {'reply': reply, 'steps': steps, 'toolNames': toolNames,
-                'usage': usage.model()}
+        return {'reply': reply, 'steps': steps, 'forms': forms,
+                'toolNames': toolNames, 'usage': usage.model()}
 
 
 def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
-              storeId: str, seq: int, userText: str, answer: dict,
+              storeId: str, seq: int, userTurn: dict, answer: dict,
+              components: list[dict],
               busyUntil: datetime.datetime | None) -> None:
     """Store the turn and move its conversation on, in one transaction (on
     a replica set). `conversation` is the new conversation to insert, or
@@ -402,10 +431,13 @@ def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
                     userId=userId,
                     storeId=storeId,
                     seq=seq,
-                    userText=userText,
+                    userText=userTurn['userText'],
+                    userContent=userTurn['userContent'],
                     steps=[ChatStep.model_validate(step)
                            for step in answer['steps']],
                     replyText=answer['reply'],
+                    components=components,
+                    formAnswer=userTurn['formAnswer'],
                     toolCallCount=len(answer['toolNames']),
                     usage=answer['usage'],
                     model=chatModel.CHAT_MODEL,
@@ -434,20 +466,43 @@ def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
     db.createTransaction(save)
 
 
-def _chatTurn(audience: str, userId: str, storeId: str, message,
-              conversationId) -> dict:
-    """One message of `userId` at `storeId` and the assistant's reply,
-    saved as a turn of the conversation `conversationId` (None: a new
-    one). Refused (503) while CHAT_TURNS_AT_ONCE turns run."""
+def _chatTurn(audience: str, toolset: str, userId: str, storeId: str,
+              message, conversationId, form=None) -> dict:
+    """One message (or form answer) of `userId` at `storeId` and the
+    assistant's reply, with the tools of `toolset`, saved as a turn of the
+    conversation `conversationId` (None: a new one). Refused (503) while
+    CHAT_TURNS_AT_ONCE turns run."""
     with slot(_turnSlots, chatModel.unavailable):
-        return _slottedTurn(audience, userId, storeId, message,
-                            conversationId)
+        return _slottedTurn(audience, toolset, userId, storeId, message,
+                            conversationId, form)
 
 
-def _slottedTurn(audience: str, userId: str, storeId: str, message,
-                 conversationId) -> dict:
-    userText = _validText(message, MESSAGE_LABEL, CHAT_MESSAGE_MAX_LENGTH)
+def _userTurn(message, formAnswer, conversationId: str | None,
+              userId: str) -> dict:
+    """The user's side of a turn: its text, what the model reads (null:
+    the text) and the form answer. A form answer is checked against the
+    form it answers (chatForms.answerTurn), so it needs its conversation's
+    lock: called with it held."""
+    if formAnswer is None:
+        return {'userText': _validText(message, MESSAGE_LABEL,
+                                       CHAT_MESSAGE_MAX_LENGTH),
+                'userContent': None, 'formAnswer': None}
+    userText, userContent = chatForms.answerTurn(conversationId, userId,
+                                                 formAnswer)
+    return {'userText': userText, 'userContent': userContent,
+            'formAnswer': formAnswer.model_dump()}
+
+
+def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
+                 message, conversationId, form) -> dict:
+    formAnswer = chatForms.validAnswer(form)
+    if formAnswer is None:
+        userTurn = _userTurn(message, None, None, userId)
+    elif message is not None and message != '':
+        raise ValueError(chatForms.MESSAGE_AND_FORM)
     conversationId = _validConversationId(conversationId)
+    if formAnswer is not None and conversationId is None:
+        raise ValueError(chatForms.FORM_NEEDS_CONVERSATION)
     now = _now()
     newConversation, busyUntil, seq, history = None, None, 0, []
     if conversationId is None:
@@ -459,7 +514,7 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
             userId=userId,
             audience=audience,
             storeId=storeId,
-            title=userText[:CHAT_TITLE_MAX_LENGTH],
+            title=userTurn['userText'][:CHAT_TITLE_MAX_LENGTH],
             turnCount=0,
             createdAt=now,
             lastMessageAt=now,
@@ -471,25 +526,31 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
         busyUntil, seq = locked['busyUntil'], locked['turnCount']
     started = time.monotonic()
     try:
+        if formAnswer is not None:
+            userTurn = _userTurn(None, formAnswer, conversationId, userId)
         quotaKeys = (_takeCustomerQuota(userId, storeId)
                      if audience == 'customer' else ())
         if newConversation is None:
             history = _history(conversationId, seq)
         messages = [{'role': 'developer',
-                     'content': chatModel.CHAT_PROMPTS[audience]},
+                     'content': chatModel.CHAT_PROMPTS[toolset]},
                     *history,
-                    {'role': 'user', 'content': userText}]
+                    {'role': 'user',
+                     'content': userTurn['userContent']
+                     or userTurn['userText']}]
         progress = {'answered': False}
         try:
-            answer = _runModel(audience, userId, storeId, messages, progress)
+            answer = _runModel(toolset, userId, storeId, messages, progress)
         except ServiceUnavailable:
             # The model never answered, so nothing ran: the message is not
             # counted.
             if not progress['answered']:
                 _giveBackQuota(*quotaKeys)
             raise
+        components = chatCards.build(answer['steps'], answer['forms'],
+                                     chatCards.CardContext(storeId))
         _saveTurn(newConversation, conversationId, userId, storeId, seq,
-                  userText, answer, busyUntil)
+                  userTurn, answer, components, busyUntil)
         busyUntil = None  # cleared by the save
     finally:
         if busyUntil is not None:
@@ -507,8 +568,9 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
         'cachedTokens': usage.cachedTokens,
         'durationMs': round((time.monotonic() - started) * 1000),
     })
-    return {'conversationId': conversationId, 'reply': answer['reply'],
-            'turnSeq': seq}
+    return {'conversationId': conversationId,
+            'userText': userTurn['userText'], 'reply': answer['reply'],
+            'components': components, 'turnSeq': seq}
 
 
 def _validBeforeSeq(beforeSeq) -> dict:
@@ -537,6 +599,13 @@ def _validBefore(before) -> dict:
     return {'lastMessageAt': {'$lt': instant}}
 
 
+def _turnRow(row: dict) -> dict:
+    """A ChatTurns row as getConversationTurns sends it: a turn saved
+    before turns had components shows none, and one that answered no form
+    has a null answeredFormId."""
+    return {'components': [], 'answeredFormId': None, **row}
+
+
 def pagingCursor(instant: datetime.datetime) -> str:
     """`instant` as a paging cursor: ISO 8601 UTC with milliseconds and a
     Z, the precision MongoDB stores, so _validBefore reads it back to the
@@ -553,14 +622,18 @@ class ChatActions():
                   responseModel=ChatReplyResponse)
     def sendAdminChatMessage(self,
                              userId: str,
-                             message: str,
-                             conversationId: str | None = None) -> dict:
-        """Send the admin's message to the store assistant, at the store
-        the admin owns, and return its reply. No conversationId starts a
-        new conversation."""
-        store = requireOwnerStore(userId, {'_id': 1})
-        return _chatTurn('admin', userId, store['_id'], message,
-                         conversationId)
+                             message: str | None = None,
+                             conversationId: str | None = None,
+                             form: ChatFormAnswer | None = None) -> dict:
+        """Send the admin's message, or a form's answer (`form`, in its
+        conversation), to the store assistant at the store the admin owns,
+        and return its reply with the cards and forms to show under it. No
+        conversationId starts a new conversation. Before the store is set
+        up the assistant only sets it up (chatForms.SETUP_TOOLSET)."""
+        store = requireAnyOwnerStore(userId, {'_id': 1, 'slug': 1})
+        toolset = 'admin' if isSetUp(store) else chatForms.SETUP_TOOLSET
+        return _chatTurn('admin', toolset, userId, store['_id'], message,
+                         conversationId, form)
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,
@@ -569,15 +642,18 @@ class ChatActions():
     def sendStoreChatMessage(self,
                              userId: str,
                              storeId: str,
-                             message: str,
-                             conversationId: str | None = None) -> dict:
-        """Send the customer's message to the shopping assistant of the
-        store being visited, and return its reply. No conversationId starts
-        a new conversation. Capped per customer and per store each day."""
+                             message: str | None = None,
+                             conversationId: str | None = None,
+                             form: ChatFormAnswer | None = None) -> dict:
+        """Send the customer's message, or a form's answer (`form`, in its
+        conversation), to the shopping assistant of the store being
+        visited, and return its reply with the cards and forms to show
+        under it. No conversationId starts a new conversation. Capped per
+        customer and per store each day."""
         customerAtStore(userId, storeId)
         setUpStore(storeId, {'_id': 1})
-        return _chatTurn('customer', userId, storeId, message,
-                         conversationId)
+        return _chatTurn('customer', 'customer', userId, storeId, message,
+                         conversationId, form)
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,
@@ -595,7 +671,7 @@ class ChatActions():
         is null on the last page. A lastMessageAt as sent (RFC 1123, whole
         seconds) is no cursor: it would skip rows."""
         if storeId is None or storeId == '':
-            store = requireOwnerStore(userId, {'_id': 1})
+            store = requireAnyOwnerStore(userId, {'_id': 1})
             match = {'userId': userId, 'storeId': store['_id'],
                      'audience': 'admin'}
         else:
@@ -636,5 +712,6 @@ class ChatActions():
                 {'$sort': {'seq': -1}},
                 {'$limit': _validLimit(limit, CHAT_LIST_DEFAULT_LIMIT,
                                        CHAT_LIST_MAX_LIMIT)},
-            ], CHAT_TURNS),
+                {'$addFields': {'answeredFormId': '$formAnswer.formId'}},
+            ], CHAT_TURNS, readWhole=('components', ), prepare=_turnRow),
         }

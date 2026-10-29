@@ -1,0 +1,304 @@
+{
+    "$defs": {
+        "ChatStoreOrderRow": {
+            "description": "An order on the admin's order card.",
+            "properties": {
+                "fulfillment": {
+                    "description": "How the customer gets it: pickup or delivery",
+                    "enum": [
+                        "pickup",
+                        "delivery"
+                    ],
+                    "title": "Fulfillment",
+                    "type": "string"
+                },
+                "deliveryFee": {
+                    "description": "What delivery adds to the total",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Deliveryfee",
+                    "type": "number"
+                },
+                "deliveryAddress": {
+                    "anyOf": [
+                        {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Where it is delivered, as the customer typed it",
+                    "title": "Deliveryaddress"
+                },
+                "deliveryLatitude": {
+                    "anyOf": [
+                        {
+                            "maximum": 90,
+                            "minimum": -90,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery pin's degrees north",
+                    "title": "Deliverylatitude"
+                },
+                "deliveryLongitude": {
+                    "anyOf": [
+                        {
+                            "maximum": 180,
+                            "minimum": -180,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery pin's degrees east",
+                    "title": "Deliverylongitude"
+                },
+                "deliveryNotes": {
+                    "anyOf": [
+                        {
+                            "maxLength": 300,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The customer's notes for the delivery",
+                    "title": "Deliverynotes"
+                },
+                "_id": {
+                    "description": "Orders _id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Where the order is",
+                    "enum": [
+                        "pending",
+                        "paid",
+                        "completed",
+                        "cancelled"
+                    ],
+                    "title": "Status",
+                    "type": "string"
+                },
+                "items": {
+                    "description": "What was ordered",
+                    "items": {
+                        "$ref": "#/$defs/OrderItemRow"
+                    },
+                    "title": "Items",
+                    "type": "array"
+                },
+                "total": {
+                    "description": "What the order costs",
+                    "minimum": 0,
+                    "title": "Total",
+                    "type": "number"
+                },
+                "currency": {
+                    "description": "The order's currency",
+                    "enum": [
+                        "PHP",
+                        "USD",
+                        "EUR",
+                        "GBP",
+                        "JPY",
+                        "SGD",
+                        "AUD",
+                        "CAD",
+                        "HKD",
+                        "CNY",
+                        "KRW",
+                        "MYR",
+                        "THB",
+                        "IDR",
+                        "VND",
+                        "INR",
+                        "AED"
+                    ],
+                    "title": "Currency",
+                    "type": "string"
+                },
+                "contactNumber": {
+                    "description": "The customer's number",
+                    "title": "Contactnumber",
+                    "type": "string"
+                },
+                "createdAt": {
+                    "description": "When it was placed",
+                    "format": "date-time",
+                    "title": "Createdat",
+                    "type": "string"
+                },
+                "paymentMethod": {
+                    "anyOf": [
+                        {
+                            "enum": [
+                                "card",
+                                "gcash",
+                                "maya",
+                                "grabPay",
+                                "bankTransfer"
+                            ],
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "How it was paid",
+                    "title": "Paymentmethod"
+                },
+                "paidAt": {
+                    "anyOf": [
+                        {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "When it was paid",
+                    "title": "Paidat"
+                },
+                "completedAt": {
+                    "anyOf": [
+                        {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "When it was handed over",
+                    "title": "Completedat"
+                },
+                "cancelReason": {
+                    "anyOf": [
+                        {
+                            "enum": [
+                                "expired",
+                                "byStore",
+                                "byCustomer"
+                            ],
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Why it was cancelled",
+                    "title": "Cancelreason"
+                }
+            },
+            "required": [
+                "fulfillment",
+                "deliveryFee",
+                "deliveryAddress",
+                "deliveryLatitude",
+                "deliveryLongitude",
+                "deliveryNotes",
+                "_id",
+                "status",
+                "items",
+                "total",
+                "currency",
+                "contactNumber",
+                "createdAt",
+                "paymentMethod",
+                "paidAt",
+                "completedAt",
+                "cancelReason"
+            ],
+            "title": "ChatStoreOrderRow",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "OrderItemRow": {
+            "description": "One item of an order as a route sends it: OrderItem without its\nproductId. Each field restates OrderItem's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+            "properties": {
+                "name": {
+                    "description": "Product name when ordered",
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "price": {
+                    "description": "Unit price paid, in the order currency",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Price",
+                    "type": "number"
+                },
+                "quantity": {
+                    "description": "Units ordered",
+                    "minimum": 1,
+                    "title": "Quantity",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "name",
+                "price",
+                "quantity"
+            ],
+            "title": "OrderItemRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "The store's orders a tool listed or changed. With paid orders it is\nanswered with HandoverAnswer (formId set); otherwise formId is null.",
+    "properties": {
+        "kind": {
+            "const": "storeOrders",
+            "description": "The card",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "anyOf": [
+                {
+                    "description": "Answer it with this id",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Set when it has paid orders to hand over",
+            "title": "Formid"
+        },
+        "orders": {
+            "description": "The orders",
+            "items": {
+                "$ref": "#/$defs/ChatStoreOrderRow"
+            },
+            "maxItems": 50,
+            "title": "Orders",
+            "type": "array"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "orders"
+    ],
+    "title": "StoreOrdersCard",
+    "type": "object",
+    "additionalProperties": false
+}

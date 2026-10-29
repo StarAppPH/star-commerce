@@ -1,0 +1,160 @@
+{
+    "$defs": {
+        "StoreLocationResponse": {
+            "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "latitude": {
+                    "description": "Degrees north (negative: south)",
+                    "maximum": 90,
+                    "minimum": -90,
+                    "title": "Latitude",
+                    "type": "number"
+                },
+                "longitude": {
+                    "description": "Degrees east (negative: west)",
+                    "maximum": 180,
+                    "minimum": -180,
+                    "title": "Longitude",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "latitude",
+                "longitude"
+            ],
+            "title": "StoreLocationResponse",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "The admin's store a tool read, created or pinned.",
+    "properties": {
+        "kind": {
+            "const": "store",
+            "description": "The card",
+            "title": "Kind",
+            "type": "string"
+        },
+        "name": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Store name",
+            "title": "Name"
+        },
+        "slug": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The store's link name",
+            "title": "Slug"
+        },
+        "currency": {
+            "description": "The store's currency",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "description": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "What the store sells",
+            "title": "Description"
+        },
+        "contactNumber": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Contact number",
+            "title": "Contactnumber"
+        },
+        "address": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Street address",
+            "title": "Address"
+        },
+        "openingHours": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Opening hours",
+            "title": "Openinghours"
+        },
+        "location": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/StoreLocationResponse"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Map location; null until pinned"
+        }
+    },
+    "required": [
+        "kind",
+        "name",
+        "slug",
+        "currency",
+        "description",
+        "contactNumber",
+        "address",
+        "openingHours",
+        "location"
+    ],
+    "title": "StoreCard",
+    "type": "object",
+    "additionalProperties": false
+}

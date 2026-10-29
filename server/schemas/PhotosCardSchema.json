@@ -1,0 +1,50 @@
+{
+    "$defs": {
+        "GeneratedPhotoRow": {
+            "properties": {
+                "_id": {
+                    "description": "GeneratedPhotos _id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "url": {
+                    "description": "Its download URL",
+                    "minLength": 1,
+                    "title": "Url",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "_id",
+                "url"
+            ],
+            "title": "GeneratedPhotoRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "The product photos a tool made.",
+    "properties": {
+        "kind": {
+            "const": "photos",
+            "description": "The card",
+            "title": "Kind",
+            "type": "string"
+        },
+        "photos": {
+            "description": "The photos",
+            "items": {
+                "$ref": "#/$defs/GeneratedPhotoRow"
+            },
+            "title": "Photos",
+            "type": "array"
+        }
+    },
+    "required": [
+        "kind",
+        "photos"
+    ],
+    "title": "PhotosCard",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -1,0 +1,92 @@
+{
+    "$defs": {
+        "DeliveryAnswer": {
+            "description": "Where a delivery goes, as the shopper gave it.",
+            "properties": {
+                "address": {
+                    "description": "The street address",
+                    "maxLength": 200,
+                    "title": "Address",
+                    "type": "string"
+                },
+                "latitude": {
+                    "description": "The pin's degrees north",
+                    "title": "Latitude",
+                    "type": "number"
+                },
+                "longitude": {
+                    "description": "The pin's degrees east",
+                    "title": "Longitude",
+                    "type": "number"
+                },
+                "notes": {
+                    "anyOf": [
+                        {
+                            "maxLength": 300,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "For the delivery",
+                    "title": "Notes"
+                }
+            },
+            "required": [
+                "address",
+                "latitude",
+                "longitude"
+            ],
+            "title": "DeliveryAnswer",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A FulfillmentForm's choice: a delivery comes with where it goes.",
+    "properties": {
+        "kind": {
+            "const": "fulfillment",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "fulfillment": {
+            "description": "Pickup or delivery",
+            "enum": [
+                "pickup",
+                "delivery"
+            ],
+            "title": "Fulfillment",
+            "type": "string"
+        },
+        "delivery": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/DeliveryAnswer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Where a delivery goes; null for a pickup"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "fulfillment"
+    ],
+    "title": "FulfillmentAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -1,0 +1,320 @@
+{
+    "description": "Asks the admin one section of the store's policy, with its current\nanswers. Answered with PolicyAnswer.",
+    "properties": {
+        "kind": {
+            "const": "policyForm",
+            "description": "The form",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "section": {
+            "description": "The questions it asks",
+            "enum": [
+                "payment",
+                "delivery",
+                "returns",
+                "other"
+            ],
+            "title": "Section",
+            "type": "string"
+        },
+        "currency": {
+            "description": "Fees are in it",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "acceptsReturns": {
+            "anyOf": [
+                {
+                    "type": "boolean"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Whether a customer can return an item that is not defective",
+            "title": "Acceptsreturns"
+        },
+        "returnWindowDays": {
+            "anyOf": [
+                {
+                    "maximum": 365,
+                    "minimum": 1,
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Days after handover a customer can return an item",
+            "title": "Returnwindowdays"
+        },
+        "returnConditions": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "What a returned item must be like, e.g. unused with tags",
+            "title": "Returnconditions"
+        },
+        "nonReturnableItems": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The items that can never be returned",
+            "title": "Nonreturnableitems"
+        },
+        "refundMethod": {
+            "anyOf": [
+                {
+                    "enum": [
+                        "originalPayment",
+                        "storeCredit",
+                        "exchange"
+                    ],
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "How a returned item is refunded",
+            "title": "Refundmethod"
+        },
+        "returnShippingPaidBy": {
+            "anyOf": [
+                {
+                    "enum": [
+                        "customer",
+                        "store"
+                    ],
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Who pays the shipping of a returned item",
+            "title": "Returnshippingpaidby"
+        },
+        "defectReportDays": {
+            "anyOf": [
+                {
+                    "maximum": 365,
+                    "minimum": 1,
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Days after handover a customer has to report a defective or wrong item",
+            "title": "Defectreportdays"
+        },
+        "deliveryOptions": {
+            "anyOf": [
+                {
+                    "items": {
+                        "enum": [
+                            "pickup",
+                            "delivery"
+                        ],
+                        "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "How a customer can get an order",
+            "title": "Deliveryoptions"
+        },
+        "deliveryAreas": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Where the store delivers",
+            "title": "Deliveryareas"
+        },
+        "deliveryFee": {
+            "anyOf": [
+                {
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "What delivery costs, in the store's currency",
+            "title": "Deliveryfee"
+        },
+        "freeDeliveryMinimum": {
+            "anyOf": [
+                {
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The order total from which delivery is free, in the store's currency",
+            "title": "Freedeliveryminimum"
+        },
+        "handoverDays": {
+            "anyOf": [
+                {
+                    "maximum": 365,
+                    "minimum": 0,
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Days from payment until the order is handed over or delivered",
+            "title": "Handoverdays"
+        },
+        "acceptedPaymentMethods": {
+            "anyOf": [
+                {
+                    "items": {
+                        "enum": [
+                            "card",
+                            "gcash",
+                            "maya",
+                            "grabPay",
+                            "bankTransfer"
+                        ],
+                        "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The ways a customer can pay",
+            "title": "Acceptedpaymentmethods"
+        },
+        "paidOrderCancellation": {
+            "anyOf": [
+                {
+                    "enum": [
+                        "notAllowed",
+                        "beforeHandover"
+                    ],
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Whether a customer can cancel a paid order",
+            "title": "Paidordercancellation"
+        },
+        "sendsMarketingMessages": {
+            "anyOf": [
+                {
+                    "type": "boolean"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Whether the store messages customers about offers",
+            "title": "Sendsmarketingmessages"
+        },
+        "additionalTerms": {
+            "anyOf": [
+                {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Any other terms, as the admin gave them",
+            "title": "Additionalterms"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "section",
+        "currency",
+        "acceptsReturns",
+        "returnWindowDays",
+        "returnConditions",
+        "nonReturnableItems",
+        "refundMethod",
+        "returnShippingPaidBy",
+        "defectReportDays",
+        "deliveryOptions",
+        "deliveryAreas",
+        "deliveryFee",
+        "freeDeliveryMinimum",
+        "handoverDays",
+        "acceptedPaymentMethods",
+        "paidOrderCancellation",
+        "sendsMarketingMessages",
+        "additionalTerms"
+    ],
+    "title": "PolicyForm",
+    "type": "object",
+    "additionalProperties": false
+}
