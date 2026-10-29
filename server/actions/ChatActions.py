@@ -36,18 +36,23 @@ read through the Storage SDK (photoStorage.ownFiles, downloadFiles: never
 by URL, their contents checked) after the lock, and go to the model as
 base64 data URLs. A turn stores only each file's path, type, name and
 size. One request sends at most CHAT_ATTACHMENTS_MAX_TOTAL_BYTES of files
-(this message's first, refused past it). A message's own files are not
-weighed in images beyond carrying one PDF at most (ONE_PDF_PER_MESSAGE):
-Meta refuses a request past chatModel.MAX_IMAGES_PER_REQUEST images (a
-PDF weighs up to PDF_IMAGE_WEIGHT), so a long PDF with images gets
-UNREADABLE_ATTACHMENT. The history is bounded to what this message leaves
-of both (none of the images when it already weighs 50): within it, the
+(this message's first, refused past it).
+
+A message carries at most one PDF (ONE_PDF_PER_MESSAGE), and its own
+files are not weighed further. A PDF of about 48 pages or more sent with
+images can exceed Muse's 50 images per request
+(chatModel.MAX_IMAGES_PER_REQUEST): Meta then refuses it, the user sees
+UNREADABLE_ATTACHMENT and the quotas are kept. This is accepted.
+
+History is bounded to what the message leaves, in bytes and in images
+(a PDF weighs PDF_IMAGE_WEIGHT; never below 0): within it, the
 files of the last HISTORY_ATTACHMENT_TURNS turns are read again and
 re-sent, newest first; the others are a note in their turn's text. When
 Meta refuses the first call of a request whose history carried files,
 the turn is retried once with those files as notes (same deadline, same
-reserved bytes, no further quota), so one file it cannot read never
-breaks a conversation for good. The bytes a process holds are
+reserved bytes, no further quota; that refusal is logged as a warning,
+the expected path), so one file it cannot read never breaks a
+conversation for good. The bytes a process holds are
 capped (CHAT_ATTACHMENT_BYTES_IN_FLIGHT_MAX, reserved from the stored
 sizes before any download): past it this message is a 503, and a history
 file a note. An admin's image notes carry its URL (no token), which the
@@ -801,7 +806,7 @@ class _Usage:
 def _runModel(toolset: str, userId: str, storeId: str,
               messages: list[dict], progress: dict,
               deadline: float | None = None,
-              refusal=None) -> dict:
+              refusal=None, refusalLevel: int = logging.ERROR) -> dict:
     """Call the model with the tools of `toolset` (chatTools.TOOLS) until
     it replies in text, running its tool calls in between (at most
     MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call without tools): a
@@ -812,7 +817,8 @@ def _runModel(toolset: str, userId: str, storeId: str,
     first model call and progress['answered'] once the model answered
     (before any tool runs). Raises unavailable() past
     TURN_DEADLINE_SECONDS (or `deadline`). `refusal` is
-    chatModel.complete's, on the first call only."""
+    chatModel.complete's, on the first call only, logged at
+    `refusalLevel`."""
     from chatTools import TOOLS
     if deadline is None:
         deadline = time.monotonic() + TURN_DEADLINE_SECONDS
@@ -824,7 +830,8 @@ def _runModel(toolset: str, userId: str, storeId: str,
         progress['sent'] = True
         completion = chatModel.complete(
             messages, TOOLS[toolset] if toolsAllowed else None, deadline,
-            refusal=None if progress['answered'] else refusal)
+            refusal=None if progress['answered'] else refusal,
+            refusalLevel=refusalLevel)
         progress['answered'] = True
         usage.add(completion.usage)
         choice = completion.choices[0] if completion.choices else None
@@ -1031,18 +1038,22 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
                     inFlight)
             ownRefusal = _unreadableAttachment if sent else None
 
-            def run(historyMessages: list[dict], refusal) -> dict:
+            def run(historyMessages: list[dict], refusal,
+                    refusalLevel: int = logging.ERROR) -> dict:
                 return _runModel(
                     toolset, userId, storeId,
                     [{'role': 'developer',
                       'content': chatModel.CHAT_PROMPTS[toolset]},
                      *historyMessages, userMessage],
-                    progress, deadline=deadline, refusal=refusal)
+                    progress, deadline=deadline, refusal=refusal,
+                    refusalLevel=refusalLevel)
             if history['withoutFiles'] is None:
                 answer = run(history['messages'], ownRefusal)
             else:
                 try:
-                    answer = run(history['messages'], _historyFilesRefused)
+                    # The expected path: a warning, then the retry.
+                    answer = run(history['messages'], _historyFilesRefused,
+                                 logging.WARNING)
                 except _HistoryFilesRefused:
                     # Once, with the history's files as notes: its own
                     # files refused again are the user's, else it is ours.

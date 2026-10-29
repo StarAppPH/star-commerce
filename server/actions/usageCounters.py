@@ -140,8 +140,10 @@ def takeDailyQuotas(collection: str, counters: list[tuple[str, str, int, str]],
                     day: datetime.date, amount: int = 1) -> list[str]:
     """Count `amount` on `day` against each counter of `counters` (its
     kind, owner id, cap and refusal) and then all stores' (`allStores`: its
-    kind and refusal; its cap `capAll`, the feature's environment variable
-    read with envCap). An all-stores cap of 0 is the feature turned off
+    kind and refusal) against `capAll`, which the caller has already read
+    (its feature's environment variable, through envCap or a reader of
+    its own such as PhotoActions.dailyCapAll). An all-stores cap of 0 is
+    the feature turned off
     (`turnedOff`, a ValueError, nothing counted). Refused when any would
     pass, and then counted against none (takeQuotas). Returns the keys."""
     if capAll == 0:

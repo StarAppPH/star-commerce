@@ -269,13 +269,15 @@ def callModel(request: Callable[[float], T], deadline: float,
 
 def complete(messages: list[dict], tools: list[dict] | None,
              deadline: float,
-             refusal: Callable[[Exception], Exception | None] | None = None):
+             refusal: Callable[[Exception], Exception | None] | None = None,
+             refusalLevel: int = logging.ERROR):
     """One chat completion of `messages`, with `tools` (None: the model
     must answer in text), done before `deadline` (time.monotonic()), each
     attempt within CLIENT_TIMEOUT_SECONDS and retried as callModel does.
     An SDK error `refusal` maps to an exception is raised as that one
-    (logged as an ERROR: a request of ours Meta refused); any other is then
-    raised as unavailable()."""
+    (logged at `refusalLevel`: an ERROR, a request of ours Meta refused,
+    unless the caller recovers from it); any other is then raised as
+    unavailable()."""
     request = {
         'model': CHAT_MODEL,
         'messages': messages,
@@ -289,7 +291,7 @@ def complete(messages: list[dict], tools: list[dict] | None,
         lambda timeout: client().chat.completions.create(**request,
                                                          timeout=timeout),
         deadline, CLIENT_TIMEOUT_SECONDS, refusal=refusal,
-        refusalLevel=logging.ERROR)
+        refusalLevel=refusalLevel)
 
 
 def toolError(message: str) -> str:
