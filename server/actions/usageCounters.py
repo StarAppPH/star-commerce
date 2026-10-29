@@ -7,7 +7,8 @@ TTL index on expireAt (mongoDb.ensureIndexes) deletes it a day after its
 day ends. takeQuota counts against a cap atomically, so racing callers
 never pass it together; giveBackQuota takes back what a failed call
 counted. takeQuotas and giveBackQuotas do the same for several counters
-at once (a call counted per user and per store, say).
+at once (a call counted per user and per store, say); takeDailyQuotas
+adds the all-stores counter, its cap an environment variable.
 """
 
 import datetime
@@ -24,6 +25,8 @@ UTC = datetime.timezone.utc
 # A counter that a racing first call of the day inserted between our read
 # and write: retried once.
 QUOTA_ATTEMPTS = 2
+# The owner of the all-stores counters (a store _id is a random token).
+ALL_STORES = 'all'
 
 
 def appDay(now: datetime.datetime) -> datetime.date:
@@ -130,3 +133,24 @@ def takeQuotas(collection: str, counters: list[tuple[str, int, str]],
         giveBackQuotas(collection, taken, amount)
         raise
     return taken
+
+
+def takeDailyQuotas(collection: str, counters: list[tuple[str, str, int, str]],
+                    allStores: tuple[str, str], capAllVariable: str,
+                    capAllDefault: int, invalidEvent: str, turnedOff: str,
+                    day: datetime.date, amount: int = 1) -> list[str]:
+    """Count `amount` on `day` against each counter of `counters` (its
+    kind, owner id, cap and refusal) and then all stores' (`allStores`: its
+    kind and refusal; its cap the environment variable `capAllVariable`,
+    read with envCap). An all-stores cap of 0 is the feature turned off
+    (`turnedOff`, a ValueError, nothing counted). Refused when any would
+    pass, and then counted against none (takeQuotas). Returns the keys."""
+    capAll = envCap(capAllVariable, capAllDefault, invalidEvent)
+    if capAll == 0:
+        raise ValueError(turnedOff)
+    allKind, allRefusal = allStores
+    return takeQuotas(collection, [
+        *[(usageKey(kind, ownerId, day), cap, refusal)
+          for kind, ownerId, cap, refusal in counters],
+        (usageKey(allKind, ALL_STORES, day), capAll, allRefusal),
+    ], usageExpiry(day), amount=amount)
