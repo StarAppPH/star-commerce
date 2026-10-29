@@ -129,7 +129,17 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
             {picked.map((photo, index) => (
               <div key={photo.preview} className="relative aspect-square overflow-hidden rounded-lg bg-muted">
-                <Image src={photo.preview} alt={`Photo ${index + 1}`} fill unoptimized className="object-cover" />
+                <Image
+                  src={photo.preview}
+                  alt={`Photo ${index + 1}`}
+                  fill
+                  sizes="120px"
+                  // A preview of a file not uploaded yet (a blob: URL in this
+                  // browser): no server can fetch it to optimize.
+                  // eslint-disable-next-line no-restricted-syntax
+                  unoptimized
+                  className="object-cover"
+                />
                 <Button
                   data-component="photoRequestRemove"
                   variant="secondary"

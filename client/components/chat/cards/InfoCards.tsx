@@ -115,8 +115,6 @@ export function PhotosCard({ component }: ComponentProps<'photos'>) {
               fill
               sizes="(min-width: 640px) 240px, 45vw"
               className="object-cover"
-              // The Storage emulator is on this machine: no optimizing a local address.
-              unoptimized={photo.url.startsWith('http://127.0.0.1')}
             />
           </a>
         ))}

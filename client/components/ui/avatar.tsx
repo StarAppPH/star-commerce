@@ -1,7 +1,9 @@
 "use client";
 
 import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar";
+import Image from "next/image";
 import type React from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 const AVATAR_GROUP_CUT =
@@ -23,18 +25,33 @@ export function Avatar({
   );
 }
 
-export function AvatarImage({
-  className,
-  ...props
-}: AvatarPrimitive.Image.Props): React.ReactElement {
+interface AvatarImageProps {
+  src: string;
+  alt: string;
+  // The rendered size, for next/image to pick the file (default: up to 64px).
+  sizes?: string;
+  className?: string;
+}
+
+// Local change to the vendored file: the image is next/image (optimized,
+// resized and cached), not Base UI's <img>. It covers the fallback once it
+// has loaded, and stays hidden while loading or after an error.
+export function AvatarImage({ src, ...props }: AvatarImageProps): React.ReactElement {
+  return <AvatarImageLoad key={src} src={src} {...props} />;
+}
+
+function AvatarImageLoad({ src, alt, sizes = "64px", className }: AvatarImageProps): React.ReactElement {
+  const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
   return (
-    <AvatarPrimitive.Image
-      className={cn(
-        "absolute inset-0 z-10 size-full rounded-[inherit] object-cover data-error:invisible data-loading:invisible",
-        className,
-      )}
+    <Image
+      src={src}
+      alt={alt}
+      fill
+      sizes={sizes}
+      className={cn("z-10 rounded-[inherit] object-cover", status !== "loaded" && "invisible", className)}
       data-slot="avatar-image"
-      {...props}
+      onLoad={() => setStatus("loaded")}
+      onError={() => setStatus("error")}
     />
   );
 }
