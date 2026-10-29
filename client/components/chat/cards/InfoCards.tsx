@@ -4,7 +4,8 @@ import { ExternalLinkIcon, ImageIcon, MapPinIcon, PackageSearchIcon, ScrollTextI
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChatCard, ProductPhoto } from './ChatCard';
-import { POLICY_VALUE_LABELS, formatMoney } from './format';
+import { type PolicyAnswers, type PolicyQuestion, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
+import { POLICY_VALUE_LABELS, deliveryPerKmText, formatMoney } from './format';
 import type { ComponentProps } from './types';
 
 // The admin's products a tool listed, added or changed.
@@ -38,9 +39,9 @@ export function StoreProductsCard({ component }: ComponentProps<'storeProducts'>
   );
 }
 
-type PolicyAnswers = Omit<ComponentProps<'policy'>['component'], 'kind' | 'currency'>;
+type PolicyRowValue = string | number | boolean | string[] | null;
 
-function shown(value: string | number | boolean | string[] | null, money: (amount: number) => string, isMoney: boolean): string {
+function shown(value: PolicyRowValue, money: (amount: number) => string, isMoney: boolean): string {
   if (value === null) return 'Not answered yet';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') return isMoney ? money(value) : String(value);
@@ -49,32 +50,35 @@ function shown(value: string | number | boolean | string[] | null, money: (amoun
 }
 
 // The policy questions in the order a store's policy page reads.
-export function policyRows(answers: PolicyAnswers): { label: string; value: string | number | boolean | string[] | null; money?: boolean }[] {
+export function policyRows(answers: PolicyAnswers): { question: PolicyQuestion; label: string; value: PolicyRowValue; money?: boolean }[] {
   return [
-    { label: 'Payment methods', value: answers.acceptedPaymentMethods },
-    { label: 'Cancelling a paid order', value: answers.paidOrderCancellation },
-    { label: 'Pickup or delivery', value: answers.deliveryOptions },
-    { label: 'Delivery areas', value: answers.deliveryAreas },
-    { label: 'Delivery fee', value: answers.deliveryFee, money: true },
-    { label: 'Free delivery from', value: answers.freeDeliveryMinimum, money: true },
-    { label: 'Days to hand over', value: answers.handoverDays },
-    { label: 'Accepts returns', value: answers.acceptsReturns },
-    { label: 'Return window (days)', value: answers.returnWindowDays },
-    { label: 'Return conditions', value: answers.returnConditions },
-    { label: 'Not returnable', value: answers.nonReturnableItems },
-    { label: 'Refund', value: answers.refundMethod },
-    { label: 'Return shipping paid by', value: answers.returnShippingPaidBy },
-    { label: 'Days to report a defect', value: answers.defectReportDays },
-    { label: 'Sends offers', value: answers.sendsMarketingMessages },
-    { label: 'Other terms', value: answers.additionalTerms },
+    { question: 'acceptedPaymentMethods', label: 'Payment methods', value: answers.acceptedPaymentMethods },
+    { question: 'paidOrderCancellation', label: 'Cancelling a paid order', value: answers.paidOrderCancellation },
+    { question: 'deliveryOptions', label: 'Pickup or delivery', value: answers.deliveryOptions },
+    { question: 'deliveryAreas', label: 'Delivery areas', value: answers.deliveryAreas },
+    { question: 'offersFreeDelivery', label: 'Free delivery', value: answers.offersFreeDelivery },
+    { question: 'freeDeliveryMinimum', label: 'Free delivery from', value: answers.freeDeliveryMinimum, money: true },
+    { question: 'handoverDays', label: 'Days until ready or delivered', value: answers.handoverDays },
+    { question: 'acceptsReturns', label: 'Accepts returns', value: answers.acceptsReturns },
+    { question: 'returnWindowDays', label: 'Return window (days)', value: answers.returnWindowDays },
+    { question: 'returnConditions', label: 'Return conditions', value: answers.returnConditions },
+    { question: 'nonReturnableItems', label: 'Not returnable', value: answers.nonReturnableItems },
+    { question: 'refundMethod', label: 'Refund', value: answers.refundMethod },
+    { question: 'returnShippingPaidBy', label: 'Return shipping paid by', value: answers.returnShippingPaidBy },
+    { question: 'defectReportDays', label: 'Days to report a defect', value: answers.defectReportDays },
+    { question: 'sendsMarketingMessages', label: 'Sends offers', value: answers.sendsMarketingMessages },
+    { question: 'additionalTerms', label: 'Other terms', value: answers.additionalTerms },
   ];
 }
 
-// The store's policy: every answer, and what the store has not said yet.
+// The store's policy: every answer, what delivery costs, and how many
+// questions that apply the store has not answered yet.
 export function PolicyCard({ component }: ComponentProps<'policy'>) {
-  const rows = policyRows(component);
-  const open = rows.filter((row) => row.value === null).length;
+  const rows = policyRows(component).filter((row) => policyQuestionApplies(row.question, component));
+  const open = unansweredPolicyQuestions(component);
   const money = (amount: number) => formatMoney(amount, component.currency);
+  const delivers = component.deliveryOptions?.includes('delivery') ?? false;
+  const answeredRows = rows.filter((row) => row.value !== null);
   return (
     <ChatCard
       dataComponent="policyCard"
@@ -83,13 +87,19 @@ export function PolicyCard({ component }: ComponentProps<'policy'>) {
       meta={open > 0 ? <Badge variant="warning">{open} not answered</Badge> : undefined}
     >
       <dl className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-x-4 gap-y-2 px-4 py-3 text-sm">
-        {rows.filter((row) => row.value !== null).map((row) => (
+        {answeredRows.map((row) => (
           <div key={row.label} className="contents">
             <dt className="text-muted-foreground">{row.label}</dt>
             <dd>{shown(row.value, money, row.money === true)}</dd>
           </div>
         ))}
-        {open === rows.length && <p className="col-span-2 text-muted-foreground">Nothing answered yet.</p>}
+        {delivers && (
+          <div className="contents">
+            <dt className="text-muted-foreground">Delivery fee</dt>
+            <dd data-component="policyCardDeliveryFee">{deliveryPerKmText(component.deliveryFeePerKm, component.currency)} from the store</dd>
+          </div>
+        )}
+        {answeredRows.length === 0 && <p className="col-span-2 text-muted-foreground">Nothing answered yet.</p>}
       </dl>
     </ChatCard>
   );

@@ -115,13 +115,15 @@ _CUSTOMER_UI = (
     'On the product card the customer picks quantities to order; on the '
     'checkout card they choose how to pay. Before createOrder, check '
     "getStorePolicy: ask \"pickup or delivery?\" only when deliveryOptions "
-    'has both and deliveryFee is set, giving the fee in one short clause '
-    '(free from freeDeliveryMinimum, if set); otherwise leave fulfillment '
+    'has both and deliveryFeePerKm is set, giving that price per km from '
+    'the store in one short clause (free from freeDeliveryMinimum, if '
+    'set); otherwise leave fulfillment '
     'out and createOrder uses the one way that can be booked; when that '
     'way is delivery, still do the delivery steps below. For a pickup, '
     'confirm the items and create the order; never invent the store\'s '
     'address or hours. For a delivery, give the areas and handover days, '
-    'open showDeliveryPinForm, then ask for the address and a landmark, and '
+    'open showDeliveryPinForm (if it refuses, say why and offer pickup), '
+    'then ask for the address and a landmark, and '
     "after that, separately, any notes for the rider (createOrder's "
     '`delivery`). For a return, ask what requestReturn needs, confirm, then '
     'call it. When createOrder needs a verified phone number, open '

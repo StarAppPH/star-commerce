@@ -27,7 +27,7 @@ from typing import Callable, get_args
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from actions.CustomerActions import CUSTOMERS
-from actions.OrderActions import (NO_DELIVERY_FEE_YET, NOT_OFFERED,
+from actions.OrderActions import (NO_STORE_PIN_YET, NOT_OFFERED,
                                   bookableFulfillments, offeredFulfillments,
                                   storeDelivery)
 from actions.StoreActions import STORES, ownerQuery
@@ -245,7 +245,7 @@ def _deliveryPinForm(userId: str, storeId: str,
     if 'delivery' not in offeredFulfillments(delivery):
         raise FormRefused(NOT_OFFERED['delivery'])
     if 'delivery' not in bookableFulfillments(delivery):
-        raise FormRefused(NO_DELIVERY_FEE_YET)
+        raise FormRefused(NO_STORE_PIN_YET)
     store = db.read({'_id': storeId}, STORES, projection={'location': 1},
                     findOne=True)
     if store is None:

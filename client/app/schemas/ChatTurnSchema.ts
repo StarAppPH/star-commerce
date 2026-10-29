@@ -580,6 +580,10 @@ export type Fulfillment = "pickup" | "delivery";
  */
 export type Deliveryfee = number;
 /**
+ * Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on
+ */
+export type Deliverydistancekm = number | null;
+/**
  * Where it is delivered, as the customer typed it
  */
 export type Deliveryaddress = string | null;
@@ -686,6 +690,10 @@ export type Fulfillment1 = "pickup" | "delivery";
  * What delivery adds to the total
  */
 export type Deliveryfee1 = number;
+/**
+ * Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on
+ */
+export type Deliverydistancekm1 = number | null;
 /**
  * Where it is delivered, as the customer typed it
  */
@@ -1001,15 +1009,15 @@ export type Deliveryoptions = ["pickup" | "delivery", ...("pickup" | "delivery")
  */
 export type Deliveryareas = string | null;
 /**
- * What delivery costs, in the store's currency
+ * Whether delivery is free from an order total (freeDeliveryMinimum)
  */
-export type Deliveryfee2 = number | null;
+export type Offersfreedelivery = boolean | null;
 /**
  * The order total from which delivery is free, in the store's currency
  */
 export type Freedeliveryminimum = number | null;
 /**
- * Days from payment until the order is handed over or delivered
+ * Days from payment until the order is ready for pickup or delivered
  */
 export type Handoverdays = number | null;
 /**
@@ -1033,6 +1041,10 @@ export type Sendsmarketingmessages = boolean | null;
  * Any other terms, as the admin gave them
  */
 export type Additionalterms = string | null;
+/**
+ * What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read
+ */
+export type Deliveryfeeperkm = number | null;
 /**
  * The card
  */
@@ -1520,6 +1532,7 @@ export interface StoreOrdersCard {
 export interface ChatStoreOrderRow {
   fulfillment: Fulfillment;
   deliveryFee: Deliveryfee;
+  deliveryDistanceKm: Deliverydistancekm;
   deliveryAddress: Deliveryaddress;
   deliveryLatitude: Deliverylatitude;
   deliveryLongitude: Deliverylongitude;
@@ -1559,6 +1572,7 @@ export interface MyOrdersCard {
 export interface ChatMyOrderRow {
   fulfillment: Fulfillment1;
   deliveryFee: Deliveryfee1;
+  deliveryDistanceKm: Deliverydistancekm1;
   deliveryAddress: Deliveryaddress1;
   deliveryLatitude: Deliverylatitude1;
   deliveryLongitude: Deliverylongitude1;
@@ -1662,13 +1676,14 @@ export interface PolicyCard {
   defectReportDays: Defectreportdays;
   deliveryOptions: Deliveryoptions;
   deliveryAreas: Deliveryareas;
-  deliveryFee: Deliveryfee2;
+  offersFreeDelivery: Offersfreedelivery;
   freeDeliveryMinimum: Freedeliveryminimum;
   handoverDays: Handoverdays;
   acceptedPaymentMethods: Acceptedpaymentmethods;
   paidOrderCancellation: Paidordercancellation;
   sendsMarketingMessages: Sendsmarketingmessages;
   additionalTerms: Additionalterms;
+  deliveryFeePerKm: Deliveryfeeperkm;
 }
 /**
  * The product photos a tool made.

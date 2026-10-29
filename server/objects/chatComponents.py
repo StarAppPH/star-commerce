@@ -27,7 +27,8 @@ from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                            PHOTOS_PER_CALL_MAX, GeneratedPhotoRow)
 from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
                             AdditionalTerms, DefectReportDays, DeliveryAreas,
-                            DeliveryFee, DeliveryOptions, FreeDeliveryMinimum,
+                            DeliveryFeePerKm, DeliveryOptions, FreeDeliveryMinimum,
+                            OffersFreeDelivery,
                             HandoverDays, NonReturnableItems,
                             PaidOrderCancellationAnswer, RefundMethodAnswer,
                             ReturnConditions, ReturnShippingPaidBy,
@@ -237,13 +238,14 @@ class PolicyCard(ResponseModel):
     defectReportDays: DefectReportDays
     deliveryOptions: DeliveryOptions
     deliveryAreas: DeliveryAreas
-    deliveryFee: DeliveryFee
+    offersFreeDelivery: OffersFreeDelivery
     freeDeliveryMinimum: FreeDeliveryMinimum
     handoverDays: HandoverDays
     acceptedPaymentMethods: AcceptedPaymentMethods
     paidOrderCancellation: PaidOrderCancellationAnswer
     sendsMarketingMessages: SendsMarketingMessages
     additionalTerms: AdditionalTerms
+    deliveryFeePerKm: DeliveryFeePerKm
 
 
 class PhotosCard(ResponseModel):

@@ -59,7 +59,8 @@ _SHOP_PRODUCT = ('_id', 'name', 'description', 'price', 'inventory',
 _STORE_PRODUCT = ('_id', 'name', 'price', 'inventory', 'reservedQuantity',
                   'isAvailable', 'soldCount', 'photoUrl')
 _ORDER_ITEM = ('name', 'price', 'quantity')
-_ORDER_DELIVERY = ('fulfillment', 'deliveryFee', 'deliveryAddress',
+_ORDER_DELIVERY = ('fulfillment', 'deliveryFee', 'deliveryDistanceKm',
+                   'deliveryAddress',
                    'deliveryLatitude', 'deliveryLongitude', 'deliveryNotes')
 _STORE_ORDER = ('_id', 'status', 'total', 'currency', 'contactNumber',
                 'createdAt', 'paymentMethod', 'paidAt', 'completedAt',
@@ -166,6 +167,7 @@ def _myReturn(result: dict, context: CardContext) -> dict:
 
 def _policy(result: dict, context: CardContext) -> dict:
     return {'kind': 'policy', 'currency': context.currency(),
+            'deliveryFeePerKm': result.get('deliveryFeePerKm'),
             **{field: result.get(field) for field in POLICY_ANSWER_FIELDS}}
 
 

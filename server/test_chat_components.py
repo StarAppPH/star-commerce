@@ -40,7 +40,8 @@ COLLECTIONS = [
 api = ApiRequests()
 
 # An order row's delivery fields for a pickup (OrderDeliveryRow).
-PICKUP = {'fulfillment': 'pickup', 'deliveryFee': 0, 'deliveryAddress': None,
+PICKUP = {'fulfillment': 'pickup', 'deliveryFee': 0,
+          'deliveryDistanceKm': None, 'deliveryAddress': None,
           'deliveryLatitude': None, 'deliveryLongitude': None,
           'deliveryNotes': None}
 
@@ -196,6 +197,9 @@ def test_theDeliveryPin_isNoConfirmation_inTheCustomerPrompt():
         'admin']
     # A store that only delivers still gets the pin and the address.
     assert 'when that way is delivery, still do the delivery steps' in prompt
+    # Delivery is priced per km (getStorePolicy's deliveryFeePerKm), and
+    # an unpinned store's pin card refuses: the model offers pickup.
+    assert 'deliveryFeePerKm' in prompt and 'offer pickup' in prompt
 
 
 @pytest.mark.parametrize('kind', ['location', 'deliveryPin'])
@@ -711,7 +715,7 @@ def test_cards_fromEveryCardTool_fitTheirModels():
         'completedAt': None, 'cancelledAt': None, 'cancelReason': None,
         'refundedAt': None, 'paymentReference': 'x', 'refundReference': None,
         'fulfillment': 'delivery', 'deliveryFee': 50,
-        'deliveryAddress': '1 Main St', 'deliveryLatitude': 14.5,
+        'deliveryDistanceKm': 5.7, 'deliveryAddress': '1 Main St', 'deliveryLatitude': 14.5,
         'deliveryLongitude': 121.0, 'deliveryNotes': None}
     ret = {'_id': 'r1', 'orderId': 'o1', 'status': 'requested', 'items': [
         {'name': 'A', 'price': 1, 'quantity': 1}], 'reason': 'defective',

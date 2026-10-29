@@ -51,6 +51,8 @@ MAX_PENDING_ORDERS_PER_STORE = 3
 Fulfillment = Literal['pickup', 'delivery']
 DELIVERY_ADDRESS_MAX_LENGTH = 200
 DELIVERY_NOTES_MAX_LENGTH = 300
+# Half the Earth's circumference, rounded up: no two pins are farther apart.
+DELIVERY_DISTANCE_MAX_KM = 20_100
 
 
 class OrderItem(AppModel):
@@ -133,6 +135,10 @@ class Order(MongoModel):
         'pickup', description='How the customer gets it: pickup or delivery')
     deliveryFee: float = Field(0, ge=0, le=PRODUCT_PRICE_MAX,
                                description='What delivery adds to the total')
+    deliveryDistanceKm: float | None = Field(
+        None, ge=0, le=DELIVERY_DISTANCE_MAX_KM,
+        description="Km from the store's pin to the delivery pin, in a "
+        'straight line: what the fee was priced on')
     deliveryAddress: str | None = Field(
         None, min_length=1, max_length=DELIVERY_ADDRESS_MAX_LENGTH,
         description='Where it is delivered, as the customer typed it')
@@ -172,6 +178,10 @@ class OrderDeliveryRow(ResponseModel):
         ..., description='How the customer gets it: pickup or delivery')
     deliveryFee: float = Field(..., ge=0, le=PRODUCT_PRICE_MAX,
                                description='What delivery adds to the total')
+    deliveryDistanceKm: float | None = Field(
+        ..., ge=0, le=DELIVERY_DISTANCE_MAX_KM,
+        description="Km from the store's pin to the delivery pin, in a "
+        'straight line: what the fee was priced on')
     deliveryAddress: str | None = Field(
         ..., min_length=1, max_length=DELIVERY_ADDRESS_MAX_LENGTH,
         description='Where it is delivered, as the customer typed it')

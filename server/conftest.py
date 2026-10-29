@@ -313,6 +313,61 @@ def _recordPublishedMessages(monkeypatch):
     yield
 
 
+# --- No real exchange-rate call ---------------------------------------------
+# Every test prices a delivery at TEST_USD_RATES: exchangeRates.httpSession()
+# answers them as open.er-api.com would (FakeRatesSession), so no test
+# reaches the network. test_deliveryPricing.py replaces it to test failures.
+
+TEST_USD_RATES = {
+    'PHP': 58.0, 'USD': 1.0, 'EUR': 0.92, 'GBP': 0.79, 'JPY': 150.0,
+    'SGD': 1.35, 'AUD': 1.52, 'CAD': 1.37, 'HKD': 7.8, 'CNY': 7.2,
+    'KRW': 1380.0, 'MYR': 4.7, 'THB': 36.0, 'IDR': 16000.0, 'VND': 25000.0,
+    'INR': 83.0, 'AED': 3.67,
+}
+
+
+class FakeRatesResponse:
+    def __init__(self, status: int, body: bytes):
+        self.status_code = status
+        self.body = body
+
+    def iter_content(self, chunkSize: int):
+        for start in range(0, len(self.body), chunkSize):
+            yield self.body[start:start + chunkSize]
+
+    def close(self) -> None:
+        pass
+
+
+class FakeRatesSession:
+    """exchangeRates' Session: answers every GET with `status` and `body`
+    (default: TEST_USD_RATES), or raises `error`; counts the calls."""
+
+    def __init__(self, status: int = 200, body=None,
+                 error: Exception | None = None):
+        import json
+        self.status = status
+        self.body = (json.dumps({'result': 'success',
+                                 'rates': TEST_USD_RATES}).encode()
+                     if body is None else body)
+        self.error = error
+        self.calls = 0
+
+    def get(self, url, **kwargs):
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        return FakeRatesResponse(self.status, self.body)
+
+
+@pytest.fixture(autouse=True)
+def _fakeExchangeRates(monkeypatch):
+    import exchangeRates
+    session = FakeRatesSession()
+    monkeypatch.setattr(exchangeRates, 'httpSession', lambda: session)
+    yield session
+
+
 def lastPublishedPayload(functionName):
     """The message the last publish of `functionName` (a publisher route or
     a module-level publisher) sent in this test."""

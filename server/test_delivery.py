@@ -1,5 +1,7 @@
 """Delivery on orders: createOrder's fulfillment (pickup or delivery, as the
-store's policy offers it), the delivery fee in the order's total, the
+store's policy offers it), the delivery fee (per km from the store's pin, in
+the store's currency: test_deliveryPricing.py tests the pricing itself) in
+the order's total, the
 address, pin and notes a delivery keeps, orders stored before delivery
 existed (read as pickups), and the chat's delivery: pickup or delivery
 asked in chat, the pin-only map card (showDeliveryPinForm and its answer),
@@ -17,7 +19,7 @@ import pytest
 import chatForms
 from actions.OrderActions import (CHOOSE_FULFILLMENT, DELIVERY_FOR_PICKUP,
                                   DELIVERY_NOT_AN_OBJECT, DELIVERY_REQUIRED,
-                                  INVALID_FULFILLMENT, NO_DELIVERY_FEE_YET,
+                                  INVALID_FULFILLMENT, NO_STORE_PIN_YET,
                                   NOT_OFFERED)
 from ApiRequests import ApiRequests
 from conftest import (addOrder, addProduct, assertExactShape,
@@ -35,16 +37,23 @@ __all__ = ['clock', 'frozenNow', 'model', 'offline']
 
 COLLECTIONS = [
     'Users', 'Bootstrap', 'Stores', 'Policies', 'Customers', 'Products',
-    'Orders', 'OrderLocks', 'Conversations', 'ChatTurns', 'ChatUsage'
+    'Orders', 'OrderLocks', 'Conversations', 'ChatTurns', 'ChatUsage',
+    'ExchangeRates'
 ]
 ADMIN = 'dl-admin'
 GUEST = 'dl-guest-uid'
 SENTINEL = 'ZQ-secret-7'
-DELIVERS = {'deliveryOptions': ['pickup', 'delivery'], 'deliveryFee': 50,
-            'freeDeliveryMinimum': 1000}
+DELIVERS = {'deliveryOptions': ['pickup', 'delivery'],
+            'offersFreeDelivery': True, 'freeDeliveryMinimum': 1000}
+# The store's pin, in Quezon City: 10.7 km from HOME, which at 0.15 USD a
+# km and conftest's 58 PHP a dollar (8.70 PHP a km) costs 93.09 PHP.
+STORE_PIN = {'latitude': 14.6507, 'longitude': 121.03}
 HOME = {'address': '7 Mabini St, Makati', 'latitude': 14.5547,
         'longitude': 121.0244, 'notes': 'Blue gate'}
+HOME_KM = 10.7
+HOME_FEE = 93.09
 PICKUP_FIELDS = {'fulfillment': 'pickup', 'deliveryFee': 0,
+                 'deliveryDistanceKm': None,
                  'deliveryAddress': None, 'deliveryLatitude': None,
                  'deliveryLongitude': None, 'deliveryNotes': None}
 
@@ -62,10 +71,14 @@ def exactly(message: str) -> str:
     return '^' + re.escape(message) + '$'
 
 
-def shop(firebase, **policy):
-    """A store with products, its policy set to `policy`, and a verified
-    guest: (store, customerId, products by name)."""
+def shop(firebase, pinned: bool = True, **policy):
+    """A store with products, pinned at STORE_PIN unless not `pinned`, its
+    policy set to `policy`, and a verified guest: (store, customerId,
+    products by name)."""
     store = storeWithProducts(ADMIN)
+    if pinned:
+        api.setUserStoreLocation(ADMIN, STORE_PIN['latitude'],
+                                 STORE_PIN['longitude'])
     if policy:
         api.updateMyStorePolicy(ADMIN, **policy)
     customerId = verifiedGuestAt(firebase, store, GUEST)
@@ -112,17 +125,30 @@ def test_aDelivery_addsTheFeeToTheTotal_andKeepsWhereItGoes(clean, firebase):
                           {**HOME, 'address': '  7 Mabini St, Makati  '})
 
     assertExactShape(CreatedOrderResponse, res)
-    expected = {'fulfillment': 'delivery', 'deliveryFee': 50,
+    expected = {'fulfillment': 'delivery', 'deliveryFee': HOME_FEE,
+                'deliveryDistanceKm': HOME_KM,
                 'deliveryAddress': HOME['address'],
                 'deliveryLatitude': HOME['latitude'],
                 'deliveryLongitude': HOME['longitude'],
                 'deliveryNotes': HOME['notes']}
     assert deliveryOf(res['order']) == expected
     # The fee is in the total: what payOrder charges.
-    assert res['order']['total'] == 2 * 5 + 50
+    assert res['order']['total'] == 2 * 5 + 93.09
     order = stored(res['order']['_id'])
     assert deliveryOf(order) == expected
-    assert order['total'] == 60
+    assert order['total'] == 103.09
+
+
+def test_aFartherDelivery_costsMore(clean, firebase):
+    store, customerId, products = shop(firebase, **DELIVERS)
+    # 0.7 km from the store's pin: 6.09 PHP.
+    near = {**HOME, 'latitude': 14.6445, 'longitude': 121.03}
+
+    res = api.createOrder(customerId, store['_id'],
+                          items(products['Pandesal']), 'delivery', near)
+
+    assert (res['order']['deliveryDistanceKm'], res['order']['deliveryFee'],
+            res['order']['total']) == (0.7, 6.09, 11.09)
 
 
 def test_fromTheFreeDeliveryMinimum_deliveryIsFree(clean, firebase):
@@ -134,8 +160,8 @@ def test_fromTheFreeDeliveryMinimum_deliveryIsFree(clean, firebase):
     exact = api.createOrder(customerId, store['_id'], items(box), 'delivery',
                             HOME)
 
-    assert (under['order']['deliveryFee'], under['order']['total']) == (50,
-                                                                         700)
+    assert (under['order']['deliveryFee'], under['order']['total']) == (
+        93.09, 743.09)
     assert (exact['order']['deliveryFee'], exact['order']['total']) == (0,
                                                                          1000)
 
@@ -170,13 +196,13 @@ def test_aStoreOfferingBoth_needsTheCustomersChoice(clean, firebase):
 def test_aStoreThatOnlyDelivers_choosesDeliveryForTheCustomer(clean,
                                                               firebase):
     store, customerId, products = shop(firebase, deliveryOptions=['delivery'],
-                                       deliveryFee=30)
+                                       offersFreeDelivery=False)
 
     res = api.createOrder(customerId, store['_id'],
                           items(products['Pandesal']), delivery=HOME)
 
     assert res['order']['fulfillment'] == 'delivery'
-    assert res['order']['total'] == 35
+    assert res['order']['total'] == 98.09
     with pytest.raises(ValueError, match=exactly(NOT_OFFERED['pickup'])):
         api.createOrder(customerId, store['_id'], items(products['Pandesal']),
                         'pickup')
@@ -206,12 +232,12 @@ def test_aStoreThatOnlyOffersPickup_refusesADelivery(clean, firebase):
                         'delivery', HOME)
 
 
-def test_aDeliveryTheStoreHasNotPriced_isRefused(clean, firebase):
+def test_aDeliveryFromAStoreNotPinned_isRefused(clean, firebase):
     store, customerId, products = shop(
-        firebase, deliveryOptions=['pickup', 'delivery'])
+        firebase, pinned=False, deliveryOptions=['pickup', 'delivery'])
     pandesal = products['Pandesal']
 
-    with pytest.raises(ValueError, match=exactly(NO_DELIVERY_FEE_YET)):
+    with pytest.raises(ValueError, match=exactly(NO_STORE_PIN_YET)):
         api.createOrder(customerId, store['_id'], items(pandesal), 'delivery',
                         HOME)
     # Pickup is the one way left to book: it is chosen.
@@ -220,9 +246,37 @@ def test_aDeliveryTheStoreHasNotPriced_isRefused(clean, firebase):
 
     api.updateMyStorePolicy(ADMIN, deliveryOptions=['delivery'])
     for fulfillment in (None, 'delivery'):
-        with pytest.raises(ValueError, match=exactly(NO_DELIVERY_FEE_YET)):
+        with pytest.raises(ValueError, match=exactly(NO_STORE_PIN_YET)):
             api.createOrder(customerId, store['_id'], items(pandesal),
                             fulfillment, HOME)
+
+    # Once pinned, delivery is priced from the pin.
+    api.setUserStoreLocation(ADMIN, STORE_PIN['latitude'],
+                             STORE_PIN['longitude'])
+    res = api.createOrder(customerId, store['_id'], items(pandesal),
+                          delivery=HOME)
+    assert res['order']['deliveryFee'] == HOME_FEE
+
+
+def test_aDeliveryWithoutARate_isRefused_andReservesNothing(
+        clean, firebase, _fakeExchangeRates):
+    import requests
+    from services.__request import ServiceUnavailable
+    store, customerId, products = shop(firebase, **DELIVERS)
+    pandesal = products['Pandesal']
+    db.delete({}, 'ExchangeRates')
+    _fakeExchangeRates.error = requests.ConnectionError()
+
+    with pytest.raises(ServiceUnavailable):
+        api.createOrder(customerId, store['_id'], items(pandesal),
+                        'delivery', HOME)
+
+    assert db.read({'_id': pandesal['_id']}, 'Products',
+                   findOne=True)['inventory'] == pandesal['inventory']
+    assert db.read({}, 'Orders') == []
+    # Pickup needs no rate.
+    res = api.createOrder(customerId, store['_id'], items(pandesal), 'pickup')
+    assert res['order']['total'] == 5
 
 
 @pytest.mark.parametrize('fulfillment, delivery, message', [
@@ -310,10 +364,10 @@ def test_payOrder_chargesTheTotalWithTheFee(clean, firebase, monkeypatch):
 
     paid = api.payOrder(customerId, store['_id'], order['_id'], 'gcash')
 
-    assert paid['total'] == 55 and paid['deliveryFee'] == 50
+    assert paid['total'] == 98.09 and paid['deliveryFee'] == HOME_FEE
     assert paid['deliveryAddress'] == HOME['address']
     [(orderId, _, amount, currency, *_)] = charged
-    assert (orderId, amount, currency) == (order['_id'], 55, 'PHP')
+    assert (orderId, amount, currency) == (order['_id'], 98.09, 'PHP')
 
 
 # ----------------------------- B. the delivery pin ----------------------------- #
@@ -354,12 +408,13 @@ def test_theDeliveryPinForm_isTheMapOnly(clean, firebase, model):
 @pytest.mark.parametrize('policy, refusal', [
     ({}, NOT_OFFERED['delivery']),
     ({'deliveryOptions': ['pickup']}, NOT_OFFERED['delivery']),
-    ({'deliveryOptions': ['pickup', 'delivery']}, NO_DELIVERY_FEE_YET),
-    ({'deliveryOptions': ['delivery']}, NO_DELIVERY_FEE_YET),
+    ({'deliveryOptions': ['pickup', 'delivery']}, NO_STORE_PIN_YET),
+    ({'deliveryOptions': ['delivery']}, NO_STORE_PIN_YET),
 ])
 def test_theDeliveryPinForm_opensOnlyWhereADeliveryCanBeBooked(
         clean, firebase, model, policy, refusal):
-    store, customerId, _ = shop(firebase, **policy)
+    # Unpinned: a delivery is priced from the store's pin.
+    store, customerId, _ = shop(firebase, pinned=False, **policy)
     fake = model(calls(('c1', 'showDeliveryPinForm', '{}')),
                  reply('Pickup it is.'))
 
@@ -371,14 +426,13 @@ def test_theDeliveryPinForm_opensOnlyWhereADeliveryCanBeBooked(
     assert json.loads(toolMessage['content']) == {'error': refusal}
 
 
-def test_aStoreThatOnlyDelivers_opensThePinWithoutAStorePin(clean, firebase,
-                                                           model):
-    store, customerId, _ = shop(firebase, deliveryOptions=['delivery'],
-                                deliveryFee=30)
+def test_aStoreThatOnlyDelivers_opensThePinAtTheStore(clean, firebase,
+                                                     model):
+    store, customerId, _ = shop(firebase, deliveryOptions=['delivery'])
 
     [form] = openPin(model, customerId, store)['components']
 
-    assert form['storeLocation'] is None
+    assert form['storeLocation'] == STORE_PIN
 
 
 def test_aPin_thenTheAddressInChat_placesTheDelivery(clean, firebase, model):
@@ -410,8 +464,9 @@ def test_aPin_thenTheAddressInChat_placesTheDelivery(clean, firebase, model):
     [checkout] = third['components']
     assert checkout['kind'] == 'checkout'
     order = checkout['order']
-    assert (order['fulfillment'], order['deliveryFee'], order['total']) == (
-        'delivery', 50, 60)
+    assert (order['fulfillment'], order['deliveryFee'],
+            order['deliveryDistanceKm'], order['total']) == (
+        'delivery', HOME_FEE, HOME_KM, 103.09)
     assert order['deliveryAddress'] == HOME['address']
     assert order['deliveryNotes'] == HOME['notes']
     assert (order['deliveryLatitude'], order['deliveryLongitude']) == (
@@ -432,8 +487,7 @@ def test_aPickupChosenInChat_isPlacedWithoutAnAddress(clean, firebase,
 
 
 def test_aPinAnswer_isCheckedAgainstItsForm(clean, firebase, model):
-    store, customerId, _ = shop(firebase, deliveryOptions=['delivery'],
-                                deliveryFee=30)
+    store, customerId, _ = shop(firebase, deliveryOptions=['delivery'])
     first = openPin(model, customerId, store)
     cid = first['conversationId']
     [form] = first['components']
