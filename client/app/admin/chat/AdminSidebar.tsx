@@ -40,6 +40,13 @@ export function AdminSidebar() {
   // Reset needs a loaded store (a store not set up yet is ready with none).
   const resetShown = Boolean(userData) && storeState.status === 'ready' && storeResetAvailable();
 
+  // Hiding the item closes its dialog, so the dialog cannot reopen by itself.
+  const [resetWasShown, setResetWasShown] = useState(resetShown);
+  if (resetWasShown !== resetShown) {
+    setResetWasShown(resetShown);
+    if (!resetShown) setResetOpen(false);
+  }
+
   const store = storeState.status === 'ready' ? storeState.store : null;
   // A store not set up yet has its setup chats.
   const chatsShown = storeState.status === 'ready';

@@ -20,7 +20,9 @@ export function storeResetAvailable(): boolean {
 // A store not set up yet has no name to type, so it types this word.
 const SETUP_CONFIRM_WORD = 'reset';
 
-// The same folding the server applies to the typed text.
+// Folds the typed text for the match: NFKC, trimmed, lowercased. The server
+// also folds the name (with casefold, which is looser than lowercase), so this
+// check is stricter; the server has the final say.
 const foldName = (text: string): string => text.normalize('NFKC').trim().toLowerCase();
 
 export function ResetStoreDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -49,17 +51,18 @@ export function ResetStoreDialog({ open, onOpenChange }: { open: boolean; onOpen
     try {
       const res = await adminRequest(() => server.resetMyStore(userId, typed.trim()));
       showApiResponseSnackbar(res);
+      if (res.status === 200) {
+        // Close before the reloads, so a failed reload cannot leave it open.
+        setTyped('');
+        onOpenChange(false);
+        router.replace('/admin/chat');
+      }
       // A failure may still have reset the store, so the screen reloads either way.
       await reloadStore();
       await reloadConversations();
-      if (res.status !== 200) {
-        // Clear the text so the label shows what to type now: the store's
-        // name, or "reset" if the reset did happen.
-        setTyped('');
-        return;
-      }
-      changeOpen(false);
-      router.replace('/admin/chat');
+      // Clear the text so the label shows what to type now: the store's name,
+      // or "reset" if the reset did happen.
+      if (res.status !== 200) setTyped('');
     } finally {
       setWorking(false);
     }
