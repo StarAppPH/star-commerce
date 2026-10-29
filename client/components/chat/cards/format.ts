@@ -1,4 +1,5 @@
 // How the cards say money, orders and the server's codes.
+import { DELIVERY_USD_PER_KM } from '@/lib/generated/serverConstants';
 import { formatShortDate, formatStoreTime, parseInstant } from '@/lib/storeTime';
 
 const moneyFormats = new Map<string, Intl.NumberFormat>();
@@ -10,6 +11,12 @@ export function formatMoney(amount: number, currency: string): string {
     moneyFormats.set(currency, format);
   }
   return format.format(amount);
+}
+
+// What a km of delivery costs: in the store's currency at today's rate, else
+// (no rate right now) the app's rate in US dollars.
+export function deliveryPerKmText(perKm: number | null, currency: string): string {
+  return perKm === null ? `${formatMoney(DELIVERY_USD_PER_KM, 'USD')} per km` : `${formatMoney(perKm, currency)} per km`;
 }
 
 // The short reference an order is shown by (server chatForms.orderRef).

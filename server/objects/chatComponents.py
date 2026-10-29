@@ -29,7 +29,8 @@ from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                            PHOTOS_PER_CALL_MAX, GeneratedPhotoRow)
 from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
                             AdditionalTerms, DefectReportDays, DeliveryAreas,
-                            DeliveryFee, DeliveryOptions, FreeDeliveryMinimum,
+                            DeliveryFeePerKm, DeliveryOptions, FreeDeliveryMinimum,
+                            OffersFreeDelivery,
                             HandoverDays, NonReturnableItems,
                             PaidOrderCancellationAnswer, RefundMethodAnswer,
                             ReturnConditions, ReturnShippingPaidBy,
@@ -247,13 +248,14 @@ class PolicyCard(ResponseModel):
     defectReportDays: DefectReportDays
     deliveryOptions: DeliveryOptions
     deliveryAreas: DeliveryAreas
-    deliveryFee: DeliveryFee
+    offersFreeDelivery: OffersFreeDelivery
     freeDeliveryMinimum: FreeDeliveryMinimum
     handoverDays: HandoverDays
     acceptedPaymentMethods: AcceptedPaymentMethods
     paidOrderCancellation: PaidOrderCancellationAnswer
     sendsMarketingMessages: SendsMarketingMessages
     additionalTerms: AdditionalTerms
+    deliveryFeePerKm: DeliveryFeePerKm
 
 
 class PhotosCard(ResponseModel):
@@ -337,13 +339,14 @@ class PolicyForm(ResponseModel):
     defectReportDays: DefectReportDays
     deliveryOptions: DeliveryOptions
     deliveryAreas: DeliveryAreas
-    deliveryFee: DeliveryFee
+    offersFreeDelivery: OffersFreeDelivery
     freeDeliveryMinimum: FreeDeliveryMinimum
     handoverDays: HandoverDays
     acceptedPaymentMethods: AcceptedPaymentMethods
     paidOrderCancellation: PaidOrderCancellationAnswer
     sendsMarketingMessages: SendsMarketingMessages
     additionalTerms: AdditionalTerms
+    deliveryFeePerKm: DeliveryFeePerKm
 
 
 class ChatReturnableItem(ResponseModel):
@@ -396,7 +399,7 @@ class FulfillmentForm(ResponseModel):
     storeLocation: StoreLocationResponse | None = Field(
         ..., description="The store's pin; null until pinned")
     deliveryAreas: DeliveryAreas
-    deliveryFee: DeliveryFee
+    deliveryFeePerKm: DeliveryFeePerKm
     freeDeliveryMinimum: FreeDeliveryMinimum
     handoverDays: HandoverDays
 
@@ -467,7 +470,7 @@ class PolicyAnswer(AppModel):
     defectReportDays: DefectReportDays = None
     deliveryOptions: DeliveryOptions = None
     deliveryAreas: DeliveryAreas = None
-    deliveryFee: DeliveryFee = None
+    offersFreeDelivery: OffersFreeDelivery = None
     freeDeliveryMinimum: FreeDeliveryMinimum = None
     handoverDays: HandoverDays = None
     acceptedPaymentMethods: AcceptedPaymentMethods = None

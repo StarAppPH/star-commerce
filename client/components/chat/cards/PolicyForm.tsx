@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 import { ChatCard, SentNote } from './ChatCard';
-import { POLICY_VALUE_LABELS, nonEmpty } from './format';
+import { POLICY_VALUE_LABELS, deliveryPerKmText, nonEmpty } from './format';
 import type { AnswerOf, ComponentProps } from './types';
 
 type Form = ComponentProps<'policyForm'>['component'];
@@ -91,7 +91,10 @@ export function PolicyForm({ component, answered, busy, onAnswer }: ComponentPro
   const [cancellation, setCancellation] = useState(text(component.paidOrderCancellation));
   const [options, setOptions] = useState<DeliveryOption[]>(component.deliveryOptions ?? []);
   const [areas, setAreas] = useState(text(component.deliveryAreas));
-  const [fee, setFee] = useState(numberText(component.deliveryFee));
+  // A store that set a minimum before this question existed offers it.
+  const [freeDelivery, setFreeDelivery] = useState(
+    yesNo(component.offersFreeDelivery ?? (component.freeDeliveryMinimum === null ? null : true)),
+  );
   const [freeFrom, setFreeFrom] = useState(numberText(component.freeDeliveryMinimum));
   const [handoverDays, setHandoverDays] = useState(numberText(component.handoverDays));
   const [acceptsReturns, setAcceptsReturns] = useState(yesNo(component.acceptsReturns));
@@ -122,8 +125,8 @@ export function PolicyForm({ component, answered, busy, onAnswer }: ComponentPro
           ...base,
           deliveryOptions: nonEmpty(options),
           deliveryAreas: delivers ? trimmed(areas) : null,
-          deliveryFee: delivers ? amount(fee) : null,
-          freeDeliveryMinimum: delivers ? amount(freeFrom) : null,
+          offersFreeDelivery: delivers && freeDelivery !== '' ? freeDelivery === 'yes' : null,
+          freeDeliveryMinimum: delivers && freeDelivery === 'yes' ? amount(freeFrom) : null,
           handoverDays: wholeDays(handoverDays, 0),
         };
       }
@@ -152,7 +155,7 @@ export function PolicyForm({ component, answered, busy, onAnswer }: ComponentPro
   const draft = answer();
   const answeredSomething = [
     draft.acceptedPaymentMethods, draft.paidOrderCancellation, draft.deliveryOptions, draft.deliveryAreas,
-    draft.deliveryFee, draft.freeDeliveryMinimum, draft.handoverDays, draft.acceptsReturns, draft.returnWindowDays,
+    draft.offersFreeDelivery, draft.freeDeliveryMinimum, draft.handoverDays, draft.acceptsReturns, draft.returnWindowDays,
     draft.returnConditions, draft.nonReturnableItems, draft.refundMethod, draft.returnShippingPaidBy,
     draft.defectReportDays, draft.sendsMarketingMessages, draft.additionalTerms,
   ].some((value) => value !== null && value !== undefined);
@@ -200,21 +203,25 @@ export function PolicyForm({ component, answered, busy, onAnswer }: ComponentPro
                   <FieldLabel>Where do you deliver?</FieldLabel>
                   <Input data-component="policyFormAreas" value={areas} maxLength={TEXT_MAX} placeholder="Quezon City and Marikina" disabled={locked} onChange={(event) => setAreas(event.target.value)} />
                 </Field>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field>
-                    <FieldLabel>Delivery fee ({currency})</FieldLabel>
-                    <Input data-component="policyFormFee" inputMode="decimal" value={fee} disabled={locked} onChange={(event) => setFee(event.target.value)} />
-                  </Field>
+                <p data-component="policyFormDeliveryFee" className="rounded-lg bg-muted px-3 py-2 text-muted-foreground text-sm">
+                  Delivery costs {deliveryPerKmText(component.deliveryFeePerKm, currency)} from your store’s map pin to the
+                  customer’s, in a straight line. Customers can book it once your store is pinned on the map.
+                </p>
+                <Field>
+                  <FieldLabel>Do you offer free delivery on bigger orders?</FieldLabel>
+                  <Choices dataComponent="policyFormOffersFreeDelivery" name="Offers free delivery" value={freeDelivery} options={[...YES_NO]} onChange={setFreeDelivery} disabled={locked} />
+                </Field>
+                {freeDelivery === 'yes' && (
                   <Field>
                     <FieldLabel>Free delivery from ({currency})</FieldLabel>
                     <Input data-component="policyFormFreeFrom" inputMode="decimal" value={freeFrom} disabled={locked} onChange={(event) => setFreeFrom(event.target.value)} />
                   </Field>
-                </div>
+                )}
               </>
             )}
             <Field>
-              <FieldLabel>Days from payment to pickup or delivery</FieldLabel>
-              <Input data-component="policyFormHandoverDays" inputMode="numeric" value={handoverDays} disabled={locked} onChange={(event) => setHandoverDays(event.target.value)} />
+              <FieldLabel>How many days after payment is an order ready for pickup or delivered?</FieldLabel>
+              <Input data-component="policyFormHandoverDays" inputMode="numeric" value={handoverDays} placeholder="0 for the same day" disabled={locked} onChange={(event) => setHandoverDays(event.target.value)} />
             </Field>
           </>
         )}

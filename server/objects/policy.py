@@ -32,8 +32,9 @@ PaidOrderCancellation = Literal['notAllowed', 'beforeHandover']
 PolicyField = Literal['acceptsReturns', 'returnWindowDays', 'returnConditions',
                       'nonReturnableItems', 'refundMethod',
                       'returnShippingPaidBy', 'defectReportDays',
-                      'deliveryOptions', 'deliveryAreas', 'deliveryFee',
-                      'freeDeliveryMinimum', 'handoverDays',
+                      'deliveryOptions', 'deliveryAreas',
+                      'offersFreeDelivery', 'freeDeliveryMinimum',
+                      'handoverDays',
                       'acceptedPaymentMethods', 'paidOrderCancellation',
                       'sendsMarketingMessages', 'additionalTerms']
 POLICY_TEXT_MAX_LENGTH = 300
@@ -70,16 +71,22 @@ DeliveryOptions = Annotated[list[DeliveryOption] | None, Field(
 DeliveryAreas = Annotated[str | None, Field(
     min_length=1, max_length=POLICY_TEXT_MAX_LENGTH,
     description='Where the store delivers')]
-DeliveryFee = Annotated[float | None, Field(
-    ge=0, le=PRODUCT_PRICE_MAX,
-    description="What delivery costs, in the store's currency")]
+OffersFreeDelivery = Annotated[bool | None, Field(
+    description='Whether delivery is free from an order total '
+    '(freeDeliveryMinimum)')]
 FreeDeliveryMinimum = Annotated[float | None, Field(
     ge=0, le=PRODUCT_PRICE_MAX,
     description="The order total from which delivery is free, in the "
     "store's currency")]
+# Not an answer: what DELIVERY_USD_PER_KM comes to in the store's currency
+# (actions/deliveryPricing.py), sent beside the answers.
+DeliveryFeePerKm = Annotated[float | None, Field(
+    ge=0, description="What delivery costs per km from the store, in the "
+    "store's currency at today's rate; null without delivery, or while the "
+    'rate cannot be read')]
 HandoverDays = Annotated[int | None, Field(
     ge=0, le=POLICY_DAYS_MAX,
-    description='Days from payment until the order is handed over or '
+    description='Days from payment until the order is ready for pickup or '
     'delivered')]
 # Payment
 AcceptedPaymentMethods = Annotated[list[PaymentMethod] | None, Field(
@@ -93,12 +100,14 @@ AdditionalTerms = Annotated[str | None, Field(
     min_length=1, max_length=POLICY_TERMS_MAX_LENGTH,
     description='Any other terms, as the admin gave them')]
 
-# The answers that only apply with returns accepted, and with delivery
-# among the deliveryOptions (Policy.normalized clears them otherwise).
+# The answers that only apply with returns accepted, with delivery among
+# the deliveryOptions, and with free delivery offered (Policy.normalized
+# clears them otherwise).
 POLICY_RETURN_ANSWERS = ('returnWindowDays', 'returnConditions',
                          'refundMethod', 'returnShippingPaidBy')
-POLICY_DELIVERY_ANSWERS = ('deliveryAreas', 'deliveryFee',
+POLICY_DELIVERY_ANSWERS = ('deliveryAreas', 'offersFreeDelivery',
                            'freeDeliveryMinimum')
+POLICY_FREE_DELIVERY_ANSWERS = ('freeDeliveryMinimum', )
 
 
 class Policy(MongoModel):
@@ -121,7 +130,7 @@ class Policy(MongoModel):
     defectReportDays: DefectReportDays = None
     deliveryOptions: DeliveryOptions = None
     deliveryAreas: DeliveryAreas = None
-    deliveryFee: DeliveryFee = None
+    offersFreeDelivery: OffersFreeDelivery = None
     freeDeliveryMinimum: FreeDeliveryMinimum = None
     handoverDays: HandoverDays = None
     acceptedPaymentMethods: AcceptedPaymentMethods = None
@@ -140,10 +149,13 @@ class Policy(MongoModel):
 
     def normalized(self) -> 'Policy':
         """A copy with the answers that no longer apply cleared: no returns
-        clears POLICY_RETURN_ANSWERS, no delivery POLICY_DELIVERY_ANSWERS."""
+        clears POLICY_RETURN_ANSWERS, no delivery POLICY_DELIVERY_ANSWERS,
+        no free delivery POLICY_FREE_DELIVERY_ANSWERS."""
         cleared = {}
         if self.acceptsReturns is False:
             cleared.update(dict.fromkeys(POLICY_RETURN_ANSWERS))
+        if self.offersFreeDelivery is False:
+            cleared.update(dict.fromkeys(POLICY_FREE_DELIVERY_ANSWERS))
         if (self.deliveryOptions is not None
                 and 'delivery' not in self.deliveryOptions):
             cleared.update(dict.fromkeys(POLICY_DELIVERY_ANSWERS))
@@ -155,6 +167,9 @@ class Policy(MongoModel):
         if self.acceptsReturns and self.returnWindowDays is None:
             return ('Returns are accepted: ask how many days after handover '
                     'a customer can return an item (returnWindowDays)')
+        if self.offersFreeDelivery and self.freeDeliveryMinimum is None:
+            return ('Free delivery is offered: ask from which order total '
+                    '(freeDeliveryMinimum)')
         for field in ('deliveryOptions', 'acceptedPaymentMethods'):
             values = getattr(self, field)
             if values is not None and len(set(values)) != len(values):
@@ -190,12 +205,13 @@ class StorePolicyResponse(ResponseModel):
     defectReportDays: DefectReportDays = Field(...)
     deliveryOptions: DeliveryOptions = Field(...)
     deliveryAreas: DeliveryAreas = Field(...)
-    deliveryFee: DeliveryFee = Field(...)
+    offersFreeDelivery: OffersFreeDelivery = Field(...)
     freeDeliveryMinimum: FreeDeliveryMinimum = Field(...)
     handoverDays: HandoverDays = Field(...)
     acceptedPaymentMethods: AcceptedPaymentMethods = Field(...)
     paidOrderCancellation: PaidOrderCancellationAnswer = Field(...)
     sendsMarketingMessages: SendsMarketingMessages = Field(...)
     additionalTerms: AdditionalTerms = Field(...)
+    deliveryFeePerKm: DeliveryFeePerKm = Field(...)
     updatedAt: datetime.datetime = Field(...,
                                          description='When it last changed')

@@ -366,7 +366,7 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
     time.sleep(0.01)
     first = api.updateMyStorePolicy(ADMIN,
                                     sendsMarketingMessages=False,
-                                    deliveryFee=0,
+                                    offersFreeDelivery=True,
                                     handoverDays=0,
                                     freeDeliveryMinimum=0,
                                     deliveryOptions=['pickup', 'delivery'],
@@ -376,7 +376,7 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
     stored = _policyDoc(storeId)
     PolicyView.model_validate(stored)
     want = _expected(sendsMarketingMessages=False,
-                     deliveryFee=0,
+                     offersFreeDelivery=True,
                      handoverDays=0,
                      freeDeliveryMinimum=0,
                      deliveryOptions=['pickup', 'delivery'],
@@ -414,9 +414,10 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
 
     # clear sets an answer back to not said, and only that one.
     time.sleep(0.01)
-    api.updateMyStorePolicy(ADMIN, clear=['deliveryFee', 'handoverDays'])
+    api.updateMyStorePolicy(ADMIN, clear=['offersFreeDelivery',
+                                          'handoverDays'])
     cleared = _policyDoc(storeId)
-    want = {**want, 'deliveryFee': None, 'handoverDays': None}
+    want = {**want, 'offersFreeDelivery': None, 'handoverDays': None}
     assert _answers(cleared) == want
     assert cleared['_version'] == after['_version'] + 1
     assert cleared['updatedAt'] > after['updatedAt']
@@ -434,18 +435,19 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
 def test_updateMyStorePolicy_refusesClearMisuse_andAnEmptyUpdate(clean):
     store = _setUpStore()
     storeId = store['_id']
-    api.updateMyStorePolicy(ADMIN, deliveryFee=5.5, handoverDays=2)
+    api.updateMyStorePolicy(ADMIN, offersFreeDelivery=False, handoverDays=2)
     before = _policyDoc(storeId)
 
-    for badClear in (['bogus'], 'deliveryFee', [5], ['deliveryFee', None],
+    for badClear in (['bogus'], 'offersFreeDelivery', [5],
+                     ['offersFreeDelivery', None],
                      ['updatedAt'], ['storeId']):
         assert _refusal(api.updateMyStorePolicy, ADMIN,
                         clear=badClear) == CLEAR_FIELDS
     # A field both cleared and given a value.
-    assert _refusal(api.updateMyStorePolicy, ADMIN, deliveryFee=5,
-                    clear=['deliveryFee']) == (
-                        'deliveryFee is both cleared and given a value: '
-                        'send one')
+    assert _refusal(api.updateMyStorePolicy, ADMIN, offersFreeDelivery=True,
+                    clear=['offersFreeDelivery']) == (
+                        'offersFreeDelivery is both cleared and given a '
+                        'value: send one')
     # An empty update: nothing sent, nothing cleared, or only blanks.
     for kwargs in ({}, {'clear': []}, {'returnConditions': '',
                                         'deliveryAreas': '   ',
@@ -468,7 +470,7 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
                      defectReportDays=3,
                      deliveryOptions=['pickup', 'delivery'],
                      deliveryAreas='Quezon City',
-                     deliveryFee=50,
+                     offersFreeDelivery=True,
                      freeDeliveryMinimum=500,
                      handoverDays=2,
                      acceptedPaymentMethods=['gcash'],
@@ -514,7 +516,8 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
                           ({'returnConditions': 'x'}, 'returnConditions'),
                           ({'returnShippingPaidBy': 'store'},
                            'returnShippingPaidBy'),
-                          ({'deliveryFee': 10}, 'deliveryFee'),
+                          ({'offersFreeDelivery': True},
+                           'offersFreeDelivery'),
                           ({'deliveryAreas': 'Manila'}, 'deliveryAreas'),
                           ({'freeDeliveryMinimum': 1},
                            'freeDeliveryMinimum')):
@@ -525,17 +528,17 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
     assert 'returnWindowDays applies only when returns are accepted' in (
         _refusal(api.updateMyStorePolicy, ADMIN, acceptsReturns=False,
                  returnWindowDays=7))
-    assert 'deliveryFee applies only with delivery' in _refusal(
+    assert 'offersFreeDelivery applies only with delivery' in _refusal(
         api.updateMyStorePolicy, ADMIN, deliveryOptions=['pickup'],
-        deliveryFee=3)
+        offersFreeDelivery=True)
     _unchanged(storeId, pickup)
 
     # Delivery back on with its answers in the same call is fine; so is a
     # delivery answer while deliveryOptions is not said yet (None applies).
     api.updateMyStorePolicy(ADMIN,
                             deliveryOptions=['delivery'],
-                            deliveryFee=20)
-    assert _policyDoc(storeId)['deliveryFee'] == 20
+                            offersFreeDelivery=False)
+    assert _policyDoc(storeId)['offersFreeDelivery'] is False
     api.updateMyStorePolicy(ADMIN, clear=['deliveryOptions'])
     api.updateMyStorePolicy(ADMIN, deliveryAreas='Pasig')
     assert _policyDoc(storeId)['deliveryAreas'] == 'Pasig'
@@ -558,8 +561,8 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
     kept = _policyDoc(storeId)
     assert kept['acceptsReturns'] is None and kept['returnWindowDays'] == 9
     api.updateMyStorePolicy(ADMIN, deliveryOptions=['pickup'],
-                            clear=['deliveryFee'])
-    assert _policyDoc(storeId)['deliveryFee'] is None
+                            clear=['offersFreeDelivery'])
+    assert _policyDoc(storeId)['offersFreeDelivery'] is None
     api.updateMyStorePolicy(ADMIN, returnConditions='x')
     api.updateMyStorePolicy(ADMIN, returnConditions='', clear=['returnConditions'])
     assert _policyDoc(storeId)['returnConditions'] is None
@@ -574,6 +577,50 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
         assert f'{field} lists an option twice' in _refusal(
             api.updateMyStorePolicy, ADMIN, **kwargs)
     _unchanged(storeId, before)
+
+
+def test_noFreeDelivery_dropsTheMinimum_andYesNeedsOne(clean):
+    store = _setUpStore()
+    storeId = store['_id']
+    api.updateMyStorePolicy(ADMIN, deliveryOptions=['delivery'],
+                            offersFreeDelivery=True, freeDeliveryMinimum=800)
+
+    # No free delivery: the minimum is cleared silently, and the answer
+    # counts as given.
+    res = api.updateMyStorePolicy(ADMIN, offersFreeDelivery=False)
+    assert (res['offersFreeDelivery'], res['freeDeliveryMinimum']) == (False,
+                                                                       None)
+    assert _policyDoc(storeId)['freeDeliveryMinimum'] is None
+    # A minimum sent with no free delivery is refused by name.
+    before = _policyDoc(storeId)
+    assert _refusal(api.updateMyStorePolicy, ADMIN,
+                    freeDeliveryMinimum=500) == (
+        'freeDeliveryMinimum applies only with delivery among the '
+        'deliveryOptions and offersFreeDelivery true: ask again')
+    # Yes without a minimum asks for one.
+    assert _refusal(api.updateMyStorePolicy, ADMIN,
+                    offersFreeDelivery=True) == (
+        'Free delivery is offered: ask from which order total '
+        '(freeDeliveryMinimum)')
+    _unchanged(storeId, before)
+    api.updateMyStorePolicy(ADMIN, offersFreeDelivery=True,
+                            freeDeliveryMinimum=500)
+    assert _policyDoc(storeId)['freeDeliveryMinimum'] == 500
+
+
+def test_thePolicy_sendsWhatAKmOfDeliveryCosts(clean, firebase):
+    store = _setUpStore()
+
+    # No delivery: no price per km.
+    assert api.getMyStorePolicy(ADMIN)['deliveryFeePerKm'] is None
+    res = api.updateMyStorePolicy(ADMIN, deliveryOptions=['delivery'])
+
+    # 0.15 USD at conftest's 58 PHP a dollar.
+    assert res['deliveryFeePerKm'] == 8.7
+    assert api.getMyStorePolicy(ADMIN)['deliveryFeePerKm'] == 8.7
+    customerId = guestAt(firebase, store, GUEST)
+    assert api.getStorePolicy(customerId,
+                              store['_id'])['deliveryFeePerKm'] == 8.7
 
 
 def test_updateMyStorePolicy_refusesBadValues_withoutQuotingThem(clean):
@@ -594,12 +641,13 @@ def test_updateMyStorePolicy_refusesBadValues_withoutQuotingThem(clean):
         ('defectReportDays', 366),
         ('handoverDays', -1),
         ('handoverDays', 366),
-        ('deliveryFee', -1),
-        ('deliveryFee', PRODUCT_PRICE_MAX + 1),
-        ('deliveryFee', float('nan')),
-        ('deliveryFee', float('inf')),
-        ('deliveryFee', True),
+        ('offersFreeDelivery', 'yes'),
+        ('offersFreeDelivery', 1),
         ('freeDeliveryMinimum', -0.01),
+        ('freeDeliveryMinimum', PRODUCT_PRICE_MAX + 1),
+        ('freeDeliveryMinimum', float('nan')),
+        ('freeDeliveryMinimum', float('inf')),
+        ('freeDeliveryMinimum', True),
         ('acceptsReturns', 'yes'),
         ('acceptsReturns', 1),
         ('sendsMarketingMessages', 0),
@@ -636,19 +684,19 @@ def test_updateMyStorePolicy_refusesBadValues_withoutQuotingThem(clean):
     _unchanged(storeId, before)
 
     # The edges themselves are accepted.
-    api.updateMyStorePolicy(ADMIN, deliveryFee=5)
-    assert _policyDoc(storeId)['deliveryFee'] == 5
+    api.updateMyStorePolicy(ADMIN, freeDeliveryMinimum=PRODUCT_PRICE_MAX)
+    assert _policyDoc(storeId)['freeDeliveryMinimum'] == PRODUCT_PRICE_MAX
     api.updateMyStorePolicy(ADMIN,
                             returnWindowDays=1,
                             defectReportDays=365,
                             handoverDays=365,
-                            deliveryFee=PRODUCT_PRICE_MAX,
+                            offersFreeDelivery=True,
                             freeDeliveryMinimum=0.01)
     assert _answers(_policyDoc(storeId)) == _expected(
         returnWindowDays=1,
         defectReportDays=365,
         handoverDays=365,
-        deliveryFee=PRODUCT_PRICE_MAX,
+        offersFreeDelivery=True,
         freeDeliveryMinimum=0.01)
 
 
@@ -976,7 +1024,10 @@ def test_policyAnswerFields_areDeclaredOnceEverywhere():
     ) - {'self', 'userId', 'clear'}
 
     assert set(typing.get_args(PolicyField)) == answers
-    assert set(StorePolicyResponse.model_fields) - {'updatedAt'} == answers
+    # Besides the answers: when it changed, and what a km of delivery costs
+    # (derived from the app's rate, never an answer).
+    assert set(StorePolicyResponse.model_fields) - {
+        'updatedAt', 'deliveryFeePerKm'} == answers
     assert set(ANSWER_RULES) == answers
     assert params == answers
     assert answers == set(Policy.model_fields) - {

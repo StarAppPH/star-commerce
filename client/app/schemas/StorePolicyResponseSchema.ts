@@ -42,15 +42,15 @@ export type Deliveryoptions = ["pickup" | "delivery", ...("pickup" | "delivery")
  */
 export type Deliveryareas = string | null;
 /**
- * What delivery costs, in the store's currency
+ * Whether delivery is free from an order total (freeDeliveryMinimum)
  */
-export type Deliveryfee = number | null;
+export type Offersfreedelivery = boolean | null;
 /**
  * The order total from which delivery is free, in the store's currency
  */
 export type Freedeliveryminimum = number | null;
 /**
- * Days from payment until the order is handed over or delivered
+ * Days from payment until the order is ready for pickup or delivered
  */
 export type Handoverdays = number | null;
 /**
@@ -75,6 +75,10 @@ export type Sendsmarketingmessages = boolean | null;
  */
 export type Additionalterms = string | null;
 /**
+ * What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read
+ */
+export type Deliveryfeeperkm = number | null;
+/**
  * When it last changed
  */
 export type Updatedat = string;
@@ -94,12 +98,13 @@ export interface StorePolicyResponse {
   defectReportDays: Defectreportdays;
   deliveryOptions: Deliveryoptions;
   deliveryAreas: Deliveryareas;
-  deliveryFee: Deliveryfee;
+  offersFreeDelivery: Offersfreedelivery;
   freeDeliveryMinimum: Freedeliveryminimum;
   handoverDays: Handoverdays;
   acceptedPaymentMethods: Acceptedpaymentmethods;
   paidOrderCancellation: Paidordercancellation;
   sendsMarketingMessages: Sendsmarketingmessages;
   additionalTerms: Additionalterms;
+  deliveryFeePerKm: Deliveryfeeperkm;
   updatedAt: Updatedat;
 }

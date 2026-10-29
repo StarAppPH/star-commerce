@@ -278,6 +278,21 @@
             "title": "Deliveryfee",
             "type": "number"
         },
+        "deliveryDistanceKm": {
+            "anyOf": [
+                {
+                    "maximum": 20100,
+                    "minimum": 0,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on",
+            "title": "Deliverydistancekm"
+        },
         "deliveryAddress": {
             "anyOf": [
                 {

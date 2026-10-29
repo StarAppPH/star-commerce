@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useServer } from '@/lib/ServerContext';
-import type { StorePolicyResponse } from '@/app/schemas/StorePolicyResponseSchema';
+import { unansweredPolicyQuestions } from '@/lib/policyQuestions';
 
 // The most orders or returns one count reads (the list routes take 1-50).
 const COUNT_LIMIT = 50;
@@ -15,29 +15,6 @@ export interface WaitingItem {
   // What tapping it asks the assistant.
   prompt: string;
   tone: 'info' | 'warning';
-}
-
-// The policy questions the admin has not answered yet (a null answer).
-function unansweredPolicyQuestions(policy: StorePolicyResponse): number {
-  const answers = [
-    policy.acceptsReturns,
-    policy.returnWindowDays,
-    policy.returnConditions,
-    policy.nonReturnableItems,
-    policy.refundMethod,
-    policy.returnShippingPaidBy,
-    policy.defectReportDays,
-    policy.deliveryOptions,
-    policy.deliveryAreas,
-    policy.deliveryFee,
-    policy.freeDeliveryMinimum,
-    policy.handoverDays,
-    policy.acceptedPaymentMethods,
-    policy.paidOrderCancellation,
-    policy.sendsMarketingMessages,
-    policy.additionalTerms,
-  ];
-  return answers.filter((answer) => answer === null).length;
 }
 
 function shownCount(count: number): string {

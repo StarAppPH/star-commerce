@@ -38,7 +38,8 @@ COLLECTIONS = [
 api = ApiRequests()
 
 # An order row's delivery fields for a pickup (OrderDeliveryRow).
-PICKUP = {'fulfillment': 'pickup', 'deliveryFee': 0, 'deliveryAddress': None,
+PICKUP = {'fulfillment': 'pickup', 'deliveryFee': 0,
+          'deliveryDistanceKm': None, 'deliveryAddress': None,
           'deliveryLatitude': None, 'deliveryLongitude': None,
           'deliveryNotes': None}
 
@@ -523,7 +524,7 @@ def test_aPolicyAnswer_keepsItsSectionsFields(wiped, model):
         'acceptedPaymentMethods': ['gcash', 'card'],
         'paidOrderCancellation': 'beforeHandover',
         # Not asked by the payment section: dropped.
-        'deliveryFee': 50})
+        'offersFreeDelivery': True})
     content = fake.requests[0]['messages'][-1]['content']
     assert formAnswerDetails(content) == {
         'kind': 'policy', 'acceptedPaymentMethods': ['gcash', 'card'],
@@ -549,7 +550,7 @@ def test_cards_fromEveryCardTool_fitTheirModels():
         'completedAt': None, 'cancelledAt': None, 'cancelReason': None,
         'refundedAt': None, 'paymentReference': 'x', 'refundReference': None,
         'fulfillment': 'delivery', 'deliveryFee': 50,
-        'deliveryAddress': '1 Main St', 'deliveryLatitude': 14.5,
+        'deliveryDistanceKm': 5.7, 'deliveryAddress': '1 Main St', 'deliveryLatitude': 14.5,
         'deliveryLongitude': 121.0, 'deliveryNotes': None}
     ret = {'_id': 'r1', 'orderId': 'o1', 'status': 'requested', 'items': [
         {'name': 'A', 'price': 1, 'quantity': 1}], 'reason': 'defective',

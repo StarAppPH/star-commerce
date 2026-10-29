@@ -20,14 +20,17 @@ from pydantic import TypeAdapter, ValidationError
 from actions.OrderActions import customerAtStore
 from actions.StoreActions import (POLICIES, _validText, emptyPolicy,
                                   ensurePolicy, requireOwnerStore, setUpStore)
+from actions.deliveryPricing import shownFeePerKm
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import (POLICY_ANSWER_FIELDS, POLICY_DELIVERY_ANSWERS,
-                     POLICY_RETURN_ANSWERS, DeliveryOption,
+                     POLICY_FREE_DELIVERY_ANSWERS, POLICY_RETURN_ANSWERS,
+                     DeliveryOption,
                      PaidOrderCancellation, PaymentMethod, Policy,
                      RefundMethod, ReturnShippingPayer, StorePolicyResponse,
                      projectedCopy, projection_of)
 from route_config import route_config
+from sharedConstants import DELIVERY_USD_PER_KM
 
 POLICY_CHANGED = 'The policy just changed, try again'
 CLEAR_FIELDS = 'clear is a list of policy field names'
@@ -39,6 +42,9 @@ NOT_APPLICABLE = {
                     '(acceptsReturns)'),
     **dict.fromkeys(POLICY_DELIVERY_ANSWERS,
                     'applies only with delivery among the deliveryOptions'),
+    **dict.fromkeys(POLICY_FREE_DELIVERY_ANSWERS,
+                    'applies only with delivery among the deliveryOptions '
+                    'and offersFreeDelivery true'),
 }
 
 
@@ -111,9 +117,13 @@ Ask the admin one section at a time:
   paidOrderCancellation, whether a customer can cancel a paid order
   ({_oneOf(PaidOrderCancellation)});
 - delivery: deliveryOptions (a list, {_oneOf(DeliveryOption)}); with
-  delivery, deliveryAreas, deliveryFee and freeDeliveryMinimum (the order
-  total from which delivery is free); handoverDays, the days from payment to
-  pickup or delivery;
+  delivery, deliveryAreas and offersFreeDelivery, and if so
+  freeDeliveryMinimum (the order total from which delivery is free);
+  handoverDays, the days from payment until the order is ready for pickup
+  or delivered. What a delivery costs is set by the app, never asked:
+  {DELIVERY_USD_PER_KM} US dollars per km in a straight line from the
+  store's pin, in the store's currency at today's rate (deliveryFeePerKm),
+  so a store that delivers needs its pin (setUserStoreLocation);
 - returns: acceptsReturns; if so, returnWindowDays, returnConditions,
   nonReturnableItems, refundMethod ({_oneOf(RefundMethod)}) and
   returnShippingPaidBy ({_oneOf(ReturnShippingPayer)}); defectReportDays, how
@@ -126,9 +136,10 @@ out keeps its answer. To take an answer back, list the field in `clear`
 the handover (pickup or delivery); handoverDays counts from payment. Amounts
 are in the store's currency. Setting acceptsReturns to false drops the
 return window, conditions, refund method and who pays return shipping;
-leaving delivery out of deliveryOptions drops the delivery areas, fee and
-minimum. The time a customer has to pay an order, and a customer cancelling
-an unpaid order, are set by the app, not by a policy: never ask about them.
+leaving delivery out of deliveryOptions drops the delivery areas and free
+delivery; setting offersFreeDelivery to false drops the minimum. The time a
+customer has to pay an order, and a customer cancelling an unpaid order, are
+set by the app, not by a policy: never ask about them.
 If this tool refuses, relay its message to the admin and ask that question
 again."""
 
@@ -162,15 +173,25 @@ def _validClear(clear: list[str] | None) -> list[str]:
     return clear
 
 
+def _withFeePerKm(policy: dict, currency: str) -> dict:
+    """`policy` (answers, as stored) with deliveryFeePerKm: what a km of
+    delivery costs in `currency`, None without delivery offered."""
+    delivers = 'delivery' in (policy.get('deliveryOptions') or [])
+    return {**policy,
+            'deliveryFeePerKm': shownFeePerKm(currency) if delivers else None}
+
+
 def _storePolicy(store: dict) -> dict:
-    """The policy of `store` as StorePolicyResponse sends it. A store with
-    no Policies document (see StoreActions.ensurePolicy) has said nothing
-    yet: emptyPolicy."""
-    policy = db.readResponse(StorePolicyResponse, {'storeId': store['_id']},
-                             POLICIES)
+    """The policy of `store` (_id, createdAt, currency) as
+    StorePolicyResponse sends it. A store with no Policies document (see
+    StoreActions.ensurePolicy) has said nothing yet: emptyPolicy."""
+    currency = store['currency']
+    policy = db.readResponse(
+        StorePolicyResponse, {'storeId': store['_id']}, POLICIES,
+        prepare=lambda stored: _withFeePerKm(stored, currency))
     if policy is None:
-        return projectedCopy(StorePolicyResponse,
-                             emptyPolicy(store['_id'], store['createdAt']))
+        return projectedCopy(StorePolicyResponse, _withFeePerKm(
+            emptyPolicy(store['_id'], store['createdAt']), currency))
     return policy
 
 
@@ -185,7 +206,8 @@ class PolicyActions():
         """Get the policies of the admin's store: its answers on returns,
         delivery, payment and the rest. A null answer is one the admin has
         not given yet: use updateMyStorePolicy to set it."""
-        store = requireOwnerStore(userId, {'_id': 1, 'createdAt': 1})
+        store = requireOwnerStore(userId, {'_id': 1, 'createdAt': 1,
+                                           'currency': 1})
         return _storePolicy(store)
 
     @mcp_tool('customer')
@@ -202,9 +224,13 @@ class PolicyActions():
         return policy: defectReportDays (when set) is how long the customer
         has to report it. returnWindowDays and defectReportDays count from
         the handover (pickup or delivery); handoverDays counts from payment.
-        Amounts are in the store's currency."""
+        A delivery costs deliveryFeePerKm per km in a straight line from the
+        store to the customer's pin (null: the price can't be read right
+        now), nothing from freeDeliveryMinimum on. Amounts are in the
+        store's currency."""
         customerAtStore(userId, storeId)
-        return _storePolicy(setUpStore(storeId, {'_id': 1, 'createdAt': 1}))
+        return _storePolicy(setUpStore(storeId, {'_id': 1, 'createdAt': 1,
+                                                 'currency': 1}))
 
     # The tool description is UPDATE_POLICY_DESCRIPTION. The choice
     # params are plain str (lists of str), not Literals: the MCP SDK's
@@ -228,7 +254,7 @@ class PolicyActions():
                             defectReportDays: int | None = None,
                             deliveryOptions: list[str] | None = None,
                             deliveryAreas: str | None = None,
-                            deliveryFee: float | None = None,
+                            offersFreeDelivery: bool | None = None,
                             freeDeliveryMinimum: float | None = None,
                             handoverDays: int | None = None,
                             acceptedPaymentMethods: list[str] | None = None,
@@ -237,7 +263,8 @@ class PolicyActions():
                             additionalTerms: str | None = None,
                             clear: list[str] | None = None) -> dict:
         params = dict(locals())
-        store = requireOwnerStore(userId, {'_id': 1, 'createdAt': 1})
+        store = requireOwnerStore(userId, {'_id': 1, 'createdAt': 1,
+                                           'currency': 1})
         cleared = _validClear(clear)
         # The generated HTTP handler passes a missing body key as None, so
         # None is "unchanged" and `clear` is how an answer is taken back.
@@ -287,7 +314,8 @@ class PolicyActions():
             projection=projection_of(StorePolicyResponse))
         if updated is None:
             raise ValueError(POLICY_CHANGED)
-        return projectedCopy(StorePolicyResponse, updated)
+        return projectedCopy(StorePolicyResponse,
+                             _withFeePerKm(updated, store['currency']))
 
 
 # updateMyStorePolicy takes exactly the answer fields, besides userId and

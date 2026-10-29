@@ -9,3 +9,5 @@
 export const VAT_RATE = 0.12 as const;
 
 export const FIREBASE_PROJECT_ID = "star-commerce-6797" as const;
+
+export const DELIVERY_USD_PER_KM = 0.15 as const;
