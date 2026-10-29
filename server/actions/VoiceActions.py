@@ -59,8 +59,8 @@ from actions.callSlots import slot
 from actions.OrderActions import customerAtStore
 from actions.StoreActions import _validText, requireOwnerStore, setUpStore
 # ALL_STORES and usageKey are imported for the tests, which read them here.
-from actions.usageCounters import (ALL_STORES, appDay, giveBackQuotas,
-                                   takeDailyQuotas, usageKey)
+from actions.usageCounters import (ALL_STORES, appDay, envCap,
+                                   giveBackQuotas, takeDailyQuotas, usageKey)
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import (VOICE_PAGE_TOKEN_MAX_LENGTH, VOICE_SEARCH_MAX_LENGTH,
@@ -136,8 +136,9 @@ def _takeVoiceQuota(direction: str, audience: str, userId: str,
     counters.append((f'{direction}Store', storeId, storeCap,
                      VOICE_CAP_REACHED))
     return takeDailyQuotas(VOICE_USAGE, counters,
-                           (f'{direction}All', VOICE_CAP_REACHED), variable,
-                           default, f'{direction}DailyCapAllInvalid',
+                           (f'{direction}All', VOICE_CAP_REACHED),
+                           envCap(variable, default,
+                                  f'{direction}DailyCapAllInvalid'),
                            VOICE_TURNED_OFF, appDay(_now()), amount=amount)
 
 

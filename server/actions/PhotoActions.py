@@ -160,8 +160,7 @@ def _takePhotoQuota(storeId: str, count: int) -> list[str]:
     return takeDailyQuotas(
         PHOTO_USAGE,
         [('photos', storeId, STORE_DAILY_PHOTO_CAP, PHOTO_CAP_REACHED)],
-        ('photos', PHOTO_ALL_CAP_REACHED), PHOTO_DAILY_CAP_ALL_VARIABLE,
-        DEFAULT_PHOTO_DAILY_CAP_ALL, 'photoDailyCapAllInvalid',
+        ('photos', PHOTO_ALL_CAP_REACHED), dailyCapAll(),
         PHOTOS_TURNED_OFF, appDay(_now()), amount=count)
 
 

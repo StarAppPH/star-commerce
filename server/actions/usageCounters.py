@@ -136,16 +136,14 @@ def takeQuotas(collection: str, counters: list[tuple[str, int, str]],
 
 
 def takeDailyQuotas(collection: str, counters: list[tuple[str, str, int, str]],
-                    allStores: tuple[str, str], capAllVariable: str,
-                    capAllDefault: int, invalidEvent: str, turnedOff: str,
+                    allStores: tuple[str, str], capAll: int, turnedOff: str,
                     day: datetime.date, amount: int = 1) -> list[str]:
     """Count `amount` on `day` against each counter of `counters` (its
     kind, owner id, cap and refusal) and then all stores' (`allStores`: its
-    kind and refusal; its cap the environment variable `capAllVariable`,
+    kind and refusal; its cap `capAll`, the feature's environment variable
     read with envCap). An all-stores cap of 0 is the feature turned off
     (`turnedOff`, a ValueError, nothing counted). Refused when any would
     pass, and then counted against none (takeQuotas). Returns the keys."""
-    capAll = envCap(capAllVariable, capAllDefault, invalidEvent)
     if capAll == 0:
         raise ValueError(turnedOff)
     allKind, allRefusal = allStores
