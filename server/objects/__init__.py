@@ -169,7 +169,8 @@ from objects.store import (STORE_NAME_MAX_LENGTH,
                            StoreCurrency, DEFAULT_STORE_CURRENCY,
                            PHOTO_STYLE_MAX_LENGTH, HEX_COLOR_PATTERN,
                            HEX_COLOR_EXAMPLE, STORE_THEME_FIELDS, hexColor,
-                           _isNone,
+                           VOICE_ID_PATTERN, STORE_VOICE_FIELD,
+                           STORE_OWNER_ONLY_FIELDS, _isNone,
                            StoreLocation, StoreLocationResponse, Store,
                            StoreView, Customer, CustomerView, StoreResponse,
                            AdminStoreResponse, MyStoreResponse,
@@ -225,6 +226,15 @@ from objects.chat import (ChatAudience, CHAT_MESSAGE_MAX_LENGTH,
 from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                            PHOTOS_PER_CALL_MAX, GeneratedPhoto,
                            GeneratedPhotoRow, GeneratedPhotosResponse)
+from objects.voice import (VoiceAudioFormat, VOICE_NAME_MAX_LENGTH,
+                           VOICE_DESCRIPTION_MAX_LENGTH, VOICE_LABELS_MAX,
+                           VOICE_LABEL_KEY_MAX_LENGTH,
+                           VOICE_LABEL_VALUE_MAX_LENGTH,
+                           VOICE_PREVIEW_URL_MAX_LENGTH,
+                           VOICE_SEARCH_MAX_LENGTH,
+                           VOICE_PAGE_TOKEN_MAX_LENGTH, VoiceUsage,
+                           VoiceReplyResponse, SpokenReplyResponse, VoiceRow,
+                           VoiceListResponse)
 
 
 # AppCreator (_classes_from_module) generates TS schemas only for classes

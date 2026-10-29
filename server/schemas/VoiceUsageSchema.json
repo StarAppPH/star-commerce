@@ -1,0 +1,40 @@
+{
+    "description": "A VoiceUsage document: the seconds of speech transcribed, or the\ncharacters spoken, of a customer at a store, a store, or all stores on\none day (UTC+8). Its _id is \"<kind>:<owner>:<YYYY-MM-DD>\"\n(usageCounters.usageKey); a TTL index on expireAt deletes it once the\nday is over.",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "count": {
+            "description": "Seconds or characters used that day",
+            "minimum": 0,
+            "title": "Count",
+            "type": "integer"
+        },
+        "expireAt": {
+            "description": "When it is deleted",
+            "format": "date-time",
+            "title": "Expireat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "count",
+        "expireAt"
+    ],
+    "title": "VoiceUsage",
+    "type": "object",
+    "additionalProperties": false
+}

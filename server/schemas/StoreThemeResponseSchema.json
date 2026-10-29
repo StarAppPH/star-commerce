@@ -1,5 +1,5 @@
 {
-    "description": "What updateMyStoreTheme sends: the store's photo theme, each field\nnull while unset. Each field restates Store's (MIRRORS).",
+    "description": "What updateMyStoreTheme sends: the store's photo theme, each field\nnull while unset (never the voice: getUserStore sends it). Each field\nrestates Store's (MIRRORS).",
     "properties": {
         "photoStyle": {
             "anyOf": [

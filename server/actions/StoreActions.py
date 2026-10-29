@@ -14,13 +14,15 @@ import unicodedata
 
 from pymongo.errors import DuplicateKeyError
 
+import voiceModel
 from mongoDb import db
 from mcpTools import mcp_tool
 from objects import (DEFAULT_STORE_CURRENCY, LATITUDE_LIMIT, LONGITUDE_LIMIT,
                      PHONE_NUMBER_PATTERN, PHOTO_STYLE_MAX_LENGTH,
                      STORE_ADDRESS_MAX_LENGTH, STORE_DESCRIPTION_MAX_LENGTH,
                      STORE_NAME_MAX_LENGTH, STORE_OPENING_HOURS_MAX_LENGTH,
-                     STORE_SLUG_MAX_LENGTH, STORE_THEME_FIELDS,
+                     STORE_SLUG_MAX_LENGTH, STORE_OWNER_ONLY_FIELDS,
+                     STORE_THEME_FIELDS, STORE_VOICE_FIELD,
                      AdminStoreResponse, MyStoreResponse, Policy, Store,
                      StoreCurrency, StoreLocation, StoreResponse,
                      StoreThemeResponse, hexColor, projectedCopy,
@@ -48,7 +50,8 @@ CONTACT_NUMBER_FORMAT_EXAMPLE = '+639171234567'
 # The control characters a text field may hold: line breaks and tabs.
 ALLOWED_CONTROL_CHARACTERS = frozenset('\n\r\t')
 PHOTO_STYLE_LABEL = 'The photo style'
-NO_THEME_SENT = 'Send a photo style or a brand color to change'
+NO_THEME_SENT = 'Send a photo style, a brand color or a voice to change'
+VOICE_NOT_AVAILABLE = "That voice isn't available: pick one from listVoices"
 STORE_CHANGED = 'Your store just changed, try again'
 # What createUserStore writes: the details the admin gives, and the slug
 # that sets the store up.
@@ -175,6 +178,19 @@ def _validText(value: str | None, label: str, maxLength: int,
     return stripped
 
 
+def _validVoiceId(voiceId) -> str | None:
+    """The store voice to save: "" (or blank) is None, the default voice;
+    anything else must be a voice listVoices offers (voiceModel.voiceExists,
+    one ElevenLabs lookup), else VOICE_NOT_AVAILABLE, never quoting it."""
+    if isinstance(voiceId, str):
+        voiceId = voiceId.strip()
+        if voiceId == '':
+            return None
+        if voiceModel.voiceExists(voiceId):
+            return voiceId
+    raise ValueError(VOICE_NOT_AVAILABLE)
+
+
 def _validContactNumber(contactNumber: str) -> str:
     """The contact number stripped, refused unless it is in international
     (E.164) format."""
@@ -215,9 +231,11 @@ class StoreActions():
         store = db.readResponse(AdminStoreResponse, setUpOwnerQuery(userId),
                                 STORES)
         if store is not None:
-            # A theme field is sent only once set (AdminStoreResponse).
+            # A theme field or the voice is sent only once set
+            # (AdminStoreResponse).
             store = {key: value for key, value in store.items()
-                     if not (key in STORE_THEME_FIELDS and value is None)}
+                     if not (key in STORE_OWNER_ONLY_FIELDS
+                             and value is None)}
         return {'store': store}
 
     @mcp_tool('admin')
@@ -229,20 +247,23 @@ class StoreActions():
                            userId: str,
                            photoStyle: str | None = None,
                            primaryColor: str | None = None,
-                           secondaryColor: str | None = None) -> dict:
+                           secondaryColor: str | None = None,
+                           voiceId: str | None = None) -> dict:
         """Set the look of the store's product photos (generateProductPhotos
         needs a photo style first). Ask the owner, in their own words, for
         the photo style: the background, lighting and mood they want (up
         to 300 characters, e.g. "white marble counter, soft morning light,
         calm and airy"), and for the store's two brand colors as hex codes
         like #1A73E8 (primaryColor and secondaryColor; the photos use them
-        only as accents in the background and props). Never invent a style
-        or a color: use only what the owner said, and confirm them with the
-        owner before calling. Send only the fields the owner wants changed:
-        a field left out keeps its value, and an empty one ("") clears it.
-        If this tool refuses, relay its message to the owner and ask
-        again."""
-        store = requireOwnerStore(userId, {'_id': 1, '_version': 1})
+        only as accents in the background and props). voiceId is the voice
+        the store's assistant speaks its replies with: only a voiceId
+        listVoices returned, for the voice the owner chose ("" goes back to
+        the default voice; getUserStore shows the voice saved). Never invent a style, a color or a voice: use
+        only what the owner said, and confirm them with the owner before
+        calling. Send only the fields the owner wants changed: a field left
+        out keeps its value, and an empty one ("") clears it. If this tool
+        refuses, relay its message to the owner and ask again."""
+        requireAdmin(userId)
         # The generated HTTP handler passes a missing body key as None, so
         # None is "unchanged" and "" is how a field is cleared.
         changes = {}
@@ -254,8 +275,13 @@ class StoreActions():
                              ('secondaryColor', secondaryColor)):
             if value is not None:
                 changes[field] = hexColor(value, field)
+        if voiceId is not None:
+            # ElevenLabs is asked first: the store's _version is read
+            # after it, so the lookup never widens the write's race.
+            changes[STORE_VOICE_FIELD] = _validVoiceId(voiceId)
         if not changes:
             raise ValueError(NO_THEME_SENT)
+        store = ownerStore(userId, {'_id': 1, '_version': 1})
         updated = db.findOneAndUpdate(
             {'_id': store['_id'], '_version': store['_version']},
             {'$set': changes, '$inc': {'_version': 1}},
@@ -264,7 +290,8 @@ class StoreActions():
             projection=projection_of(StoreThemeResponse))
         if updated is None:
             raise ValueError(STORE_CHANGED)
-        # A store from before the theme has none of its fields stored.
+        # A store from before the theme has none of its fields stored. The
+        # voice is not sent back (getUserStore sends it).
         return {field: updated.get(field) for field in STORE_THEME_FIELDS}
 
     @mcp_tool('admin')

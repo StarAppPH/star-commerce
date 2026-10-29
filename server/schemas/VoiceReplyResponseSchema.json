@@ -1,0 +1,57 @@
+{
+    "description": "What a voice chat route sends: what it heard, the assistant's reply\n(as ChatReplyResponse), and the reply spoken, null when speaking it\nfailed (the reply is saved all the same).",
+    "properties": {
+        "conversationId": {
+            "description": "The Conversations _id",
+            "title": "Conversationid",
+            "type": "string"
+        },
+        "turnSeq": {
+            "description": "The seq of the turn just saved",
+            "minimum": 0,
+            "title": "Turnseq",
+            "type": "integer"
+        },
+        "transcript": {
+            "description": "What the recording said, sent to the assistant as the message",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Transcript",
+            "type": "string"
+        },
+        "reply": {
+            "description": "The assistant's reply",
+            "title": "Reply",
+            "type": "string"
+        },
+        "audio": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The reply spoken (base64); null when it could not be spoken (speakChatTurn tries again)",
+            "title": "Audio"
+        },
+        "audioFormat": {
+            "const": "mp3",
+            "description": "audio's encoding",
+            "title": "Audioformat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "conversationId",
+        "turnSeq",
+        "transcript",
+        "reply",
+        "audio",
+        "audioFormat"
+    ],
+    "title": "VoiceReplyResponse",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -74,6 +74,10 @@ export type Primarycolor = string | null;
  * Second brand color, #RRGGBB
  */
 export type Secondarycolor = string | null;
+/**
+ * The ElevenLabs voice its assistant speaks with; null: the default voice
+ */
+export type Voiceid = string | null;
 
 export interface MyStoreResponse {
   /**
@@ -82,9 +86,9 @@ export interface MyStoreResponse {
   store: AdminStoreResponse | null;
 }
 /**
- * The admin's own store: a StoreResponse plus its photo theme, which
- * customers never get (it feeds the product photos, not the storefront).
- * A theme field is sent only once set (a dict the route builds leaves it
+ * The admin's own store: a StoreResponse plus its photo theme and
+ * voice, which customers never get (they feed the product photos and the
+ * spoken replies, not the storefront). Each is sent only once set (a dict the route builds leaves it
  * out, and exclude_if drops it from a dump), so a store with no theme
  * reads exactly as a StoreResponse. Each field restates Store's
  * (test_route_response_models.py's MIRRORS).
@@ -105,6 +109,7 @@ export interface AdminStoreResponse {
   photoStyle?: Photostyle;
   primaryColor?: Primarycolor;
   secondaryColor?: Secondarycolor;
+  voiceId?: Voiceid;
 }
 /**
  * A store's map location as a route sends it. Each field restates
