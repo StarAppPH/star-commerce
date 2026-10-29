@@ -102,7 +102,7 @@ def test_eachAudienceListsOnlyItsTools():
         'getStoreOrders', 'completeOrder', 'cancelStoreOrder',
         'getMyStorePolicy', 'updateMyStorePolicy', 'updateMyStoreTheme',
         'generateProductPhotos', 'setProductPhoto', 'getStoreReturns',
-        'approveReturn', 'rejectReturn', 'receiveReturn'
+        'approveReturn', 'rejectReturn', 'receiveReturn', 'listVoices'
     }
 
 

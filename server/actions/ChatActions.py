@@ -95,7 +95,9 @@ HISTORY_MAX_CHARS = 200_000
 # The conversation's lock is the limit a turn must stay within: every model
 # attempt and every tool call starts before the turn's deadline, and a
 # model attempt also ends by it (chatModel.complete), so a turn is done
-# well before its lock runs out. gunicorn's --timeout 120 is above both.
+# well before its lock runs out. Cloud Run's request timeout (300 s by
+# default) is what caps a request: gunicorn's gthread --timeout only watches
+# the worker, never a request.
 TURN_DEADLINE_SECONDS = 90
 CONVERSATION_LOCK_SECONDS = 110
 CHAT_LIST_DEFAULT_LIMIT = 20
@@ -142,18 +144,26 @@ def _giveBackQuota(*keys: str) -> None:
     giveBackQuotas(CHAT_USAGE, keys)
 
 
+def _customerCounters(userId: str, storeId: str,
+                      day: datetime.date) -> list[tuple[str, int, str]]:
+    """The customer's two daily chat counters on `day` (key, cap, refusal):
+    the customer's own and the store's."""
+    return [
+        (usageKey('customer', userId, day), CUSTOMER_DAILY_CHAT_CAP,
+         CUSTOMER_CAP_REACHED),
+        (usageKey('store', storeId, day), STORE_DAILY_CHAT_CAP,
+         STORE_CAP_REACHED),
+    ]
+
+
 def _takeCustomerQuota(userId: str, storeId: str) -> tuple[str, str]:
     """Count the customer's message against both daily caps, refused when
     either is reached (and then counted against neither). Returns the two
     counters' keys."""
     day = appDay(_now())
-    expireAt = usageExpiry(day)
-    customerKey, storeKey = takeQuotas(CHAT_USAGE, [
-        (usageKey('customer', userId, day), CUSTOMER_DAILY_CHAT_CAP,
-         CUSTOMER_CAP_REACHED),
-        (usageKey('store', storeId, day), STORE_DAILY_CHAT_CAP,
-         STORE_CAP_REACHED),
-    ], expireAt)
+    customerKey, storeKey = takeQuotas(
+        CHAT_USAGE, _customerCounters(userId, storeId, day),
+        usageExpiry(day))
     return customerKey, storeKey
 
 
@@ -180,6 +190,48 @@ def _lockConversation(conversationId: str, userId: str, storeId: str,
                findOne=True) is None:
         raise ValueError(CONVERSATION_NOT_FOUND)
     raise ValueError(STILL_ANSWERING)
+
+
+def refuseTurnBeforeItStarts(audience: str, userId: str, storeId: str,
+                             conversationId) -> None:
+    """Refuse, reading only, a message _slottedTurn would refuse before the
+    model: a conversation that is not the caller's (or none), one still
+    answering, or (a customer) a daily cap already reached, with the same
+    messages. For a caller about to pay for something first (a voice
+    message's transcription): _slottedTurn still takes the lock and the
+    quota itself, atomically, so a racing message can still be refused
+    there."""
+    conversationId = _validConversationId(conversationId)
+    now = _now()
+    if conversationId is not None:
+        conversation = db.read(
+            {'_id': conversationId, 'userId': userId, 'storeId': storeId,
+             'audience': audience}, CONVERSATIONS,
+            projection={'busyUntil': 1}, findOne=True)
+        if conversation is None:
+            raise ValueError(CONVERSATION_NOT_FOUND)
+        busyUntil = conversation.get('busyUntil')
+        if busyUntil is not None and busyUntil > now:
+            raise ValueError(STILL_ANSWERING)
+    if audience == 'customer':
+        for key, cap, message in _customerCounters(userId, storeId,
+                                                   appDay(now)):
+            counter = db.read({'_id': key}, CHAT_USAGE,
+                              projection={'count': 1}, findOne=True)
+            if counter is not None and counter['count'] >= cap:
+                raise ValueError(message)
+
+
+def ownConversation(conversationId, userId: str, projection: dict) -> dict:
+    """The caller's own conversation `conversationId` (with `projection`):
+    anything else, or no id, is CONVERSATION_NOT_FOUND."""
+    conversationId = _validConversationId(conversationId)
+    conversation = None if conversationId is None else db.read(
+        {'_id': conversationId, 'userId': userId}, CONVERSATIONS,
+        projection=projection, findOne=True)
+    if conversation is None:
+        raise ValueError(CONVERSATION_NOT_FOUND)
+    return conversation
 
 
 def _releaseLock(conversationId: str, busyUntil: datetime.datetime) -> None:
@@ -651,11 +703,8 @@ class ChatActions():
         """The turns of the caller's own conversation, newest first: its
         user texts and replies, never its tool steps. `beforeSeq` pages
         back: only the turns before it."""
-        conversationId = _validConversationId(conversationId)
-        if conversationId is None or db.read(
-                {'_id': conversationId, 'userId': userId}, CONVERSATIONS,
-                projection={'_id': 1}, findOne=True) is None:
-            raise ValueError(CONVERSATION_NOT_FOUND)
+        conversationId = ownConversation(conversationId, userId,
+                                         {'_id': 1})['_id']
         return {
             'turns': db.aggregateResponses(ChatTurnRow, [
                 {'$match': {'conversationId': conversationId,

@@ -38,6 +38,12 @@ PHOTO_STYLE_MAX_LENGTH = 300
 HEX_COLOR_PATTERN = r'^#[0-9A-Fa-f]{6}$'
 HEX_COLOR_EXAMPLE = '#1A73E8'
 STORE_THEME_FIELDS = ('photoStyle', 'primaryColor', 'secondaryColor')
+# The ElevenLabs voice the store's assistant speaks with (voiceModel), set
+# with updateMyStoreTheme. Like a theme field, the owner's views send it only
+# once set (STORE_OWNER_ONLY_FIELDS).
+VOICE_ID_PATTERN = r'^[A-Za-z0-9]{1,64}$'
+STORE_VOICE_FIELD = 'voiceId'
+STORE_OWNER_ONLY_FIELDS = (*STORE_THEME_FIELDS, STORE_VOICE_FIELD)
 
 
 def hexColor(value, field: str) -> str | None:
@@ -113,6 +119,10 @@ class Store(MongoModel):
     secondaryColor: str | None = Field(
         None, pattern=HEX_COLOR_PATTERN,
         description='Second brand color, #RRGGBB')
+    voiceId: str | None = Field(
+        None, pattern=VOICE_ID_PATTERN,
+        description="The ElevenLabs voice its assistant speaks with; null: "
+        'the default voice')
     createdAt: datetime.datetime = Field(..., description='When it was created')
 
     @field_validator('name', 'description', 'contactNumber', 'address',
@@ -189,13 +199,13 @@ class ShopStoreResponse(StoreResponse):
 
 
 class AdminStoreResponse(StoreResponse):
-    """The admin's own store: a StoreResponse plus its photo theme. Its
-    photo style feeds the product photos only, and customers never get it;
-    they get the brand colors (ShopStoreResponse). A theme field is sent
-    only once set (a dict the route builds leaves it out, and exclude_if
-    drops it from a dump), so a store with no theme reads exactly as a
-    StoreResponse. Each field restates Store's
-    (test_route_response_models.py's MIRRORS)."""
+    """The admin's own store: a StoreResponse plus its photo theme and
+    voice. The photo style feeds the product photos and the voice the
+    spoken replies, and customers never get either; they get the brand
+    colors (ShopStoreResponse). Each is sent only once set (a dict the
+    route builds leaves it out, and exclude_if drops it from a dump), so a
+    store with none reads exactly as a StoreResponse. Each field restates
+    Store's (test_route_response_models.py's MIRRORS)."""
     photoStyle: str | None = Field(
         None, min_length=1, max_length=PHOTO_STYLE_MAX_LENGTH,
         exclude_if=_isNone,
@@ -206,6 +216,10 @@ class AdminStoreResponse(StoreResponse):
     secondaryColor: str | None = Field(
         None, pattern=HEX_COLOR_PATTERN, exclude_if=_isNone,
         description='Second brand color, #RRGGBB')
+    voiceId: str | None = Field(
+        None, pattern=VOICE_ID_PATTERN, exclude_if=_isNone,
+        description="The ElevenLabs voice its assistant speaks with; null: "
+        'the default voice')
 
 
 class MyStoreResponse(ResponseModel):
@@ -215,7 +229,8 @@ class MyStoreResponse(ResponseModel):
 
 class StoreThemeResponse(ResponseModel):
     """What updateMyStoreTheme sends: the store's photo theme, each field
-    null while unset. Each field restates Store's (MIRRORS)."""
+    null while unset (never the voice: getUserStore sends it). Each field
+    restates Store's (MIRRORS)."""
     photoStyle: str | None = Field(
         ..., min_length=1, max_length=PHOTO_STYLE_MAX_LENGTH,
         description="The look of the store's product photos")

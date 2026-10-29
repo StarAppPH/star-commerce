@@ -33,7 +33,6 @@ The clock: every read of now is _now(), which reads this module's
 
 import datetime
 import logging
-import os
 import threading
 import time
 
@@ -42,8 +41,8 @@ import photoStorage
 from actions.callSlots import slot
 from actions.ProductActions import PRODUCT_NOT_FOUND, PRODUCTS
 from actions.StoreActions import _validText, requireOwnerStore
-from actions.usageCounters import (appDay, giveBackQuotas, takeQuotas,
-                                   usageExpiry, usageKey)
+from actions.usageCounters import (appDay, envCap, giveBackQuotas,
+                                   takeQuotas, usageExpiry, usageKey)
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
@@ -154,21 +153,10 @@ def photoPrompt(store: dict, notes: str | None) -> str:
 
 
 def dailyCapAll() -> int:
-    """PHOTO_DAILY_CAP_ALL, read at each call: a whole number, 0 or more.
-    Unset, it is DEFAULT_PHOTO_DAILY_CAP_ALL; anything else is refused (a
-    warning) and the default applies."""
-    raw = (os.getenv(PHOTO_DAILY_CAP_ALL_VARIABLE) or '').strip()
-    if not raw:
-        return DEFAULT_PHOTO_DAILY_CAP_ALL
-    try:
-        cap = int(raw)
-    except ValueError:
-        cap = -1
-    if cap < 0:
-        logging.warning({'event': 'photoDailyCapAllInvalid',
-                         'default': DEFAULT_PHOTO_DAILY_CAP_ALL})
-        return DEFAULT_PHOTO_DAILY_CAP_ALL
-    return cap
+    """PHOTO_DAILY_CAP_ALL, read at each call (usageCounters.envCap): unset
+    or invalid, DEFAULT_PHOTO_DAILY_CAP_ALL."""
+    return envCap(PHOTO_DAILY_CAP_ALL_VARIABLE, DEFAULT_PHOTO_DAILY_CAP_ALL,
+                  'photoDailyCapAllInvalid')
 
 
 def _takePhotoQuota(storeId: str, count: int) -> list[str]:

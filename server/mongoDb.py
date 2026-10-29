@@ -196,6 +196,9 @@ class mongoDb():
         self.db['GeneratedPhotos'].create_index([('storeId', 1),
                                                  ('createdAt', -1)])
         self.db['PhotoUsage'].create_index('expireAt', expireAfterSeconds=0)
+        # The daily voice counters (seconds, characters), deleted once their
+        # day is over.
+        self.db['VoiceUsage'].create_index('expireAt', expireAfterSeconds=0)
 
     def create(self, data: dict, collection_name: str, session: Optional[ClientSession] = None) -> dict:
         """Insert a document into the collection and return the created data."""

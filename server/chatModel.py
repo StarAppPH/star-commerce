@@ -7,7 +7,8 @@
   assistant is unavailable right now"). The key is never logged or sent.
 - complete(): one chat completion within the turn's deadline. The SDK
   retries nothing (CLIENT_MAX_RETRIES=0): callModel() (which
-  imageModel.editImages() shares) retries once itself, only a connection
+  imageModel.editImages() shares; its loop, callWithRetry(), is
+  voiceModel's too) retries once itself, only a connection
   error, a timeout, a 429 or a 5xx (504 included), and only with
   RETRY_MIN_SECONDS left after a fixed
   RETRY_BACKOFF_SECONDS pause; it never waits for Retry-After, and never
@@ -168,6 +169,14 @@ def client():
         return _client
 
 
+def errorLog(event: str, error: Exception, status) -> dict:
+    """The log line of a failed model or API call: its event, the error's
+    class and the HTTP status, never the error's text (it may quote the
+    request or a URL)."""
+    return {'event': event, 'errorClass': type(error).__name__,
+            'status': status}
+
+
 def _logModelError(error, event: str) -> None:
     """Log an SDK error by its class and status only (its text may quote
     the request): a 4xx other than 429 (a bad key, a refused request) is
@@ -177,11 +186,37 @@ def _logModelError(error, event: str) -> None:
     ours = (isinstance(error, openai.APIStatusError)
             and not isinstance(error, openai.RateLimitError)
             and isinstance(status, int) and 400 <= status < 500)
-    logging.log(logging.ERROR if ours else logging.WARNING, {
-        'event': event,
-        'errorClass': type(error).__name__,
-        'status': status,
-    })
+    logging.log(logging.ERROR if ours else logging.WARNING,
+                errorLog(event, error, status))
+
+
+def callWithRetry(request: Callable[[float], T], deadline: float,
+                  attemptSeconds: float, failure: Callable[[], Exception],
+                  errors: tuple[type[BaseException], ...],
+                  handle: Callable[[BaseException], bool]) -> T:
+    """`request(timeout)`, done before `deadline` (time.monotonic(), this
+    module's clock): each attempt waits at most min(attemptSeconds, the time
+    left). An error of `errors` goes to handle(error), which logs it and
+    either raises (a refusal of its own) or says whether it may be retried:
+    a retryable one is retried once, with at least RETRY_MIN_SECONDS left
+    after a fixed RETRY_BACKOFF_SECONDS pause (never Retry-After). Any
+    other, and a passed deadline, is raised as failure(). The one retry
+    loop of every model and voice call (callModel, voiceModel._call)."""
+    for attempt in range(2):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise failure()
+        try:
+            return request(min(attemptSeconds, remaining))
+        except errors as error:
+            retryable = handle(error)
+            if (attempt == 0 and retryable
+                    and deadline - time.monotonic() >=
+                    RETRY_BACKOFF_SECONDS + RETRY_MIN_SECONDS):
+                time.sleep(RETRY_BACKOFF_SECONDS)
+                continue
+            raise failure() from None
+    raise failure()
 
 
 def callModel(request: Callable[[float], T], deadline: float,
@@ -190,10 +225,8 @@ def callModel(request: Callable[[float], T], deadline: float,
               refusal: Callable[[Exception], Exception | None] | None = None,
               logEvent: str = 'chatModelError') -> T:
     """`request(timeout)` (one SDK call), done before `deadline`
-    (time.monotonic()): each attempt waits at most min(attemptSeconds, the
-    time left). A connection error, a timeout, a 429 or a 5xx is retried
-    once, with at least RETRY_MIN_SECONDS left after a
-    RETRY_BACKOFF_SECONDS pause; a 4xx other than 429 never is. An SDK
+    (time.monotonic()), retried as callWithRetry does: only a connection
+    error, a timeout, a 429 or a 5xx; a 4xx other than 429 never is. An SDK
     error `refusal` maps to an exception is raised as that one (logged as
     a warning); any other is then raised as failure(), and so is a passed
     deadline. Every SDK error is logged (logEvent) by its class and status
@@ -201,29 +234,20 @@ def callModel(request: Callable[[float], T], deadline: float,
     import openai
     retryable = (openai.APIConnectionError, openai.APITimeoutError,
                  openai.RateLimitError, openai.InternalServerError)
-    for attempt in range(2):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise failure()
-        try:
-            return request(min(attemptSeconds, remaining))
-        except openai.OpenAIError as error:
-            refused = refusal(error) if refusal is not None else None
-            if refused is not None:
-                # The user's to act on (a content refusal), not ours to fix.
-                logging.warning({'event': logEvent,
-                                 'errorClass': type(error).__name__,
-                                 'status': getattr(error, 'status_code',
-                                                   None),
-                                 'refused': True})
-                raise refused from None
-            _logModelError(error, logEvent)
-            if (attempt == 0 and isinstance(error, retryable)
-                    and deadline - time.monotonic() >=
-                    RETRY_BACKOFF_SECONDS + RETRY_MIN_SECONDS):
-                time.sleep(RETRY_BACKOFF_SECONDS)
-                continue
-            raise failure() from None
+
+    def handle(error) -> bool:
+        refused = refusal(error) if refusal is not None else None
+        if refused is not None:
+            # The user's to act on (a content refusal), not ours to fix.
+            logging.warning({**errorLog(logEvent, error,
+                                        getattr(error, 'status_code', None)),
+                             'refused': True})
+            raise refused from None
+        _logModelError(error, logEvent)
+        return isinstance(error, retryable)
+
+    return callWithRetry(request, deadline, attemptSeconds, failure,
+                         (openai.OpenAIError,), handle)
 
 
 def complete(messages: list[dict], tools: list[dict] | None,
