@@ -35,7 +35,7 @@ from objects import (DEFAULT_STORE_CURRENCY, LATITUDE_LIMIT, LONGITUDE_LIMIT,
                      StoreThemeResponse, hexColor, projectedCopy,
                      projection_of)
 from route_config import route_config
-from actions.usageCounters import appDay
+from actions.usageCounters import appDay, copyDailyQuota, usageKey
 from sharedConstants import STORE_RESET_ENDS_AT
 from utils import parseIsoInstant
 
@@ -247,28 +247,12 @@ def _carryOverUsage(oldStoreId: str, newStoreId: str, day: datetime.date,
     `session`, so a reset never gives a day's quota back."""
     # Imported here: each of these modules imports this one.
     from actions import ChatActions, PhotoActions, VoiceActions
-    from actions.usageCounters import usageExpiry, usageKey
     for collection, kinds in (ChatActions.STORE_USAGE_KINDS,
                               PhotoActions.STORE_USAGE_KINDS,
                               VoiceActions.STORE_USAGE_KINDS):
         for kind in kinds:
-            counter = db.read({'_id': usageKey(kind, oldStoreId, day)},
-                              collection,
-                              projection={'count': 1, 'expireAt': 1},
-                              session=session,
-                              findOne=True)
-            if counter is None or not counter.get('count'):
-                continue
-            db.findOneAndUpdate(
-                {'_id': usageKey(kind, newStoreId, day)},
-                {'$max': {'count': counter['count']},
-                 '$setOnInsert': {'expireAt': (counter.get('expireAt')
-                                               or usageExpiry(day)),
-                                  '_version': 0}},
-                collection,
-                upsert=True,
-                session=session,
-                projection={'_id': 1})
+            copyDailyQuota(collection, usageKey(kind, oldStoreId, day),
+                           usageKey(kind, newStoreId, day), session)
 
 
 def _deleteStoreData(storeId: str, chatPaths: list[str]) -> dict:
