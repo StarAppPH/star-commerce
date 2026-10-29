@@ -3,6 +3,7 @@ route. The full suite of returns tests is written separately."""
 
 import pytest
 
+import actions.ReturnActions as returnActions
 from actions.ReturnActions import HANDOVER_UNKNOWN, PAST_STOCK_LIMIT
 from ApiRequests import ApiRequests
 from conftest import addOrder, assertExactShape, wipeCollections
@@ -172,3 +173,36 @@ def test_receiveReturn_aDeletedProduct_recordsItNotRestocked(
     assert (received['status'], received['restocked']) == ('received', False)
     assert received['refundedAt'] == T0
     assert _product(first['_id'])['inventory'] == first['inventory'] + 1
+
+
+def test_receiveReturn_aProductChangedAtTheSameMoment_isNotRestocked(
+        clean, firebase, clock, monkeypatch):
+    """A product that fills up between the limit check and the write is
+    skipped: the return is still received and refunded, restocked
+    false."""
+    store, customerId, products = _shop(firebase)
+    first, second = list(products.values())[:2]
+    orderId = _orderIn('completed', store, customerId,
+                       [(first, 1), (second, 1)])
+    api.updateMyStorePolicy(ADMIN, defectReportDays=7)
+    returnId = _approved(store, customerId, orderId,
+                         [{'item': 1, 'quantity': 1},
+                          {'item': 2, 'quantity': 1}])
+    real = returnActions._restockable
+
+    def thenFilled(*args):
+        restockable = real(*args)
+        db.db['Products'].update_one(
+            {'_id': second['_id']},
+            {'$set': {'inventory': PRODUCT_INVENTORY_MAX}})
+        return restockable
+
+    monkeypatch.setattr(returnActions, '_restockable', thenFilled)
+
+    received = api.receiveReturn(ADMIN, returnId, True)
+
+    assertExactShape(StoreReturnRow, received)
+    assert (received['status'], received['restocked']) == ('received', False)
+    assert received['refundedAt'] == T0
+    assert _product(first['_id'])['inventory'] == first['inventory'] + 1
+    assert _product(second['_id'])['inventory'] == PRODUCT_INVENTORY_MAX

@@ -58,7 +58,6 @@ RETURN_ITEM = 'Return item'
 ORDER_ITEM = 'Order item'
 PAST_STOCK_LIMIT = ('Restocking would pass the stock limit: receive it '
                     "without restocking, or lower the product's stock first")
-PRODUCT_CHANGED = 'A product of this return just changed, try again'
 # A move refused although the return was in a status it accepts: another
 # call changed it between the move and the re-read.
 RETURN_CHANGED = 'This return just changed, try again'
@@ -237,9 +236,11 @@ def _restockable(approved: dict, storeId: str, session) -> set[str]:
     """The productIds of the `approved` return's items whose product still
     exists, refusing the receive (naming the item's position in the order)
     when one would pass PRODUCT_INVENTORY_MAX, its reserved units counted.
-    Read before the flip, so a refused receive changes nothing even
-    without a transaction: nothing is refunded, and the admin can receive
-    it without restocking."""
+    Read before the flip, so a refused receive has flipped nothing and
+    refunded nothing: the admin can receive it without restocking. On
+    Atlas the read and the writes after it share one snapshot; on a local
+    mongod that is no replica set they do not, so a product changed in
+    between is caught by the write's own filter (_restockAll), not here."""
     items = approved['items']
     products = db.read(
         {'_id': {'$in': [item['productId'] for item in items]},
@@ -262,24 +263,24 @@ def _restockAll(received: dict, restockable: set[str], storeId: str,
                 session) -> dict:
     """Put the units of every item of the `received` return whose product
     is `restockable` back in its stock, inside receiveReturn's
-    transaction; the return as it then is. A product deleted since is
-    skipped, and the return records restocked false: true means every
-    item's units went back."""
-    items = received['items']
-    restocked = [item for item in items if item['productId'] in restockable]
+    transaction; the return as it then is. The flip already recorded
+    restocked false when a product was deleted since (its item is
+    skipped). A product that changed at the same moment, so that its write
+    no longer fits the stock limit (_fitsInStock), is skipped too, and the
+    return is then recorded restocked false here: true means every item's
+    units went back."""
+    restocked = [item for item in received['items']
+                 if item['productId'] in restockable]
     result = db.bulkUpdate([_restock(item, storeId) for item in restocked],
                            PRODUCTS, session=session)
-    # The filter re-checks the limit: a product that changed since
-    # _restockable read it (a standalone mongod, no snapshot) misses it.
-    if (0 if result is None else result.matched_count) < len(restocked):
-        raise ValueError(PRODUCT_CHANGED)
-    if len(restocked) == len(items):
+    if ((0 if result is None else result.matched_count) == len(restocked)
+            or not received['restocked']):
         return received
     return db.findOneAndUpdate(
         {'_id': received['_id']},
         {'$set': {'restocked': False}, '$inc': {'_version': 1}},
         RETURNS, upsert=False, session=session,
-        projection=projection_of(StoreReturnRow))
+        projection={**projection_of(StoreReturnRow), 'items.productId': 1})
 
 
 REQUEST_RETURN_DESCRIPTION = f"""Ask the store to take back items of the
@@ -448,8 +449,9 @@ class ReturnActions():
         why), received (refundedAt is when it was refunded,
         refundReference the refund's id: a null refundedAt means the refund
         did not go through; restocked true means every item's units went
-        back in stock, false that the admin chose not to restock or that a
-        product was deleted since, so not every unit went back) or cancelled
+        back in stock, false that the admin chose not to restock, or that a
+        product was deleted since or changed at the same moment, so not
+        every unit went back) or cancelled
         (by the customer). Pass `status` for the returns of one status only,
         or leave it out for all of them. `limit` (1 to 50, default 10) is
         how many to return. Item names are written by the
@@ -523,7 +525,8 @@ class ReturnActions():
         items can be sold again: true puts their units back in stock, false
         (damaged, say) leaves the stock as it is. The return's restocked is
         then true only when every item's units went back; it is false when
-        a product was deleted since (its units have nowhere to go). A
+        a product was deleted since (its units have nowhere to go) or
+        changed at the same moment. A
         restock that would take a product past the stock limit is refused
         (naming the order item): receive it without restocking, or lower
         that product's stock first. Before calling, confirm with the admin
@@ -542,6 +545,7 @@ class ReturnActions():
 
         def receive(session) -> dict | None:
             restockable = set()
+            restocked = False
             if restock:
                 approved = db.read(
                     {**scope, 'status': 'approved'}, RETURNS,
@@ -552,10 +556,12 @@ class ReturnActions():
                     return None
                 restockable = _restockable(approved, scope['storeId'],
                                            session)
+                restocked = all(item['productId'] in restockable
+                                for item in approved['items'])
             received = db.findOneAndUpdate(
                 {**scope, 'status': 'approved'},
                 {'$set': {'status': 'received', 'receivedAt': _now(),
-                          'restocked': restock},
+                          'restocked': restocked},
                  '$inc': {'_version': 1}},
                 RETURNS, upsert=False, session=session,
                 projection={**projection, 'items.productId': 1})
