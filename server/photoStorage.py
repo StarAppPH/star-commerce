@@ -15,7 +15,10 @@ bucket. Every other environment ignores both.
   own users/<uid>/ folder, read by bucket and path through the Storage
   SDK. Nothing is ever fetched by URL, so no request can make the server
   fetch an address of its choosing. HEIC/HEIF is refused by name and by
-  type. readOwnImages() is it for photos: JPEGs or PNGs of at most
+  type, and by contents: a file's first bytes must be its type's
+  (SIGNATURES). ownFiles() and downloadFiles() are its two steps, for a
+  caller that budgets between them.
+  readOwnImages() is it for photos: JPEGs or PNGs of at most
   MAX_IMAGE_BYTES each (and PHOTO_REFERENCES_MAX_TOTAL_BYTES together);
   the chat's attachments add PDFs.
 - publicPathUrl(): the canonical download URL of a path, without a token
@@ -38,6 +41,7 @@ import secrets
 import threading
 import time
 import unicodedata
+from typing import NamedTuple
 from urllib.parse import quote, unquote, urlsplit
 
 from AppConfig import Environment
@@ -61,6 +65,17 @@ REFERENCES_TOO_LARGE = ('The photos are over 25 MB together: send fewer or '
 IMAGE_CONTENT_TYPES = ('image/jpeg', 'image/png')
 HEIC_CONTENT_TYPES = ('image/heic', 'image/heif')
 HEIC_EXTENSIONS = ('.heic', '.heif')
+# The first bytes of each type's files, and the ISO-BMFF brands of a
+# HEIC/HEIF one (its ftyp box): a file whose contents are not its type's is
+# refused.
+SIGNATURES = {'image/jpeg': b'\xff\xd8\xff',
+              'image/png': b'\x89PNG\r\n\x1a\n',
+              'application/pdf': b'%PDF-'}
+HEIC_BRANDS = (b'heic', b'heix', b'hevc', b'heim', b'heis', b'mif1', b'msf1')
+NOT_A_REAL_PHOTO = "isn't a real JPG or PNG photo"
+# What a skipped file of a skipUnreadable read is.
+GONE = 'gone'
+REFUSED = 'refused'
 STORE_PHOTO_CONTENT_TYPE = 'image/jpeg'
 DOWNLOAD_TOKEN_KEY = 'firebaseStorageDownloadTokens'
 # What routeErrors' 503 names: "Photo storage is unavailable right now".
@@ -249,8 +264,28 @@ def ownImagePath(uid: str, path: str, label: str, kind: str = 'photo') -> str:
     return path
 
 
-def _megabytes(size: int) -> str:
+def ownPathsOfUrls(uid: str, urls: list, field: str, twice: str,
+                   kind: str = 'photo') -> list[tuple[str, str]]:
+    """The label (field[i]) and object path of each download URL of `urls`:
+    of our bucket (objectPathFromUrl) and under the caller `uid`'s own
+    folder (ownImagePath), no path twice (else `twice`)."""
+    files = []
+    for i, url in enumerate(urls):
+        label = f'{field}[{i}]'
+        path = objectPathFromUrl(url, label, kind)
+        files.append((label, ownImagePath(uid, path, label, kind)))
+    if len({path for _, path in files}) != len(files):
+        raise ValueError(twice)
+    return files
+
+
+def megabytes(size: int) -> str:
+    """`size` bytes as a refusal says it: whole MB."""
     return f'{size // (1024 * 1024)} MB'
+
+
+def _overLimit(label: str, maxBytes: int) -> ValueError:
+    return ValueError(f'{label} is over {megabytes(maxBytes)}')
 
 
 def fileExtension(path: str) -> str:
@@ -260,18 +295,53 @@ def fileExtension(path: str) -> str:
     return name[name.rfind('.'):].lower() if '.' in name else ''
 
 
+def _isHeicData(data: bytes) -> bool:
+    """Whether `data` starts as a HEIC/HEIF file does: an ISO-BMFF ftyp box
+    of a HEIF brand."""
+    return data[4:8] == b'ftyp' and data[8:12] in HEIC_BRANDS
+
+
+def _checkContents(data: bytes, contentType: str, label: str,
+                   notReal: str) -> None:
+    """Refuse `data` unless its first bytes are those of `contentType`
+    (SIGNATURES): a HEIC/HEIF file is CONVERT_PHOTO, any other `notReal`
+    (after the label)."""
+    if _isHeicData(data):
+        raise ValueError(f'{label} is a HEIC or HEIF photo. {CONVERT_PHOTO}')
+    if not data.startswith(SIGNATURES[contentType]):
+        raise ValueError(f'{label} {notReal}')
+
+
+class _Gone(ValueError):
+    """A file that is not in Storage (any more)."""
+
+
+class OwnFile(NamedTuple):
+    """A file under the caller's own folder, its metadata checked
+    (ownFiles), not yet downloaded."""
+    label: str
+    path: str
+    blob: object
+    contentType: str
+
+    @property
+    def size(self) -> int:
+        return self.blob.size
+
+
 def _ownBlob(uid: str, path: str, label: str, allowedTypes: tuple[str, ...],
              wrongType: str, maxBytes: int,
-             extensionTypes: dict[str, str] | None, deadline: float):
-    """The blob of the file at `path` under the caller `uid`'s own folder
-    (ownImagePath), with its content type: it must exist, be of
+             extensionTypes: dict[str, str] | None, kind: str,
+             deadline: float) -> OwnFile:
+    """The file at `path` under the caller `uid`'s own folder
+    (ownImagePath), its metadata checked: it must exist (else _Gone), be of
     `allowedTypes` (else `wrongType`, after the label) and, with
     `extensionTypes` (extension: type), the type its name's extension
     names, and be at most `maxBytes`."""
-    path = ownImagePath(uid, path, label)
+    path = ownImagePath(uid, path, label, kind)
     blob = _bucket().get_blob(path, **_limits(deadline))
     if blob is None:
-        raise ValueError(f'{label} was not found: upload it again')
+        raise _Gone(f'{label} was not found: upload it again')
     contentType = (blob.content_type or '').split(';')[0].strip().lower()
     if contentType in HEIC_CONTENT_TYPES:
         raise ValueError(f'{label} is a HEIC or HEIF photo. {CONVERT_PHOTO}')
@@ -280,71 +350,93 @@ def _ownBlob(uid: str, path: str, label: str, allowedTypes: tuple[str, ...],
             and extensionTypes.get(fileExtension(path)) != contentType):
         raise ValueError(f'{label} {wrongType}')
     if blob.size is None or blob.size > maxBytes:
-        raise ValueError(f'{label} is over {_megabytes(maxBytes)}')
-    return blob, contentType
+        raise _overLimit(label, maxBytes)
+    return OwnFile(label, path, blob, contentType)
+
+
+def ownFiles(uid: str, files: list[tuple[str, str]],
+             allowedTypes: tuple[str, ...], maxBytes: int, deadline: float,
+             *, wrongType: str, extensionTypes: dict[str, str] | None = None,
+             kind: str = 'photo', skipUnreadable: bool = False
+             ) -> list[OwnFile | str]:
+    """Each file (its label and path) under the caller `uid`'s own folder,
+    its metadata checked (_ownBlob) before `deadline` (time.monotonic()),
+    nothing downloaded yet. With `skipUnreadable`, a file that would be
+    refused is GONE (not in Storage) or REFUSED instead. A Storage failure
+    is a 503."""
+    owned = []
+    try:
+        for label, path in files:
+            try:
+                owned.append(_ownBlob(uid, path, label, allowedTypes,
+                                      wrongType, maxBytes, extensionTypes,
+                                      kind, deadline))
+            except ValueError as error:
+                if not skipUnreadable:
+                    raise
+                owned.append(GONE if isinstance(error, _Gone) else REFUSED)
+    except _Gone as error:
+        raise ValueError(str(error)) from None
+    except _storageErrors() as error:
+        raise _storageFailure(error) from None
+    return owned
+
+
+def downloadFiles(files: list[OwnFile], maxBytes: int, deadline: float, *,
+                  notReal: str, skipUnreadable: bool = False
+                  ) -> list[bytes | str]:
+    """The bytes of each file (ownFiles), downloaded before `deadline`: at
+    most `maxBytes`, and their first bytes those of their type
+    (_checkContents, else `notReal`). With `skipUnreadable`, a file that
+    would be refused is GONE (deleted since) or REFUSED instead. A Storage
+    failure is a 503."""
+    from google.api_core.exceptions import NotFound
+    read = []
+    try:
+        for file in files:
+            try:
+                # At most one byte past the limit, should it have grown
+                # since.
+                data = file.blob.download_as_bytes(end=maxBytes,
+                                                   **_limits(deadline))
+                if len(data) > maxBytes:
+                    raise _overLimit(file.label, maxBytes)
+                _checkContents(data, file.contentType, file.label, notReal)
+            except NotFound:
+                if not skipUnreadable:
+                    raise ValueError(f'{file.label} was not found: upload '
+                                     'it again') from None
+                read.append(GONE)
+                continue
+            except ValueError:
+                if not skipUnreadable:
+                    raise
+                read.append(REFUSED)
+                continue
+            read.append(data)
+    except _storageErrors() as error:
+        raise _storageFailure(error) from None
+    return read
 
 
 def readOwnFiles(uid: str, files: list[tuple[str, str]],
                  allowedTypes: tuple[str, ...], maxBytes: int,
                  maxTotalBytes: int, deadline: float, *, wrongType: str,
-                 totalTooLarge: str,
+                 notReal: str, totalTooLarge: str,
                  extensionTypes: dict[str, str] | None = None,
-                 skipUnreadable: bool = False
-                 ) -> list[tuple[bytes, str] | None]:
+                 kind: str = 'photo') -> list[tuple[bytes, str]]:
     """The bytes and content type of each file (its label and path) under
-    the caller `uid`'s own folder (_ownBlob: of `allowedTypes`, at most
-    `maxBytes`), read before `deadline` (time.monotonic()). Every file's
-    metadata is checked before any is downloaded, their sizes together
-    included (`maxTotalBytes`, else `totalTooLarge`).
-
-    With `skipUnreadable`, a file that would be refused (gone, of another
-    type, too large, or past `maxTotalBytes` with the files before it) is
-    None instead, and the others are still read: `files` come in the order
-    they take the budget. A Storage failure is a 503 either way."""
-    from google.api_core.exceptions import NotFound
-    label = None
-    try:
-        blobs, total = [], 0
-        for label, path in files:
-            try:
-                blob, contentType = _ownBlob(uid, path, label, allowedTypes,
-                                             wrongType, maxBytes,
-                                             extensionTypes, deadline)
-                if skipUnreadable and total + blob.size > maxTotalBytes:
-                    raise ValueError(totalTooLarge)
-            except ValueError:
-                if not skipUnreadable:
-                    raise
-                blobs.append(None)
-                continue
-            total += blob.size
-            blobs.append((label, blob, contentType))
-        if total > maxTotalBytes:
-            raise ValueError(totalTooLarge)
-        read = []
-        for entry in blobs:
-            if entry is None:
-                read.append(None)
-                continue
-            label, blob, contentType = entry
-            try:
-                # At most one byte past the limit, should it have grown
-                # since.
-                data = blob.download_as_bytes(end=maxBytes,
-                                              **_limits(deadline))
-                if len(data) > maxBytes:
-                    raise ValueError(f'{label} is over {_megabytes(maxBytes)}')
-            except (NotFound, ValueError):
-                if not skipUnreadable:
-                    raise
-                read.append(None)
-                continue
-            read.append((data, contentType))
-    except NotFound:
-        raise ValueError(f'{label} was not found: upload it again') from None
-    except _storageErrors() as error:
-        raise _storageFailure(error) from None
-    return read
+    the caller `uid`'s own folder, read before `deadline`
+    (time.monotonic()): every file's metadata is checked first (ownFiles),
+    their sizes together included (`maxTotalBytes`, else `totalTooLarge`),
+    then each is downloaded and its contents checked (downloadFiles)."""
+    owned = ownFiles(uid, files, allowedTypes, maxBytes, deadline,
+                     wrongType=wrongType, extensionTypes=extensionTypes,
+                     kind=kind)
+    if sum(file.size for file in owned) > maxTotalBytes:
+        raise ValueError(totalTooLarge)
+    read = downloadFiles(owned, maxBytes, deadline, notReal=notReal)
+    return [(data, file.contentType) for data, file in zip(read, owned)]
 
 
 def readOwnImages(uid: str, photos: list[tuple[str, str]],
@@ -356,6 +448,7 @@ def readOwnImages(uid: str, photos: list[tuple[str, str]],
     return readOwnFiles(uid, photos, IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES,
                         PHOTO_REFERENCES_MAX_TOTAL_BYTES, deadline,
                         wrongType='must be a JPG or PNG photo',
+                        notReal=NOT_A_REAL_PHOTO,
                         totalTooLarge=REFERENCES_TOO_LARGE)
 
 

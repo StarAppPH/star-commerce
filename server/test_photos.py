@@ -682,8 +682,8 @@ def test_ownImagePath_heicByName_asksToConvert(name):
 @pytest.mark.parametrize('stored', [
     {'size': MAX},
     {'contentType': 'image/JPEG; charset=x'},
-    {'contentType': 'image/png'},
-    {'data': b'x' * MAX, 'size': MAX},
+    {'contentType': 'image/png', 'data': b'\x89PNG\r\n\x1a\n' + b'png'},
+    {'data': b'\xff\xd8\xff' + b'x' * (MAX - 3), 'size': MAX},
 ])
 def test_readOwnImages_acceptsTheBoundaries(fakes, stored):
     [(data, contentType)] = readOne(fakes, **stored)
