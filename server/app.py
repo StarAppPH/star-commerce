@@ -221,6 +221,7 @@ def updateMyStoreTheme():
     photoStyle = data.get('photoStyle')
     primaryColor = data.get('primaryColor')
     secondaryColor = data.get('secondaryColor')
+    voiceId = data.get('voiceId')
     current_user = get_jwt_identity()
     try:
         if isinstance(userId, (dict, list)):
@@ -231,19 +232,21 @@ def updateMyStoreTheme():
             raise ValueError('Invalid primaryColor')
         if isinstance(secondaryColor, (dict, list)):
             raise ValueError('Invalid secondaryColor')
+        if isinstance(voiceId, (dict, list)):
+            raise ValueError('Invalid voiceId')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().updateMyStoreTheme(userId, photoStyle, primaryColor, secondaryColor)
+        res = ApiRequests().updateMyStoreTheme(userId, photoStyle, primaryColor, secondaryColor, voiceId)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'updateMyStoreTheme', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'photoStyle', 'primaryColor', 'secondaryColor')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'updateMyStoreTheme', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'photoStyle', 'primaryColor', 'secondaryColor', 'voiceId')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'updateMyStoreTheme', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'photoStyle', 'primaryColor', 'secondaryColor')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'updateMyStoreTheme', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'photoStyle', 'primaryColor', 'secondaryColor', 'voiceId')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'updateMyStoreTheme', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'photoStyle', 'primaryColor', 'secondaryColor'))})
+    logging.info({'function': 'updateMyStoreTheme', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'photoStyle', 'primaryColor', 'secondaryColor', 'voiceId'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Store theme saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
@@ -1441,6 +1444,157 @@ def getConversationTurns():
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Turns fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/sendAdminVoiceMessage', methods=['POST'])
+@jwt_required()
+def sendAdminVoiceMessage():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    audio = data.get('audio')
+    conversationId = data.get('conversationId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(audio, (dict, list)):
+            raise ValueError('Invalid audio')
+        if isinstance(conversationId, (dict, list)):
+            raise ValueError('Invalid conversationId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().sendAdminVoiceMessage(userId, audio, conversationId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'sendAdminVoiceMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'audio', 'conversationId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'sendAdminVoiceMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'audio', 'conversationId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'sendAdminVoiceMessage', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'audio', 'conversationId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Reply sent", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/sendStoreVoiceMessage', methods=['POST'])
+@jwt_required()
+def sendStoreVoiceMessage():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    audio = data.get('audio')
+    conversationId = data.get('conversationId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(audio, (dict, list)):
+            raise ValueError('Invalid audio')
+        if isinstance(conversationId, (dict, list)):
+            raise ValueError('Invalid conversationId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().sendStoreVoiceMessage(userId, storeId, audio, conversationId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'sendStoreVoiceMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'audio', 'conversationId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'sendStoreVoiceMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'audio', 'conversationId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'sendStoreVoiceMessage', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'audio', 'conversationId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Reply sent", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/speakChatTurn', methods=['POST'])
+@jwt_required()
+def speakChatTurn():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    conversationId = data.get('conversationId')
+    turnSeq = data.get('turnSeq')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(conversationId, (dict, list)):
+            raise ValueError('Invalid conversationId')
+        if isinstance(turnSeq, (dict, list)):
+            raise ValueError('Invalid turnSeq')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().speakChatTurn(userId, conversationId, turnSeq)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'speakChatTurn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'conversationId', 'turnSeq')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'speakChatTurn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'conversationId', 'turnSeq')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'speakChatTurn', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'conversationId', 'turnSeq'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Reply spoken", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/listVoices', methods=['POST'])
+@jwt_required()
+def listVoices():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    search = data.get('search')
+    pageToken = data.get('pageToken')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(search, (dict, list)):
+            raise ValueError('Invalid search')
+        if isinstance(pageToken, (dict, list)):
+            raise ValueError('Invalid pageToken')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().listVoices(userId, search, pageToken)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'listVoices', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'search', 'pageToken')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'listVoices', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'search', 'pageToken')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'listVoices', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'search', 'pageToken'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Voices fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
     return jsonify(response.model_dump(exclude_unset=True)), response.status
 
 

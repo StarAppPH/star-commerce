@@ -1,4 +1,5 @@
-"""usageCounters: daily usage counters (chat messages, product photos).
+"""usageCounters: daily usage counters (chat messages, product photos,
+voice seconds and characters).
 
 A counter is one document of its collection, _id
 "<kind>:<ownerId>:<YYYY-MM-DD>" (the app day, UTC+8), holding `count`; a
@@ -11,6 +12,7 @@ at once (a call counted per user and per store, say).
 
 import datetime
 import logging
+import os
 
 from pymongo.errors import DuplicateKeyError
 
@@ -33,6 +35,24 @@ def usageExpiry(day: datetime.date) -> datetime.datetime:
     """When a counter of `day` is deleted: a day after the day ends."""
     return (appDayStart(day.isoformat()) +
             datetime.timedelta(days=2)).astimezone(UTC)
+
+
+def envCap(variable: str, default: int, invalidEvent: str) -> int:
+    """The daily cap the environment variable `variable` sets, read at each
+    call: a whole number, 0 or more. Unset, it is `default`; anything else
+    is refused (a warning, `invalidEvent`, never quoting the value) and
+    `default` applies."""
+    raw = (os.getenv(variable) or '').strip()
+    if not raw:
+        return default
+    try:
+        cap = int(raw)
+    except ValueError:
+        cap = -1
+    if cap < 0:
+        logging.warning({'event': invalidEvent, 'default': default})
+        return default
+    return cap
 
 
 def usageKey(kind: str, ownerId: str, day: datetime.date) -> str:

@@ -218,6 +218,20 @@
             "description": "Second brand color, #RRGGBB",
             "title": "Secondarycolor"
         },
+        "voiceId": {
+            "anyOf": [
+                {
+                    "pattern": "^[A-Za-z0-9]{1,64}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The ElevenLabs voice its assistant speaks with; null: the default voice",
+            "title": "Voiceid"
+        },
         "createdAt": {
             "description": "When it was created",
             "format": "date-time",

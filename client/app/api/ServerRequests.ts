@@ -22,6 +22,7 @@ import type { NoContentResponse } from '../schemas/NoContentResponseSchema';
 import type { PhoneVerifiedResponse } from '../schemas/PhoneVerifiedResponseSchema';
 import type { ProductListResponse } from '../schemas/ProductListResponseSchema';
 import type { RoleListResponse } from '../schemas/RoleListResponseSchema';
+import type { SpokenReplyResponse } from '../schemas/SpokenReplyResponseSchema';
 import type { StoreOrderListResponse } from '../schemas/StoreOrderListResponseSchema';
 import type { StoreOrderRow } from '../schemas/StoreOrderRowSchema';
 import type { StorePolicyResponse } from '../schemas/StorePolicyResponseSchema';
@@ -30,6 +31,8 @@ import type { StoreReturnListResponse } from '../schemas/StoreReturnListResponse
 import type { StoreReturnRow } from '../schemas/StoreReturnRowSchema';
 import type { StoreThemeResponse } from '../schemas/StoreThemeResponseSchema';
 import type { UserResponse } from '../schemas/UserResponseSchema';
+import type { VoiceListResponse } from '../schemas/VoiceListResponseSchema';
+import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
 
     class ServerRequests extends Server {
     constructor(environment : string) {
@@ -175,7 +178,7 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
         }
     }
 
-    async updateMyStoreTheme(userId: string, photoStyle: string | null, primaryColor: string | null, secondaryColor: string | null): Promise<ApiResponse<StoreThemeResponse>> {
+    async updateMyStoreTheme(userId: string, photoStyle: string | null, primaryColor: string | null, secondaryColor: string | null, voiceId: string | null): Promise<ApiResponse<StoreThemeResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/updateMyStoreTheme`, {
             method: 'POST',
@@ -183,7 +186,7 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "photoStyle": photoStyle, "primaryColor": primaryColor, "secondaryColor": secondaryColor}),
+            body: JSON.stringify({"userId": userId, "photoStyle": photoStyle, "primaryColor": primaryColor, "secondaryColor": secondaryColor, "voiceId": voiceId}),
             cache: 'no-store'
         });
         const data: ApiResponse<StoreThemeResponse> & { msg?: string } = await res.json();
@@ -888,6 +891,98 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
         }
     }
 
+    async sendAdminVoiceMessage(userId: string, audio: string, conversationId: string | null): Promise<ApiResponse<VoiceReplyResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/sendAdminVoiceMessage`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "audio": audio, "conversationId": conversationId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<VoiceReplyResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async sendStoreVoiceMessage(userId: string, storeId: string, audio: string, conversationId: string | null): Promise<ApiResponse<VoiceReplyResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/sendStoreVoiceMessage`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "audio": audio, "conversationId": conversationId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<VoiceReplyResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async speakChatTurn(userId: string, conversationId: string, turnSeq: number): Promise<ApiResponse<SpokenReplyResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/speakChatTurn`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "conversationId": conversationId, "turnSeq": turnSeq}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<SpokenReplyResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async listVoices(userId: string, search: string | null, pageToken: string | null): Promise<ApiResponse<VoiceListResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/listVoices`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "search": search, "pageToken": pageToken}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<VoiceListResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
     async generateProductPhotos(userId: string, imageUrls: string[], count: number, notes: string | null): Promise<ApiResponse<GeneratedPhotosResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/generateProductPhotos`, {
@@ -950,6 +1045,10 @@ export interface RouteResponseModels {
     sendStoreChatMessage: ChatReplyResponse;
     listMyConversations: ConversationListResponse;
     getConversationTurns: ConversationTurnsResponse;
+    sendAdminVoiceMessage: VoiceReplyResponse;
+    sendStoreVoiceMessage: VoiceReplyResponse;
+    speakChatTurn: SpokenReplyResponse;
+    listVoices: VoiceListResponse;
     generateProductPhotos: GeneratedPhotosResponse;
 }
 
@@ -960,7 +1059,7 @@ export interface RouteRequestBodies {
     getRoles: { userId: string };
     getUserRoleTypes: { userId: string };
     getUserStore: { userId: string };
-    updateMyStoreTheme: { userId: string; photoStyle: string | null; primaryColor: string | null; secondaryColor: string | null };
+    updateMyStoreTheme: { userId: string; photoStyle: string | null; primaryColor: string | null; secondaryColor: string | null; voiceId: string | null };
     createUserStore: { userId: string; name: string; description: string; contactNumber: string; address: string; currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED'; openingHours: string | null };
     setUserStoreLocation: { userId: string; latitude: number; longitude: number };
     startGuestSession: { idToken: string; storeSlug: string };
@@ -991,6 +1090,10 @@ export interface RouteRequestBodies {
     sendStoreChatMessage: { userId: string; storeId: string; message: string; conversationId: string | null };
     listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
     getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };
+    sendAdminVoiceMessage: { userId: string; audio: string; conversationId: string | null };
+    sendStoreVoiceMessage: { userId: string; storeId: string; audio: string; conversationId: string | null };
+    speakChatTurn: { userId: string; conversationId: string; turnSeq: number };
+    listVoices: { userId: string; search: string | null; pageToken: string | null };
     generateProductPhotos: { userId: string; imageUrls: string[]; count: number; notes: string | null };
 }
 

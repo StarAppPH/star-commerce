@@ -1,0 +1,63 @@
+{
+    "description": "One voice a store can speak with: an ElevenLabs default voice or one\nsaved to the app's account, never a person's clone. Its text is\nElevenLabs' (third-party data), cut short.",
+    "properties": {
+        "voiceId": {
+            "description": "ElevenLabs' voice id",
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "title": "Voiceid",
+            "type": "string"
+        },
+        "name": {
+            "description": "The voice's name",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "description": {
+            "anyOf": [
+                {
+                    "maxLength": 100,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "How it sounds, as ElevenLabs describes it",
+            "title": "Description"
+        },
+        "labels": {
+            "additionalProperties": {
+                "type": "string"
+            },
+            "description": "Its labels (accent, age, gender, use case...)",
+            "maxProperties": 6,
+            "title": "Labels",
+            "type": "object"
+        },
+        "previewUrl": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "A short sample to listen to (https)",
+            "title": "Previewurl"
+        }
+    },
+    "required": [
+        "voiceId",
+        "name",
+        "description",
+        "labels",
+        "previewUrl"
+    ],
+    "title": "VoiceRow",
+    "type": "object",
+    "additionalProperties": false
+}

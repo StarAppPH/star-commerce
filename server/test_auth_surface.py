@@ -124,6 +124,13 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     'sendStoreChatMessage',
     'listMyConversations',
     'getConversationTurns',
+    # Voice chat: the same checks as the chat routes; speakChatTurn speaks
+    # only a turn of the caller's own conversation (its userId), and
+    # listVoices is the admin's (requireOwnerStore).
+    'sendAdminVoiceMessage',
+    'sendStoreVoiceMessage',
+    'speakChatTurn',
+    'listVoices',
 }
 
 

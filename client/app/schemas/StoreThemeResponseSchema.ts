@@ -20,7 +20,8 @@ export type Secondarycolor = string | null;
 
 /**
  * What updateMyStoreTheme sends: the store's photo theme, each field
- * null while unset. Each field restates Store's (MIRRORS).
+ * null while unset (never the voice: getUserStore sends it). Each field
+ * restates Store's (MIRRORS).
  */
 export interface StoreThemeResponse {
   photoStyle: Photostyle;

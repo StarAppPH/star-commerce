@@ -81,6 +81,7 @@ from actions.ProductActions import ProductActions
 from actions.ReturnActions import ReturnActions
 from actions.ServiceToServiceActions import ServiceToServiceActions
 from actions.StoreActions import StoreActions
+from actions.VoiceActions import VoiceActions
 from objects import (DevUserListResponse, DevUserRow, FirebaseUserObject,
                      NoContentResponse, RoleListResponse, UserResponse,
                      projectedCopy)
@@ -296,7 +297,8 @@ class RolesActions():
 class ApiRequests(AuthActions, RolesActions, StoreActions, CustomerActions,
                   ProductActions, OrderActions, PaymentActions,
                   FulfillmentActions, ReturnActions, PolicyActions,
-                  ChatActions, PhotoActions, ServiceToServiceActions):
+                  ChatActions, VoiceActions, PhotoActions,
+                  ServiceToServiceActions):
 
     def __init__(self):
         AuthActions.__init__(self)
@@ -310,4 +312,5 @@ class ApiRequests(AuthActions, RolesActions, StoreActions, CustomerActions,
         ReturnActions.__init__(self)
         PolicyActions.__init__(self)
         ChatActions.__init__(self)
+        VoiceActions.__init__(self)
         PhotoActions.__init__(self)

@@ -77,6 +77,10 @@ export type Primarycolor = string | null;
  */
 export type Secondarycolor = string | null;
 /**
+ * The ElevenLabs voice its assistant speaks with; null: the default voice
+ */
+export type Voiceid = string | null;
+/**
  * When it was created
  */
 export type Createdat = string;
@@ -109,6 +113,7 @@ export interface Store {
   photoStyle?: Photostyle;
   primaryColor?: Primarycolor;
   secondaryColor?: Secondarycolor;
+  voiceId?: Voiceid;
   createdAt: Createdat;
 }
 /**
