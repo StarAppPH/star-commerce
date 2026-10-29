@@ -22,18 +22,26 @@ PNG or PDF) the user uploaded to Storage under users/<uid>/, sent as their
 download URLs. Each URL is checked (our bucket, the caller's own folder,
 the type its name says) before the slot, the lock or any quota; the files
 are counted per day (per customer, per store, all stores: ChatUsage) and
-read through the Storage SDK (photoStorage.readOwnFiles, never by URL)
-after the lock, and go to the model as base64 data URLs. A turn stores only
-each file's path, type, name and size. The files of the last
-HISTORY_ATTACHMENT_TURNS turns are read again and re-sent (within
-HISTORY_ATTACHMENTS_MAX_TOTAL_BYTES); older ones are a note in their
-turn's text. An admin's image notes carry its URL (no token), which the
+read through the Storage SDK (photoStorage.ownFiles, downloadFiles: never
+by URL, their contents checked) after the lock, and go to the model as
+base64 data URLs. A turn stores only each file's path, type, name and
+size. One request sends at most CHAT_ATTACHMENTS_MAX_TOTAL_BYTES of files
+(this message's first, refused past it) and at most
+chatModel.MAX_IMAGES_PER_REQUEST images (a PDF weighs PDF_IMAGE_WEIGHT):
+within what this message leaves, the files of the last
+HISTORY_ATTACHMENT_TURNS turns are read again and re-sent, newest first;
+the others are a note in their turn's text. The bytes a process holds are
+capped (CHAT_ATTACHMENT_BYTES_IN_FLIGHT_MAX, reserved from the stored
+sizes before any download): past it this message is a 503, and a history
+file a note. An admin's image notes carry its URL (no token), which the
 admin assistant may pass to generateProductPhotos.
 
 A failed turn (the model unavailable, the deadline passed, a file
-refused) saves nothing, and its conversation's lock is released; its
-quotas are given back only when the model never answered (so no tool
-ran). Tool calls it already ran stay
+refused) saves nothing, and its conversation's lock is released. Its
+quotas are given back when it failed before the request went to the model,
+or when the model was unavailable (a 503) before it answered; never once
+it answered (a tool may have run), nor for Meta's refusal of the files
+(they reached it). Tool calls it already ran stay
 done (an order placed, say): the user can ask again, and the order routes
 guard their own state.
 
@@ -56,8 +64,8 @@ from actions.ProductActions import _validLimit
 from actions.callSlots import slot
 from actions.StoreActions import _validText, requireOwnerStore, setUpStore
 # QUOTA_ATTEMPTS is imported for the tests, which read it here.
-from actions.usageCounters import (QUOTA_ATTEMPTS, appDay, envCap,
-                                   giveBackQuotas, takeQuota, takeQuotas,
+from actions.usageCounters import (QUOTA_ATTEMPTS, appDay, giveBackQuotas,
+                                   takeDailyQuotas, takeQuota, takeQuotas,
                                    usageExpiry, usageKey)
 from mongoDb import db
 from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_ATTACHMENT_MAX_BYTES,
@@ -65,7 +73,7 @@ from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_ATTACHMENT_MAX_BYTES,
                      CHAT_ATTACHMENTS_MAX, CHAT_ATTACHMENTS_MAX_TOTAL_BYTES,
                      CHAT_MESSAGE_MAX_LENGTH, CHAT_TITLE_MAX_LENGTH,
                      CHAT_TOOL_CALL_ID_MAX_LENGTH, HISTORY_ATTACHMENT_TURNS,
-                     HISTORY_ATTACHMENTS_MAX_TOTAL_BYTES, ChatAttachment,
+                     ChatAttachment,
                      ChatReplyResponse, ChatStep, ChatTokenUsage,
                      ChatToolCall, ChatTurn, ChatTurnRow, Conversation,
                      ConversationListResponse, ConversationRow,
@@ -91,8 +99,15 @@ CUSTOMER_DAILY_ATTACHMENT_CAP = 20
 STORE_DAILY_ATTACHMENT_CAP = 300
 CHAT_ATTACHMENTS_DAILY_CAP_ALL_VARIABLE = 'CHAT_ATTACHMENTS_DAILY_CAP_ALL'
 DEFAULT_CHAT_ATTACHMENTS_DAILY_CAP_ALL = 3000
-# The owner of the all-stores counter (a store _id is a random token).
-ALL_STORES = 'all'
+# The attachment bytes all of a process's turns hold at once (raw, from the
+# stored sizes, before any download): with 4 turns at once, each may hold
+# its whole 20 MB budget.
+CHAT_ATTACHMENT_BYTES_IN_FLIGHT_MAX = 60 * 1024 * 1024
+_bytesInFlight = 0
+_bytesInFlightLock = threading.Lock()
+# What routeErrors' 503 names when the process holds too many bytes:
+# "Attachment reading is unavailable right now. Please try again."
+ATTACHMENTS_SERVICE = 'attachment reading'
 # The turns one process runs at once: each holds one of gunicorn's 8
 # threads for up to TURN_DEADLINE_SECONDS, so the others stay free for the
 # rest of the app.
@@ -126,10 +141,14 @@ ATTACHMENTS_COUNT = (f'attachments lists at most {CHAT_ATTACHMENTS_MAX} '
 ATTACHMENTS_TWICE = 'attachments lists the same file twice'
 ATTACHMENT_KIND = 'file'
 ATTACHMENT_TYPE = 'must be a JPG, PNG or PDF file'
-ATTACHMENTS_TOO_LARGE = ('The attachments are over 20 MB together: send '
-                         'fewer or smaller files')
-UNREADABLE_ATTACHMENT = ("One of the attachments couldn't be read: send a "
-                         'JPEG, PNG or PDF')
+ATTACHMENTS_TOO_LARGE = (
+    f'The attachments are over '
+    f'{photoStorage.megabytes(CHAT_ATTACHMENTS_MAX_TOTAL_BYTES)} together: '
+    'send fewer or smaller files')
+NOT_A_REAL_ATTACHMENT = "isn't a real JPEG, PNG or PDF file"
+UNREADABLE_ATTACHMENT = ("One of the attachments couldn't be read, or they "
+                         'have too many pages together: send fewer or '
+                         'shorter JPEG, PNG or PDF files')
 ATTACHMENT_CAP_REACHED = ("You've reached today's attachment limit: send "
                           'your message without files')
 STORE_ATTACHMENT_CAP_REACHED = ("This store's attachments are busy today: "
@@ -193,11 +212,11 @@ def _customerCounters(userId: str, storeId: str,
     ]
 
 
-def _takeCustomerQuota(userId: str, storeId: str) -> tuple[str, str]:
-    """Count the customer's message against both daily caps, refused when
-    either is reached (and then counted against neither). Returns the two
-    counters' keys."""
-    day = appDay(_now())
+def _takeCustomerQuota(userId: str, storeId: str,
+                       day: datetime.date) -> tuple[str, str]:
+    """Count the customer's message against both daily caps of `day`,
+    refused when either is reached (and then counted against neither).
+    Returns the two counters' keys."""
     customerKey, storeKey = takeQuotas(
         CHAT_USAGE, _customerCounters(userId, storeId, day),
         usageExpiry(day))
@@ -205,30 +224,51 @@ def _takeCustomerQuota(userId: str, storeId: str) -> tuple[str, str]:
 
 
 def _takeAttachmentQuota(audience: str, userId: str, storeId: str,
-                         count: int) -> list[str]:
-    """Count the message's `count` files against the daily attachment caps:
-    the customer's (customers only, across stores), the store's and all
-    stores' (CHAT_ATTACHMENTS_DAILY_CAP_ALL; 0 is attachments turned off).
-    Refused when any would pass (and then counted against none:
-    usageCounters.takeQuotas). Returns the counters' keys."""
-    capAll = envCap(CHAT_ATTACHMENTS_DAILY_CAP_ALL_VARIABLE,
-                    DEFAULT_CHAT_ATTACHMENTS_DAILY_CAP_ALL,
-                    'chatAttachmentsDailyCapAllInvalid')
-    if capAll == 0:
-        raise ValueError(ATTACHMENTS_TURNED_OFF)
-    day = appDay(_now())
+                         count: int, day: datetime.date) -> list[str]:
+    """Count the message's `count` files against the daily attachment caps
+    of `day`: the customer's (customers only, across stores), the store's
+    and all stores' (CHAT_ATTACHMENTS_DAILY_CAP_ALL; 0 is attachments
+    turned off). Refused when any would pass (and then counted against
+    none: usageCounters.takeDailyQuotas). Returns the counters' keys."""
     counters = []
     if audience == 'customer':
-        counters.append((usageKey('attachmentsCustomer', userId, day),
+        counters.append(('attachmentsCustomer', userId,
                          CUSTOMER_DAILY_ATTACHMENT_CAP,
                          ATTACHMENT_CAP_REACHED))
-    counters += [
-        (usageKey('attachmentsStore', storeId, day),
-         STORE_DAILY_ATTACHMENT_CAP, STORE_ATTACHMENT_CAP_REACHED),
-        (usageKey('attachmentsAll', ALL_STORES, day), capAll,
-         STORE_ATTACHMENT_CAP_REACHED),
-    ]
-    return takeQuotas(CHAT_USAGE, counters, usageExpiry(day), amount=count)
+    counters.append(('attachmentsStore', storeId, STORE_DAILY_ATTACHMENT_CAP,
+                     STORE_ATTACHMENT_CAP_REACHED))
+    return takeDailyQuotas(CHAT_USAGE, counters,
+                           ('attachmentsAll', STORE_ATTACHMENT_CAP_REACHED),
+                           CHAT_ATTACHMENTS_DAILY_CAP_ALL_VARIABLE,
+                           DEFAULT_CHAT_ATTACHMENTS_DAILY_CAP_ALL,
+                           'chatAttachmentsDailyCapAllInvalid',
+                           ATTACHMENTS_TURNED_OFF, day, amount=count)
+
+
+class _BytesInFlight:
+    """The attachment bytes one turn holds, counted against the process's
+    CHAT_ATTACHMENT_BYTES_IN_FLIGHT_MAX: reserve() before a download,
+    release() (all of them) when the turn ends."""
+
+    def __init__(self):
+        self.held = 0
+
+    def reserve(self, size: int) -> bool:
+        """Hold `size` more bytes; False (nothing held) when the process
+        would pass its cap."""
+        global _bytesInFlight
+        with _bytesInFlightLock:
+            if _bytesInFlight + size > CHAT_ATTACHMENT_BYTES_IN_FLIGHT_MAX:
+                return False
+            _bytesInFlight += size
+        self.held += size
+        return True
+
+    def release(self) -> None:
+        global _bytesInFlight
+        with _bytesInFlightLock:
+            _bytesInFlight -= self.held
+        self.held = 0
 
 
 # ── Attachments ─────────────────────────────
@@ -257,16 +297,11 @@ def _validAttachments(userId: str, urls) -> list[tuple[str, str]]:
         return []
     if not isinstance(urls, list) or len(urls) > CHAT_ATTACHMENTS_MAX:
         raise ValueError(ATTACHMENTS_COUNT)
-    files = []
-    for i, url in enumerate(urls):
-        label = f'attachments[{i}]'
-        path = photoStorage.objectPathFromUrl(url, label, ATTACHMENT_KIND)
-        path = photoStorage.ownImagePath(userId, path, label, ATTACHMENT_KIND)
+    files = photoStorage.ownPathsOfUrls(userId, urls, 'attachments',
+                                        ATTACHMENTS_TWICE, ATTACHMENT_KIND)
+    for label, path in files:
         if photoStorage.fileExtension(path) not in CHAT_ATTACHMENT_EXTENSIONS:
             raise ValueError(f'{label} {ATTACHMENT_TYPE}')
-        files.append((label, path))
-    if len({path for _, path in files}) != len(files):
-        raise ValueError(ATTACHMENTS_TWICE)
     return files
 
 
@@ -287,30 +322,65 @@ def attachmentName(path: str) -> str:
     return name
 
 
-def _readFiles(userId: str, files: list[tuple[str, str]], maxTotalBytes: int,
-               deadline: float, skipUnreadable: bool = False
-               ) -> list[tuple[bytes, str] | None]:
-    """photoStorage.readOwnFiles with the chat's types and limits."""
-    return photoStorage.readOwnFiles(
+def _imageWeight(contentType: str) -> int:
+    """How many of Meta's MAX_IMAGES_PER_REQUEST a file may take: a PDF
+    its first PDF_IMAGE_WEIGHT page images, an image one."""
+    return (chatModel.PDF_IMAGE_WEIGHT if contentType == PDF_TYPE
+            else chatModel.IMAGE_WEIGHT)
+
+
+def _ownFiles(userId: str, files: list[tuple[str, str]], deadline: float,
+              skipUnreadable: bool = False) -> list:
+    """photoStorage.ownFiles with the chat's types and limits."""
+    return photoStorage.ownFiles(
         userId, files, CHAT_ATTACHMENT_TYPES, CHAT_ATTACHMENT_MAX_BYTES,
-        maxTotalBytes, deadline, wrongType=ATTACHMENT_TYPE,
-        totalTooLarge=ATTACHMENTS_TOO_LARGE,
-        extensionTypes=CHAT_ATTACHMENT_EXTENSIONS,
+        deadline, wrongType=ATTACHMENT_TYPE,
+        extensionTypes=CHAT_ATTACHMENT_EXTENSIONS, kind=ATTACHMENT_KIND,
         skipUnreadable=skipUnreadable)
 
 
-def _readAttachments(userId: str, files: list[tuple[str, str]],
-                     deadline: float) -> list[tuple[dict, bytes]]:
-    """This message's files, read before `deadline`: each as the
-    ChatAttachment a turn stores, with its bytes. A file refused (gone,
-    of another type, over 10 MB, over 20 MB together) is a ValueError
-    naming its place; a Storage failure a 503."""
-    read = _readFiles(userId, files, CHAT_ATTACHMENTS_MAX_TOTAL_BYTES,
-                      deadline)
-    return [(ChatAttachment(path=path, contentType=contentType,
-                            name=attachmentName(path),
-                            size=len(data)).model_dump(), data)
-            for (_, path), (data, contentType) in zip(files, read)]
+def _downloadFiles(files: list, deadline: float,
+                   skipUnreadable: bool = False) -> list:
+    """photoStorage.downloadFiles with the chat's limits."""
+    return photoStorage.downloadFiles(
+        files, CHAT_ATTACHMENT_MAX_BYTES, deadline,
+        notReal=NOT_A_REAL_ATTACHMENT, skipUnreadable=skipUnreadable)
+
+
+def _busy() -> ServiceUnavailable:
+    """The 503 of a message whose files the process cannot hold now."""
+    return ServiceUnavailable(ATTACHMENTS_SERVICE, 'chat')
+
+
+def _newUserMessage(audience: str, userId: str, userText: str,
+                    files: list[tuple[str, str]], inFlight: _BytesInFlight,
+                    deadline: float) -> tuple[dict, list[dict]]:
+    """This message as Meta takes it (its text, a note per file, a part per
+    file), and its files as the ChatAttachments a turn stores. Their
+    metadata is checked first (gone, of another type, over 10 MB: a
+    ValueError naming its place), then their sizes together
+    (ATTACHMENTS_TOO_LARGE) and the process's bytes (inFlight: else a 503),
+    then they are downloaded and their contents checked. The bytes are
+    dropped once the parts are built. A Storage failure is a 503."""
+    if not files:
+        return _userMessage(userText, [], []), []
+    owned = _ownFiles(userId, files, deadline)
+    total = sum(file.size for file in owned)
+    if total > CHAT_ATTACHMENTS_MAX_TOTAL_BYTES:
+        raise ValueError(ATTACHMENTS_TOO_LARGE)
+    if not inFlight.reserve(total):
+        raise _busy()
+    notes, parts, attachments = [], [], []
+    for i, (file, data) in enumerate(zip(owned, _downloadFiles(owned,
+                                                               deadline))):
+        attachment = ChatAttachment(path=file.path,
+                                    contentType=file.contentType,
+                                    name=attachmentName(file.path),
+                                    size=len(data)).model_dump()
+        notes.append(_attachmentNote(audience, i, attachment))
+        parts.append(_filePart(attachment, data))
+        attachments.append(attachment)
+    return _userMessage(userText, notes, parts), attachments
 
 
 def _filePart(attachment: dict, data: bytes) -> dict:
@@ -348,6 +418,11 @@ def _goneNote(attachment: dict) -> str:
     return f'[Earlier attachment no longer available: {attachment["name"]}]'
 
 
+def _skippedNote(attachment: dict) -> str:
+    return (f'[Earlier attachment could not be sent again: '
+            f'{attachment["name"]}]')
+
+
 def _userMessage(text: str, notes: list[str], parts: list[dict]) -> dict:
     """A user message: its text with the notes after it, then the file
     parts. With no file part its content is plain text, as before
@@ -360,9 +435,9 @@ def _userMessage(text: str, notes: list[str], parts: list[dict]) -> dict:
 
 
 def _unreadableAttachment(error: Exception) -> Exception | None:
-    """chatModel.complete's refusal while the request carries files: Meta's
-    400 (a file it cannot decode, or past its limits) is the user's to
-    fix."""
+    """chatModel.complete's refusal on the first model call of a request
+    carrying files: Meta's 400 (a file it cannot decode, or too many
+    pages) is the user's to fix. A later call's 400 is ours (a 503)."""
     import openai
     if isinstance(error, openai.BadRequestError):
         return ValueError(UNREADABLE_ATTACHMENT)
@@ -472,50 +547,92 @@ def _turnMessages(turn: dict, userMessage: dict | None = None) -> list[dict]:
             {'role': 'assistant', 'content': turn['replyText']}]
 
 
-def _historyFiles(turns: list[dict], seq: int) -> set[tuple[int, int]]:
+def _historyFiles(turns: list[dict], seq: int, budget: int,
+                  weight: int) -> list[tuple[int, int]]:
     """Which files of `turns` (newest first) are sent again, as (turn
-    index, file index): those of the turns after seq -
-    HISTORY_ATTACHMENT_TURNS, newest first, until the next would take their
-    stored sizes past HISTORY_ATTACHMENTS_MAX_TOTAL_BYTES."""
-    chosen, total = set(), 0
+    index, file index), newest first: those of the turns after seq -
+    HISTORY_ATTACHMENT_TURNS, until the next would take their stored sizes
+    past `budget` bytes or their image weight (_imageWeight) past
+    `weight`."""
+    chosen, total, weighed = [], 0, 0
     for t, turn in enumerate(turns):
         if turn['seq'] < seq - HISTORY_ATTACHMENT_TURNS:
             break
         for f, attachment in enumerate(turn.get('attachments') or []):
             total += attachment['size']
-            if total > HISTORY_ATTACHMENTS_MAX_TOTAL_BYTES:
+            weighed += _imageWeight(attachment['contentType'])
+            if total > budget or weighed > weight:
                 return chosen
-            chosen.add((t, f))
+            chosen.append((t, f))
     return chosen
 
 
-def _historyUserMessage(audience: str, turn: dict, t: int,
-                        resend: dict[tuple[int, int], tuple | None]) -> dict:
-    """A stored turn's user message: its text, a note per file (its
-    Attachment note and its part when sent again, else an Earlier note, or
-    a gone one when it could not be read again)."""
+def _historyUserMessage(audience: str, turn: dict, t: int, status: dict,
+                        withParts: bool = True) -> dict:
+    """A stored turn's user message: its text and a note per file, by its
+    status (turn index, file index: its bytes, GONE or REFUSED; none, an
+    Earlier note). A file sent again gets its Attachment note and (with
+    `withParts`) its part."""
     notes, parts = [], []
     for f, attachment in enumerate(turn.get('attachments') or []):
-        if (t, f) not in resend:
+        value = status.get((t, f))
+        if value is None:
             notes.append(_earlierNote(audience, attachment))
-        elif resend[(t, f)] is None:
+        elif value == photoStorage.GONE:
             notes.append(_goneNote(attachment))
+        elif value == photoStorage.REFUSED:
+            notes.append(_skippedNote(attachment))
         else:
             notes.append(_attachmentNote(audience, f, attachment))
-            parts.append(_filePart(attachment, resend[(t, f)][0]))
+            if withParts:
+                parts.append(_filePart(attachment, value))
     return _userMessage(turn['userText'], notes, parts)
 
 
+def _readHistoryFiles(userId: str, turns: list[dict],
+                      keys: list[tuple[int, int]], budget: int, weight: int,
+                      inFlight: _BytesInFlight, deadline: float) -> dict:
+    """The status of each history file of `keys` (newest first): its
+    bytes, GONE (deleted since) or REFUSED (of another type, too large, past
+    `budget` or `weight` by its actual size, past the process's bytes, or
+    contents not its type's). One metadata read, then one download, of
+    them all."""
+    owned = _ownFiles(userId, [
+        (f'attachments[{f}]', turns[t]['attachments'][f]['path'])
+        for t, f in keys], deadline, skipUnreadable=True)
+    status, toRead, total, weighed = {}, [], 0, 0
+    for key, file in zip(keys, owned):
+        if isinstance(file, str):
+            status[key] = file
+            continue
+        total += file.size
+        weighed += _imageWeight(file.contentType)
+        if (total > budget or weighed > weight
+                or not inFlight.reserve(file.size)):
+            total -= file.size
+            weighed -= _imageWeight(file.contentType)
+            status[key] = photoStorage.REFUSED
+            continue
+        toRead.append((key, file))
+    read = _downloadFiles([file for _, file in toRead], deadline,
+                          skipUnreadable=True)
+    for (key, _), value in zip(toRead, read):
+        status[key] = value
+    return status
+
+
 def _history(conversationId: str, seq: int, audience: str, userId: str,
-             deadline: float) -> tuple[list[dict], int]:
+             deadline: float, budget: int, weight: int,
+             inFlight: _BytesInFlight) -> tuple[list[dict], int, int]:
     """The last HISTORY_TURNS turns before the turn `seq`, oldest first, as
     messages: the last HISTORY_TOOL_STEP_TURNS with their steps (an older
     turn's steps are not even read), then as many older ones as keep the
     whole under HISTORY_MAX_CHARS (text only: a file's bytes are never
     counted). The files of the last HISTORY_ATTACHMENT_TURNS are read again
-    (one readOwnFiles, before `deadline`) and sent as parts
-    (_historyFiles); a file gone since is a note. Also returns how many
-    were gone."""
+    and sent as parts, within `budget` bytes and `weight` images
+    (_historyFiles, _readHistoryFiles, before `deadline`); a file gone
+    since, or that could not be sent again, is a note. Also returns how
+    many were gone and how many skipped."""
     turns = list(db.aggregate([
         {'$match': {'conversationId': conversationId}},
         {'$sort': {'seq': -1}},
@@ -530,32 +647,29 @@ def _history(conversationId: str, seq: int, audience: str, userId: str,
                 '$steps', []]},
         }},
     ], CHAT_TURNS))
-    chosen = _historyFiles(turns, seq)
+    chosen = _historyFiles(turns, seq, budget, weight)
     # Measured as if every chosen file were sent again: its note only.
-    sentAgain = {key: (b'', '') for key in chosen}
+    asSent = {key: b'' for key in chosen}
     kept, size = [], 0
     for t, turn in enumerate(turns):  # newest first
-        textOnly = _historyUserMessage(audience, turn, t, sentAgain)
-        if isinstance(textOnly['content'], list):
-            textOnly = {'role': 'user',
-                        'content': textOnly['content'][0]['text']}
+        textOnly = _historyUserMessage(audience, turn, t, asSent,
+                                       withParts=False)
         size += len(json.dumps(_turnMessages(turn, textOnly)))
         if size >= HISTORY_MAX_CHARS:
             break
         kept.append(t)
-    keys = sorted(key for key in chosen if key[0] in kept)
-    read = _readFiles(
-        userId, [(f'attachments[{f}]', turns[t]['attachments'][f]['path'])
-                 for t, f in keys],
-        HISTORY_ATTACHMENTS_MAX_TOTAL_BYTES, deadline, skipUnreadable=True)
-    resend = dict(zip(keys, read))
-    gone = sum(1 for value in read if value is None)
+    status = _readHistoryFiles(userId, turns,
+                               [key for key in chosen if key[0] in kept],
+                               budget, weight, inFlight, deadline)
+    gone = sum(1 for value in status.values() if value == photoStorage.GONE)
+    skipped = sum(1 for value in status.values()
+                  if value == photoStorage.REFUSED)
     messages = [_turnMessages(turns[t],
                               _historyUserMessage(audience, turns[t], t,
-                                                  resend))
+                                                  status))
                 for t in kept]
     return ([message for turnMessages in reversed(messages)
-             for message in turnMessages], gone)
+             for message in turnMessages], gone, skipped)
 
 
 def _assistantStep(message) -> tuple[dict, dict]:
@@ -620,19 +734,21 @@ def _runModel(audience: str, userId: str, storeId: str,
     """Call the model until it replies in text, running its tool calls in
     between (at most MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call
     without tools). Returns the reply, the steps, the tools called (as the
-    log names them) and the usage. Sets progress['answered'] once the model
-    answered (before any tool runs). Raises unavailable() past
+    log names them) and the usage. Sets progress['sent'] just before the
+    first model call and progress['answered'] once the model answered
+    (before any tool runs). Raises unavailable() past
     TURN_DEADLINE_SECONDS (or `deadline`). `refusal` is
-    chatModel.complete's."""
+    chatModel.complete's, on the first call only."""
     from chatTools import TOOLS
     if deadline is None:
         deadline = time.monotonic() + TURN_DEADLINE_SECONDS
     steps, toolNames, usage = [], [], _Usage()
     toolsAllowed = True
     while True:
+        progress['sent'] = True
         completion = chatModel.complete(
             messages, TOOLS[audience] if toolsAllowed else None, deadline,
-            refusal=refusal)
+            refusal=None if progress['answered'] else refusal)
         progress['answered'] = True
         usage.add(completion.usage)
         choice = completion.choices[0] if completion.choices else None
@@ -746,6 +862,7 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
     userText = _validMessage(message, bool(files))
     conversationId = _validConversationId(conversationId)
     now = _now()
+    day = appDay(now)
     newConversation, busyUntil, seq, history = None, None, 0, []
     if conversationId is None:
         # A new conversation is inserted only with its first turn: nobody
@@ -768,24 +885,27 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
         busyUntil, seq = locked['busyUntil'], locked['turnCount']
     started = time.monotonic()
     deadline = started + TURN_DEADLINE_SECONDS
-    quotaKeys, attachmentKeys, sent, gone = (), (), [], 0
+    quotaKeys, attachmentKeys, sent, gone, skipped = (), (), [], 0, 0
+    inFlight = _BytesInFlight()
     try:
-        progress = {'answered': False}
+        progress = {'sent': False, 'answered': False}
         try:
-            quotaKeys = (_takeCustomerQuota(userId, storeId)
+            quotaKeys = (_takeCustomerQuota(userId, storeId, day)
                          if audience == 'customer' else ())
             if files:
-                attachmentKeys = _takeAttachmentQuota(audience, userId,
-                                                      storeId, len(files))
-            sent = _readAttachments(userId, files, deadline)
+                attachmentKeys = _takeAttachmentQuota(
+                    audience, userId, storeId, len(files), day)
+            userMessage, sent = _newUserMessage(audience, userId, userText,
+                                                files, inFlight, deadline)
             if newConversation is None:
-                history, gone = _history(conversationId, seq, audience,
-                                         userId, deadline)
-            userMessage = _userMessage(
-                userText,
-                [_attachmentNote(audience, i, attachment)
-                 for i, (attachment, _) in enumerate(sent)],
-                [_filePart(attachment, data) for attachment, data in sent])
+                history, gone, skipped = _history(
+                    conversationId, seq, audience, userId, deadline,
+                    CHAT_ATTACHMENTS_MAX_TOTAL_BYTES -
+                    sum(attachment['size'] for attachment in sent),
+                    chatModel.MAX_IMAGES_PER_REQUEST -
+                    sum(_imageWeight(attachment['contentType'])
+                        for attachment in sent),
+                    inFlight)
             messages = [{'role': 'developer',
                          'content': chatModel.CHAT_PROMPTS[audience]},
                         *history,
@@ -796,23 +916,30 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
                 audience, userId, storeId, messages, progress,
                 deadline=deadline,
                 refusal=_unreadableAttachment if carriesFiles else None)
-        except (ServiceUnavailable, ValueError):
-            # The model never answered, so nothing ran: the message and its
-            # files are not counted (a Storage failure, a file refused).
-            if not progress['answered']:
+        except Exception as error:
+            # Given back when nothing reached the model (a file refused, a
+            # Storage or database failure), or when the model was
+            # unavailable before it answered (so no tool ran); kept once it
+            # answered, and when Meta refused the files it was sent.
+            if not progress['sent'] or (
+                    not progress['answered']
+                    and isinstance(error, ServiceUnavailable)):
                 _giveBackQuota(*quotaKeys)
                 giveBackQuotas(CHAT_USAGE, attachmentKeys, len(files))
             raise
         _saveTurn(newConversation, conversationId, userId, storeId, seq,
-                  userText, answer, busyUntil,
-                  [attachment for attachment, _ in sent])
+                  userText, answer, busyUntil, sent)
         busyUntil = None  # cleared by the save
     finally:
+        inFlight.release()
         if busyUntil is not None:
             _releaseLock(conversationId, busyUntil)
     if gone:
         logging.info({'event': 'chatHistoryAttachmentsGone',
                       'conversationId': conversationId, 'count': gone})
+    if skipped:
+        logging.info({'event': 'chatHistoryAttachmentsSkipped',
+                      'conversationId': conversationId, 'count': skipped})
     usage = answer['usage']
     # Never the message, the tool arguments, a name the model made up, a
     # file's path, name, URL or content, or the key.
@@ -824,7 +951,7 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
         'tools': answer['toolNames'],
         **({'attachments': len(sent),
             'attachmentBytes': sum(attachment['size']
-                                   for attachment, _ in sent)}
+                                   for attachment in sent)}
            if sent else {}),
         'promptTokens': usage.promptTokens,
         'completionTokens': usage.completionTokens,

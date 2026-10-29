@@ -66,6 +66,11 @@ TOOL_CALL_TOO_LONG = 'That tool call is too long: send fewer items per call'
 CHAT_TOOL_RESULT_MAX_CHARS = 16000
 RESULT_TOO_LARGE = ('That result is too large: ask for fewer with a smaller '
                     'limit, or filter by status or period')
+# The most images Meta takes in one request (more is a 400): a PDF counts
+# its first PDF_IMAGE_WEIGHT page images, an image IMAGE_WEIGHT.
+MAX_IMAGES_PER_REQUEST = 50
+PDF_IMAGE_WEIGHT = 50
+IMAGE_WEIGHT = 1
 
 _TOPIC_RULE = (
     'You cover only {scope}. For anything else (general knowledge, coding, '
@@ -195,12 +200,13 @@ def callModel(request: Callable[[float], T], deadline: float,
               attemptSeconds: float,
               failure: Callable[[], Exception] = unavailable,
               refusal: Callable[[Exception], Exception | None] | None = None,
-              logEvent: str = 'chatModelError') -> T:
+              logEvent: str = 'chatModelError',
+              refusalLevel: int = logging.WARNING) -> T:
     """`request(timeout)` (one SDK call), done before `deadline`
     (time.monotonic()), retried as callWithRetry does: only a connection
     error, a timeout, a 429 or a 5xx; a 4xx other than 429 never is. An SDK
-    error `refusal` maps to an exception is raised as that one (logged as
-    a warning); any other is then raised as failure(), and so is a passed
+    error `refusal` maps to an exception is raised as that one (logged at
+    `refusalLevel`); any other is then raised as failure(), and so is a passed
     deadline. Every SDK error is logged (logEvent) by its class and status
     only."""
     import openai
@@ -210,10 +216,11 @@ def callModel(request: Callable[[float], T], deadline: float,
     def handle(error) -> bool:
         refused = refusal(error) if refusal is not None else None
         if refused is not None:
-            # The user's to act on (a content refusal), not ours to fix.
-            logging.warning({**errorLog(logEvent, error,
-                                        getattr(error, 'status_code', None)),
-                             'refused': True})
+            # The user's to act on (a content refusal).
+            logging.log(refusalLevel,
+                        {**errorLog(logEvent, error,
+                                    getattr(error, 'status_code', None)),
+                         'refused': True})
             raise refused from None
         _logModelError(error, logEvent)
         return isinstance(error, retryable)
@@ -228,8 +235,9 @@ def complete(messages: list[dict], tools: list[dict] | None,
     """One chat completion of `messages`, with `tools` (None: the model
     must answer in text), done before `deadline` (time.monotonic()), each
     attempt within CLIENT_TIMEOUT_SECONDS and retried as callModel does.
-    An SDK error `refusal` maps to an exception is raised as that one; any
-    other is then raised as unavailable()."""
+    An SDK error `refusal` maps to an exception is raised as that one
+    (logged as an ERROR: a request of ours Meta refused); any other is then
+    raised as unavailable()."""
     request = {
         'model': CHAT_MODEL,
         'messages': messages,
@@ -242,7 +250,8 @@ def complete(messages: list[dict], tools: list[dict] | None,
     return callModel(
         lambda timeout: client().chat.completions.create(**request,
                                                          timeout=timeout),
-        deadline, CLIENT_TIMEOUT_SECONDS, refusal=refusal)
+        deadline, CLIENT_TIMEOUT_SECONDS, refusal=refusal,
+        refusalLevel=logging.ERROR)
 
 
 def toolError(message: str) -> str:

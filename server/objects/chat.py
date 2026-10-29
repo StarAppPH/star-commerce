@@ -37,15 +37,15 @@ CHAT_ATTACHMENT_EXTENSIONS = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
                               '.png': 'image/png', '.pdf': 'application/pdf'}
 CHAT_ATTACHMENTS_MAX = 4
 # Each file at most (storage.rules allows no larger upload), and one
-# message's files together.
+# request's files together: this message's, then the history's.
 CHAT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
 CHAT_ATTACHMENTS_MAX_TOTAL_BYTES = 20 * 1024 * 1024
 CHAT_ATTACHMENT_NAME_MAX_LENGTH = 120
 # The files of the last HISTORY_ATTACHMENT_TURNS turns are sent to the
-# model again, newest first, within HISTORY_ATTACHMENTS_MAX_TOTAL_BYTES per
-# request; the others are a note in their turn's text.
+# model again, newest first, within what this message leaves of
+# CHAT_ATTACHMENTS_MAX_TOTAL_BYTES (one budget per request); the others are
+# a note in their turn's text.
 HISTORY_ATTACHMENT_TURNS = 3
-HISTORY_ATTACHMENTS_MAX_TOTAL_BYTES = 40 * 1024 * 1024
 
 
 class Conversation(MongoModel):
