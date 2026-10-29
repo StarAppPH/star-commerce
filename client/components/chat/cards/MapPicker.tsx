@@ -17,6 +17,9 @@ interface MapPickerProps {
   target: MapPoint | null;
   // The point under the pin, after every move.
   onMove: (point: MapPoint) => void;
+  // The user dragged or zoomed the map (a resize's pan is not one; a
+  // `target` move zooms, so it counts too).
+  onUserMove?: () => void;
   disabled?: boolean;
   dataComponent: string;
 }
@@ -29,13 +32,16 @@ const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">Op
 
 // A map with a pin fixed at its center: the user moves the map until the pin
 // sits on the spot. Leaflet loads in the browser only.
-export function MapPicker({ start, startZoom, target, onMove, disabled = false, dataComponent }: MapPickerProps) {
+export function MapPicker({ start, startZoom, target, onMove, onUserMove, disabled = false, dataComponent }: MapPickerProps) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const onMoveRef = useRef(onMove);
   const startRef = useRef({ start, startZoom });
 
+  const onUserMoveRef = useRef(onUserMove);
+
   useEffect(() => { onMoveRef.current = onMove; }, [onMove]);
+  useEffect(() => { onUserMoveRef.current = onUserMove; }, [onUserMove]);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +52,7 @@ export function MapPicker({ start, startZoom, target, onMove, disabled = false, 
       map = L.map(container.current, { zoomControl: true }).setView([point.latitude, point.longitude], zoom);
       L.tileLayer(TILES, { maxZoom: 19, attribution: ATTRIBUTION }).addTo(map);
       const created = map;
+      created.on('dragstart zoomstart', () => onUserMoveRef.current?.());
       created.on('moveend', () => {
         const center = created.getCenter();
         onMoveRef.current({ latitude: center.lat, longitude: center.lng });

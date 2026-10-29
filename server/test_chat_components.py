@@ -156,6 +156,8 @@ def test_theDeliveryPin_isNoConfirmation_inTheCustomerPrompt():
         chatModel.PIN_IS_NOT_CONFIRMATION)
     assert chatModel.PIN_IS_NOT_CONFIRMATION not in chatModel.CHAT_PROMPTS[
         'admin']
+    # A store that only delivers still gets the pin and the address.
+    assert 'when that way is delivery, still do the delivery steps' in prompt
 
 
 @pytest.mark.parametrize('kind', ['location', 'deliveryPin'])

@@ -39,10 +39,6 @@ export function PinCard({
     setPoint(here);
     setPlaced(true);
   });
-  const move = (moved: MapPoint) => {
-    setPoint(moved);
-    if (moved.latitude !== opening.latitude || moved.longitude !== opening.longitude) setPlaced(true);
-  };
   const canSend = !busy && !locating && (placed || !requireMove);
 
   return (
@@ -70,7 +66,8 @@ export function PinCard({
             start={opening}
             startZoom={startZoom}
             target={target}
-            onMove={move}
+            onMove={setPoint}
+            onUserMove={() => setPlaced(true)}
             disabled={answered || busy}
           />
         </div>
