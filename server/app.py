@@ -340,6 +340,40 @@ def setUserStoreLocation():
 
 
 
+@app.route('/resetMyStore', methods=['POST'])
+@jwt_required()
+def resetMyStore():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    confirmName = data.get('confirmName')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(confirmName, (dict, list)):
+            raise ValueError('Invalid confirmName')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().resetMyStore(userId, confirmName)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'resetMyStore', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'confirmName')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'resetMyStore', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'confirmName')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'resetMyStore', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'confirmName'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Store reset", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 @app.route('/startGuestSession', methods=['POST'])
 
 def startGuestSession():

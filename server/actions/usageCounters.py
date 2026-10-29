@@ -9,6 +9,7 @@ never pass it together; giveBackQuota takes back what a failed call
 counted. takeQuotas and giveBackQuotas do the same for several counters
 at once (a call counted per user and per store, say); takeDailyQuotas
 adds the all-stores counter, its cap an environment variable.
+copyDailyQuota carries a counter over to another owner (a store reset).
 """
 
 import datetime
@@ -62,6 +63,31 @@ def usageKey(kind: str, ownerId: str, day: datetime.date) -> str:
     """The counter _id of `kind` (customer, store, photos) `ownerId` on
     `day`."""
     return f'{kind}:{ownerId}:{day.isoformat()}'
+
+
+def copyDailyQuota(collection: str, fromKey: str, toKey: str,
+                   session=None) -> None:
+    """Carry the counter `fromKey` of `collection` over to `toKey` (the same
+    kind and day, another owner), in `session`: `toKey` holds at least its
+    count (`$max`), and a new one gets its expireAt (else the day's,
+    usageExpiry) and _version 0, as takeQuota writes it. A counter missing
+    or at 0 copies nothing; `fromKey` is left as it is."""
+    counter = db.read({'_id': fromKey}, collection,
+                      projection={'count': 1, 'expireAt': 1},
+                      session=session, findOne=True)
+    if counter is None or not counter.get('count'):
+        return
+    day = datetime.date.fromisoformat(fromKey.rpartition(':')[2])
+    db.findOneAndUpdate(
+        {'_id': toKey},
+        {'$max': {'count': counter['count']},
+         '$setOnInsert': {'expireAt': (counter.get('expireAt')
+                                       or usageExpiry(day)),
+                          '_version': 0}},
+        collection,
+        upsert=True,
+        session=session,
+        projection={'_id': 1})
 
 
 def takeQuota(collection: str, key: str, cap: int,

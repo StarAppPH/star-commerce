@@ -4,16 +4,23 @@ An admin is a Users document (a Google sign-in) and owns at most one store.
 Every admin route finds the store from the signed-in admin, never from a
 store id the client or the AI sends: that is what keeps one store's data
 out of another admin's reach.
+
+Store reset (resetMyStore, until STORE_RESET_ENDS_AT): the admin's store and
+everything in it are deleted and a new empty store takes its place (a new
+_id), with the admin's sign-in kept.
 """
 
 import datetime
+import logging
 import re
 import secrets
+import time
 import typing
 import unicodedata
 
 from pymongo.errors import DuplicateKeyError
 
+import photoStorage
 import voiceModel
 from mongoDb import db
 from mcpTools import mcp_tool
@@ -28,6 +35,9 @@ from objects import (DEFAULT_STORE_CURRENCY, LATITUDE_LIMIT, LONGITUDE_LIMIT,
                      StoreThemeResponse, hexColor, projectedCopy,
                      projection_of)
 from route_config import route_config
+from actions.usageCounters import appDay, copyDailyQuota, usageKey
+from sharedConstants import STORE_RESET_ENDS_AT
+from utils import parseIsoInstant
 
 STORES = 'Stores'
 USERS = 'Users'
@@ -57,6 +67,22 @@ STORE_CHANGED = 'Your store just changed, try again'
 # that sets the store up.
 STORE_DETAILS = ('name', 'slug', 'currency', 'description', 'contactNumber',
                  'address', 'openingHours')
+# Store reset works until this instant, in every environment.
+STORE_RESET_ENDS = parseIsoInstant(STORE_RESET_ENDS_AT, 'STORE_RESET_ENDS_AT')
+STORE_RESET_OVER = 'Store reset is no longer available'
+NO_STORE_TO_RESET = 'You have no store to reset'
+TYPE_NAME_TO_CONFIRM = "Type your store's name to confirm"
+# What confirms the reset of a store not set up yet (it has no name).
+RESET_WORD = 'reset'
+# The conversations whose turns one deleteMany deletes.
+RESET_TURNS_BATCH = 500
+# The time Storage has to delete the old store's and the admin's files.
+RESET_STORAGE_SECONDS = 60
+
+
+def _now() -> datetime.datetime:
+    """Now, timezone aware, in UTC: the clock of the reset's sunset."""
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 def ownerQuery(userId: str) -> dict:
@@ -114,6 +140,24 @@ def emptyPolicy(storeId: str, createdAt: datetime.datetime) -> dict:
                   _version=0).model_dump(by_alias=True)
 
 
+def createEmptyStore(ownerUserId: str, createdAt: datetime.datetime,
+                     session) -> dict:
+    """Create, in `session`, the store a new admin `ownerUserId` gets: empty
+    (not set up: createUserStore fills it in), with a new _id, and its
+    policy, every answer unset (emptyPolicy), both created at `createdAt`.
+    Sign-up and resetMyStore both create it here. Returns the stored
+    store."""
+    store = Store(ownerUserId=ownerUserId,
+                  currency=DEFAULT_STORE_CURRENCY,
+                  location=None,
+                  createdAt=createdAt,
+                  _version=0).model_dump(by_alias=True)
+    created = db.create(store, STORES, session=session)
+    db.create(emptyPolicy(created['_id'], createdAt), POLICIES,
+              session=session)
+    return created
+
+
 def ensurePolicy(storeId: str, createdAt: datetime.datetime) -> None:
     """Give the store `storeId` (created at `createdAt`) its Policies
     document unless it has one. Sign-up creates it, but not for an admin
@@ -162,6 +206,123 @@ def requireOwnerStore(userId: str, projection: dict) -> dict:
     with no store yet."""
     requireAdmin(userId)
     return ownerStore(userId, projection)
+
+
+def myStoreResponse(userId: str) -> dict:
+    """What getUserStore sends the admin `userId`: their store once set up,
+    else null."""
+    store = db.readResponse(AdminStoreResponse, setUpOwnerQuery(userId),
+                            STORES)
+    if store is not None:
+        # A theme field or the voice is sent only once set
+        # (AdminStoreResponse).
+        store = {key: value for key, value in store.items()
+                 if not (key in STORE_OWNER_ONLY_FIELDS and value is None)}
+    return {'store': store}
+
+
+def _confirmsReset(confirmName, store: dict) -> bool:
+    """Whether `confirmName` is the store's name (RESET_WORD for a store
+    not set up yet), whatever its case and surrounding spaces."""
+    expected = store.get('name') if isSetUp(store) else RESET_WORD
+    if not isinstance(confirmName, str) or not isinstance(expected, str):
+        return False
+
+    def folded(text: str) -> str:
+        return unicodedata.normalize('NFKC', text).strip().casefold()
+
+    return folded(confirmName) == folded(expected)
+
+
+def _deletedCount(result: int | str) -> int:
+    """db.delete's answer as a count (it says 'No document to delete' for
+    none)."""
+    return result if isinstance(result, int) else 0
+
+
+def _carryOverUsage(oldStoreId: str, newStoreId: str, day: datetime.date,
+                    session) -> None:
+    """Copy the old store's daily counters of `day` (chat, attachments,
+    photos, voice: each module's STORE_USAGE_KINDS) to the new store, in
+    `session`, so a reset never gives a day's quota back."""
+    # Imported here: each of these modules imports this one.
+    from actions import ChatActions, PhotoActions, VoiceActions
+    for collection, kinds in (ChatActions.STORE_USAGE_KINDS,
+                              PhotoActions.STORE_USAGE_KINDS,
+                              VoiceActions.STORE_USAGE_KINDS):
+        for kind in kinds:
+            copyDailyQuota(collection, usageKey(kind, oldStoreId, day),
+                           usageKey(kind, newStoreId, day), session)
+
+
+def _deleteStoreData(storeId: str, chatPaths: list[str]) -> dict:
+    """Delete every document of the store `storeId`: its products, orders
+    (and their locks), returns, policy, generated photos and conversations,
+    the turns of those conversations with them (by conversationId, in
+    batches). The attachment paths those turns carried are added to
+    `chatPaths` as each batch is read, so a failure part way still leaves
+    them for _deleteResetFiles. Returns the count deleted per collection.
+    Never the usage counters, Users, Customers, Bootstrap or
+    ExchangeRates."""
+    # Imported here: each of these modules imports this one.
+    from actions.ChatActions import CHAT_TURNS, CONVERSATIONS
+    from actions.OrderActions import ORDER_LOCKS, ORDERS
+    from actions.PhotoActions import GENERATED_PHOTOS
+    from actions.ProductActions import PRODUCTS
+    from actions.ReturnActions import RETURNS
+    deleted = {CHAT_TURNS: 0, CONVERSATIONS: 0}
+    conversationIds = [
+        conversation['_id'] for conversation in db.read(
+            {'storeId': storeId}, CONVERSATIONS, projection={'_id': 1})]
+    for start in range(0, len(conversationIds), RESET_TURNS_BATCH):
+        batch = conversationIds[start:start + RESET_TURNS_BATCH]
+        for turn in db.read({'conversationId': {'$in': batch},
+                             'attachments.0': {'$exists': True}},
+                            CHAT_TURNS, projection={'attachments.path': 1}):
+            chatPaths.extend(attachment['path']
+                             for attachment in turn['attachments']
+                             if isinstance(attachment.get('path'), str))
+        deleted[CHAT_TURNS] += _deletedCount(
+            db.deleteMany({'conversationId': {'$in': batch}}, CHAT_TURNS))
+        deleted[CONVERSATIONS] += _deletedCount(
+            db.deleteMany({'_id': {'$in': batch}}, CONVERSATIONS))
+    # OrderLocks has no storeId index: an accepted collection scan, once
+    # per reset (the route ends at STORE_RESET_ENDS_AT).
+    for collection in (PRODUCTS, ORDERS, ORDER_LOCKS, RETURNS, POLICIES,
+                       GENERATED_PHOTOS):
+        deleted[collection] = _deletedCount(
+            db.deleteMany({'storeId': storeId}, collection))
+    return deleted
+
+
+def _deleteResetFiles(storeId: str, userId: str,
+                      chatPaths: list[str]) -> tuple[int, int]:
+    """Delete from Storage, within RESET_STORAGE_SECONDS, the old store
+    `storeId`'s files, the admin `userId`'s own uploads but their chat/
+    subfolder (their chats at other stores refer to it), and of that
+    subfolder the files of `chatPaths` (the deleted store's turns' own).
+    A customer's files are never among them. A step that fails is logged
+    (by kind and error class only) and skipped: this never raises. Returns
+    the files deleted and the steps that failed."""
+    deadline = time.monotonic() + RESET_STORAGE_SECONDS
+    files = failed = 0
+    steps = (
+        ('store', lambda: photoStorage.deletePrefix(
+            photoStorage.storeFolder(storeId), deadline)),
+        ('user', lambda: photoStorage.deletePrefix(
+            photoStorage.userFolder(userId), deadline)),
+        ('chat', lambda: photoStorage.deleteOwnChatFiles(
+            userId, chatPaths, deadline)),
+    )
+    for kind, step in steps:
+        try:
+            files += step()
+        except Exception as error:
+            failed += 1
+            logging.warning({'event': 'storeResetStorageFailed',
+                             'folder': kind,
+                             'errorClass': type(error).__name__})
+    return files, failed
 
 
 def storeSlug(name: str) -> str:
@@ -245,15 +406,7 @@ class StoreActions():
         has not created one yet: then collect the store's details from the
         admin and call createUserStore."""
         requireAdmin(userId)
-        store = db.readResponse(AdminStoreResponse, setUpOwnerQuery(userId),
-                                STORES)
-        if store is not None:
-            # A theme field or the voice is sent only once set
-            # (AdminStoreResponse).
-            store = {key: value for key, value in store.items()
-                     if not (key in STORE_OWNER_ONLY_FIELDS
-                             and value is None)}
-        return {'store': store}
+        return myStoreResponse(userId)
 
     @mcp_tool('admin')
     @route_config(httpMethod='POST',
@@ -421,3 +574,65 @@ class StoreActions():
             {'_id': store['_id'], '_version': store['_version']},
             {'location': location.model_dump()}, STORES)
         return projectedCopy(StoreResponse, updated)
+
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Store reset',
+                  responseModel=MyStoreResponse)
+    def resetMyStore(self, userId: str, confirmName: str) -> dict:
+        """Delete the admin's store and everything in it (products, orders
+        and returns, customers' included, the policy, photos and chats),
+        keeping the admin's sign-in: a new empty store takes its place, so
+        the admin is back at store setup. `confirmName` is the store's name
+        (for a store not set up yet, "reset"). Refused from
+        STORE_RESET_ENDS_AT on. No chat or MCP tool."""
+        # The sunset first: past it nothing is read or written.
+        if _now() >= STORE_RESET_ENDS:
+            raise PermissionError(STORE_RESET_OVER)
+        requireAdmin(userId)
+        old = db.read(ownerQuery(userId), STORES,
+                      projection={'_id': 1, '_version': 1, 'name': 1,
+                                  'slug': 1},
+                      findOne=True)
+        if old is None:
+            raise ValueError(NO_STORE_TO_RESET)
+        if not _confirmsReset(confirmName, old):
+            raise ValueError(TYPE_NAME_TO_CONFIRM)
+        createdAt = _now()
+
+        # The new store has a new _id: every reader finds the store by its
+        # owner or by a set-up id, so once this commits the old id reaches
+        # nothing, and a write racing the reset lands only on it.
+        def swap(session):
+            if _deletedCount(db.delete(
+                    {'_id': old['_id'], '_version': old['_version']},
+                    STORES, session=session)) != 1:
+                raise ValueError(STORE_CHANGED)
+            new = createEmptyStore(userId, createdAt, session)
+            _carryOverUsage(old['_id'], new['_id'], appDay(createdAt),
+                            session)
+            return new
+
+        new = db.createTransaction(swap)
+        chatPaths = []
+        try:
+            deleted = _deleteStoreData(old['_id'], chatPaths)
+        except Exception as error:
+            # The swap is done: what is left of the old id is unreachable,
+            # and this id is what a cleanup deletes. The files go anyway.
+            _, storageFailures = _deleteResetFiles(old['_id'], userId,
+                                                   chatPaths)
+            logging.error({'event': 'storeResetIncomplete',
+                           'oldStoreId': old['_id'],
+                           'errorClass': type(error).__name__,
+                           'storageFailures': storageFailures})
+            raise
+        files, storageFailures = _deleteResetFiles(old['_id'], userId,
+                                                   chatPaths)
+        logging.info({'event': 'storeReset',
+                      'oldStoreId': old['_id'],
+                      'newStoreId': new['_id'],
+                      'deleted': deleted,
+                      'files': files,
+                      'storageFailures': storageFailures})
+        return myStoreResponse(userId)

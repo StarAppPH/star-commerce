@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ExternalLinkIcon, LogOutIcon, PlusIcon, SearchIcon } from 'lucide-react';
+import { ExternalLinkIcon, LogOutIcon, PlusIcon, SearchIcon, Trash2Icon } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,6 +26,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { groupConversationsByDay } from '@/lib/storeTime';
 import { matchingConversations } from '@/components/chat/useConversationList';
 import { useAdminWorkspace } from './AdminWorkspace';
+import { ResetStoreDialog, storeResetAvailable } from './ResetStoreDialog';
 
 export function AdminSidebar() {
   const router = useRouter();
@@ -35,6 +36,16 @@ export function AdminSidebar() {
   const { isMobile, setOpenMobile } = useSidebar();
   const [search, setSearch] = useState('');
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  // Reset needs a loaded store (a store not set up yet is ready with none).
+  const resetShown = Boolean(userData) && storeState.status === 'ready' && storeResetAvailable();
+
+  // Hiding the item closes its dialog, so the dialog cannot reopen by itself.
+  const [resetWasShown, setResetWasShown] = useState(resetShown);
+  if (resetWasShown !== resetShown) {
+    setResetWasShown(resetShown);
+    if (!resetShown) setResetOpen(false);
+  }
 
   const store = storeState.status === 'ready' ? storeState.store : null;
   // A store not set up yet has its setup chats.
@@ -157,6 +168,16 @@ export function AdminSidebar() {
             </SidebarMenuItem>
           </SidebarMenu>
         )}
+        {resetShown && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton data-component="adminResetStore" className="text-destructive" onClick={() => setResetOpen(true)}>
+                <Trash2Icon />
+                <span>Reset my store</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
         {userData && (
           <div className="flex items-center gap-2.5 border-t px-1 pt-2">
             <Avatar className="size-8">
@@ -172,6 +193,7 @@ export function AdminSidebar() {
           </div>
         )}
       </SidebarFooter>
+      {resetShown && <ResetStoreDialog open={resetOpen} onOpenChange={setResetOpen} />}
     </Sidebar>
   );
 }

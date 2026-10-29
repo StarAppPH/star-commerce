@@ -55,5 +55,10 @@ FIREBASE_PROJECT_ID = 'star-commerce-6797'
 # the store's currency at the day's rate).
 DELIVERY_USD_PER_KM = 0.15
 
+# The end of store reset (resetMyStore, the admin's "Reset my store"): from
+# this instant on (UTC+8) the route refuses and the client hides the button,
+# in every environment. The server is what enforces it.
+STORE_RESET_ENDS_AT = '2026-11-05T00:00:00+08:00'
+
 # Everything above this line ships to every browser. No credentials, no API
 # keys, no bank details, no internal limits.

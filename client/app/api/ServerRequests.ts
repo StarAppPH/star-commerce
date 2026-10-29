@@ -257,6 +257,29 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
+    async resetMyStore(userId: string, confirmName: string): Promise<ApiResponse<MyStoreResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/resetMyStore`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "confirmName": confirmName}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<MyStoreResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
     async startGuestSession(idToken: string, storeSlug: string): Promise<ApiResponse<CustomerSessionResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/startGuestSession`, {
@@ -1050,6 +1073,7 @@ export interface RouteResponseModels {
     updateMyStoreTheme: StoreThemeResponse;
     createUserStore: StoreResponse;
     setUserStoreLocation: StoreResponse;
+    resetMyStore: MyStoreResponse;
     startGuestSession: CustomerSessionResponse;
     verifyCustomerPhone: PhoneVerifiedResponse;
     listStoreProducts: ProductListResponse;
@@ -1096,6 +1120,7 @@ export interface RouteRequestBodies {
     updateMyStoreTheme: { userId: string; photoStyle: string | null; primaryColor: string | null; secondaryColor: string | null; voiceId: string | null };
     createUserStore: { userId: string; name: string; description: string; contactNumber: string; address: string; currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED'; openingHours: string | null };
     setUserStoreLocation: { userId: string; latitude: number; longitude: number };
+    resetMyStore: { userId: string; confirmName: string };
     startGuestSession: { idToken: string; storeSlug: string };
     verifyCustomerPhone: { userId: string; idToken: string };
     listStoreProducts: { userId: string; storeId: string; search: string | null; limit: number };

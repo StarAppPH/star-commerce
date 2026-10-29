@@ -54,6 +54,10 @@ from utils import generateRandomString, wholeNumber
 
 GENERATED_PHOTOS = 'GeneratedPhotos'
 PHOTO_USAGE = 'PhotoUsage'
+# The kind of the photo counters, the store's and all stores'.
+PHOTOS_KIND = 'photos'
+# What a store reset carries over to the new store (StoreActions).
+STORE_USAGE_KINDS = (PHOTO_USAGE, (PHOTOS_KIND, ))
 # Read at import, so it stays the real timezone when a test replaces this
 # module's `datetime`.
 UTC = datetime.timezone.utc
@@ -159,8 +163,8 @@ def _takePhotoQuota(storeId: str, count: int) -> list[str]:
     Returns the two counters' keys."""
     return takeDailyQuotas(
         PHOTO_USAGE,
-        [('photos', storeId, STORE_DAILY_PHOTO_CAP, PHOTO_CAP_REACHED)],
-        ('photos', PHOTO_ALL_CAP_REACHED), dailyCapAll(),
+        [(PHOTOS_KIND, storeId, STORE_DAILY_PHOTO_CAP, PHOTO_CAP_REACHED)],
+        (PHOTOS_KIND, PHOTO_ALL_CAP_REACHED), dailyCapAll(),
         PHOTOS_TURNED_OFF, appDay(_now()), amount=count)
 
 
