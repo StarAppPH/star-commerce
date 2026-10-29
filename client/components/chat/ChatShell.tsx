@@ -1,0 +1,83 @@
+'use client';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { VoiceMode } from '@/components/voice/VoiceMode';
+import type { ChatTurnView } from './useChat';
+
+type Ask = (text: string) => Promise<string | null>;
+
+interface VoiceOptions {
+  title: string;
+  subtitle: string;
+  glow: string;
+  glowSecond: string;
+  variant: 'admin' | 'shop';
+}
+
+interface ChatShellValue {
+  // A chat started on the new-chat screen hands its turns to the thread page
+  // it moves to, so the thread shows them without loading them again.
+  stash: (conversationId: string, turns: ChatTurnView[]) => void;
+  peek: (conversationId: string) => ChatTurnView[] | undefined;
+  forget: (conversationId: string) => void;
+  // A turn was saved: the chat list reloads (a new chat, a new order).
+  conversationsChanged: () => void;
+  // Voice mode lives here, above the pages, so a voice chat that starts on
+  // the new-chat screen keeps talking after the move to its thread page.
+  // The page on screen binds its chat's ask.
+  bindAsk: (ask: Ask) => void;
+  // Unbinds `ask` only if it is still the one bound: the next page may
+  // have bound its own first.
+  unbindAsk: (ask: Ask) => void;
+  openVoice: () => void;
+}
+
+const ChatShellContext = createContext<ChatShellValue | null>(null);
+
+export function useChatShell(): ChatShellValue {
+  const context = useContext(ChatShellContext);
+  if (!context) throw new Error('useChatShell must be used within a ChatShellProvider');
+  return context;
+}
+
+interface ChatShellProviderProps {
+  voice: VoiceOptions;
+  onConversationsChanged: () => void;
+  children: React.ReactNode;
+}
+
+export function ChatShellProvider({ voice, onConversationsChanged, children }: ChatShellProviderProps) {
+  const started = useRef(new Map<string, ChatTurnView[]>());
+  const askRef = useRef<Ask | null>(null);
+  const changedRef = useRef(onConversationsChanged);
+  useEffect(() => { changedRef.current = onConversationsChanged; }, [onConversationsChanged]);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+
+  const ask = useCallback<Ask>((text) => (askRef.current ? askRef.current(text) : Promise.resolve(null)), []);
+  const closeVoice = useCallback(() => setVoiceOpen(false), []);
+
+  const value = useMemo<ChatShellValue>(() => ({
+    stash: (conversationId, turns) => { started.current.set(conversationId, turns); },
+    peek: (conversationId) => started.current.get(conversationId),
+    forget: (conversationId) => { started.current.delete(conversationId); },
+    conversationsChanged: () => changedRef.current(),
+    bindAsk: (next) => { askRef.current = next; },
+    unbindAsk: (bound) => { if (askRef.current === bound) askRef.current = null; },
+    openVoice: () => setVoiceOpen(true),
+  }), []);
+
+  return (
+    <ChatShellContext.Provider value={value}>
+      {children}
+      <VoiceMode
+        open={voiceOpen}
+        onClose={closeVoice}
+        ask={ask}
+        title={voice.title}
+        subtitle={voice.subtitle}
+        glow={voice.glow}
+        glowSecond={voice.glowSecond}
+        variant={voice.variant}
+      />
+    </ChatShellContext.Provider>
+  );
+}

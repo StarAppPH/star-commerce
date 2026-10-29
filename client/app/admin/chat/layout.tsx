@@ -1,0 +1,86 @@
+'use client';
+import { useEffect } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import { SquarePenIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { Spinner } from '@/components/ui/spinner';
+import { ChatShellProvider } from '@/components/chat/ChatShell';
+import { useAuth } from '@/lib/AuthContext';
+import { AdminSidebar } from './AdminSidebar';
+import { AdminWorkspaceProvider, useAdminWorkspace } from './AdminWorkspace';
+
+// The admin's voice glow: teal into blue (a shop's is its own warm tones).
+const ADMIN_GLOW = '#0D9488';
+const ADMIN_GLOW_SECOND = '#3B82F6';
+
+export default function AdminChatLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const { userData, loading } = useAuth();
+  const userId = userData?._id ?? null;
+
+  useEffect(() => {
+    if (!loading && !userId) router.replace('/admin');
+  }, [loading, userId, router]);
+
+  if (loading || !userId) {
+    return (
+      <div className="flex min-h-svh items-center justify-center gap-2 text-muted-foreground text-sm" aria-live="polite">
+        <Spinner />
+        Opening your store…
+      </div>
+    );
+  }
+
+  return (
+    <AdminWorkspaceProvider userId={userId}>
+      <AdminChatFrame>{children}</AdminChatFrame>
+    </AdminWorkspaceProvider>
+  );
+}
+
+function AdminChatFrame({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const { storeState, conversations, reloadConversations } = useAdminWorkspace();
+  const store = storeState.status === 'ready' ? storeState.store : null;
+  const openId = pathname.startsWith('/admin/chat/') ? pathname.slice('/admin/chat/'.length) : null;
+  const openChat = openId ? conversations.find((row) => row._id === openId) : undefined;
+  const title = openId ? (openChat?.title ?? 'Chat') : store ? 'New chat' : 'Set up my store';
+
+  return (
+    <ChatShellProvider
+      voice={{
+        title: store?.name ?? 'Star Commerce',
+        subtitle: 'Your store assistant',
+        glow: ADMIN_GLOW,
+        glowSecond: ADMIN_GLOW_SECOND,
+        variant: 'admin',
+      }}
+      onConversationsChanged={reloadConversations}
+    >
+      <SidebarProvider>
+        <AdminSidebar />
+        <SidebarInset className="h-svh min-w-0 overflow-hidden">
+          <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3 md:border-transparent">
+            <SidebarTrigger data-component="adminSidebarToggle" />
+            <h1 className="min-w-0 flex-1 truncate font-medium text-sm">{title}</h1>
+            {store && (
+              <Button
+                data-component="adminHeaderNewChat"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="New chat"
+                className="md:hidden"
+                render={<Link href="/admin/chat" />}
+              >
+                <SquarePenIcon />
+              </Button>
+            )}
+          </header>
+          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+        </SidebarInset>
+      </SidebarProvider>
+    </ChatShellProvider>
+  );
+}
