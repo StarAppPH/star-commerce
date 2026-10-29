@@ -1106,11 +1106,15 @@
                 },
                 "latitude": {
                     "description": "Degrees north",
+                    "maximum": 90,
+                    "minimum": -90,
                     "title": "Latitude",
                     "type": "number"
                 },
                 "longitude": {
                     "description": "Degrees east",
+                    "maximum": 180,
+                    "minimum": -180,
                     "title": "Longitude",
                     "type": "number"
                 }
@@ -1240,11 +1244,15 @@
                 },
                 "latitude": {
                     "description": "Degrees north",
+                    "maximum": 90,
+                    "minimum": -90,
                     "title": "Latitude",
                     "type": "number"
                 },
                 "longitude": {
                     "description": "Degrees east",
+                    "maximum": 180,
+                    "minimum": -180,
                     "title": "Longitude",
                     "type": "number"
                 }

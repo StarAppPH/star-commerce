@@ -35,7 +35,8 @@ from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
 from objects.product import PRODUCT_BATCH_MAX, NewProduct
 from objects.returns import (RETURN_REJECT_REASON_MAX_LENGTH,
                              ReturnItemRow, ReturnReason, ReturnStatus)
-from objects.store import StoreCurrency, StoreLocationResponse
+from objects.store import (Latitude, Longitude, StoreCurrency,
+                           StoreLocationResponse)
 
 # The most components one turn shows: past it, the earliest are dropped.
 CHAT_COMPONENTS_PER_TURN_MAX = 6
@@ -347,8 +348,8 @@ class LocationAnswer(AppModel):
     """A LocationForm's pin."""
     kind: Literal['location'] = Field(..., description='The answer')
     formId: FormId
-    latitude: float = Field(..., description='Degrees north')
-    longitude: float = Field(..., description='Degrees east')
+    latitude: Latitude = Field(..., description='Degrees north')
+    longitude: Longitude = Field(..., description='Degrees east')
 
 
 class NewProductsAnswer(AppModel):
@@ -421,8 +422,8 @@ class DeliveryPinAnswer(AppModel):
     """A DeliveryPinForm's pin: where the delivery goes."""
     kind: Literal['deliveryPin'] = Field(..., description='The answer')
     formId: FormId
-    latitude: float = Field(..., description='Degrees north')
-    longitude: float = Field(..., description='Degrees east')
+    latitude: Latitude = Field(..., description='Degrees north')
+    longitude: Longitude = Field(..., description='Degrees east')
 
 
 # The chat route's `form` param (a plain union: a route param cannot be

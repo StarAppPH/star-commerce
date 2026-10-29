@@ -315,10 +315,8 @@ FORM_TOOLS: dict[str, FormTool] = {
         'delivery goes (or uses where they are). Use it before createOrder, '
         'once they chose delivery in chat; it refuses when the store cannot '
         'deliver. The pin comes as their next message: then ask in chat for '
-        'the house number, street and a landmark, and any notes for the '
-        "rider, and call createOrder with fulfillment delivery and delivery "
-        "set to that address, the pin's latitude and longitude, and the "
-        'notes.',
+        "the rest of createOrder's `delivery` and call it with fulfillment "
+        'delivery and the pin\'s latitude and longitude.',
         ShowDeliveryPinFormArgs, _deliveryPinForm),
 }
 

@@ -148,6 +148,31 @@ def test_formToolSchemas_takeNoIdentity():
             assert 'storeId' not in properties
 
 
+def test_theDeliveryPin_isNoConfirmation_inTheCustomerPrompt():
+    """The pin is a form answer, yet the order waits for the address."""
+    prompt = chatModel.CHAT_PROMPTS['customer']
+    assert chatModel.PIN_IS_NOT_CONFIRMATION in prompt
+    assert prompt.index('"Form answer:"') < prompt.index(
+        chatModel.PIN_IS_NOT_CONFIRMATION)
+    assert chatModel.PIN_IS_NOT_CONFIRMATION not in chatModel.CHAT_PROMPTS[
+        'admin']
+
+
+@pytest.mark.parametrize('kind', ['location', 'deliveryPin'])
+@pytest.mark.parametrize('field, value', [
+    ('latitude', 91), ('latitude', -91), ('longitude', 181),
+    ('latitude', float('nan')), ('longitude', float('inf')),
+    ('latitude', float('-inf')),
+])
+def test_aPinAnswer_outOfRange_isRefused(kind, field, value):
+    pin = {'kind': kind, 'formId': 'f1', 'latitude': 14.5, 'longitude': 121.0}
+    assert chatForms.validAnswer(pin) is not None
+    with pytest.raises(ValueError) as error:
+        chatForms.validAnswer({**pin, field: value})
+    assert str(error.value) == chatForms.FORM_ANSWER_INVALID.format(
+        fields=f'{kind}.{field}')
+
+
 def test_bothPrompts_tellTheModelAboutCardsAndFormAnswers():
     # The setup chat opens no form: its prompt has no form answer rule.
     for toolset in ('admin', 'customer'):

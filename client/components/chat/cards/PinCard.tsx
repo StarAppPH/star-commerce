@@ -17,6 +17,9 @@ interface PinCardProps {
   startZoom: number;
   sendLabel: string;
   sentText: string;
+  // Send waits until the pin moved or "Use where I am" found a spot (a
+  // delivery's pin must be the customer's, never where the map opened).
+  requireMove?: boolean;
   answered: boolean;
   busy: boolean;
   onSend: (point: MapPoint) => void;
@@ -25,15 +28,22 @@ interface PinCardProps {
 // A map with a pin to move onto a spot, "Use where I am" and a send button:
 // the store's pin and a delivery's.
 export function PinCard({
-  dataComponent, title, note, start, startZoom, sendLabel, sentText, answered, busy, onSend,
+  dataComponent, title, note, start, startZoom, sendLabel, sentText, requireMove = false, answered, busy, onSend,
 }: PinCardProps) {
   const opening = start ?? DEFAULT_MAP_START;
   const [point, setPoint] = useState<MapPoint>(opening);
   const [target, setTarget] = useState<MapPoint | null>(null);
+  const [placed, setPlaced] = useState(false);
   const { locating, locate } = useWhereIAm((here) => {
     setTarget(here);
     setPoint(here);
+    setPlaced(true);
   });
+  const move = (moved: MapPoint) => {
+    setPoint(moved);
+    if (moved.latitude !== opening.latitude || moved.longitude !== opening.longitude) setPlaced(true);
+  };
+  const canSend = !busy && !locating && (placed || !requireMove);
 
   return (
     <ChatCard
@@ -42,14 +52,11 @@ export function PinCard({
       title={title}
       footer={answered ? <SentNote text={sentText} /> : (
         <>
-          <span className="me-auto text-muted-foreground text-xs tabular-nums">
-            {point.latitude.toFixed(5)}, {point.longitude.toFixed(5)}
-          </span>
           <Button data-component={`${dataComponent}Here`} variant="outline" loading={locating} disabled={busy} onClick={locate}>
             <LocateFixedIcon />
             Use where I am
           </Button>
-          <Button data-component={`${dataComponent}Send`} disabled={busy} onClick={() => onSend(point)}>
+          <Button data-component={`${dataComponent}Send`} disabled={!canSend} onClick={() => onSend(point)}>
             {sendLabel}
           </Button>
         </>
@@ -63,7 +70,7 @@ export function PinCard({
             start={opening}
             startZoom={startZoom}
             target={target}
-            onMove={setPoint}
+            onMove={move}
             disabled={answered || busy}
           />
         </div>

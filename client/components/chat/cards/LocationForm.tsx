@@ -8,7 +8,7 @@ export function LocationForm({ component, answered, busy, onAnswer }: ComponentP
     <PinCard
       dataComponent="locationForm"
       title="Pin your store"
-      note={component.address ? `Near ${component.address}` : null}
+      note={component.address ? `Near ${component.address}` : 'Move the map until the pin sits on your door.'}
       start={component.location}
       startZoom={component.location ? 17 : 12}
       sendLabel="Save pin"
@@ -32,6 +32,7 @@ export function DeliveryPinForm({ component, answered, busy, onAnswer }: Compone
       startZoom={component.storeLocation ? 14 : 12}
       sendLabel="Deliver here"
       sentText="Pin sent"
+      requireMove
       answered={answered}
       busy={busy}
       onSend={(point) => onAnswer({ kind: 'deliveryPin', formId: component.formId, ...point })}
