@@ -716,6 +716,18 @@ Money: receiving refunds the return to the order's payment through the demo prov
 
 ---
 
+## Chat cards and forms
+
+A chat reply carries `components` (objects/chatComponents.py), the cards and forms the client shows under it; each turn stores them as they were sent (`ChatTurns.components`), and `getConversationTurns` sends them with the turn.
+
+- **Cards** (chatCards.py) are built by the server from what a tool returned in that turn (its tool message's JSON), never from the model's words: products, orders, the order to pay, returns, the policy, photos, the store. A tool that refused shows nothing. A later tool that changes one row (`completeOrder` after `getStoreOrders`) updates that row on the turn's card that lists it. A turn keeps its latest `CHAT_COMPONENTS_PER_TURN_MAX` components.
+- **Forms** (chatForms.py) are opened by the model with a form tool: a chat-only tool (in `chatTools.TOOLS`, never on the MCP servers) that runs in the chat route and tells the model the form is on screen: store details, the map pin, new products, a policy section, photos to upload, a return, phone verification.
+- **Answers**: a form, or a card that takes a choice (products to order, a payment method, paid orders to hand over, a requested return to decide), has a `formId`. The client sends its answer as the chat route's `form` (one of the `*Answer` models), in that conversation. Under the conversation's lock, `chatForms.answerTurn` checks it against the component it answers (in this conversation, of the matching kind, answered once, its picks on the card), and turns it into the user's turn: `userText`, the summary the user sees (also in the reply), and `userContent`, the summary and the details the model reads (`Form answer: {...}`) and acts on with the matching tool. History replays `userContent`.
+- **Setup**: an admin whose store is not set up yet (the empty store sign-up creates) chats with `chatForms.SETUP_TOOLSET` (getUserStore, createUserStore, showStoreDetailsForm) and its own prompt; `listMyConversations` lists those chats too.
+- Phone verification runs in the browser (Firebase phone sign-in linked to the shopper's anonymous account, then `verifyCustomerPhone`), since only a Firebase ID token proves a number; its answer only tells the model it is done.
+
+---
+
 ## Environment Setup
 
 ### Required Environment Variables

@@ -43,6 +43,9 @@ export function ChatThread({ chat, variant, placeholder, dataComponent, onVoice,
               loadingEarlier={chat.loadingEarlier}
               onLoadEarlier={chat.loadEarlier}
               onRetry={chat.retry}
+              answeredFormIds={chat.answeredFormIds}
+              busy={chat.sending}
+              onAnswer={chat.answer}
             />
           )}
         </div>

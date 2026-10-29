@@ -1,6 +1,7 @@
 'use client';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { VoiceMode } from '@/components/voice/VoiceMode';
+import type { ChatComponent } from './cards/types';
 import type { ChatTurnView } from './useChat';
 
 type Ask = (text: string) => Promise<string | null>;
@@ -19,8 +20,9 @@ interface ChatShellValue {
   stash: (conversationId: string, turns: ChatTurnView[]) => void;
   peek: (conversationId: string) => ChatTurnView[] | undefined;
   forget: (conversationId: string) => void;
-  // A turn was saved: the chat list reloads (a new chat, a new order).
-  conversationsChanged: () => void;
+  // A turn was saved: the chat list reloads (a new chat moves to the top),
+  // and its components may change what the page shows (a store set up).
+  turnSaved: (components: ChatComponent[]) => void;
   // Voice mode lives here, above the pages, so a voice chat that starts on
   // the new-chat screen keeps talking after the move to its thread page.
   // The page on screen binds its chat's ask.
@@ -41,15 +43,15 @@ export function useChatShell(): ChatShellValue {
 
 interface ChatShellProviderProps {
   voice: VoiceOptions;
-  onConversationsChanged: () => void;
+  onTurnSaved: (components: ChatComponent[]) => void;
   children: React.ReactNode;
 }
 
-export function ChatShellProvider({ voice, onConversationsChanged, children }: ChatShellProviderProps) {
+export function ChatShellProvider({ voice, onTurnSaved, children }: ChatShellProviderProps) {
   const started = useRef(new Map<string, ChatTurnView[]>());
   const askRef = useRef<Ask | null>(null);
-  const changedRef = useRef(onConversationsChanged);
-  useEffect(() => { changedRef.current = onConversationsChanged; }, [onConversationsChanged]);
+  const savedRef = useRef(onTurnSaved);
+  useEffect(() => { savedRef.current = onTurnSaved; }, [onTurnSaved]);
   const [voiceOpen, setVoiceOpen] = useState(false);
 
   const ask = useCallback<Ask>((text) => (askRef.current ? askRef.current(text) : Promise.resolve(null)), []);
@@ -59,7 +61,7 @@ export function ChatShellProvider({ voice, onConversationsChanged, children }: C
     stash: (conversationId, turns) => { started.current.set(conversationId, turns); },
     peek: (conversationId) => started.current.get(conversationId),
     forget: (conversationId) => { started.current.delete(conversationId); },
-    conversationsChanged: () => changedRef.current(),
+    turnSaved: (components) => savedRef.current(components),
     bindAsk: (next) => { askRef.current = next; },
     unbindAsk: (bound) => { if (askRef.current === bound) askRef.current = null; },
     openVoice: () => setVoiceOpen(true),

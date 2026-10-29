@@ -1,0 +1,33 @@
+{
+    "description": "Asks the admin for photos of one item to turn into product photos.\nAnswered with PhotoRequestAnswer.",
+    "properties": {
+        "kind": {
+            "const": "photoRequestForm",
+            "description": "The form",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "count": {
+            "description": "How many photos to make, prefilled",
+            "maximum": 4,
+            "minimum": 1,
+            "title": "Count",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "count"
+    ],
+    "title": "PhotoRequestForm",
+    "type": "object",
+    "additionalProperties": false
+}

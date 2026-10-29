@@ -37,6 +37,8 @@ export function AdminSidebar() {
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   const store = storeState.status === 'ready' ? storeState.store : null;
+  // A store not set up yet has its setup chats.
+  const chatsShown = storeState.status === 'ready';
   const storeName = store?.name ?? 'Star Commerce';
   const closeOnMobile = () => { if (isMobile) setOpenMobile(false); };
 
@@ -67,7 +69,7 @@ export function AdminSidebar() {
           )}
           <span className="truncate font-medium">{storeName}</span>
         </div>
-        {store && (
+        {chatsShown && (
           <Button
             data-component="adminNewChat"
             variant="outline"
@@ -78,7 +80,7 @@ export function AdminSidebar() {
             New chat
           </Button>
         )}
-        {store && (
+        {chatsShown && (
           <div className="relative">
             <label htmlFor="adminSearchChats" className="sr-only">Search chats</label>
             <SearchIcon aria-hidden="true" className="pointer-events-none absolute start-2.5 top-1/2 z-10 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -105,7 +107,7 @@ export function AdminSidebar() {
             </SidebarMenu>
           </SidebarGroup>
         )}
-        {!conversationsLoading && store && conversations.length === 0 && (
+        {!conversationsLoading && chatsShown && conversations.length === 0 && (
           <p className="px-4 py-2 text-muted-foreground text-sm">Your chats show up here.</p>
         )}
         {!conversationsLoading && search && groups.length === 0 && conversations.length > 0 && (

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { SquarePenIcon } from 'lucide-react';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Spinner } from '@/components/ui/spinner';
 import { ChatShellProvider } from '@/components/chat/ChatShell';
+import type { ChatComponent } from '@/components/chat/cards/types';
 import { useAuth } from '@/lib/AuthContext';
 import { AdminSidebar } from './AdminSidebar';
 import { AdminWorkspaceProvider, useAdminWorkspace } from './AdminWorkspace';
@@ -42,7 +43,13 @@ export default function AdminChatLayout({ children }: { children: React.ReactNod
 
 function AdminChatFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { storeState, conversations, reloadConversations } = useAdminWorkspace();
+  const { storeState, conversations, reloadConversations, reloadStore } = useAdminWorkspace();
+  // A saved turn moves its chat to the top; one that set up or changed the
+  // store (a store card) changes the store too.
+  const onTurnSaved = useCallback((components: ChatComponent[]) => {
+    reloadConversations();
+    if (components.some((component) => component.kind === 'store')) reloadStore();
+  }, [reloadConversations, reloadStore]);
   const store = storeState.status === 'ready' ? storeState.store : null;
   const openId = pathname.startsWith('/admin/chat/') ? pathname.slice('/admin/chat/'.length) : null;
   const openChat = openId ? conversations.find((row) => row._id === openId) : undefined;
@@ -57,7 +64,7 @@ function AdminChatFrame({ children }: { children: React.ReactNode }) {
         glowSecond: ADMIN_GLOW_SECOND,
         variant: 'admin',
       }}
-      onConversationsChanged={reloadConversations}
+      onTurnSaved={onTurnSaved}
     >
       <SidebarProvider>
         <AdminSidebar />
@@ -65,7 +72,7 @@ function AdminChatFrame({ children }: { children: React.ReactNode }) {
           <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3 md:border-transparent">
             <SidebarTrigger data-component="adminSidebarToggle" />
             <h1 className="min-w-0 flex-1 truncate font-medium text-sm">{title}</h1>
-            {store && (
+            {storeState.status === 'ready' && (
               <Button
                 data-component="adminHeaderNewChat"
                 variant="ghost"

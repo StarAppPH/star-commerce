@@ -48,6 +48,11 @@ export function useGuestSession(): GuestSessionContextType {
   return context;
 }
 
+// The shopper's session where there is one (a shop page), else null.
+export function useOptionalGuestSession(): GuestSessionContextType | null {
+  return useContext(GuestSessionContext);
+}
+
 function waitForGuestUser(): Promise<User | null> {
   return new Promise((resolve) => {
     const unsubscribe = onAuthStateChanged(guestAuth, (user) => {

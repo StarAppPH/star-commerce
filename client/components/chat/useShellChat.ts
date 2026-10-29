@@ -14,7 +14,7 @@ interface UseShellChatOptions {
 
 // useChat inside a ChatShell: a new chat moves to its thread page after its
 // first reply, voice mode talks to the chat on screen, and every saved turn
-// reloads the chat list.
+// is reported to the shell (the chat list reloads).
 export function useShellChat({ transport, conversationId, threadHref }: UseShellChatOptions) {
   const shell = useChatShell();
   const router = useRouter();
@@ -34,21 +34,16 @@ export function useShellChat({ transport, conversationId, threadHref }: UseShell
     router.replace(threadHref(id));
   }, [shell, router, threadHref]);
 
-  const chat = useChat({ transport, conversationId, initialTurns, onStarted });
-  const { ask: sendMessage } = chat;
-
-  const ask = useCallback(async (text: string) => {
-    const reply = await sendMessage(text);
-    if (reply !== null) shell.conversationsChanged();
-    return reply;
-  }, [sendMessage, shell]);
+  const onSaved = useCallback((turn: ChatTurnView) => shell.turnSaved(turn.components), [shell]);
+  const chat = useChat({ transport, conversationId, initialTurns, onStarted, onSaved });
+  const { ask } = chat;
 
   useEffect(() => {
     shell.bindAsk(ask);
     return () => shell.unbindAsk(ask);
   }, [ask, shell]);
 
-  return { ...chat, ask };
+  return chat;
 }
 
 export type ShellChat = ReturnType<typeof useShellChat>;

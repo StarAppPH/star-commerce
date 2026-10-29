@@ -7,6 +7,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { formatStoreTime } from '@/lib/storeTime';
 import { AssistantText } from './AssistantText';
+import { ChatComponents } from './cards/ChatComponents';
+import type { ChatFormAnswer } from './cards/types';
 import type { ChatTurnView } from './useChat';
 
 interface ChatMessagesProps {
@@ -16,11 +18,19 @@ interface ChatMessagesProps {
   loadingEarlier: boolean;
   onLoadEarlier: () => void;
   onRetry: (key: string) => void;
+  // The forms a turn of this chat answered.
+  answeredFormIds: ReadonlySet<string>;
+  // A turn is on its way: no form or card sends another.
+  busy: boolean;
+  onAnswer: (answer: ChatFormAnswer) => void;
 }
 
 // One chat's turns: the user's message on the right, the assistant's reply
-// as plain text below it, like a conversation with Claude.
-export function ChatMessages({ turns, variant, hasEarlier, loadingEarlier, onLoadEarlier, onRetry }: ChatMessagesProps) {
+// as plain text below it, like a conversation with Claude, and the cards and
+// forms the reply brought.
+export function ChatMessages({
+  turns, variant, hasEarlier, loadingEarlier, onLoadEarlier, onRetry, answeredFormIds, busy, onAnswer,
+}: ChatMessagesProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const lastTurn = turns[turns.length - 1];
   const lastKey = lastTurn ? `${lastTurn.key}:${lastTurn.status}` : '';
@@ -63,6 +73,14 @@ export function ChatMessages({ turns, variant, hasEarlier, loadingEarlier, onLoa
             </div>
           )}
           {turn.status === 'done' && turn.reply !== null && <AssistantText text={turn.reply} />}
+          {turn.status === 'done' && (
+            <ChatComponents
+              components={turn.components}
+              answeredFormIds={answeredFormIds}
+              busy={busy}
+              onAnswer={onAnswer}
+            />
+          )}
           {turn.status === 'failed' && (
             <Alert variant="error" className="max-w-xl">
               <AlertDescription className="flex flex-wrap items-center justify-between gap-3">

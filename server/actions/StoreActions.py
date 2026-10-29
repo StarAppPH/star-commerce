@@ -136,6 +136,23 @@ def requireAdmin(userId: str) -> None:
         raise PermissionError('Only a store admin can do this')
 
 
+def isSetUp(store: dict) -> bool:
+    """Whether `store` (read with its slug) is set up (SET_UP)."""
+    return isinstance(store.get('slug'), str)
+
+
+def requireAnyOwnerStore(userId: str, projection: dict) -> dict:
+    """The store the admin `userId` owns, set up or not (the empty store
+    sign-up creates is one): refuses a caller who is no admin
+    (requireAdmin), then an admin with no store at all (NO_STORE_YET)."""
+    requireAdmin(userId)
+    store = db.read(ownerQuery(userId), STORES, projection=projection,
+                    findOne=True)
+    if store is None:
+        raise ValueError(NO_STORE_YET)
+    return store
+
+
 def requireOwnerStore(userId: str, projection: dict) -> dict:
     """The store the admin `userId` owns (ownerStore, with `projection`):
     refuses a caller who is no admin first (requireAdmin), then an admin

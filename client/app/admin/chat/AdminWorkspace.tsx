@@ -45,15 +45,16 @@ export function AdminWorkspaceProvider({ userId, children }: { userId: string; c
     (async () => { await reloadStore(); })();
   }, [reloadStore]);
 
-  // The chats need a store: the server refuses an admin who has none yet.
-  const hasStore = storeState.status === 'ready' && storeState.store !== null;
+  // The chats load once the store is known: a store not set up yet has its
+  // setup chats too.
+  const storeKnown = storeState.status === 'ready';
   const fetchPage = useCallback((before: string | null) => adminRequest(
     () => server.listMyConversations(userId, null, before, CONVERSATIONS_PAGE),
   ), [adminRequest, server, userId]);
-  const list = useConversationList(fetchPage, hasStore);
+  const list = useConversationList(fetchPage, storeKnown);
 
   const transport = useMemo<ChatTransport>(() => ({
-    send: (message, conversationId) => adminRequest(() => server.sendAdminChatMessage(userId, message, conversationId)),
+    send: (message, conversationId, form) => adminRequest(() => server.sendAdminChatMessage(userId, message, conversationId, form)),
     loadTurns: (conversationId, beforeSeq, limit) => adminRequest(() => server.getConversationTurns(userId, conversationId, beforeSeq, limit)),
   }), [adminRequest, server, userId]);
 

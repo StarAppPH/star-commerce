@@ -46,13 +46,15 @@ function shownCount(count: number): string {
 
 // What needs the admin now, for the new-chat screen: paid orders to hand
 // over, return requests to decide and policy questions left open. A count
-// that fails to load is left out.
-export function useWaitingOnYou(userId: string): WaitingItem[] {
+// that fails to load is left out; nothing loads until `enabled` (a store
+// not set up yet has none).
+export function useWaitingOnYou(userId: string, enabled: boolean): WaitingItem[] {
   const { server } = useServer();
   const { adminRequest } = useAuth();
   const [items, setItems] = useState<WaitingItem[]>([]);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     (async () => {
       const [orders, returns, policy] = await Promise.all([
@@ -90,7 +92,7 @@ export function useWaitingOnYou(userId: string): WaitingItem[] {
             dataComponent: 'adminHomeSuggestPolicies',
             count: String(open),
             label: open === 1 ? 'Unanswered policy question' : 'Unanswered policy questions',
-            prompt: 'Let’s answer my store’s open policy questions, one at a time.',
+            prompt: 'Let’s answer my store’s open policy questions.',
             tone: 'warning',
           });
         }
@@ -98,7 +100,7 @@ export function useWaitingOnYou(userId: string): WaitingItem[] {
       setItems(next);
     })();
     return () => { cancelled = true; };
-  }, [adminRequest, server, userId]);
+  }, [adminRequest, server, userId, enabled]);
 
   return items;
 }

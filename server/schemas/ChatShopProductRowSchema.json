@@ -1,0 +1,49 @@
+{
+    "description": "A product on a shop card.",
+    "properties": {
+        "_id": {
+            "description": "Products _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "name": {
+            "description": "Product name",
+            "title": "Name",
+            "type": "string"
+        },
+        "description": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "What the product is",
+            "title": "Description"
+        },
+        "price": {
+            "description": "Price in the store's currency",
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        },
+        "inventory": {
+            "description": "Units free to sell; 0 is sold out",
+            "minimum": 0,
+            "title": "Inventory",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "_id",
+        "name",
+        "description",
+        "price",
+        "inventory"
+    ],
+    "title": "ChatShopProductRow",
+    "type": "object",
+    "additionalProperties": false
+}

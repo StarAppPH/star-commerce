@@ -213,18 +213,33 @@ from objects.returns import (ReturnStatus, ReturnReason,
                              MyReturnRow, StoreReturnRow,
                              MyReturnListResponse, StoreReturnListResponse,
                              returnDeadline, returnRefusal)
+from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
+                           PHOTOS_PER_CALL_MAX, GeneratedPhoto,
+                           GeneratedPhotoRow, GeneratedPhotosResponse)
+from objects.chatComponents import (
+    CHAT_COMPONENTS_PER_TURN_MAX, CHAT_CARD_ROWS_MAX, CHAT_FORM_ID_MAX_LENGTH,
+    PolicySection, CHAT_ANSWER_ID_MAX_LENGTH, CHAT_PHOTO_URL_MAX_LENGTH,
+    CHAT_CONTACT_NUMBER_MAX_LENGTH, FormId, ChatShopProductRow,
+    ShopProductsCard, ChatStoreProductRow, StoreProductsCard,
+    ChatStoreOrderRow, StoreOrdersCard, ChatMyOrderRow, MyOrdersCard,
+    CheckoutCard, ChatStoreReturnRow, StoreReturnsCard, ChatMyReturnRow,
+    MyReturnsCard, PolicyCard, PhotosCard, StoreCard, StoreDetailsForm,
+    LocationForm, ChatProductDraft, NewProductsForm, PolicyForm,
+    ChatReturnableItem, ReturnForm, PhoneVerificationForm, PhotoRequestForm,
+    ChatComponent, AnswerId, StoreDetailsAnswer, LocationAnswer,
+    NewProductsAnswer, PolicyAnswer, ReturnAnswer, PhoneVerifiedAnswer,
+    PhotoRequestAnswer, OrderItemsAnswer, PaymentAnswer, HandoverAnswer,
+    ReturnDecisionAnswer, ChatFormAnswer, ChatFormAnswerTagged)
 from objects.chat import (ChatAudience, CHAT_MESSAGE_MAX_LENGTH,
                           CHAT_TITLE_MAX_LENGTH, CHAT_TOOL_CALL_ID_MAX_LENGTH,
                           CHAT_TOOL_NAME_MAX_LENGTH,
-                          CHAT_TOOL_ARGUMENTS_MAX_LENGTH, Conversation,
+                          CHAT_TOOL_ARGUMENTS_MAX_LENGTH,
+                          CHAT_USER_CONTENT_MAX_LENGTH, Conversation,
                           ConversationView, ChatToolCall, ChatStep,
                           ChatTokenUsage, ChatTurn, ChatUsage,
                           ChatReplyResponse, ConversationRow,
                           ConversationListResponse, ChatTurnRow,
                           ConversationTurnsResponse)
-from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
-                           PHOTOS_PER_CALL_MAX, GeneratedPhoto,
-                           GeneratedPhotoRow, GeneratedPhotosResponse)
 
 
 # AppCreator (_classes_from_module) generates TS schemas only for classes

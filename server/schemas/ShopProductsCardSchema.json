@@ -1,0 +1,111 @@
+{
+    "$defs": {
+        "ChatShopProductRow": {
+            "description": "A product on a shop card.",
+            "properties": {
+                "_id": {
+                    "description": "Products _id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Product name",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "description": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "What the product is",
+                    "title": "Description"
+                },
+                "price": {
+                    "description": "Price in the store's currency",
+                    "minimum": 0,
+                    "title": "Price",
+                    "type": "number"
+                },
+                "inventory": {
+                    "description": "Units free to sell; 0 is sold out",
+                    "minimum": 0,
+                    "title": "Inventory",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "_id",
+                "name",
+                "description",
+                "price",
+                "inventory"
+            ],
+            "title": "ChatShopProductRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "The products a shopper asked about. Answered with OrderItemsAnswer:\nthe quantities the shopper picked.",
+    "properties": {
+        "kind": {
+            "const": "shopProducts",
+            "description": "The card",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "currency": {
+            "description": "Every price is in it",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "products": {
+            "description": "The products",
+            "items": {
+                "$ref": "#/$defs/ChatShopProductRow"
+            },
+            "maxItems": 50,
+            "title": "Products",
+            "type": "array"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "currency",
+        "products"
+    ],
+    "title": "ShopProductsCard",
+    "type": "object",
+    "additionalProperties": false
+}

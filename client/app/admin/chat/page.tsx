@@ -11,10 +11,11 @@ import { useShellChat } from '@/components/chat/useShellChat';
 import { useAuth } from '@/lib/AuthContext';
 import { storeGreeting } from '@/lib/storeTime';
 import { useAdminWorkspace } from './AdminWorkspace';
-import { StoreSetup } from './StoreSetup';
 import { useWaitingOnYou, type WaitingItem } from './useWaitingOnYou';
 import { ADMIN_COMPOSER_PLACEHOLDER, ADMIN_FOOTNOTE } from './adminChatText';
 
+// What "Set up my store" asks.
+const SET_UP_PROMPT = 'I want to set up my store.';
 // Prompts for an admin who doesn't know where to start.
 const TRY_PROMPTS = [
   { label: 'Add products', prompt: 'I want to add some products to my store.' },
@@ -49,17 +50,18 @@ export default function AdminChatHomePage() {
       </Empty>
     );
   }
-  if (!storeState.store) return <StoreSetup />;
-  return <AdminNewChat />;
+  return <AdminNewChat setup={storeState.store === null} />;
 }
 
-function AdminNewChat() {
+// The new-chat screen. Before the store is set up, the assistant only sets
+// it up (it opens the store details form): the screen says so.
+function AdminNewChat({ setup }: { setup: boolean }) {
   const { userData } = useAuth();
   const { transport, userId } = useAdminWorkspace();
   const { openVoice } = useChatShell();
   const threadHref = useCallback((id: string) => `/admin/chat/${id}`, []);
   const chat = useShellChat({ transport, conversationId: null, threadHref });
-  const waiting = useWaitingOnYou(userId);
+  const waiting = useWaitingOnYou(userId, !setup);
 
   if (chat.turns.length > 0) {
     return (
@@ -84,9 +86,13 @@ function AdminNewChat() {
             <StarIcon className="size-5" />
           </span>
           <h2 className="font-heading text-3xl leading-tight sm:text-4xl">
-            {storeGreeting()}{firstName ? `, ${firstName}` : ''}
+            {setup ? 'Welcome' : storeGreeting()}{firstName ? `, ${firstName}` : ''}
           </h2>
-          <p className="text-[15px] text-muted-foreground">Run your store by chatting. I’ll bring up whatever you need.</p>
+          <p className="text-[15px] text-muted-foreground">
+            {setup
+              ? 'Let’s set up your store. Tell me about it, and I’ll bring up the form to fill in.'
+              : 'Run your store by chatting. I’ll bring up whatever you need.'}
+          </p>
         </div>
 
         <ChatComposer
@@ -94,39 +100,47 @@ function AdminNewChat() {
           variant="admin"
           hero
           autoFocus
-          placeholder="Ask about orders, or tell me what to change in your store"
+          placeholder={setup ? 'Tell me about your store' : 'Ask about orders, or tell me what to change in your store'}
           onSend={chat.ask}
           onVoice={openVoice}
         />
 
-        <div className="flex flex-col gap-2.5">
-          {waiting.length > 0 && (
-            <>
-              <span className="text-center font-medium text-muted-foreground text-xs">Waiting on you</span>
-              <div className="flex flex-wrap justify-center gap-2">
-                {waiting.map((item) => (
-                  <WaitingChip key={item.key} item={item} onAsk={chat.ask} />
-                ))}
-              </div>
-            </>
-          )}
-          <span className="mt-1.5 text-center font-medium text-muted-foreground text-xs">
-            {waiting.length > 0 ? 'Or try' : 'Try'}
-          </span>
-          <div className="flex flex-wrap justify-center gap-2">
-            {TRY_PROMPTS.map((item) => (
-              <Button
-                key={item.label}
-                data-component="adminHomeTry"
-                variant="secondary"
-                className="rounded-full"
-                onClick={() => chat.ask(item.prompt)}
-              >
-                {item.label}
-              </Button>
-            ))}
+        {setup ? (
+          <div className="flex justify-center">
+            <Button data-component="adminHomeSetUp" className="rounded-full" onClick={() => chat.ask(SET_UP_PROMPT)}>
+              Set up my store
+            </Button>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {waiting.length > 0 && (
+              <>
+                <span className="text-center font-medium text-muted-foreground text-xs">Waiting on you</span>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {waiting.map((item) => (
+                    <WaitingChip key={item.key} item={item} onAsk={chat.ask} />
+                  ))}
+                </div>
+              </>
+            )}
+            <span className="mt-1.5 text-center font-medium text-muted-foreground text-xs">
+              {waiting.length > 0 ? 'Or try' : 'Try'}
+            </span>
+            <div className="flex flex-wrap justify-center gap-2">
+              {TRY_PROMPTS.map((item) => (
+                <Button
+                  key={item.label}
+                  data-component="adminHomeTry"
+                  variant="secondary"
+                  className="rounded-full"
+                  onClick={() => chat.ask(item.prompt)}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

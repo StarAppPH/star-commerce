@@ -10,6 +10,8 @@ import type { CustomerSessionResponse } from '../schemas/CustomerSessionResponse
 import type { DevUserListResponse } from '../schemas/DevUserListResponseSchema';
 import type { FirebaseUserObject } from '../schemas/FirebaseUserObjectSchema';
 import type { GeneratedPhotosResponse } from '../schemas/GeneratedPhotosResponseSchema';
+import type { HandoverAnswer } from '../schemas/HandoverAnswerSchema';
+import type { LocationAnswer } from '../schemas/LocationAnswerSchema';
 import type { MyOrderListResponse } from '../schemas/MyOrderListResponseSchema';
 import type { MyOrderRow } from '../schemas/MyOrderRowSchema';
 import type { MyReturnListResponse } from '../schemas/MyReturnListResponseSchema';
@@ -17,11 +19,20 @@ import type { MyReturnRow } from '../schemas/MyReturnRowSchema';
 import type { MyStoreResponse } from '../schemas/MyStoreResponseSchema';
 import type { NewOrderItem } from '../schemas/NewOrderItemSchema';
 import type { NewProduct } from '../schemas/NewProductSchema';
+import type { NewProductsAnswer } from '../schemas/NewProductsAnswerSchema';
 import type { NewReturnItem } from '../schemas/NewReturnItemSchema';
 import type { NoContentResponse } from '../schemas/NoContentResponseSchema';
+import type { OrderItemsAnswer } from '../schemas/OrderItemsAnswerSchema';
+import type { PaymentAnswer } from '../schemas/PaymentAnswerSchema';
+import type { PhoneVerifiedAnswer } from '../schemas/PhoneVerifiedAnswerSchema';
 import type { PhoneVerifiedResponse } from '../schemas/PhoneVerifiedResponseSchema';
+import type { PhotoRequestAnswer } from '../schemas/PhotoRequestAnswerSchema';
+import type { PolicyAnswer } from '../schemas/PolicyAnswerSchema';
 import type { ProductListResponse } from '../schemas/ProductListResponseSchema';
+import type { ReturnAnswer } from '../schemas/ReturnAnswerSchema';
+import type { ReturnDecisionAnswer } from '../schemas/ReturnDecisionAnswerSchema';
 import type { RoleListResponse } from '../schemas/RoleListResponseSchema';
+import type { StoreDetailsAnswer } from '../schemas/StoreDetailsAnswerSchema';
 import type { StoreOrderListResponse } from '../schemas/StoreOrderListResponseSchema';
 import type { StoreOrderRow } from '../schemas/StoreOrderRowSchema';
 import type { StorePolicyResponse } from '../schemas/StorePolicyResponseSchema';
@@ -796,7 +807,7 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
         }
     }
 
-    async sendAdminChatMessage(userId: string, message: string, conversationId: string | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendAdminChatMessage`, {
             method: 'POST',
@@ -804,7 +815,7 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "message": message, "conversationId": conversationId}),
+            body: JSON.stringify({"userId": userId, "message": message, "conversationId": conversationId, "form": form}),
             cache: 'no-store'
         });
         const data: ApiResponse<ChatReplyResponse> & { msg?: string } = await res.json();
@@ -819,7 +830,7 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
         }
     }
 
-    async sendStoreChatMessage(userId: string, storeId: string, message: string, conversationId: string | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendStoreChatMessage`, {
             method: 'POST',
@@ -827,7 +838,7 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "storeId": storeId, "message": message, "conversationId": conversationId}),
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "message": message, "conversationId": conversationId, "form": form}),
             cache: 'no-store'
         });
         const data: ApiResponse<ChatReplyResponse> & { msg?: string } = await res.json();
@@ -987,8 +998,8 @@ export interface RouteRequestBodies {
     getMyStorePolicy: { userId: string };
     getStorePolicy: { userId: string; storeId: string };
     updateMyStorePolicy: { userId: string; acceptsReturns: boolean | null; returnWindowDays: number | null; returnConditions: string | null; nonReturnableItems: string | null; refundMethod: string | null; returnShippingPaidBy: string | null; defectReportDays: number | null; deliveryOptions: string[] | null; deliveryAreas: string | null; deliveryFee: number | null; freeDeliveryMinimum: number | null; handoverDays: number | null; acceptedPaymentMethods: string[] | null; paidOrderCancellation: string | null; sendsMarketingMessages: boolean | null; additionalTerms: string | null; clear: string[] | null };
-    sendAdminChatMessage: { userId: string; message: string; conversationId: string | null };
-    sendStoreChatMessage: { userId: string; storeId: string; message: string; conversationId: string | null };
+    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | null };
+    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | null };
     listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
     getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };
     generateProductPhotos: { userId: string; imageUrls: string[]; count: number; notes: string | null };

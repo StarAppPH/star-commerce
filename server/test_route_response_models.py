@@ -1090,7 +1090,15 @@ def test_publishedPayload_isWhatThePublisherRouteReturned(monkeypatch):
 # listed by hand. (responseModel, dotted path of the row list) -> who needs
 # whole documents there, and why. Every other row list is a narrowed row
 # model (projection_of). Empty in a new project.
-WHOLE_DOCUMENT_ROWS = {}
+WHOLE_DOCUMENT_ROWS = {
+    ('ChatReplyResponse', 'components'):
+        "the chat's cards: a policy card and the policy form show every "
+        "answer of the store's one policy, a store card the store's details "
+        '(objects/chatComponents.py); a turn shows at most '
+        'CHAT_COMPONENTS_PER_TURN_MAX components',
+    ('ConversationTurnsResponse', 'turns'):
+        'each turn carries the components it showed (the cards above)',
+}
 
 
 def _modelsIn(annotation, inList=False):

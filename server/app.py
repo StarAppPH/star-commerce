@@ -1297,6 +1297,7 @@ def sendAdminChatMessage():
     userId = data.get('userId')
     message = data.get('message')
     conversationId = data.get('conversationId')
+    form = data.get('form')
     current_user = get_jwt_identity()
     try:
         if isinstance(userId, (dict, list)):
@@ -1305,19 +1306,21 @@ def sendAdminChatMessage():
             raise ValueError('Invalid message')
         if isinstance(conversationId, (dict, list)):
             raise ValueError('Invalid conversationId')
+        if form is not None and not isinstance(form, dict):
+            raise ValueError('Invalid form')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().sendAdminChatMessage(userId, message, conversationId)
+        res = ApiRequests().sendAdminChatMessage(userId, message, conversationId, form)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'sendAdminChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'message', 'conversationId')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'sendAdminChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'message', 'conversationId', 'form')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'sendAdminChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'message', 'conversationId')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'sendAdminChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'message', 'conversationId', 'form')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'sendAdminChatMessage', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'message', 'conversationId'))})
+    logging.info({'function': 'sendAdminChatMessage', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'message', 'conversationId', 'form'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Reply sent", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
@@ -1335,6 +1338,7 @@ def sendStoreChatMessage():
     storeId = data.get('storeId')
     message = data.get('message')
     conversationId = data.get('conversationId')
+    form = data.get('form')
     current_user = get_jwt_identity()
     try:
         if isinstance(userId, (dict, list)):
@@ -1345,19 +1349,21 @@ def sendStoreChatMessage():
             raise ValueError('Invalid message')
         if isinstance(conversationId, (dict, list)):
             raise ValueError('Invalid conversationId')
+        if form is not None and not isinstance(form, dict):
+            raise ValueError('Invalid form')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().sendStoreChatMessage(userId, storeId, message, conversationId)
+        res = ApiRequests().sendStoreChatMessage(userId, storeId, message, conversationId, form)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'sendStoreChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'message', 'conversationId')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'sendStoreChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'message', 'conversationId', 'form')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'sendStoreChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'message', 'conversationId')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'sendStoreChatMessage', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'message', 'conversationId', 'form')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'sendStoreChatMessage', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'message', 'conversationId'))})
+    logging.info({'function': 'sendStoreChatMessage', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'message', 'conversationId', 'form'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Reply sent", status=200, current_user=current_user, data=res, jwtToken=jwtToken)

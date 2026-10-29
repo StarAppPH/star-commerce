@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { MenuIcon, PlusIcon, RotateCwIcon, SearchIcon, SquarePenIcon, StoreIcon, XIcon } from 'lucide-react';
@@ -63,6 +63,7 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
 function ShopFrame({ children }: { children: React.ReactNode }) {
   const { session, reloadConversations } = useShopWorkspace();
   const { store } = session;
+  const onTurnSaved = useCallback(() => { reloadConversations(); }, [reloadConversations]);
 
   return (
     <ChatShellProvider
@@ -73,7 +74,7 @@ function ShopFrame({ children }: { children: React.ReactNode }) {
         glowSecond: SHOP_GLOW_SECOND,
         variant: 'shop',
       }}
-      onConversationsChanged={reloadConversations}
+      onTurnSaved={onTurnSaved}
     >
       <div data-component="shop" className="flex h-dvh flex-col bg-background">
         <header className="flex h-14 shrink-0 items-center justify-between gap-2 px-2">
