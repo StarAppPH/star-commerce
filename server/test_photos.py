@@ -1409,3 +1409,40 @@ def test_quota_aReferenceReadFailure_refundsAll_andReleasesTheSlot(
     assert counterValue(PhotoActions.ALL_STORES) == 0
     assert fakes.images.calls == []
     assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
+
+
+# ------------------------- content signatures ------------------------- #
+
+PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
+
+
+@pytest.mark.parametrize('stored', [
+    # The stored type says PNG, the bytes are a JPEG.
+    {'contentType': 'image/png'},
+    # The stored type says JPEG, the bytes are a PNG.
+    {'data': PNG_SIGNATURE + b'png'},
+    {'data': b'%PDF-1.4 not a photo'},
+    {'data': b''},
+    {'data': b'\xff\xd8'},
+    {'contentType': 'image/png', 'data': PNG_SIGNATURE[:-1]},
+])
+def test_readOwnImages_contentsOfAnotherType_areRefused_withoutQuotingThePath(
+        fakes, stored):
+    with pytest.raises(ValueError) as error:
+        readOne(fakes, **stored)
+
+    assert str(error.value) == f'imageUrls[0] {photoStorage.NOT_A_REAL_PHOTO}'
+    assert MINE not in str(error.value)
+
+
+@pytest.mark.parametrize('brand', list(photoStorage.HEIC_BRANDS))
+def test_readOwnImages_aHeicByContent_asksToConvert(fakes, brand):
+    # Named .jpg and stored as image/jpeg, but an ISO-BMFF HEIF file.
+    data = b'\x00\x00\x00\x18ftyp' + brand + b'\x00' * 8
+
+    with pytest.raises(ValueError) as error:
+        readOne(fakes, data=data)
+
+    assert str(error.value).startswith('imageUrls[0]')
+    assert photoStorage.CONVERT_PHOTO in str(error.value)
+    assert MINE not in str(error.value)
