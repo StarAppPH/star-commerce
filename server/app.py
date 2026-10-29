@@ -876,6 +876,271 @@ def cancelMyOrder():
 
 
 
+@app.route('/requestReturn', methods=['POST'])
+@jwt_required()
+def requestReturn():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    orderId = data.get('orderId')
+    items = data.get('items')
+    reason = data.get('reason')
+    note = data.get('note')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(orderId, (dict, list)):
+            raise ValueError('Invalid orderId')
+        if isinstance(reason, (dict, list)):
+            raise ValueError('Invalid reason')
+        if isinstance(note, (dict, list)):
+            raise ValueError('Invalid note')
+        if not isinstance(items, list):
+            raise ValueError('Invalid items')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().requestReturn(userId, storeId, orderId, items, reason, note)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'requestReturn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'items', 'reason', 'note')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'requestReturn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'items', 'reason', 'note')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'requestReturn', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'items', 'reason', 'note'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Return requested", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/getMyReturns', methods=['POST'])
+@jwt_required()
+def getMyReturns():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    limit = data.get('limit')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(limit, (dict, list)):
+            raise ValueError('Invalid limit')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().getMyReturns(userId, storeId, limit)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'getMyReturns', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'getMyReturns', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'getMyReturns', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'limit'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Returns fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/cancelMyReturn', methods=['POST'])
+@jwt_required()
+def cancelMyReturn():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    returnId = data.get('returnId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(returnId, (dict, list)):
+            raise ValueError('Invalid returnId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().cancelMyReturn(userId, storeId, returnId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'cancelMyReturn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'returnId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'cancelMyReturn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'returnId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'cancelMyReturn', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'returnId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Return cancelled", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/getStoreReturns', methods=['POST'])
+@jwt_required()
+def getStoreReturns():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    status = data.get('status')
+    limit = data.get('limit')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(status, (dict, list)):
+            raise ValueError('Invalid status')
+        if isinstance(limit, (dict, list)):
+            raise ValueError('Invalid limit')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().getStoreReturns(userId, status, limit)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'getStoreReturns', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'status', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'getStoreReturns', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'status', 'limit')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'getStoreReturns', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'status', 'limit'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Returns fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/approveReturn', methods=['POST'])
+@jwt_required()
+def approveReturn():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    returnId = data.get('returnId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(returnId, (dict, list)):
+            raise ValueError('Invalid returnId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().approveReturn(userId, returnId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'approveReturn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'returnId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'approveReturn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'returnId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'approveReturn', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'returnId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Return approved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/rejectReturn', methods=['POST'])
+@jwt_required()
+def rejectReturn():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    returnId = data.get('returnId')
+    reason = data.get('reason')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(returnId, (dict, list)):
+            raise ValueError('Invalid returnId')
+        if isinstance(reason, (dict, list)):
+            raise ValueError('Invalid reason')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().rejectReturn(userId, returnId, reason)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'rejectReturn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'returnId', 'reason')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'rejectReturn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'returnId', 'reason')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'rejectReturn', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'returnId', 'reason'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Return rejected", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/receiveReturn', methods=['POST'])
+@jwt_required()
+def receiveReturn():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    returnId = data.get('returnId')
+    restock = data.get('restock')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(returnId, (dict, list)):
+            raise ValueError('Invalid returnId')
+        if isinstance(restock, (dict, list)):
+            raise ValueError('Invalid restock')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().receiveReturn(userId, returnId, restock)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'receiveReturn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'returnId', 'restock')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'receiveReturn', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'returnId', 'restock')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'receiveReturn', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'returnId', 'restock'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Return received", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 @app.route('/getMyStorePolicy', methods=['POST'])
 @jwt_required()
 def getMyStorePolicy():

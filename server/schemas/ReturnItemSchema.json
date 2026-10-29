@@ -1,0 +1,40 @@
+{
+    "description": "One item of a return: a snapshot of the order's item (its productId,\nname and unit price paid), with the units returned as its quantity.",
+    "properties": {
+        "productId": {
+            "description": "The Products _id",
+            "minLength": 1,
+            "title": "Productid",
+            "type": "string"
+        },
+        "name": {
+            "description": "Product name when ordered",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "price": {
+            "description": "Unit price paid, in the order currency",
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        },
+        "quantity": {
+            "description": "Units returned",
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "productId",
+        "name",
+        "price",
+        "quantity"
+    ],
+    "title": "ReturnItem",
+    "type": "object",
+    "additionalProperties": false
+}

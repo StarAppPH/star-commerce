@@ -172,6 +172,15 @@ class mongoDb():
         self.db['Orders'].create_index([('status', 1), ('expiresAt', 1)])
         self.db['Orders'].create_index([('storeId', 1), ('status', 1),
                                         ('expiresAt', 1)])
+        # A store's returns, newest first, with or without a status
+        # (getStoreReturns), a customer's at one store (getMyReturns), and
+        # an order's returns by status (requestReturn sums what is already
+        # returned).
+        self.db['Returns'].create_index([('storeId', 1), ('status', 1),
+                                         ('createdAt', -1)])
+        self.db['Returns'].create_index([('customerId', 1), ('storeId', 1),
+                                         ('createdAt', -1)])
+        self.db['Returns'].create_index([('orderId', 1), ('status', 1)])
         # A user's conversations at one store, newest first
         # (listMyConversations).
         self.db['Conversations'].create_index([('userId', 1), ('storeId', 1),

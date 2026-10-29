@@ -1,0 +1,33 @@
+{
+    "description": "One item of a return as a route sends it: ReturnItem without its\nproductId.",
+    "properties": {
+        "name": {
+            "description": "Product name when ordered",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "price": {
+            "description": "Unit price paid, in the order currency",
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        },
+        "quantity": {
+            "description": "Units returned",
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "name",
+        "price",
+        "quantity"
+    ],
+    "title": "ReturnItemRow",
+    "type": "object",
+    "additionalProperties": false
+}

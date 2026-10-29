@@ -52,7 +52,14 @@ ORDER_LOCKS = 'OrderLocks'
 # module's `datetime`.
 UTC = datetime.timezone.utc
 ORDER_STATUSES = typing.get_args(OrderStatus)
-INVALID_STATUS = f'status is one of {", ".join(ORDER_STATUSES)}'
+
+
+def _invalidStatus(statuses: tuple[str, ...]) -> str:
+    """The refusal of a status that is none of `statuses`."""
+    return f'status is one of {", ".join(statuses)}'
+
+
+INVALID_STATUS = _invalidStatus(ORDER_STATUSES)
 START_AFTER_END = 'startDate is after endDate'
 # A period: how many days before today (in the app timezone) it starts and
 # ends. last7Days is today and the 6 days before it.
@@ -148,10 +155,12 @@ def customerAtStore(userId: str, storeId: str) -> dict:
     return customer
 
 
-def _statusMatch(status: str | None) -> dict:
-    """The status filter of an order list. None (or "") is every status,
-    matched with $in so the (storeId, status, createdAt) index still
-    applies. Anything but one of the four is refused, never quoted.
+def _statusMatch(status: str | None,
+                 statuses: tuple[str, ...] = ORDER_STATUSES) -> dict:
+    """The status filter of an order list (or of another list whose
+    documents have one of `statuses`, the returns'). None (or "") is every
+    status, matched with $in so the (storeId, status, createdAt) index still
+    applies. Anything but one of `statuses` is refused, never quoted.
 
     The routes take status as a plain str, not an OrderStatus: as a Literal
     the MCP SDK's pydantic check would refuse a bad value before the route
@@ -159,9 +168,9 @@ def _statusMatch(status: str | None) -> dict:
     handler only refuses an object or a list, so this is the one check of
     the value on both paths."""
     if status is None or status == '':
-        return {'status': {'$in': list(ORDER_STATUSES)}}
-    if not isinstance(status, str) or status not in ORDER_STATUSES:
-        raise ValueError(INVALID_STATUS)
+        return {'status': {'$in': list(statuses)}}
+    if not isinstance(status, str) or status not in statuses:
+        raise ValueError(_invalidStatus(statuses))
     return {'status': status}
 
 
