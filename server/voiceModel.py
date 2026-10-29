@@ -15,8 +15,10 @@ Every call is a plain HTTPS request (no SDK wraps either API) through one
 requests.Session, to a fixed URL (only a voice id that passed
 VOICE_ID_PATTERN goes into a path), with redirects off. Each attempt is
 given min(its attempt seconds, the time left before the call's deadline),
-the body read included, but requests applies it per socket operation, so a
-stalling server can stretch one attempt to about twice that (_send);
+the body read included, but requests applies it per socket operation: the
+body read can take up to about twice that, and the headers are bounded only
+by requests' per-read timeout, so a trickling server can hold an attempt
+longer, up to Cloud Run's 300 s request timeout (_send);
 _call() retries once, through chatModel's
 callWithRetry (callModel's loop):
 only a connection error, a timeout, a 429 or a 5xx, with RETRY_MIN_SECONDS
@@ -239,10 +241,11 @@ def _send(method: str, url: str, timeout: float, maxBytes: int,
           **kwargs) -> tuple[dict, bytes]:
     """One request: its headers and body on a 2xx; _Busy on a 429 or a
     5xx; _Refused on any other status. requests' `timeout` applies to each
-    socket operation (the connect, each read), not to the whole: a server
-    trickling its headers can take longer, and the body read (_readBody)
-    can overrun `attemptEnds` by up to one more read. So one attempt,
-    headers and body, can take up to about twice `timeout`."""
+    socket operation (the connect, each read), not to the whole. The body
+    read (_readBody) can take up to about twice `timeout` (it overruns
+    `attemptEnds` by at most one more read); the headers are bounded only
+    by requests' per-read timeout, so a trickling server can hold an
+    attempt longer, up to Cloud Run's 300 s request timeout."""
     attemptEnds = time.monotonic() + timeout
     response = httpSession().request(method, url, timeout=timeout,
                                      allow_redirects=False, stream=True,

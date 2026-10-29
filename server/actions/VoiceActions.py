@@ -21,9 +21,10 @@ Time: VOICE_REQUEST_SECONDS from the start is the call's planned budget:
 transcribing has STT_DEADLINE_SECONDS, the turn its own
 TURN_DEADLINE_SECONDS, speaking TTS_DEADLINE_SECONDS or what is left of
 the budget (skipped, audio null, under TTS_MIN_SECONDS). It is no hard
-bound: an upstream that stalls mid-read can extend each call by up to one
-attempt's timeout (voiceModel._send). Cloud Run's request timeout (300 s
-by default) is the hard ceiling.
+bound (voiceModel._send): a body read can take up to about twice its
+attempt's timeout, and the headers are bounded only by requests' per-read
+timeout, so a trickling server can hold a call longer. Cloud Run's request
+timeout (300 s by default) is the hard ceiling.
 
 Daily caps (UTC+8), on VoiceUsage counters (usageCounters, deleted by a TTL
 index): the seconds transcribed and the characters spoken, per customer
@@ -99,9 +100,9 @@ SPEAK_CALLS_AT_ONCE = 2
 _speakSlots = threading.BoundedSemaphore(SPEAK_CALLS_AT_ONCE)
 # The whole voice message's planned budget (transcription, the turn,
 # speech), and the least of it speech may start with: less, and the reply
-# goes back unspoken. A stalling upstream can overrun it by up to one
-# attempt's timeout per call (voiceModel._send); Cloud Run's request
-# timeout (300 s by default) is the hard ceiling.
+# goes back unspoken. An upstream can overrun it (voiceModel._send: a body
+# read up to about twice its timeout, trickled headers longer); Cloud Run's
+# request timeout (300 s by default) is the hard ceiling.
 VOICE_REQUEST_SECONDS = (voiceModel.STT_DEADLINE_SECONDS +
                          chatActions.TURN_DEADLINE_SECONDS +
                          voiceModel.TTS_DEADLINE_SECONDS)
