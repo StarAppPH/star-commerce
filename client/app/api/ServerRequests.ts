@@ -9,20 +9,33 @@ import type { CreatedOrderResponse } from '../schemas/CreatedOrderResponseSchema
 import type { CustomerSessionResponse } from '../schemas/CustomerSessionResponseSchema';
 import type { DevUserListResponse } from '../schemas/DevUserListResponseSchema';
 import type { FirebaseUserObject } from '../schemas/FirebaseUserObjectSchema';
+import type { FulfillmentAnswer } from '../schemas/FulfillmentAnswerSchema';
 import type { GeneratedPhotosResponse } from '../schemas/GeneratedPhotosResponseSchema';
+import type { HandoverAnswer } from '../schemas/HandoverAnswerSchema';
+import type { LocationAnswer } from '../schemas/LocationAnswerSchema';
 import type { MyOrderListResponse } from '../schemas/MyOrderListResponseSchema';
 import type { MyOrderRow } from '../schemas/MyOrderRowSchema';
 import type { MyReturnListResponse } from '../schemas/MyReturnListResponseSchema';
 import type { MyReturnRow } from '../schemas/MyReturnRowSchema';
 import type { MyStoreResponse } from '../schemas/MyStoreResponseSchema';
+import type { NewOrderDelivery } from '../schemas/NewOrderDeliverySchema';
 import type { NewOrderItem } from '../schemas/NewOrderItemSchema';
 import type { NewProduct } from '../schemas/NewProductSchema';
+import type { NewProductsAnswer } from '../schemas/NewProductsAnswerSchema';
 import type { NewReturnItem } from '../schemas/NewReturnItemSchema';
 import type { NoContentResponse } from '../schemas/NoContentResponseSchema';
+import type { OrderItemsAnswer } from '../schemas/OrderItemsAnswerSchema';
+import type { PaymentAnswer } from '../schemas/PaymentAnswerSchema';
+import type { PhoneVerifiedAnswer } from '../schemas/PhoneVerifiedAnswerSchema';
 import type { PhoneVerifiedResponse } from '../schemas/PhoneVerifiedResponseSchema';
+import type { PhotoRequestAnswer } from '../schemas/PhotoRequestAnswerSchema';
+import type { PolicyAnswer } from '../schemas/PolicyAnswerSchema';
 import type { ProductListResponse } from '../schemas/ProductListResponseSchema';
+import type { ReturnAnswer } from '../schemas/ReturnAnswerSchema';
+import type { ReturnDecisionAnswer } from '../schemas/ReturnDecisionAnswerSchema';
 import type { RoleListResponse } from '../schemas/RoleListResponseSchema';
 import type { SpokenReplyResponse } from '../schemas/SpokenReplyResponseSchema';
+import type { StoreDetailsAnswer } from '../schemas/StoreDetailsAnswerSchema';
 import type { StoreOrderListResponse } from '../schemas/StoreOrderListResponseSchema';
 import type { StoreOrderRow } from '../schemas/StoreOrderRowSchema';
 import type { StorePolicyResponse } from '../schemas/StorePolicyResponseSchema';
@@ -454,7 +467,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async createOrder(userId: string, storeId: string, items: NewOrderItem[]): Promise<ApiResponse<CreatedOrderResponse>> {
+    async createOrder(userId: string, storeId: string, items: NewOrderItem[], fulfillment: 'pickup' | 'delivery' | null, delivery: NewOrderDelivery | null): Promise<ApiResponse<CreatedOrderResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/createOrder`, {
             method: 'POST',
@@ -462,7 +475,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "storeId": storeId, "items": items}),
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "items": items, "fulfillment": fulfillment, "delivery": delivery}),
             cache: 'no-store'
         });
         const data: ApiResponse<CreatedOrderResponse> & { msg?: string } = await res.json();
@@ -799,7 +812,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendAdminChatMessage(userId: string, message: string, conversationId: string | null, attachments: string[] | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | FulfillmentAnswer | null, attachments: string[] | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendAdminChatMessage`, {
             method: 'POST',
@@ -807,7 +820,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "message": message, "conversationId": conversationId, "attachments": attachments}),
+            body: JSON.stringify({"userId": userId, "message": message, "conversationId": conversationId, "form": form, "attachments": attachments}),
             cache: 'no-store'
         });
         const data: ApiResponse<ChatReplyResponse> & { msg?: string } = await res.json();
@@ -822,7 +835,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendStoreChatMessage(userId: string, storeId: string, message: string, conversationId: string | null, attachments: string[] | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | FulfillmentAnswer | null, attachments: string[] | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendStoreChatMessage`, {
             method: 'POST',
@@ -830,7 +843,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "storeId": storeId, "message": message, "conversationId": conversationId, "attachments": attachments}),
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "message": message, "conversationId": conversationId, "form": form, "attachments": attachments}),
             cache: 'no-store'
         });
         const data: ApiResponse<ChatReplyResponse> & { msg?: string } = await res.json();
@@ -1005,6 +1018,29 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             return { message: "Failed to fetch data", status: 0, data: null };
         }
     }
+
+    async setProductPhoto(userId: string, productId: string, photoId: string | null): Promise<ApiResponse<AdminProductRow>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/setProductPhoto`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "productId": productId, "photoId": photoId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<AdminProductRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
 }
 
 export interface RouteResponseModels {
@@ -1050,6 +1086,7 @@ export interface RouteResponseModels {
     speakChatTurn: SpokenReplyResponse;
     listVoices: VoiceListResponse;
     generateProductPhotos: GeneratedPhotosResponse;
+    setProductPhoto: AdminProductRow;
 }
 
 export interface RouteRequestBodies {
@@ -1071,7 +1108,7 @@ export interface RouteRequestBodies {
     listMyStoreProducts: { userId: string; search: string | null; limit: number };
     getStoreOrders: { userId: string; status: string | null; period: string | null; startDate: string | null; endDate: string | null; limit: number };
     getMyOrders: { userId: string; storeId: string; status: string | null; limit: number };
-    createOrder: { userId: string; storeId: string; items: NewOrderItem[] };
+    createOrder: { userId: string; storeId: string; items: NewOrderItem[]; fulfillment: 'pickup' | 'delivery' | null; delivery: NewOrderDelivery | null };
     payOrder: { userId: string; storeId: string; orderId: string; paymentMethod: string };
     completeOrder: { userId: string; orderId: string };
     cancelStoreOrder: { userId: string; orderId: string };
@@ -1086,8 +1123,8 @@ export interface RouteRequestBodies {
     getMyStorePolicy: { userId: string };
     getStorePolicy: { userId: string; storeId: string };
     updateMyStorePolicy: { userId: string; acceptsReturns: boolean | null; returnWindowDays: number | null; returnConditions: string | null; nonReturnableItems: string | null; refundMethod: string | null; returnShippingPaidBy: string | null; defectReportDays: number | null; deliveryOptions: string[] | null; deliveryAreas: string | null; deliveryFee: number | null; freeDeliveryMinimum: number | null; handoverDays: number | null; acceptedPaymentMethods: string[] | null; paidOrderCancellation: string | null; sendsMarketingMessages: boolean | null; additionalTerms: string | null; clear: string[] | null };
-    sendAdminChatMessage: { userId: string; message: string; conversationId: string | null; attachments: string[] | null };
-    sendStoreChatMessage: { userId: string; storeId: string; message: string; conversationId: string | null; attachments: string[] | null };
+    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | FulfillmentAnswer | null; attachments: string[] | null };
+    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | FulfillmentAnswer | null; attachments: string[] | null };
     listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
     getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };
     sendAdminVoiceMessage: { userId: string; audio: string; conversationId: string | null };
@@ -1095,6 +1132,7 @@ export interface RouteRequestBodies {
     speakChatTurn: { userId: string; conversationId: string; turnSeq: number };
     listVoices: { userId: string; search: string | null; pageToken: string | null };
     generateProductPhotos: { userId: string; imageUrls: string[]; count: number; notes: string | null };
+    setProductPhoto: { userId: string; productId: string; photoId: string | null };
 }
 
 export type PublicRoute =

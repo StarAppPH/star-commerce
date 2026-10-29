@@ -218,8 +218,11 @@ def _voiceTurn(audience: str, userId: str, store: dict, audio,
                                              conversationId)
         transcript = _transcribe(audience, userId, store['_id'], wav,
                                  seconds)
-        turn = chatActions._slottedTurn(audience, userId, store['_id'],
-                                        transcript, conversationId)
+        # The audience's own tools: a voice admin's store is set up
+        # (requireOwnerStore), so never the setup toolset. No form answer.
+        turn = chatActions._slottedTurn(audience, audience, userId,
+                                        store['_id'], transcript,
+                                        conversationId, None)
         spoken = _spokenOrNone(audience, userId, store, turn,
                                requestDeadline)
     # Never the recording, the transcript, the reply or the key.

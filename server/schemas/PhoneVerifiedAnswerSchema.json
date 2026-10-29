@@ -1,0 +1,25 @@
+{
+    "description": "A PhoneVerificationForm done: the number is verified.",
+    "properties": {
+        "kind": {
+            "const": "phoneVerified",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        }
+    },
+    "required": [
+        "kind",
+        "formId"
+    ],
+    "title": "PhoneVerifiedAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

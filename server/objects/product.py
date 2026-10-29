@@ -66,6 +66,10 @@ class Product(MongoModel):
     soldCount: int = Field(0, ge=0, description='Units sold so far')
     isAvailable: bool = Field(True, description='Shown to customers')
     createdAt: datetime.datetime = Field(..., description='When it was added')
+    photoUrl: str | None = Field(
+        None, min_length=1,
+        description='The photo the shop shows: the url of one of the '
+        "store's GeneratedPhotos (setProductPhoto)")
 
 
 class ProductView(StoredDocumentKeys, Product):
@@ -97,6 +101,10 @@ class ProductRow(ResponseModel):
                          description="Price in the store's currency")
     inventory: int = Field(..., ge=0, le=PRODUCT_INVENTORY_MAX,
                            description='Units free to sell; 0 is sold out')
+    photoUrl: str | None = Field(
+        None, min_length=1,
+        description='The photo the shop shows: the url of one of the '
+        "store's GeneratedPhotos (setProductPhoto)")
 
 
 class ProductListResponse(ResponseModel):
@@ -132,6 +140,10 @@ class AdminProductRow(ResponseModel):
         ..., description='Units orders are holding')
     isAvailable: bool = Field(..., description='Shown to customers')
     soldCount: int = Field(..., ge=0, description='Units sold so far')
+    photoUrl: str | None = Field(
+        None, min_length=1,
+        description='The photo the shop shows: the url of one of the '
+        "store's GeneratedPhotos (setProductPhoto)")
 
 
 class AdminProductListRow(ResponseModel):
@@ -153,6 +165,10 @@ class AdminProductListRow(ResponseModel):
         ..., ge=0, description='Units orders are holding, all orders summed')
     isAvailable: bool = Field(..., description='Shown to customers')
     soldCount: int = Field(..., ge=0, description='Units sold so far')
+    photoUrl: str | None = Field(
+        None, min_length=1,
+        description='The photo the shop shows: the url of one of the '
+        "store's GeneratedPhotos (setProductPhoto)")
 
 
 class AdminProductListResponse(ResponseModel):

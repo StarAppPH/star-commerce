@@ -1,11 +1,24 @@
-import type { Metadata } from 'next';
-import { AuthProvider } from '@/lib/AuthContext';
+import type { Metadata, Viewport } from 'next';
+import '@fontsource-variable/inter';
+import '@fontsource/cal-sans';
+import './globals.css';
 import { ServerProvider } from '@/lib/ServerContext';
+import { SnackbarProvider } from '@/lib/SnackbarContext';
 import { DevClickToComponent } from '@/app/components/DevClickToComponent';
 
 export const metadata: Metadata = {
-  title: 'starCommerce',
-  description: 'starCommerce',
+  title: {
+    default: 'Star Commerce: your store, as a chat',
+    template: '%s · Star Commerce',
+  },
+  description:
+    'Customers ask, choose and pay in one conversation, with no app and no account. You run the whole store by chatting or talking.',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#ffffff',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -13,11 +26,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <ServerProvider>
-          <AuthProvider>
+          <SnackbarProvider>
             {/* Alt+hover inspector: everyone in development, only a superAdmin in production. */}
             <DevClickToComponent />
             {children}
-          </AuthProvider>
+          </SnackbarProvider>
         </ServerProvider>
       </body>
     </html>

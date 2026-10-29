@@ -1,14 +1,24 @@
 """ChatActions: the chat with the store's assistant (Meta's Muse model).
 
-A message goes to the model with its audience's tools (chatTools.py,
-generated from the @mcp_tool routes), and the model's tool calls run here,
-in-process, as the signed-in user at the conversation's store
-(chatModel.runTool). The loop ends at the model's text reply, and the turn
-is saved: a Conversations document per chat, a ChatTurns document per
-message (objects/chat.py). Conversations are kept forever.
+A message goes to the model with its toolset's tools (chatTools.py,
+generated from the @mcp_tool routes and chatForms.py's form tools), and the
+model's tool calls run here, in-process, as the signed-in user at the
+conversation's store (chatModel.runTool, chatForms.runFormTool). The loop
+ends at the model's text reply, the turn's cards and forms are built from
+what its tools returned (chatCards.py), and the turn is saved: a
+Conversations document per chat, a ChatTurns document per message
+(objects/chat.py). Conversations are kept forever.
+
+A user's turn is a message, or the answer to a form or a card shown in the
+same conversation (`form`, chatForms.answerTurn): checked against the
+component it answers, once, under the conversation's lock. The model reads
+its details (userContent) and acts on them.
+
+An admin whose store is not set up yet (the empty store sign-up creates)
+chats with the setup toolset only (chatForms.SETUP_TOOLSET).
 
 Who and where come only from the JWT's userId and the conversation's
-storeId: an admin chats at the store they own (requireOwnerStore), a
+storeId: an admin chats at the store they own (requireAnyOwnerStore), a
 customer at the store being visited (customerAtStore, setUpStore). The
 model never chooses either.
 
@@ -57,12 +67,15 @@ import threading
 import time
 import unicodedata
 
+import chatCards
+import chatForms
 import chatModel
 import photoStorage
 from actions.OrderActions import customerAtStore
 from actions.ProductActions import _validLimit
 from actions.callSlots import slot
-from actions.StoreActions import _validText, requireOwnerStore, setUpStore
+from actions.StoreActions import (_validText, isSetUp, requireAnyOwnerStore,
+                                  setUpStore)
 # QUOTA_ATTEMPTS is imported for the tests, which read it here.
 from actions.usageCounters import (QUOTA_ATTEMPTS, appDay, giveBackQuotas,
                                    takeDailyQuotas, takeQuota, takeQuotas,
@@ -73,7 +86,7 @@ from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_ATTACHMENT_MAX_BYTES,
                      CHAT_ATTACHMENTS_MAX, CHAT_ATTACHMENTS_MAX_TOTAL_BYTES,
                      CHAT_MESSAGE_MAX_LENGTH, CHAT_TITLE_MAX_LENGTH,
                      CHAT_TOOL_CALL_ID_MAX_LENGTH, HISTORY_ATTACHMENT_TURNS,
-                     ChatAttachment,
+                     ChatAttachment, ChatFormAnswer,
                      ChatReplyResponse, ChatStep, ChatTokenUsage,
                      ChatToolCall, ChatTurn, ChatTurnRow, Conversation,
                      ConversationListResponse, ConversationRow,
@@ -83,7 +96,7 @@ from services.__request import ServiceUnavailable
 from utils import generateRandomString, parseIsoInstant
 
 CONVERSATIONS = 'Conversations'
-CHAT_TURNS = 'ChatTurns'
+CHAT_TURNS = chatForms.CHAT_TURNS
 CHAT_USAGE = 'ChatUsage'
 # Read at import, so it stays the real timezone when a test replaces this
 # module's `datetime`.
@@ -139,6 +152,10 @@ EMPTY_MESSAGE = 'Your message is empty: type a message or attach a file'
 ATTACHMENTS_COUNT = (f'attachments lists at most {CHAT_ATTACHMENTS_MAX} '
                      'files')
 ATTACHMENTS_TWICE = 'attachments lists the same file twice'
+# Meta reads up to 50 page images of a PDF, its limit per request: a second
+# PDF could pass it.
+ONE_PDF_PER_MESSAGE = 'Attach at most one PDF per message'
+FORM_WITH_ATTACHMENTS = 'Send a form answer without attachments'
 ATTACHMENT_KIND = 'file'
 ATTACHMENT_TYPE = 'must be a JPG, PNG or PDF file'
 ATTACHMENTS_TOO_LARGE = (
@@ -291,7 +308,8 @@ def _validAttachments(userId: str, urls) -> list[tuple[str, str]]:
     its download URLs (None or []: none): at most CHAT_ATTACHMENTS_MAX,
     each of our bucket (photoStorage.objectPathFromUrl) under the caller's
     own users/<uid>/ folder (ownImagePath: no HEIC/HEIF), named .jpg,
-    .jpeg, .png or .pdf, no file twice. Pure: reads nothing. A refusal
+    .jpeg, .png or .pdf, no file twice, at most one PDF
+    (ONE_PDF_PER_MESSAGE). Pure: reads nothing. A refusal
     names the URL's place (attachments[0]), never the URL."""
     if urls is None or urls == []:
         return []
@@ -302,6 +320,10 @@ def _validAttachments(userId: str, urls) -> list[tuple[str, str]]:
     for label, path in files:
         if photoStorage.fileExtension(path) not in CHAT_ATTACHMENT_EXTENSIONS:
             raise ValueError(f'{label} {ATTACHMENT_TYPE}')
+    if sum(1 for _, path in files
+           if CHAT_ATTACHMENT_EXTENSIONS[photoStorage.fileExtension(path)]
+           == PDF_TYPE) > 1:
+        raise ValueError(ONE_PDF_PER_MESSAGE)
     return files
 
 
@@ -539,10 +561,12 @@ def _stepMessage(step: dict) -> dict:
 
 
 def _turnMessages(turn: dict, userMessage: dict | None = None) -> list[dict]:
-    """A stored turn as messages: the user's (its text, unless
-    `userMessage` is given), its steps (as read: none for an older turn),
-    then the reply."""
-    return [userMessage or {'role': 'user', 'content': turn['userText']},
+    """A stored turn as messages: the user's turn as the model read it
+    (`userMessage` when given, else a form answer's userContent, else its
+    text), its steps (as read: none for an older turn), then the reply."""
+    return [userMessage or {'role': 'user',
+                            'content': turn.get('userContent')
+                            or turn['userText']},
             *[_stepMessage(step) for step in turn['steps']],
             {'role': 'assistant', 'content': turn['replyText']}]
 
@@ -586,7 +610,8 @@ def _historyUserMessage(audience: str, turn: dict, t: int, status: dict,
             notes.append(_attachmentNote(audience, f, attachment))
             if withParts:
                 parts.append(_filePart(attachment, value))
-    return _userMessage(turn['userText'], notes, parts)
+    return _userMessage(turn.get('userContent') or turn['userText'],
+                        notes, parts)
 
 
 def _readHistoryFiles(userId: str, turns: list[dict],
@@ -640,6 +665,7 @@ def _history(conversationId: str, seq: int, audience: str, userId: str,
         {'$project': {
             'seq': 1,
             'userText': 1,
+            'userContent': 1,
             'replyText': 1,
             'attachments': 1,
             'steps': {'$cond': [
@@ -727,14 +753,17 @@ class _Usage:
                               cachedTokens=self.cached)
 
 
-def _runModel(audience: str, userId: str, storeId: str,
+def _runModel(toolset: str, userId: str, storeId: str,
               messages: list[dict], progress: dict,
               deadline: float | None = None,
               refusal=None) -> dict:
-    """Call the model until it replies in text, running its tool calls in
-    between (at most MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call
-    without tools). Returns the reply, the steps, the tools called (as the
-    log names them) and the usage. Sets progress['sent'] just before the
+    """Call the model with the tools of `toolset` (chatTools.TOOLS) until
+    it replies in text, running its tool calls in between (at most
+    MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call without tools): a
+    route tool through chatModel.runTool, a form tool through
+    chatForms.runFormTool. Returns the reply, the steps, the forms opened
+    (by tool call id), the tools called (as the log names them) and the
+    usage. Sets progress['sent'] just before the
     first model call and progress['answered'] once the model answered
     (before any tool runs). Raises unavailable() past
     TURN_DEADLINE_SECONDS (or `deadline`). `refusal` is
@@ -743,11 +772,13 @@ def _runModel(audience: str, userId: str, storeId: str,
     if deadline is None:
         deadline = time.monotonic() + TURN_DEADLINE_SECONDS
     steps, toolNames, usage = [], [], _Usage()
+    forms = {}
+    formTools = chatForms.formToolNames(toolset)
     toolsAllowed = True
     while True:
         progress['sent'] = True
         completion = chatModel.complete(
-            messages, TOOLS[audience] if toolsAllowed else None, deadline,
+            messages, TOOLS[toolset] if toolsAllowed else None, deadline,
             refusal=None if progress['answered'] else refusal)
         progress['answered'] = True
         usage.add(completion.usage)
@@ -764,11 +795,19 @@ def _runModel(audience: str, userId: str, storeId: str,
                 elif call['id'] in refusals:
                     toolNames.append(chatModel.UNKNOWN_TOOL)
                     content = chatModel.toolError(refusals[call['id']])
+                elif call['name'] in formTools:
+                    toolNames.append(call['name'])
+                    chatModel.remainingSeconds(deadline)
+                    content, form = chatForms.runFormTool(
+                        toolset, call['name'], call['arguments'], userId,
+                        storeId)
+                    if form is not None:
+                        forms[call['id']] = form
                 else:
-                    toolNames.append(chatModel.toolLogName(audience,
+                    toolNames.append(chatModel.toolLogName(toolset,
                                                            call['name']))
                     chatModel.remainingSeconds(deadline)
-                    content = chatModel.runTool(audience, call['name'],
+                    content = chatModel.runTool(toolset, call['name'],
                                                 call['arguments'], userId,
                                                 storeId)
                 toolStep = _toolStep(call['id'], content)
@@ -780,12 +819,13 @@ def _runModel(audience: str, userId: str, storeId: str,
         if not reply:
             reply = (TOO_LONG_REPLY if choice is not None
                      and choice.finish_reason == 'length' else NO_REPLY)
-        return {'reply': reply, 'steps': steps, 'toolNames': toolNames,
-                'usage': usage.model()}
+        return {'reply': reply, 'steps': steps, 'forms': forms,
+                'toolNames': toolNames, 'usage': usage.model()}
 
 
 def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
-              storeId: str, seq: int, userText: str, answer: dict,
+              storeId: str, seq: int, userTurn: dict, answer: dict,
+              components: list[dict],
               busyUntil: datetime.datetime | None,
               attachments: list[dict] = ()) -> None:
     """Store the turn and move its conversation on, in one transaction (on
@@ -800,12 +840,15 @@ def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
                     userId=userId,
                     storeId=storeId,
                     seq=seq,
-                    userText=userText,
+                    userText=userTurn['userText'],
+                    userContent=userTurn['userContent'],
                     attachments=[ChatAttachment.model_validate(attachment)
                                  for attachment in attachments],
                     steps=[ChatStep.model_validate(step)
                            for step in answer['steps']],
                     replyText=answer['reply'],
+                    components=components,
+                    formAnswer=userTurn['formAnswer'],
                     toolCallCount=len(answer['toolNames']),
                     usage=answer['usage'],
                     model=chatModel.CHAT_MODEL,
@@ -834,16 +877,35 @@ def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
     db.createTransaction(save)
 
 
-def _chatTurn(audience: str, userId: str, storeId: str, message,
-              conversationId, attachments=None) -> dict:
-    """One message of `userId` at `storeId` (with the files of the download
-    URLs `attachments`, checked first: _validAttachments) and the
-    assistant's reply, saved as a turn of the conversation `conversationId`
-    (None: a new one). Refused (503) while CHAT_TURNS_AT_ONCE turns run."""
+def _chatTurn(audience: str, toolset: str, userId: str, storeId: str,
+              message, conversationId, form=None, attachments=None) -> dict:
+    """One message (or form answer) of `userId` at `storeId` (with the
+    files of the download URLs `attachments`, checked first:
+    _validAttachments) and the assistant's reply, with the tools of
+    `toolset`, saved as a turn of the conversation `conversationId` (None:
+    a new one). Refused (503) while CHAT_TURNS_AT_ONCE turns run."""
     files = _validAttachments(userId, attachments)
+    if files and form is not None:
+        raise ValueError(FORM_WITH_ATTACHMENTS)
     with slot(_turnSlots, chatModel.unavailable):
-        return _slottedTurn(audience, userId, storeId, message,
-                            conversationId, attachments=files)
+        return _slottedTurn(audience, toolset, userId, storeId, message,
+                            conversationId, form, attachments=files)
+
+
+def _userTurn(message, formAnswer, conversationId: str | None,
+              userId: str, hasAttachments: bool = False) -> dict:
+    """The user's side of a turn: its text, what the model reads (null:
+    the text) and the form answer. A message's text may be empty with
+    attachments (_validMessage). A form answer is checked against the form
+    it answers (chatForms.answerTurn), so it needs its conversation's lock:
+    called with it held."""
+    if formAnswer is None:
+        return {'userText': _validMessage(message, hasAttachments),
+                'userContent': None, 'formAnswer': None}
+    userText, userContent = chatForms.answerTurn(conversationId, userId,
+                                                 formAnswer)
+    return {'userText': userText, 'userContent': userContent,
+            'formAnswer': formAnswer.model_dump()}
 
 
 def _newTitle(userText: str, files: list[tuple[str, str]]) -> str:
@@ -853,14 +915,22 @@ def _newTitle(userText: str, files: list[tuple[str, str]]) -> str:
     return title[:CHAT_TITLE_MAX_LENGTH]
 
 
-def _slottedTurn(audience: str, userId: str, storeId: str, message,
-                 conversationId, attachments=()) -> dict:
+def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
+                 message, conversationId, form, attachments=()) -> dict:
     """The turn of _chatTurn, in its slot. `attachments` are the
     message's files, checked (_validAttachments: their labels and paths);
-    the voice route sends none."""
+    the voice route and a form answer send none."""
     files = list(attachments)
-    userText = _validMessage(message, bool(files))
+    formAnswer = chatForms.validAnswer(form)
+    if formAnswer is None:
+        userTurn = _userTurn(message, None, None, userId, bool(files))
+    elif message is not None and message != '':
+        raise ValueError(chatForms.MESSAGE_AND_FORM)
+    elif files:
+        raise ValueError(FORM_WITH_ATTACHMENTS)
     conversationId = _validConversationId(conversationId)
+    if formAnswer is not None and conversationId is None:
+        raise ValueError(chatForms.FORM_NEEDS_CONVERSATION)
     now = _now()
     day = appDay(now)
     newConversation, busyUntil, seq, history = None, None, 0, []
@@ -873,7 +943,7 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
             userId=userId,
             audience=audience,
             storeId=storeId,
-            title=_newTitle(userText, files),
+            title=_newTitle(userTurn['userText'], files),
             turnCount=0,
             createdAt=now,
             lastMessageAt=now,
@@ -890,13 +960,18 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
     try:
         progress = {'sent': False, 'answered': False}
         try:
+            if formAnswer is not None:
+                userTurn = _userTurn(None, formAnswer, conversationId,
+                                     userId)
             quotaKeys = (_takeCustomerQuota(userId, storeId, day)
                          if audience == 'customer' else ())
             if files:
                 attachmentKeys = _takeAttachmentQuota(
                     audience, userId, storeId, len(files), day)
-            userMessage, sent = _newUserMessage(audience, userId, userText,
-                                                files, inFlight, deadline)
+            userMessage, sent = _newUserMessage(
+                audience, userId,
+                userTurn['userContent'] or userTurn['userText'], files,
+                inFlight, deadline)
             if newConversation is None:
                 history, gone, skipped = _history(
                     conversationId, seq, audience, userId, deadline,
@@ -907,13 +982,13 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
                         for attachment in sent),
                     inFlight)
             messages = [{'role': 'developer',
-                         'content': chatModel.CHAT_PROMPTS[audience]},
+                         'content': chatModel.CHAT_PROMPTS[toolset]},
                         *history,
                         userMessage]
             carriesFiles = any(isinstance(m.get('content'), list)
                                for m in messages if m['role'] == 'user')
             answer = _runModel(
-                audience, userId, storeId, messages, progress,
+                toolset, userId, storeId, messages, progress,
                 deadline=deadline,
                 refusal=_unreadableAttachment if carriesFiles else None)
         except Exception as error:
@@ -927,8 +1002,10 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
                 _giveBackQuota(*quotaKeys)
                 giveBackQuotas(CHAT_USAGE, attachmentKeys, len(files))
             raise
+        components = chatCards.build(answer['steps'], answer['forms'],
+                                     chatCards.CardContext(storeId))
         _saveTurn(newConversation, conversationId, userId, storeId, seq,
-                  userText, answer, busyUntil, sent)
+                  userTurn, answer, components, busyUntil, sent)
         busyUntil = None  # cleared by the save
     finally:
         inFlight.release()
@@ -958,8 +1035,9 @@ def _slottedTurn(audience: str, userId: str, storeId: str, message,
         'cachedTokens': usage.cachedTokens,
         'durationMs': round((time.monotonic() - started) * 1000),
     })
-    return {'conversationId': conversationId, 'reply': answer['reply'],
-            'turnSeq': seq}
+    return {'conversationId': conversationId,
+            'userText': userTurn['userText'], 'reply': answer['reply'],
+            'components': components, 'turnSeq': seq}
 
 
 def _validBeforeSeq(beforeSeq) -> dict:
@@ -988,6 +1066,13 @@ def _validBefore(before) -> dict:
     return {'lastMessageAt': {'$lt': instant}}
 
 
+def _turnRow(row: dict) -> dict:
+    """A ChatTurns row as getConversationTurns sends it: a turn saved
+    before turns had components shows none, and one that answered no form
+    has a null answeredFormId."""
+    return {'components': [], 'answeredFormId': None, **row}
+
+
 def pagingCursor(instant: datetime.datetime) -> str:
     """`instant` as a paging cursor: ISO 8601 UTC with milliseconds and a
     Z, the precision MongoDB stores, so _validBefore reads it back to the
@@ -1004,17 +1089,23 @@ class ChatActions():
                   responseModel=ChatReplyResponse)
     def sendAdminChatMessage(self,
                              userId: str,
-                             message: str,
+                             message: str | None = None,
                              conversationId: str | None = None,
+                             form: ChatFormAnswer | None = None,
                              attachments: list[str] | None = None) -> dict:
-        """Send the admin's message to the store assistant, at the store
-        the admin owns, and return its reply. No conversationId starts a
-        new conversation. `attachments` are the Storage download URLs of
-        up to 4 JPEGs, PNGs or PDFs the admin uploaded under users/<uid>/
-        (the message may then be empty)."""
-        store = requireOwnerStore(userId, {'_id': 1})
-        return _chatTurn('admin', userId, store['_id'], message,
-                         conversationId, attachments)
+        """Send the admin's message, or a form's answer (`form`, in its
+        conversation), to the store assistant at the store the admin owns,
+        and return its reply with the cards and forms to show under it. No
+        conversationId starts a new conversation. Before the store is set
+        up the assistant only sets it up (chatForms.SETUP_TOOLSET).
+        `attachments` are the Storage download URLs of up to 4 JPEGs, PNGs
+        or PDFs (one PDF at most) the admin uploaded under
+        users/<uid>/chat/ (the message may then be empty; never with a
+        form)."""
+        store = requireAnyOwnerStore(userId, {'_id': 1, 'slug': 1})
+        toolset = 'admin' if isSetUp(store) else chatForms.SETUP_TOOLSET
+        return _chatTurn('admin', toolset, userId, store['_id'], message,
+                         conversationId, form, attachments)
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,
@@ -1023,19 +1114,23 @@ class ChatActions():
     def sendStoreChatMessage(self,
                              userId: str,
                              storeId: str,
-                             message: str,
+                             message: str | None = None,
                              conversationId: str | None = None,
+                             form: ChatFormAnswer | None = None,
                              attachments: list[str] | None = None) -> dict:
-        """Send the customer's message to the shopping assistant of the
-        store being visited, and return its reply. No conversationId starts
-        a new conversation. `attachments` are the Storage download URLs of
-        up to 4 JPEGs, PNGs or PDFs the customer uploaded under
-        users/<uid>/ (the message may then be empty). Capped per customer
-        and per store each day, messages and files alike."""
+        """Send the customer's message, or a form's answer (`form`, in its
+        conversation), to the shopping assistant of the store being
+        visited, and return its reply with the cards and forms to show
+        under it. No conversationId starts a new conversation.
+        `attachments` are the Storage download URLs of up to 4 JPEGs, PNGs
+        or PDFs (one PDF at most) the customer uploaded under
+        users/<uid>/chat/ (the message may then be empty; never with a
+        form). Capped per customer and per store each day, messages and
+        files alike."""
         customerAtStore(userId, storeId)
         setUpStore(storeId, {'_id': 1})
-        return _chatTurn('customer', userId, storeId, message,
-                         conversationId, attachments)
+        return _chatTurn('customer', 'customer', userId, storeId, message,
+                         conversationId, form, attachments)
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,
@@ -1053,7 +1148,7 @@ class ChatActions():
         is null on the last page. A lastMessageAt as sent (RFC 1123, whole
         seconds) is no cursor: it would skip rows."""
         if storeId is None or storeId == '':
-            store = requireOwnerStore(userId, {'_id': 1})
+            store = requireAnyOwnerStore(userId, {'_id': 1})
             match = {'userId': userId, 'storeId': store['_id'],
                      'audience': 'admin'}
         else:
@@ -1084,8 +1179,8 @@ class ChatActions():
                              limit: int = CHAT_LIST_DEFAULT_LIMIT) -> dict:
         """The turns of the caller's own conversation, newest first: its
         user texts, their files (path, type, name; no `attachments` key on
-        a turn without any) and replies, never its tool steps. `beforeSeq` pages
-        back: only the turns before it."""
+        a turn without any) and replies, never its tool steps. `beforeSeq`
+        pages back: only the turns before it."""
         conversationId = ownConversation(conversationId, userId,
                                          {'_id': 1})['_id']
         return {
@@ -1095,11 +1190,12 @@ class ChatActions():
                 {'$sort': {'seq': -1}},
                 {'$limit': _validLimit(limit, CHAT_LIST_DEFAULT_LIMIT,
                                        CHAT_LIST_MAX_LIMIT)},
+                {'$addFields': {'answeredFormId': '$formAnswer.formId'}},
                 # A turn without files sends no attachments key, as one
                 # stored before attachments.
                 {'$set': {'attachments': {'$cond': [
                     {'$gt': [{'$size': {'$ifNull': ['$attachments', []]}},
                              0]},
                     '$attachments', '$$REMOVE']}}},
-            ], CHAT_TURNS),
+            ], CHAT_TURNS, readWhole=('components', ), prepare=_turnRow),
         }

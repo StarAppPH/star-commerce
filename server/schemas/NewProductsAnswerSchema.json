@@ -1,0 +1,85 @@
+{
+    "$defs": {
+        "NewProduct": {
+            "description": "One product of an addStoreProducts call, as the admin described it.\nTypes only, no limits: the route checks them (_validProduct), so a\nrefusal names the product's position and never quotes the value.",
+            "properties": {
+                "name": {
+                    "description": "Product name",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "price": {
+                    "description": "Price in the store's currency",
+                    "title": "Price",
+                    "type": "number"
+                },
+                "inventory": {
+                    "description": "Units in stock, free to sell",
+                    "title": "Inventory",
+                    "type": "integer"
+                },
+                "description": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "What the product is",
+                    "title": "Description"
+                },
+                "isAvailable": {
+                    "default": true,
+                    "description": "Shown to customers",
+                    "title": "Isavailable",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "name",
+                "price",
+                "inventory"
+            ],
+            "title": "NewProduct",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A NewProductsForm, filled in.",
+    "properties": {
+        "kind": {
+            "const": "newProducts",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "products": {
+            "description": "The products to add",
+            "items": {
+                "$ref": "#/$defs/NewProduct"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Products",
+            "type": "array"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "products"
+    ],
+    "title": "NewProductsAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

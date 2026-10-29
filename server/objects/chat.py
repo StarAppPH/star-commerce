@@ -9,6 +9,8 @@ from typing import Literal
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
                           ResponseModel)
+from objects.chatComponents import (CHAT_COMPONENTS_PER_TURN_MAX,
+                                    ChatComponent, ChatFormAnswerTagged)
 
 
 # ──────────────────────────────────────────────
@@ -46,6 +48,9 @@ CHAT_ATTACHMENT_NAME_MAX_LENGTH = 120
 # CHAT_ATTACHMENTS_MAX_TOTAL_BYTES (one budget per request); the others are
 # a note in their turn's text.
 HISTORY_ATTACHMENT_TURNS = 3
+# What the model reads for a form answer: its summary and its details
+# (chatForms.answerTurn), bounded by the answer models' own limits.
+CHAT_USER_CONTENT_MAX_LENGTH = 64000
 
 
 class Conversation(MongoModel):
@@ -134,12 +139,22 @@ class ChatTurn(MongoModel):
     userText: str = Field(..., max_length=CHAT_MESSAGE_MAX_LENGTH,
                           description='What the user sent ("" when only '
                           'files were)')
+    userContent: str | None = Field(
+        None, max_length=CHAT_USER_CONTENT_MAX_LENGTH,
+        description="What the model read for the user's turn, when it is "
+        "more than userText: a form answer's summary and details")
     attachments: list[ChatAttachment] = Field(
         [], max_length=CHAT_ATTACHMENTS_MAX,
         description='The files the user sent with it (none on a turn '
         'stored before attachments)')
     steps: list[ChatStep] = Field(..., description='The tool steps, in order')
     replyText: str = Field(..., description="The assistant's reply")
+    components: list[ChatComponent] = Field(
+        default_factory=list, max_length=CHAT_COMPONENTS_PER_TURN_MAX,
+        description='The cards and forms shown under the reply, as sent')
+    formAnswer: ChatFormAnswerTagged | None = Field(
+        None, description='The form answer this turn sent, when it is one: '
+        'userText is then its summary')
     toolCallCount: int = Field(..., ge=0, description='Tool calls it ran')
     usage: ChatTokenUsage = Field(..., description='The tokens it used')
     model: str = Field(..., description='The model that answered')
@@ -165,9 +180,14 @@ class ChatUsage(MongoModel):
 
 
 class ChatReplyResponse(ResponseModel):
-    """What a chat route sends: the assistant's reply to the message."""
+    """What a chat route sends: the assistant's reply to the message, with
+    the cards and forms to show under it."""
     conversationId: str = Field(..., description='The Conversations _id')
+    userText: str = Field(..., description="The user's turn as saved: the "
+                          "message, or a form answer's summary")
     reply: str = Field(..., description="The assistant's reply")
+    components: list[ChatComponent] = Field(
+        ..., description='The cards and forms to show under the reply')
     turnSeq: int = Field(..., ge=0,
                          description='The seq of the turn just saved')
 
@@ -207,8 +227,10 @@ class ChatAttachmentRow(ResponseModel):
 
 class ChatTurnRow(ResponseModel):
     """One turn of getConversationTurns: the user's text, the files sent
-    with it and the reply, never the tool steps. Each field restates
-    ChatTurn's."""
+    with it, the reply and its components, never the tool steps. Each
+    field restates ChatTurn's; answeredFormId is its formAnswer's formId
+    (null when it sent none), so the client shows that form as
+    answered."""
     seq: int = Field(..., ge=0, description='Its place in the conversation')
     userText: str = Field(..., max_length=CHAT_MESSAGE_MAX_LENGTH,
                           description='What the user sent ("" when only '
@@ -218,6 +240,10 @@ class ChatTurnRow(ResponseModel):
         description='The files the user sent with it (none on a turn '
         'stored before attachments)')
     replyText: str = Field(..., description="The assistant's reply")
+    components: list[ChatComponent] = Field(
+        ..., description='The cards and forms shown under the reply')
+    answeredFormId: str | None = Field(
+        ..., description='The form this turn answered')
     createdAt: datetime.datetime = Field(..., description='When it was saved')
 
 

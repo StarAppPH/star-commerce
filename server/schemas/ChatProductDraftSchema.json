@@ -1,0 +1,62 @@
+{
+    "description": "A product the admin mentioned, prefilled on the new products\nform.",
+    "properties": {
+        "name": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Product name",
+            "title": "Name"
+        },
+        "price": {
+            "anyOf": [
+                {
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Price",
+            "title": "Price"
+        },
+        "inventory": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Units in stock",
+            "title": "Inventory"
+        },
+        "description": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "What it is",
+            "title": "Description"
+        }
+    },
+    "required": [
+        "name",
+        "price",
+        "inventory",
+        "description"
+    ],
+    "title": "ChatProductDraft",
+    "type": "object",
+    "additionalProperties": false
+}

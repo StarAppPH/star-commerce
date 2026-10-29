@@ -1,0 +1,25 @@
+{
+    "description": "Asks the shopper to verify their phone number (Firebase sends the\ncode). Answered with PhoneVerifiedAnswer once verifyCustomerPhone\nstored it.",
+    "properties": {
+        "kind": {
+            "const": "phoneVerificationForm",
+            "description": "The form",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        }
+    },
+    "required": [
+        "kind",
+        "formId"
+    ],
+    "title": "PhoneVerificationForm",
+    "type": "object",
+    "additionalProperties": false
+}

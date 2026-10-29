@@ -1,0 +1,178 @@
+{
+    "$defs": {
+        "StoreLocationResponse": {
+            "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "latitude": {
+                    "description": "Degrees north (negative: south)",
+                    "maximum": 90,
+                    "minimum": -90,
+                    "title": "Latitude",
+                    "type": "number"
+                },
+                "longitude": {
+                    "description": "Degrees east (negative: west)",
+                    "maximum": 180,
+                    "minimum": -180,
+                    "title": "Longitude",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "latitude",
+                "longitude"
+            ],
+            "title": "StoreLocationResponse",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "Asks the shopper how they get their order: picked up at the store,\nor delivered to the address they pin. Answered with FulfillmentAnswer.",
+    "properties": {
+        "kind": {
+            "const": "fulfillmentForm",
+            "description": "The form",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "options": {
+            "description": "The ways the order can be booked",
+            "items": {
+                "enum": [
+                    "pickup",
+                    "delivery"
+                ],
+                "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Options",
+            "type": "array"
+        },
+        "currency": {
+            "description": "Fees are in it",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "storeAddress": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Where to pick it up",
+            "title": "Storeaddress"
+        },
+        "storeLocation": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/StoreLocationResponse"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The store's pin; null until pinned"
+        },
+        "deliveryAreas": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Where the store delivers",
+            "title": "Deliveryareas"
+        },
+        "deliveryFee": {
+            "anyOf": [
+                {
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "What delivery costs, in the store's currency",
+            "title": "Deliveryfee"
+        },
+        "freeDeliveryMinimum": {
+            "anyOf": [
+                {
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The order total from which delivery is free, in the store's currency",
+            "title": "Freedeliveryminimum"
+        },
+        "handoverDays": {
+            "anyOf": [
+                {
+                    "maximum": 365,
+                    "minimum": 0,
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Days from payment until the order is handed over or delivered",
+            "title": "Handoverdays"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "options",
+        "currency",
+        "storeAddress",
+        "storeLocation",
+        "deliveryAreas",
+        "deliveryFee",
+        "freeDeliveryMinimum",
+        "handoverDays"
+    ],
+    "title": "FulfillmentForm",
+    "type": "object",
+    "additionalProperties": false
+}

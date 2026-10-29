@@ -87,11 +87,12 @@ export interface MyStoreResponse {
 }
 /**
  * The admin's own store: a StoreResponse plus its photo theme and
- * voice, which customers never get (they feed the product photos and the
- * spoken replies, not the storefront). Each is sent only once set (a dict the route builds leaves it
- * out, and exclude_if drops it from a dump), so a store with no theme
- * reads exactly as a StoreResponse. Each field restates Store's
- * (test_route_response_models.py's MIRRORS).
+ * voice. The photo style feeds the product photos and the voice the
+ * spoken replies, and customers never get either; they get the brand
+ * colors (ShopStoreResponse). Each is sent only once set (a dict the
+ * route builds leaves it out, and exclude_if drops it from a dump), so a
+ * store with none reads exactly as a StoreResponse. Each field restates
+ * Store's (test_route_response_models.py's MIRRORS).
  */
 export interface AdminStoreResponse {
   _id: Id;

@@ -1,0 +1,60 @@
+{
+    "description": "A PhotoRequestForm, filled in: the uploaded photos' URLs.",
+    "properties": {
+        "kind": {
+            "const": "photoRequest",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "imageUrls": {
+            "description": "The download URLs of the uploaded photos",
+            "items": {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Imageurls",
+            "type": "array"
+        },
+        "count": {
+            "description": "How many photos to make",
+            "maximum": 4,
+            "minimum": 1,
+            "title": "Count",
+            "type": "integer"
+        },
+        "notes": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Extra direction",
+            "title": "Notes"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "imageUrls",
+        "count"
+    ],
+    "title": "PhotoRequestAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

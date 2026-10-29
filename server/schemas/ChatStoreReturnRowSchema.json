@@ -1,0 +1,174 @@
+{
+    "$defs": {
+        "ReturnItemRow": {
+            "description": "One item of a return as a route sends it: ReturnItem without its\nproductId.",
+            "properties": {
+                "name": {
+                    "description": "Product name when ordered",
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "price": {
+                    "description": "Unit price paid, in the order currency",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Price",
+                    "type": "number"
+                },
+                "quantity": {
+                    "description": "Units returned",
+                    "minimum": 1,
+                    "title": "Quantity",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "name",
+                "price",
+                "quantity"
+            ],
+            "title": "ReturnItemRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A return on the admin's return card.",
+    "properties": {
+        "_id": {
+            "description": "Returns _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "orderId": {
+            "description": "The Orders _id",
+            "title": "Orderid",
+            "type": "string"
+        },
+        "status": {
+            "description": "Where the return is",
+            "enum": [
+                "requested",
+                "approved",
+                "rejected",
+                "received",
+                "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+        },
+        "items": {
+            "description": "What goes back",
+            "items": {
+                "$ref": "#/$defs/ReturnItemRow"
+            },
+            "title": "Items",
+            "type": "array"
+        },
+        "reason": {
+            "description": "Why it goes back",
+            "enum": [
+                "changedMind",
+                "defective",
+                "wrongItem"
+            ],
+            "title": "Reason",
+            "type": "string"
+        },
+        "note": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The customer's note",
+            "title": "Note"
+        },
+        "refundAmount": {
+            "description": "What it refunds",
+            "minimum": 0,
+            "title": "Refundamount",
+            "type": "number"
+        },
+        "currency": {
+            "description": "The order's currency",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "createdAt": {
+            "description": "When it was requested",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        },
+        "contactNumber": {
+            "description": "The customer's number",
+            "title": "Contactnumber",
+            "type": "string"
+        },
+        "rejectReason": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Why the store rejected it",
+            "title": "Rejectreason"
+        },
+        "restocked": {
+            "anyOf": [
+                {
+                    "type": "boolean"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Whether the units went back",
+            "title": "Restocked"
+        }
+    },
+    "required": [
+        "_id",
+        "orderId",
+        "status",
+        "items",
+        "reason",
+        "note",
+        "refundAmount",
+        "currency",
+        "createdAt",
+        "contactNumber",
+        "rejectReason",
+        "restocked"
+    ],
+    "title": "ChatStoreReturnRow",
+    "type": "object",
+    "additionalProperties": false
+}

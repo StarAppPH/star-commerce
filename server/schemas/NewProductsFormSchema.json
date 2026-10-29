@@ -1,0 +1,124 @@
+{
+    "$defs": {
+        "ChatProductDraft": {
+            "description": "A product the admin mentioned, prefilled on the new products\nform.",
+            "properties": {
+                "name": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Product name",
+                    "title": "Name"
+                },
+                "price": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Price",
+                    "title": "Price"
+                },
+                "inventory": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Units in stock",
+                    "title": "Inventory"
+                },
+                "description": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "What it is",
+                    "title": "Description"
+                }
+            },
+            "required": [
+                "name",
+                "price",
+                "inventory",
+                "description"
+            ],
+            "title": "ChatProductDraft",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "Asks the admin for new products. Answered with NewProductsAnswer.",
+    "properties": {
+        "kind": {
+            "const": "newProductsForm",
+            "description": "The form",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "currency": {
+            "description": "Prices are in it",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "products": {
+            "description": "Prefilled rows",
+            "items": {
+                "$ref": "#/$defs/ChatProductDraft"
+            },
+            "maxItems": 50,
+            "title": "Products",
+            "type": "array"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "currency",
+        "products"
+    ],
+    "title": "NewProductsForm",
+    "type": "object",
+    "additionalProperties": false
+}

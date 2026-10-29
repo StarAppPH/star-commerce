@@ -1,33 +1,7 @@
 {
     "$defs": {
-        "StoreLocationResponse": {
-            "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
-            "properties": {
-                "latitude": {
-                    "description": "Degrees north (negative: south)",
-                    "maximum": 90,
-                    "minimum": -90,
-                    "title": "Latitude",
-                    "type": "number"
-                },
-                "longitude": {
-                    "description": "Degrees east (negative: west)",
-                    "maximum": 180,
-                    "minimum": -180,
-                    "title": "Longitude",
-                    "type": "number"
-                }
-            },
-            "required": [
-                "latitude",
-                "longitude"
-            ],
-            "title": "StoreLocationResponse",
-            "type": "object",
-            "additionalProperties": false
-        },
-        "StoreResponse": {
-            "description": "A store as a route sends it. Each field restates Store's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+        "ShopStoreResponse": {
+            "description": "The store a shopper visits: a StoreResponse plus its brand colors,\nwhich the shop is drawn in. A color is sent only once set (the route\nleaves an unset one out), so a store with none reads exactly as a\nStoreResponse. Each field restates Store's\n(test_route_response_models.py's MIRRORS).",
             "properties": {
                 "_id": {
                     "description": "Stores _id",
@@ -155,6 +129,34 @@
                         }
                     ],
                     "description": "Map location; null until the admin pins it"
+                },
+                "primaryColor": {
+                    "anyOf": [
+                        {
+                            "pattern": "^#[0-9A-Fa-f]{6}$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Main brand color, #RRGGBB",
+                    "title": "Primarycolor"
+                },
+                "secondaryColor": {
+                    "anyOf": [
+                        {
+                            "pattern": "^#[0-9A-Fa-f]{6}$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Second brand color, #RRGGBB",
+                    "title": "Secondarycolor"
                 }
             },
             "required": [
@@ -163,7 +165,33 @@
                 "openingHours",
                 "location"
             ],
-            "title": "StoreResponse",
+            "title": "ShopStoreResponse",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "StoreLocationResponse": {
+            "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "latitude": {
+                    "description": "Degrees north (negative: south)",
+                    "maximum": 90,
+                    "minimum": -90,
+                    "title": "Latitude",
+                    "type": "number"
+                },
+                "longitude": {
+                    "description": "Degrees east (negative: west)",
+                    "maximum": 180,
+                    "minimum": -180,
+                    "title": "Longitude",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "latitude",
+                "longitude"
+            ],
+            "title": "StoreLocationResponse",
             "type": "object",
             "additionalProperties": false
         }
@@ -191,7 +219,7 @@
         "store": {
             "allOf": [
                 {
-                    "$ref": "#/$defs/StoreResponse"
+                    "$ref": "#/$defs/ShopStoreResponse"
                 }
             ],
             "description": "The store being visited"

@@ -55,6 +55,10 @@ export type Isavailable = boolean;
  * When it was added
  */
 export type Createdat = string;
+/**
+ * The photo the shop shows: the url of one of the store's GeneratedPhotos (setProductPhoto)
+ */
+export type Photourl = string | null;
 
 /**
  * A Products document, priced in its store's currency. Listed best
@@ -80,6 +84,7 @@ export interface Product {
   soldCount?: Soldcount;
   isAvailable?: Isavailable;
   createdAt: Createdat;
+  photoUrl?: Photourl;
 }
 /**
  * Units of a product an order is holding (taken out of inventory).

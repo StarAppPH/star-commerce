@@ -1,0 +1,41 @@
+{
+    "description": "Where a createOrder delivery goes. Types only, no limits: the route\nchecks them, never quoting a value.",
+    "properties": {
+        "address": {
+            "description": "The street address",
+            "title": "Address",
+            "type": "string"
+        },
+        "latitude": {
+            "description": "The pin's degrees north",
+            "title": "Latitude",
+            "type": "number"
+        },
+        "longitude": {
+            "description": "The pin's degrees east",
+            "title": "Longitude",
+            "type": "number"
+        },
+        "notes": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "For the delivery, e.g. a landmark or a gate code",
+            "title": "Notes"
+        }
+    },
+    "required": [
+        "address",
+        "latitude",
+        "longitude"
+    ],
+    "title": "NewOrderDelivery",
+    "type": "object",
+    "additionalProperties": false
+}

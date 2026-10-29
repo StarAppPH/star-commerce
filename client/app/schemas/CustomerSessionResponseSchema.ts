@@ -70,6 +70,14 @@ export type Latitude = number;
  * Degrees east (negative: west)
  */
 export type Longitude = number;
+/**
+ * Main brand color, #RRGGBB
+ */
+export type Primarycolor = string | null;
+/**
+ * Second brand color, #RRGGBB
+ */
+export type Secondarycolor = string | null;
 
 /**
  * What startGuestSession sends: its _id becomes the JWT identity.
@@ -80,13 +88,16 @@ export interface CustomerSessionResponse {
   /**
    * The store being visited
    */
-  store: StoreResponse;
+  store: ShopStoreResponse;
 }
 /**
- * A store as a route sends it. Each field restates Store's, which
- * test_route_response_models.py's MIRRORS keeps in step.
+ * The store a shopper visits: a StoreResponse plus its brand colors,
+ * which the shop is drawn in. A color is sent only once set (the route
+ * leaves an unset one out), so a store with none reads exactly as a
+ * StoreResponse. Each field restates Store's
+ * (test_route_response_models.py's MIRRORS).
  */
-export interface StoreResponse {
+export interface ShopStoreResponse {
   _id: Id1;
   name?: Name;
   slug?: Slug;
@@ -99,6 +110,8 @@ export interface StoreResponse {
    * Map location; null until the admin pins it
    */
   location: StoreLocationResponse | null;
+  primaryColor?: Primarycolor;
+  secondaryColor?: Secondarycolor;
 }
 /**
  * A store's map location as a route sends it. Each field restates

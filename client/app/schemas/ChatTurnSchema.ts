@@ -28,6 +28,10 @@ export type Seq = number;
  */
 export type Usertext = string;
 /**
+ * What the model read for the user's turn, when it is more than userText: a form answer's summary and details
+ */
+export type Usercontent = string | null;
+/**
  * The files the user sent with it (none on a turn stored before attachments)
  *
  * @maxItems 4
@@ -91,6 +95,1819 @@ export type Steps = ChatStep[];
  */
 export type Replytext = string;
 /**
+ * The cards and forms shown under the reply, as sent
+ *
+ * @maxItems 6
+ */
+export type Components =
+  | []
+  | [
+      | ShopProductsCard
+      | StoreProductsCard
+      | StoreOrdersCard
+      | MyOrdersCard
+      | CheckoutCard
+      | StoreReturnsCard
+      | MyReturnsCard
+      | PolicyCard
+      | PhotosCard
+      | StoreCard
+      | StoreDetailsForm
+      | LocationForm
+      | NewProductsForm
+      | PolicyForm
+      | ReturnForm
+      | PhoneVerificationForm
+      | PhotoRequestForm
+      | FulfillmentForm
+    ]
+  | [
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      )
+    ]
+  | [
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      )
+    ]
+  | [
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      )
+    ]
+  | [
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      )
+    ]
+  | [
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      ),
+      (
+        | ShopProductsCard
+        | StoreProductsCard
+        | StoreOrdersCard
+        | MyOrdersCard
+        | CheckoutCard
+        | StoreReturnsCard
+        | MyReturnsCard
+        | PolicyCard
+        | PhotosCard
+        | StoreCard
+        | StoreDetailsForm
+        | LocationForm
+        | NewProductsForm
+        | PolicyForm
+        | ReturnForm
+        | PhoneVerificationForm
+        | PhotoRequestForm
+        | FulfillmentForm
+      )
+    ];
+/**
+ * The card
+ */
+export type Kind = "shopProducts";
+/**
+ * Answer it with this id
+ */
+export type Formid = string;
+/**
+ * Every price is in it
+ */
+export type Currency =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * Products _id
+ */
+export type Id2 = string;
+/**
+ * Product name
+ */
+export type Name2 = string;
+/**
+ * What the product is
+ */
+export type Description = string | null;
+/**
+ * Price in the store's currency
+ */
+export type Price = number;
+/**
+ * Units free to sell; 0 is sold out
+ */
+export type Inventory = number;
+/**
+ * Its photo; null when it has none
+ */
+export type Photourl = string | null;
+/**
+ * The products
+ *
+ * @maxItems 50
+ */
+export type Products = ChatShopProductRow[];
+/**
+ * The card
+ */
+export type Kind1 = "storeProducts";
+/**
+ * Every price is in it
+ */
+export type Currency1 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * Products _id
+ */
+export type Id3 = string;
+/**
+ * Product name
+ */
+export type Name3 = string;
+/**
+ * Price in the store's currency
+ */
+export type Price1 = number;
+/**
+ * Units free to sell
+ */
+export type Inventory1 = number;
+/**
+ * Units unpaid orders hold
+ */
+export type Reservedquantity = number;
+/**
+ * Shown to customers
+ */
+export type Isavailable = boolean;
+/**
+ * Units sold so far
+ */
+export type Soldcount = number;
+/**
+ * Its photo; null when it has none
+ */
+export type Photourl1 = string | null;
+/**
+ * The products
+ *
+ * @maxItems 50
+ */
+export type Products1 = ChatStoreProductRow[];
+/**
+ * The card
+ */
+export type Kind2 = "storeOrders";
+/**
+ * Set when it has paid orders to hand over
+ */
+export type Formid1 = string | null;
+/**
+ * How the customer gets it: pickup or delivery
+ */
+export type Fulfillment = "pickup" | "delivery";
+/**
+ * What delivery adds to the total
+ */
+export type Deliveryfee = number;
+/**
+ * Where it is delivered, as the customer typed it
+ */
+export type Deliveryaddress = string | null;
+/**
+ * The delivery pin's degrees north
+ */
+export type Deliverylatitude = number | null;
+/**
+ * The delivery pin's degrees east
+ */
+export type Deliverylongitude = number | null;
+/**
+ * The customer's notes for the delivery
+ */
+export type Deliverynotes = string | null;
+/**
+ * Orders _id
+ */
+export type Id4 = string;
+/**
+ * Where the order is
+ */
+export type Status = "pending" | "paid" | "completed" | "cancelled";
+/**
+ * Product name when ordered
+ */
+export type Name4 = string;
+/**
+ * Unit price paid, in the order currency
+ */
+export type Price2 = number;
+/**
+ * Units ordered
+ */
+export type Quantity = number;
+/**
+ * What was ordered
+ */
+export type Items = OrderItemRow[];
+/**
+ * What the order costs
+ */
+export type Total = number;
+/**
+ * The order's currency
+ */
+export type Currency2 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * The customer's number
+ */
+export type Contactnumber = string;
+/**
+ * When it was placed
+ */
+export type Createdat = string;
+/**
+ * How it was paid
+ */
+export type Paymentmethod = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+/**
+ * When it was paid
+ */
+export type Paidat = string | null;
+/**
+ * When it was handed over
+ */
+export type Completedat = string | null;
+/**
+ * Why it was cancelled
+ */
+export type Cancelreason = ("expired" | "byStore" | "byCustomer") | null;
+/**
+ * The orders
+ *
+ * @maxItems 50
+ */
+export type Orders = ChatStoreOrderRow[];
+/**
+ * The card
+ */
+export type Kind3 = "myOrders";
+/**
+ * How the customer gets it: pickup or delivery
+ */
+export type Fulfillment1 = "pickup" | "delivery";
+/**
+ * What delivery adds to the total
+ */
+export type Deliveryfee1 = number;
+/**
+ * Where it is delivered, as the customer typed it
+ */
+export type Deliveryaddress1 = string | null;
+/**
+ * The delivery pin's degrees north
+ */
+export type Deliverylatitude1 = number | null;
+/**
+ * The delivery pin's degrees east
+ */
+export type Deliverylongitude1 = number | null;
+/**
+ * The customer's notes for the delivery
+ */
+export type Deliverynotes1 = string | null;
+/**
+ * Orders _id
+ */
+export type Id5 = string;
+/**
+ * Where the order is
+ */
+export type Status1 = "pending" | "paid" | "completed" | "cancelled";
+/**
+ * What was ordered
+ */
+export type Items1 = OrderItemRow[];
+/**
+ * What the order costs
+ */
+export type Total1 = number;
+/**
+ * The order's currency
+ */
+export type Currency3 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * When it was placed
+ */
+export type Createdat1 = string;
+/**
+ * Unpaid by then, it is cancelled
+ */
+export type Expiresat = string;
+/**
+ * How it was paid
+ */
+export type Paymentmethod1 = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+/**
+ * When it was paid
+ */
+export type Paidat1 = string | null;
+/**
+ * When it was handed over
+ */
+export type Completedat1 = string | null;
+/**
+ * Why it was cancelled
+ */
+export type Cancelreason1 = ("expired" | "byStore" | "byCustomer") | null;
+/**
+ * When its payment was refunded
+ */
+export type Refundedat = string | null;
+/**
+ * The orders
+ *
+ * @maxItems 50
+ */
+export type Orders1 = ChatMyOrderRow[];
+/**
+ * The card
+ */
+export type Kind4 = "checkout";
+/**
+ * Answer it with this id
+ */
+export type Formid2 = string;
+/**
+ * The ways the shopper can pay it (never none)
+ */
+export type Paymentmethods = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[];
+/**
+ * The card
+ */
+export type Kind5 = "storeReturns";
+/**
+ * Set when it has returns waiting for a decision
+ */
+export type Formid3 = string | null;
+/**
+ * Returns _id
+ */
+export type Id6 = string;
+/**
+ * The Orders _id
+ */
+export type Orderid = string;
+/**
+ * Where the return is
+ */
+export type Status2 = "requested" | "approved" | "rejected" | "received" | "cancelled";
+/**
+ * Product name when ordered
+ */
+export type Name5 = string;
+/**
+ * Unit price paid, in the order currency
+ */
+export type Price3 = number;
+/**
+ * Units returned
+ */
+export type Quantity1 = number;
+/**
+ * What goes back
+ */
+export type Items2 = ReturnItemRow[];
+/**
+ * Why it goes back
+ */
+export type Reason = "changedMind" | "defective" | "wrongItem";
+/**
+ * The customer's note
+ */
+export type Note = string | null;
+/**
+ * What it refunds
+ */
+export type Refundamount = number;
+/**
+ * The order's currency
+ */
+export type Currency4 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * When it was requested
+ */
+export type Createdat2 = string;
+/**
+ * The customer's number
+ */
+export type Contactnumber1 = string;
+/**
+ * Why the store rejected it
+ */
+export type Rejectreason = string | null;
+/**
+ * Whether the units went back
+ */
+export type Restocked = boolean | null;
+/**
+ * The returns
+ *
+ * @maxItems 50
+ */
+export type Returns = ChatStoreReturnRow[];
+/**
+ * The card
+ */
+export type Kind6 = "myReturns";
+/**
+ * Returns _id
+ */
+export type Id7 = string;
+/**
+ * Where the return is
+ */
+export type Status3 = "requested" | "approved" | "rejected" | "received" | "cancelled";
+/**
+ * What goes back
+ */
+export type Items3 = ReturnItemRow[];
+/**
+ * Why it goes back
+ */
+export type Reason1 = "changedMind" | "defective" | "wrongItem";
+/**
+ * What it refunds
+ */
+export type Refundamount1 = number;
+/**
+ * The order's currency
+ */
+export type Currency5 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * When it was requested
+ */
+export type Createdat3 = string;
+/**
+ * Why the store rejected it
+ */
+export type Rejectreason1 = string | null;
+/**
+ * When it was refunded
+ */
+export type Refundedat1 = string | null;
+/**
+ * The returns
+ *
+ * @maxItems 50
+ */
+export type Returns1 = ChatMyReturnRow[];
+/**
+ * The card
+ */
+export type Kind7 = "policy";
+/**
+ * Fees are in it
+ */
+export type Currency6 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * Whether a customer can return an item that is not defective
+ */
+export type Acceptsreturns = boolean | null;
+/**
+ * Days after handover a customer can return an item
+ */
+export type Returnwindowdays = number | null;
+/**
+ * What a returned item must be like, e.g. unused with tags
+ */
+export type Returnconditions = string | null;
+/**
+ * The items that can never be returned
+ */
+export type Nonreturnableitems = string | null;
+/**
+ * How a returned item is refunded
+ */
+export type Refundmethod = ("originalPayment" | "storeCredit" | "exchange") | null;
+/**
+ * Who pays the shipping of a returned item
+ */
+export type Returnshippingpaidby = ("customer" | "store") | null;
+/**
+ * Days after handover a customer has to report a defective or wrong item
+ */
+export type Defectreportdays = number | null;
+/**
+ * How a customer can get an order
+ */
+export type Deliveryoptions = ["pickup" | "delivery", ...("pickup" | "delivery")[]] | null;
+/**
+ * Where the store delivers
+ */
+export type Deliveryareas = string | null;
+/**
+ * What delivery costs, in the store's currency
+ */
+export type Deliveryfee2 = number | null;
+/**
+ * The order total from which delivery is free, in the store's currency
+ */
+export type Freedeliveryminimum = number | null;
+/**
+ * Days from payment until the order is handed over or delivered
+ */
+export type Handoverdays = number | null;
+/**
+ * The ways a customer can pay
+ */
+export type Acceptedpaymentmethods =
+  | [
+      "card" | "gcash" | "maya" | "grabPay" | "bankTransfer",
+      ...("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[]
+    ]
+  | null;
+/**
+ * Whether a customer can cancel a paid order
+ */
+export type Paidordercancellation = ("notAllowed" | "beforeHandover") | null;
+/**
+ * Whether the store messages customers about offers
+ */
+export type Sendsmarketingmessages = boolean | null;
+/**
+ * Any other terms, as the admin gave them
+ */
+export type Additionalterms = string | null;
+/**
+ * The card
+ */
+export type Kind8 = "photos";
+/**
+ * GeneratedPhotos _id
+ */
+export type Id8 = string;
+/**
+ * Its download URL
+ */
+export type Url = string;
+/**
+ * The photos
+ */
+export type Photos = GeneratedPhotoRow[];
+/**
+ * The card
+ */
+export type Kind9 = "store";
+/**
+ * Store name
+ */
+export type Name6 = string | null;
+/**
+ * The store's link name
+ */
+export type Slug = string | null;
+/**
+ * The store's currency
+ */
+export type Currency7 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * What the store sells
+ */
+export type Description1 = string | null;
+/**
+ * Contact number
+ */
+export type Contactnumber2 = string | null;
+/**
+ * Street address
+ */
+export type Address = string | null;
+/**
+ * Opening hours
+ */
+export type Openinghours = string | null;
+/**
+ * Degrees north (negative: south)
+ */
+export type Latitude = number;
+/**
+ * Degrees east (negative: west)
+ */
+export type Longitude = number;
+/**
+ * The form
+ */
+export type Kind10 = "storeDetailsForm";
+/**
+ * Answer it with this id
+ */
+export type Formid4 = string;
+/**
+ * Store name, prefilled
+ */
+export type Name7 = string | null;
+/**
+ * What it sells
+ */
+export type Description2 = string | null;
+/**
+ * Prefilled currency
+ */
+export type Currency8 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * Contact number
+ */
+export type Contactnumber3 = string | null;
+/**
+ * Street address
+ */
+export type Address1 = string | null;
+/**
+ * Opening hours
+ */
+export type Openinghours1 = string | null;
+/**
+ * The form
+ */
+export type Kind11 = "locationForm";
+/**
+ * Answer it with this id
+ */
+export type Formid5 = string;
+/**
+ * The store's address
+ */
+export type Address2 = string | null;
+/**
+ * The form
+ */
+export type Kind12 = "newProductsForm";
+/**
+ * Answer it with this id
+ */
+export type Formid6 = string;
+/**
+ * Prices are in it
+ */
+export type Currency9 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * Product name
+ */
+export type Name8 = string | null;
+/**
+ * Price
+ */
+export type Price4 = number | null;
+/**
+ * Units in stock
+ */
+export type Inventory2 = number | null;
+/**
+ * What it is
+ */
+export type Description3 = string | null;
+/**
+ * Prefilled rows
+ *
+ * @maxItems 50
+ */
+export type Products2 = ChatProductDraft[];
+/**
+ * The form
+ */
+export type Kind13 = "policyForm";
+/**
+ * Answer it with this id
+ */
+export type Formid7 = string;
+/**
+ * The questions it asks
+ */
+export type Section = "payment" | "delivery" | "returns" | "other";
+/**
+ * Fees are in it
+ */
+export type Currency10 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * Whether a customer can return an item that is not defective
+ */
+export type Acceptsreturns1 = boolean | null;
+/**
+ * Days after handover a customer can return an item
+ */
+export type Returnwindowdays1 = number | null;
+/**
+ * What a returned item must be like, e.g. unused with tags
+ */
+export type Returnconditions1 = string | null;
+/**
+ * The items that can never be returned
+ */
+export type Nonreturnableitems1 = string | null;
+/**
+ * How a returned item is refunded
+ */
+export type Refundmethod1 = ("originalPayment" | "storeCredit" | "exchange") | null;
+/**
+ * Who pays the shipping of a returned item
+ */
+export type Returnshippingpaidby1 = ("customer" | "store") | null;
+/**
+ * Days after handover a customer has to report a defective or wrong item
+ */
+export type Defectreportdays1 = number | null;
+/**
+ * How a customer can get an order
+ */
+export type Deliveryoptions1 = ["pickup" | "delivery", ...("pickup" | "delivery")[]] | null;
+/**
+ * Where the store delivers
+ */
+export type Deliveryareas1 = string | null;
+/**
+ * What delivery costs, in the store's currency
+ */
+export type Deliveryfee3 = number | null;
+/**
+ * The order total from which delivery is free, in the store's currency
+ */
+export type Freedeliveryminimum1 = number | null;
+/**
+ * Days from payment until the order is handed over or delivered
+ */
+export type Handoverdays1 = number | null;
+/**
+ * The ways a customer can pay
+ */
+export type Acceptedpaymentmethods1 =
+  | [
+      "card" | "gcash" | "maya" | "grabPay" | "bankTransfer",
+      ...("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[]
+    ]
+  | null;
+/**
+ * Whether a customer can cancel a paid order
+ */
+export type Paidordercancellation1 = ("notAllowed" | "beforeHandover") | null;
+/**
+ * Whether the store messages customers about offers
+ */
+export type Sendsmarketingmessages1 = boolean | null;
+/**
+ * Any other terms, as the admin gave them
+ */
+export type Additionalterms1 = string | null;
+/**
+ * The form
+ */
+export type Kind14 = "returnForm";
+/**
+ * Answer it with this id
+ */
+export type Formid8 = string;
+/**
+ * The Orders _id
+ */
+export type Orderid1 = string;
+/**
+ * The order's currency
+ */
+export type Currency11 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * Its position in the order
+ */
+export type Item = number;
+/**
+ * Product name when ordered
+ */
+export type Name9 = string;
+/**
+ * Unit price paid
+ */
+export type Price5 = number;
+/**
+ * Units ordered
+ */
+export type Quantity2 = number;
+/**
+ * The order's items (never none)
+ *
+ * @maxItems 50
+ */
+export type Items4 = ChatReturnableItem[];
+/**
+ * The form
+ */
+export type Kind15 = "phoneVerificationForm";
+/**
+ * Answer it with this id
+ */
+export type Formid9 = string;
+/**
+ * The form
+ */
+export type Kind16 = "photoRequestForm";
+/**
+ * Answer it with this id
+ */
+export type Formid10 = string;
+/**
+ * How many photos to make, prefilled
+ */
+export type Count = number;
+/**
+ * The form
+ */
+export type Kind17 = "fulfillmentForm";
+/**
+ * Answer it with this id
+ */
+export type Formid11 = string;
+/**
+ * The ways the order can be booked
+ *
+ * @minItems 1
+ * @maxItems 2
+ */
+export type Options = ["pickup" | "delivery"] | ["pickup" | "delivery", "pickup" | "delivery"];
+/**
+ * Fees are in it
+ */
+export type Currency12 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * Where to pick it up
+ */
+export type Storeaddress = string | null;
+/**
+ * Where the store delivers
+ */
+export type Deliveryareas2 = string | null;
+/**
+ * What delivery costs, in the store's currency
+ */
+export type Deliveryfee4 = number | null;
+/**
+ * The order total from which delivery is free, in the store's currency
+ */
+export type Freedeliveryminimum2 = number | null;
+/**
+ * Days from payment until the order is handed over or delivered
+ */
+export type Handoverdays2 = number | null;
+/**
+ * The form answer this turn sent, when it is one: userText is then its summary
+ */
+export type Formanswer =
+  | (
+      | StoreDetailsAnswer
+      | LocationAnswer
+      | NewProductsAnswer
+      | PolicyAnswer
+      | ReturnAnswer
+      | PhoneVerifiedAnswer
+      | PhotoRequestAnswer
+      | OrderItemsAnswer
+      | PaymentAnswer
+      | HandoverAnswer
+      | ReturnDecisionAnswer
+      | FulfillmentAnswer
+    )
+  | null;
+/**
+ * The answer
+ */
+export type Kind18 = "storeDetails";
+/**
+ * Answer it with this id
+ */
+export type Formid12 = string;
+/**
+ * Store name
+ */
+export type Name10 = string;
+/**
+ * What it sells
+ */
+export type Description4 = string;
+/**
+ * The store's currency
+ */
+export type Currency13 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * Contact number
+ */
+export type Contactnumber4 = string;
+/**
+ * Street address
+ */
+export type Address3 = string;
+/**
+ * Opening hours
+ */
+export type Openinghours2 = string | null;
+/**
+ * The answer
+ */
+export type Kind19 = "location";
+/**
+ * Answer it with this id
+ */
+export type Formid13 = string;
+/**
+ * Degrees north
+ */
+export type Latitude1 = number;
+/**
+ * Degrees east
+ */
+export type Longitude1 = number;
+/**
+ * The answer
+ */
+export type Kind20 = "newProducts";
+/**
+ * Answer it with this id
+ */
+export type Formid14 = string;
+/**
+ * The products to add
+ *
+ * @minItems 1
+ * @maxItems 50
+ */
+export type Products3 = [NewProduct, ...NewProduct[]];
+/**
+ * Product name
+ */
+export type Name11 = string;
+/**
+ * Price in the store's currency
+ */
+export type Price6 = number;
+/**
+ * Units in stock, free to sell
+ */
+export type Inventory3 = number;
+/**
+ * What the product is
+ */
+export type Description5 = string | null;
+/**
+ * Shown to customers
+ */
+export type Isavailable1 = boolean;
+/**
+ * The answer
+ */
+export type Kind21 = "policy";
+/**
+ * Answer it with this id
+ */
+export type Formid15 = string;
+/**
+ * Whether a customer can return an item that is not defective
+ */
+export type Acceptsreturns2 = boolean | null;
+/**
+ * Days after handover a customer can return an item
+ */
+export type Returnwindowdays2 = number | null;
+/**
+ * What a returned item must be like, e.g. unused with tags
+ */
+export type Returnconditions2 = string | null;
+/**
+ * The items that can never be returned
+ */
+export type Nonreturnableitems2 = string | null;
+/**
+ * How a returned item is refunded
+ */
+export type Refundmethod2 = ("originalPayment" | "storeCredit" | "exchange") | null;
+/**
+ * Who pays the shipping of a returned item
+ */
+export type Returnshippingpaidby2 = ("customer" | "store") | null;
+/**
+ * Days after handover a customer has to report a defective or wrong item
+ */
+export type Defectreportdays2 = number | null;
+/**
+ * How a customer can get an order
+ */
+export type Deliveryoptions2 = ["pickup" | "delivery", ...("pickup" | "delivery")[]] | null;
+/**
+ * Where the store delivers
+ */
+export type Deliveryareas3 = string | null;
+/**
+ * What delivery costs, in the store's currency
+ */
+export type Deliveryfee5 = number | null;
+/**
+ * The order total from which delivery is free, in the store's currency
+ */
+export type Freedeliveryminimum3 = number | null;
+/**
+ * Days from payment until the order is handed over or delivered
+ */
+export type Handoverdays3 = number | null;
+/**
+ * The ways a customer can pay
+ */
+export type Acceptedpaymentmethods2 =
+  | [
+      "card" | "gcash" | "maya" | "grabPay" | "bankTransfer",
+      ...("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[]
+    ]
+  | null;
+/**
+ * Whether a customer can cancel a paid order
+ */
+export type Paidordercancellation2 = ("notAllowed" | "beforeHandover") | null;
+/**
+ * Whether the store messages customers about offers
+ */
+export type Sendsmarketingmessages2 = boolean | null;
+/**
+ * Any other terms, as the admin gave them
+ */
+export type Additionalterms2 = string | null;
+/**
+ * The answer
+ */
+export type Kind22 = "return";
+/**
+ * Answer it with this id
+ */
+export type Formid16 = string;
+/**
+ * What goes back
+ *
+ * @minItems 1
+ * @maxItems 50
+ */
+export type Items5 = [NewReturnItem, ...NewReturnItem[]];
+/**
+ * The item's position in the order (1 is its first item)
+ */
+export type Item1 = number;
+/**
+ * Units to return
+ */
+export type Quantity3 = number;
+/**
+ * Why it goes back
+ */
+export type Reason2 = "changedMind" | "defective" | "wrongItem";
+/**
+ * For the store
+ */
+export type Note1 = string | null;
+/**
+ * The answer
+ */
+export type Kind23 = "phoneVerified";
+/**
+ * Answer it with this id
+ */
+export type Formid17 = string;
+/**
+ * The answer
+ */
+export type Kind24 = "photoRequest";
+/**
+ * Answer it with this id
+ */
+export type Formid18 = string;
+/**
+ * The download URLs of the uploaded photos
+ *
+ * @minItems 1
+ * @maxItems 10
+ */
+export type Imageurls =
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string];
+/**
+ * How many photos to make
+ */
+export type Count1 = number;
+/**
+ * Extra direction
+ */
+export type Notes = string | null;
+/**
+ * The answer
+ */
+export type Kind25 = "orderItems";
+/**
+ * Answer it with this id
+ */
+export type Formid19 = string;
+/**
+ * What to order
+ *
+ * @minItems 1
+ * @maxItems 50
+ */
+export type Items6 = [NewOrderItem, ...NewOrderItem[]];
+/**
+ * The Products _id
+ */
+export type Productid = string;
+/**
+ * Units to order
+ */
+export type Quantity4 = number;
+/**
+ * The answer
+ */
+export type Kind26 = "payment";
+/**
+ * Answer it with this id
+ */
+export type Formid20 = string;
+/**
+ * How to pay
+ */
+export type Paymentmethod2 = "card" | "gcash" | "maya" | "grabPay" | "bankTransfer";
+/**
+ * The answer
+ */
+export type Kind27 = "handover";
+/**
+ * Answer it with this id
+ */
+export type Formid21 = string;
+/**
+ * The orders handed over
+ *
+ * @minItems 1
+ * @maxItems 50
+ */
+export type Orderids = [string, ...string[]];
+/**
+ * The answer
+ */
+export type Kind28 = "returnDecision";
+/**
+ * Answer it with this id
+ */
+export type Formid22 = string;
+/**
+ * The Returns _id
+ */
+export type Returnid = string;
+/**
+ * The decision
+ */
+export type Decision = "approve" | "reject";
+/**
+ * Why it is rejected
+ */
+export type Reason3 = string | null;
+/**
+ * The answer
+ */
+export type Kind29 = "fulfillment";
+/**
+ * Answer it with this id
+ */
+export type Formid23 = string;
+/**
+ * Pickup or delivery
+ */
+export type Fulfillment2 = "pickup" | "delivery";
+/**
+ * The street address
+ */
+export type Address4 = string;
+/**
+ * The pin's degrees north
+ */
+export type Latitude2 = number;
+/**
+ * The pin's degrees east
+ */
+export type Longitude2 = number;
+/**
+ * For the delivery
+ */
+export type Notes1 = string | null;
+/**
  * Tool calls it ran
  */
 export type Toolcallcount = number;
@@ -113,7 +1930,7 @@ export type Model = string;
 /**
  * When it was saved
  */
-export type Createdat = string;
+export type Createdat4 = string;
 
 /**
  * A ChatTurns document: one user message and the reply to it, with the
@@ -130,16 +1947,19 @@ export interface ChatTurn {
   storeId: Storeid;
   seq: Seq;
   userText: Usertext;
+  userContent?: Usercontent;
   attachments?: Attachments;
   steps: Steps;
   replyText: Replytext;
+  components?: Components;
+  formAnswer?: Formanswer;
   toolCallCount: Toolcallcount;
   /**
    * The tokens it used
    */
   usage: ChatTokenUsage;
   model: Model;
-  createdAt: Createdat;
+  createdAt: Createdat4;
 }
 /**
  * One file a turn's user message carried, as stored: never its bytes,
@@ -169,6 +1989,544 @@ export interface ChatToolCall {
   id: Id1;
   name: Name1;
   arguments: Arguments;
+}
+/**
+ * The products a shopper asked about. Answered with OrderItemsAnswer:
+ * the quantities the shopper picked.
+ */
+export interface ShopProductsCard {
+  kind: Kind;
+  formId: Formid;
+  currency: Currency;
+  products: Products;
+}
+/**
+ * A product on a shop card.
+ */
+export interface ChatShopProductRow {
+  _id: Id2;
+  name: Name2;
+  description: Description;
+  price: Price;
+  inventory: Inventory;
+  photoUrl: Photourl;
+}
+/**
+ * The admin's products a tool listed, added or changed.
+ */
+export interface StoreProductsCard {
+  kind: Kind1;
+  currency: Currency1;
+  products: Products1;
+}
+/**
+ * A product on the admin's product card.
+ */
+export interface ChatStoreProductRow {
+  _id: Id3;
+  name: Name3;
+  price: Price1;
+  inventory: Inventory1;
+  reservedQuantity: Reservedquantity;
+  isAvailable: Isavailable;
+  soldCount: Soldcount;
+  photoUrl: Photourl1;
+}
+/**
+ * The store's orders a tool listed or changed. With paid orders it is
+ * answered with HandoverAnswer (formId set); otherwise formId is null.
+ */
+export interface StoreOrdersCard {
+  kind: Kind2;
+  formId: Formid1;
+  orders: Orders;
+}
+/**
+ * An order on the admin's order card.
+ */
+export interface ChatStoreOrderRow {
+  fulfillment: Fulfillment;
+  deliveryFee: Deliveryfee;
+  deliveryAddress: Deliveryaddress;
+  deliveryLatitude: Deliverylatitude;
+  deliveryLongitude: Deliverylongitude;
+  deliveryNotes: Deliverynotes;
+  _id: Id4;
+  status: Status;
+  items: Items;
+  total: Total;
+  currency: Currency2;
+  contactNumber: Contactnumber;
+  createdAt: Createdat;
+  paymentMethod: Paymentmethod;
+  paidAt: Paidat;
+  completedAt: Completedat;
+  cancelReason: Cancelreason;
+}
+/**
+ * One item of an order as a route sends it: OrderItem without its
+ * productId. Each field restates OrderItem's, which
+ * test_route_response_models.py's MIRRORS keeps in step.
+ */
+export interface OrderItemRow {
+  name: Name4;
+  price: Price2;
+  quantity: Quantity;
+}
+/**
+ * The shopper's orders a tool listed, paid or cancelled.
+ */
+export interface MyOrdersCard {
+  kind: Kind3;
+  orders: Orders1;
+}
+/**
+ * An order on a shopper's order card.
+ */
+export interface ChatMyOrderRow {
+  fulfillment: Fulfillment1;
+  deliveryFee: Deliveryfee1;
+  deliveryAddress: Deliveryaddress1;
+  deliveryLatitude: Deliverylatitude1;
+  deliveryLongitude: Deliverylongitude1;
+  deliveryNotes: Deliverynotes1;
+  _id: Id5;
+  status: Status1;
+  items: Items1;
+  total: Total1;
+  currency: Currency3;
+  createdAt: Createdat1;
+  expiresAt: Expiresat;
+  paymentMethod: Paymentmethod1;
+  paidAt: Paidat1;
+  completedAt: Completedat1;
+  cancelReason: Cancelreason1;
+  refundedAt: Refundedat;
+}
+/**
+ * The order a shopper just placed, unpaid. Answered with PaymentAnswer:
+ * the payment method the shopper picked.
+ */
+export interface CheckoutCard {
+  kind: Kind4;
+  formId: Formid2;
+  /**
+   * The order to pay
+   */
+  order: ChatMyOrderRow;
+  paymentMethods: Paymentmethods;
+}
+/**
+ * The store's returns a tool listed or decided. With requested returns
+ * it is answered with ReturnDecisionAnswer (formId set); otherwise formId
+ * is null.
+ */
+export interface StoreReturnsCard {
+  kind: Kind5;
+  formId: Formid3;
+  returns: Returns;
+}
+/**
+ * A return on the admin's return card.
+ */
+export interface ChatStoreReturnRow {
+  _id: Id6;
+  orderId: Orderid;
+  status: Status2;
+  items: Items2;
+  reason: Reason;
+  note: Note;
+  refundAmount: Refundamount;
+  currency: Currency4;
+  createdAt: Createdat2;
+  contactNumber: Contactnumber1;
+  rejectReason: Rejectreason;
+  restocked: Restocked;
+}
+/**
+ * One item of a return as a route sends it: ReturnItem without its
+ * productId.
+ */
+export interface ReturnItemRow {
+  name: Name5;
+  price: Price3;
+  quantity: Quantity1;
+}
+/**
+ * The shopper's returns a tool listed, requested or cancelled.
+ */
+export interface MyReturnsCard {
+  kind: Kind6;
+  returns: Returns1;
+}
+/**
+ * A return on a shopper's return card.
+ */
+export interface ChatMyReturnRow {
+  _id: Id7;
+  status: Status3;
+  items: Items3;
+  reason: Reason1;
+  refundAmount: Refundamount1;
+  currency: Currency5;
+  createdAt: Createdat3;
+  rejectReason: Rejectreason1;
+  refundedAt: Refundedat1;
+}
+/**
+ * The store's policy a tool read or saved: every answer, null while
+ * the store has not said.
+ */
+export interface PolicyCard {
+  kind: Kind7;
+  currency: Currency6;
+  acceptsReturns: Acceptsreturns;
+  returnWindowDays: Returnwindowdays;
+  returnConditions: Returnconditions;
+  nonReturnableItems: Nonreturnableitems;
+  refundMethod: Refundmethod;
+  returnShippingPaidBy: Returnshippingpaidby;
+  defectReportDays: Defectreportdays;
+  deliveryOptions: Deliveryoptions;
+  deliveryAreas: Deliveryareas;
+  deliveryFee: Deliveryfee2;
+  freeDeliveryMinimum: Freedeliveryminimum;
+  handoverDays: Handoverdays;
+  acceptedPaymentMethods: Acceptedpaymentmethods;
+  paidOrderCancellation: Paidordercancellation;
+  sendsMarketingMessages: Sendsmarketingmessages;
+  additionalTerms: Additionalterms;
+}
+/**
+ * The product photos a tool made.
+ */
+export interface PhotosCard {
+  kind: Kind8;
+  photos: Photos;
+}
+export interface GeneratedPhotoRow {
+  _id: Id8;
+  url: Url;
+}
+/**
+ * The admin's store a tool read, created or pinned.
+ */
+export interface StoreCard {
+  kind: Kind9;
+  name: Name6;
+  slug: Slug;
+  currency: Currency7;
+  description: Description1;
+  contactNumber: Contactnumber2;
+  address: Address;
+  openingHours: Openinghours;
+  /**
+   * Map location; null until pinned
+   */
+  location: StoreLocationResponse | null;
+}
+/**
+ * A store's map location as a route sends it. Each field restates
+ * StoreLocation's, which test_route_response_models.py's MIRRORS keeps
+ * in step.
+ */
+export interface StoreLocationResponse {
+  latitude: Latitude;
+  longitude: Longitude;
+}
+/**
+ * Asks the admin for the store's details, prefilled with what they
+ * said. Answered with StoreDetailsAnswer.
+ */
+export interface StoreDetailsForm {
+  kind: Kind10;
+  formId: Formid4;
+  name: Name7;
+  description: Description2;
+  currency: Currency8;
+  contactNumber: Contactnumber3;
+  address: Address1;
+  openingHours: Openinghours1;
+}
+/**
+ * Asks the admin to pin the store on a map. Answered with
+ * LocationAnswer.
+ */
+export interface LocationForm {
+  kind: Kind11;
+  formId: Formid5;
+  /**
+   * The pin so far; null when there is none
+   */
+  location: StoreLocationResponse | null;
+  address: Address2;
+}
+/**
+ * Asks the admin for new products. Answered with NewProductsAnswer.
+ */
+export interface NewProductsForm {
+  kind: Kind12;
+  formId: Formid6;
+  currency: Currency9;
+  products: Products2;
+}
+/**
+ * A product the admin mentioned, prefilled on the new products
+ * form.
+ */
+export interface ChatProductDraft {
+  name: Name8;
+  price: Price4;
+  inventory: Inventory2;
+  description: Description3;
+}
+/**
+ * Asks the admin one section of the store's policy, with its current
+ * answers. Answered with PolicyAnswer.
+ */
+export interface PolicyForm {
+  kind: Kind13;
+  formId: Formid7;
+  section: Section;
+  currency: Currency10;
+  acceptsReturns: Acceptsreturns1;
+  returnWindowDays: Returnwindowdays1;
+  returnConditions: Returnconditions1;
+  nonReturnableItems: Nonreturnableitems1;
+  refundMethod: Refundmethod1;
+  returnShippingPaidBy: Returnshippingpaidby1;
+  defectReportDays: Defectreportdays1;
+  deliveryOptions: Deliveryoptions1;
+  deliveryAreas: Deliveryareas1;
+  deliveryFee: Deliveryfee3;
+  freeDeliveryMinimum: Freedeliveryminimum1;
+  handoverDays: Handoverdays1;
+  acceptedPaymentMethods: Acceptedpaymentmethods1;
+  paidOrderCancellation: Paidordercancellation1;
+  sendsMarketingMessages: Sendsmarketingmessages1;
+  additionalTerms: Additionalterms1;
+}
+/**
+ * Asks the shopper which items of a completed order go back and why.
+ * Answered with ReturnAnswer.
+ */
+export interface ReturnForm {
+  kind: Kind14;
+  formId: Formid8;
+  orderId: Orderid1;
+  currency: Currency11;
+  items: Items4;
+}
+/**
+ * An item of the order a return form is about.
+ */
+export interface ChatReturnableItem {
+  item: Item;
+  name: Name9;
+  price: Price5;
+  quantity: Quantity2;
+}
+/**
+ * Asks the shopper to verify their phone number (Firebase sends the
+ * code). Answered with PhoneVerifiedAnswer once verifyCustomerPhone
+ * stored it.
+ */
+export interface PhoneVerificationForm {
+  kind: Kind15;
+  formId: Formid9;
+}
+/**
+ * Asks the admin for photos of one item to turn into product photos.
+ * Answered with PhotoRequestAnswer.
+ */
+export interface PhotoRequestForm {
+  kind: Kind16;
+  formId: Formid10;
+  count: Count;
+}
+/**
+ * Asks the shopper how they get their order: picked up at the store,
+ * or delivered to the address they pin. Answered with FulfillmentAnswer.
+ */
+export interface FulfillmentForm {
+  kind: Kind17;
+  formId: Formid11;
+  options: Options;
+  currency: Currency12;
+  storeAddress: Storeaddress;
+  /**
+   * The store's pin; null until pinned
+   */
+  storeLocation: StoreLocationResponse | null;
+  deliveryAreas: Deliveryareas2;
+  deliveryFee: Deliveryfee4;
+  freeDeliveryMinimum: Freedeliveryminimum2;
+  handoverDays: Handoverdays2;
+}
+/**
+ * A StoreDetailsForm, filled in.
+ */
+export interface StoreDetailsAnswer {
+  kind: Kind18;
+  formId: Formid12;
+  name: Name10;
+  description: Description4;
+  currency: Currency13;
+  contactNumber: Contactnumber4;
+  address: Address3;
+  openingHours?: Openinghours2;
+}
+/**
+ * A LocationForm's pin.
+ */
+export interface LocationAnswer {
+  kind: Kind19;
+  formId: Formid13;
+  latitude: Latitude1;
+  longitude: Longitude1;
+}
+/**
+ * A NewProductsForm, filled in.
+ */
+export interface NewProductsAnswer {
+  kind: Kind20;
+  formId: Formid14;
+  products: Products3;
+}
+/**
+ * One product of an addStoreProducts call, as the admin described it.
+ * Types only, no limits: the route checks them (_validProduct), so a
+ * refusal names the product's position and never quotes the value.
+ */
+export interface NewProduct {
+  name: Name11;
+  price: Price6;
+  inventory: Inventory3;
+  description?: Description5;
+  isAvailable?: Isavailable1;
+}
+/**
+ * A PolicyForm's answers: a field left null keeps its answer.
+ */
+export interface PolicyAnswer {
+  kind: Kind21;
+  formId: Formid15;
+  acceptsReturns?: Acceptsreturns2;
+  returnWindowDays?: Returnwindowdays2;
+  returnConditions?: Returnconditions2;
+  nonReturnableItems?: Nonreturnableitems2;
+  refundMethod?: Refundmethod2;
+  returnShippingPaidBy?: Returnshippingpaidby2;
+  defectReportDays?: Defectreportdays2;
+  deliveryOptions?: Deliveryoptions2;
+  deliveryAreas?: Deliveryareas3;
+  deliveryFee?: Deliveryfee5;
+  freeDeliveryMinimum?: Freedeliveryminimum3;
+  handoverDays?: Handoverdays3;
+  acceptedPaymentMethods?: Acceptedpaymentmethods2;
+  paidOrderCancellation?: Paidordercancellation2;
+  sendsMarketingMessages?: Sendsmarketingmessages2;
+  additionalTerms?: Additionalterms2;
+}
+/**
+ * A ReturnForm, filled in.
+ */
+export interface ReturnAnswer {
+  kind: Kind22;
+  formId: Formid16;
+  items: Items5;
+  reason: Reason2;
+  note?: Note1;
+}
+/**
+ * One item of a requestReturn call. Types only, no limits: the route
+ * checks them, so a refusal names the item's position and never quotes
+ * the value (NewOrderItem's reason).
+ */
+export interface NewReturnItem {
+  item: Item1;
+  quantity: Quantity3;
+}
+/**
+ * A PhoneVerificationForm done: the number is verified.
+ */
+export interface PhoneVerifiedAnswer {
+  kind: Kind23;
+  formId: Formid17;
+}
+/**
+ * A PhotoRequestForm, filled in: the uploaded photos' URLs.
+ */
+export interface PhotoRequestAnswer {
+  kind: Kind24;
+  formId: Formid18;
+  imageUrls: Imageurls;
+  count: Count1;
+  notes?: Notes;
+}
+/**
+ * A ShopProductsCard's picks.
+ */
+export interface OrderItemsAnswer {
+  kind: Kind25;
+  formId: Formid19;
+  items: Items6;
+}
+/**
+ * One item of a createOrder call. Types only, no limits: the route
+ * checks them, so a refusal names the item's position and never quotes
+ * the value (NewProduct's reason).
+ */
+export interface NewOrderItem {
+  productId: Productid;
+  quantity: Quantity4;
+}
+/**
+ * A CheckoutCard's payment method.
+ */
+export interface PaymentAnswer {
+  kind: Kind26;
+  formId: Formid20;
+  paymentMethod: Paymentmethod2;
+}
+/**
+ * A StoreOrdersCard's orders handed over.
+ */
+export interface HandoverAnswer {
+  kind: Kind27;
+  formId: Formid21;
+  orderIds: Orderids;
+}
+/**
+ * A StoreReturnsCard's decision on one requested return.
+ */
+export interface ReturnDecisionAnswer {
+  kind: Kind28;
+  formId: Formid22;
+  returnId: Returnid;
+  decision: Decision;
+  reason?: Reason3;
+}
+/**
+ * A FulfillmentForm's choice: a delivery comes with where it goes.
+ */
+export interface FulfillmentAnswer {
+  kind: Kind29;
+  formId: Formid23;
+  fulfillment: Fulfillment2;
+  /**
+   * Where a delivery goes; null for a pickup
+   */
+  delivery?: DeliveryAnswer | null;
+}
+/**
+ * Where a delivery goes, as the shopper gave it.
+ */
+export interface DeliveryAnswer {
+  address: Address4;
+  latitude: Latitude2;
+  longitude: Longitude2;
+  notes?: Notes1;
 }
 /**
  * The tokens a turn's model calls used, summed over its calls.

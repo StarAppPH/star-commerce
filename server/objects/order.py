@@ -9,7 +9,8 @@ from typing import Literal
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
                           ResponseModel)
-from objects.store import PHONE_NUMBER_PATTERN, StoreCurrency
+from objects.store import (LATITUDE_LIMIT, LONGITUDE_LIMIT,
+                           PHONE_NUMBER_PATTERN, StoreCurrency)
 from objects.product import (PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
                              Product)
 
@@ -44,6 +45,12 @@ ORDER_ITEMS_MAX = 50
 ORDER_PAYMENT_MINUTES = 30
 # The most unpaid (pending, unexpired) orders a customer holds at a store.
 MAX_PENDING_ORDERS_PER_STORE = 3
+# How a customer gets an order: picked up at the store, or delivered to the
+# address and pin they gave. The store's policy (deliveryOptions) says which
+# it offers; one that has not said offers pickup.
+Fulfillment = Literal['pickup', 'delivery']
+DELIVERY_ADDRESS_MAX_LENGTH = 200
+DELIVERY_NOTES_MAX_LENGTH = 300
 
 
 class OrderItem(AppModel):
@@ -63,6 +70,16 @@ class NewOrderItem(AppModel):
     the value (NewProduct's reason)."""
     productId: str = Field(..., description='The Products _id')
     quantity: int = Field(..., description='Units to order')
+
+
+class NewOrderDelivery(AppModel):
+    """Where a createOrder delivery goes. Types only, no limits: the route
+    checks them, never quoting a value."""
+    address: str = Field(..., description='The street address')
+    latitude: float = Field(..., description="The pin's degrees north")
+    longitude: float = Field(..., description="The pin's degrees east")
+    notes: str | None = Field(None, description='For the delivery, e.g. a '
+                              'landmark or a gate code')
 
 
 class Order(MongoModel):
@@ -109,6 +126,25 @@ class Order(MongoModel):
         None, description='When its payment was refunded')
     refundReference: str | None = Field(
         None, description="The payment provider's id of the refund")
+    # Delivery. A pickup order has no fee and no address. An order placed
+    # before delivery existed is a pickup (these defaults). total includes
+    # deliveryFee: it is what was charged.
+    fulfillment: Fulfillment = Field(
+        'pickup', description='How the customer gets it: pickup or delivery')
+    deliveryFee: float = Field(0, ge=0, le=PRODUCT_PRICE_MAX,
+                               description='What delivery adds to the total')
+    deliveryAddress: str | None = Field(
+        None, min_length=1, max_length=DELIVERY_ADDRESS_MAX_LENGTH,
+        description='Where it is delivered, as the customer typed it')
+    deliveryLatitude: float | None = Field(
+        None, ge=-LATITUDE_LIMIT, le=LATITUDE_LIMIT,
+        description="The delivery pin's degrees north")
+    deliveryLongitude: float | None = Field(
+        None, ge=-LONGITUDE_LIMIT, le=LONGITUDE_LIMIT,
+        description="The delivery pin's degrees east")
+    deliveryNotes: str | None = Field(
+        None, min_length=1, max_length=DELIVERY_NOTES_MAX_LENGTH,
+        description="The customer's notes for the delivery")
 
 
 class OrderView(StoredDocumentKeys, Order):
@@ -126,7 +162,31 @@ class OrderItemRow(ResponseModel):
     quantity: int = Field(..., ge=1, description='Units ordered')
 
 
-class StoreOrderRow(ResponseModel):
+class OrderDeliveryRow(ResponseModel):
+    """How an order row's customer gets it, for every order row (the
+    store's, the customer's, the chat cards'). Each field restates
+    Order's, which test_route_response_models.py's MIRRORS keeps in step;
+    an order stored before delivery existed reads as a pickup
+    (OrderActions.orderRow)."""
+    fulfillment: Fulfillment = Field(
+        ..., description='How the customer gets it: pickup or delivery')
+    deliveryFee: float = Field(..., ge=0, le=PRODUCT_PRICE_MAX,
+                               description='What delivery adds to the total')
+    deliveryAddress: str | None = Field(
+        ..., min_length=1, max_length=DELIVERY_ADDRESS_MAX_LENGTH,
+        description='Where it is delivered, as the customer typed it')
+    deliveryLatitude: float | None = Field(
+        ..., ge=-LATITUDE_LIMIT, le=LATITUDE_LIMIT,
+        description="The delivery pin's degrees north")
+    deliveryLongitude: float | None = Field(
+        ..., ge=-LONGITUDE_LIMIT, le=LONGITUDE_LIMIT,
+        description="The delivery pin's degrees east")
+    deliveryNotes: str | None = Field(
+        ..., min_length=1, max_length=DELIVERY_NOTES_MAX_LENGTH,
+        description="The customer's notes for the delivery")
+
+
+class StoreOrderRow(OrderDeliveryRow):
     """One order as its store's admin sees it. Each field restates
     Order's, which test_route_response_models.py's MIRRORS keeps in
     step."""
@@ -161,7 +221,7 @@ class StoreOrderRow(ResponseModel):
         ..., description="The payment provider's id of the refund")
 
 
-class MyOrderRow(ResponseModel):
+class MyOrderRow(OrderDeliveryRow):
     """One order as the customer who placed it sees it: StoreOrderRow
     without the contact number and the payment and refund references. Each field
     restates Order's, which test_route_response_models.py's MIRRORS keeps

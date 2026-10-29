@@ -1,0 +1,78 @@
+{
+    "$defs": {
+        "StoreLocationResponse": {
+            "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "latitude": {
+                    "description": "Degrees north (negative: south)",
+                    "maximum": 90,
+                    "minimum": -90,
+                    "title": "Latitude",
+                    "type": "number"
+                },
+                "longitude": {
+                    "description": "Degrees east (negative: west)",
+                    "maximum": 180,
+                    "minimum": -180,
+                    "title": "Longitude",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "latitude",
+                "longitude"
+            ],
+            "title": "StoreLocationResponse",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "Asks the admin to pin the store on a map. Answered with\nLocationAnswer.",
+    "properties": {
+        "kind": {
+            "const": "locationForm",
+            "description": "The form",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "location": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/StoreLocationResponse"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The pin so far; null when there is none"
+        },
+        "address": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The store's address",
+            "title": "Address"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "location",
+        "address"
+    ],
+    "title": "LocationForm",
+    "type": "object",
+    "additionalProperties": false
+}

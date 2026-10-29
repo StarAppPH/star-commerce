@@ -37,6 +37,10 @@ export type Isavailable = boolean;
  * Units sold so far
  */
 export type Soldcount = number;
+/**
+ * The photo the shop shows: the url of one of the store's GeneratedPhotos (setProductPhoto)
+ */
+export type Photourl = string | null;
 
 /**
  * One product of an admin's list: AdminProductRow with the
@@ -53,4 +57,5 @@ export interface AdminProductListRow {
   reservedQuantity: Reservedquantity;
   isAvailable: Isavailable;
   soldCount: Soldcount;
+  photoUrl?: Photourl;
 }
