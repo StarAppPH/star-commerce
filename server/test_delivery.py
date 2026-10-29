@@ -184,6 +184,16 @@ def test_aStoreThatOnlyDelivers_choosesDeliveryForTheCustomer(clean,
         api.createOrder(customerId, store['_id'], items(products['Pandesal']))
 
 
+def test_theChatsCreateOrder_needsNoFulfillment():
+    """The model may leave fulfillment out (createOrder then picks the one
+    way that can be booked), and delivery with it."""
+    import chatTools
+    [tool] = [t for t in chatTools.TOOLS['customer']
+              if t['function']['name'] == 'createOrder']
+    required = tool['function']['parameters'].get('required', [])
+    assert 'fulfillment' not in required and 'delivery' not in required
+
+
 def test_aStoreThatOnlyOffersPickup_refusesADelivery(clean, firebase):
     store, customerId, products = shop(firebase, deliveryOptions=['pickup'])
 
@@ -237,6 +247,8 @@ def test_aDeliveryTheStoreHasNotPriced_isRefused(clean, firebase):
      'The delivery longitude is a number from -180 to 180'),
     ('delivery', {**HOME, 'notes': SENTINEL * 50},
      f'The delivery notes is at most {DELIVERY_NOTES_MAX_LENGTH} characters'),
+    ('delivery', {**HOME, 'latitude': float('nan')},
+     'The delivery latitude is a number from -90 to 90'),
 ])
 def test_aDeliveryRefusal_namesTheField_neverTheValue(clean, firebase,
                                                       fulfillment, delivery,
