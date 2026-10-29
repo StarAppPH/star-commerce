@@ -3,7 +3,7 @@ import Image from 'next/image';
 import { ExternalLinkIcon, ImageIcon, MapPinIcon, PackageSearchIcon, ScrollTextIcon, StoreIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChatCard } from './ChatCard';
+import { ChatCard, ProductPhoto } from './ChatCard';
 import { POLICY_VALUE_LABELS, formatMoney } from './format';
 import type { ComponentProps } from './types';
 
@@ -18,6 +18,7 @@ export function StoreProductsCard({ component }: ComponentProps<'storeProducts'>
       <ul className="divide-y">
         {component.products.map((product) => (
           <li key={product._id} className="flex items-center gap-3 px-4 py-2.5">
+            <ProductPhoto dataComponent="storeProductsPhoto" url={product.photoUrl} name={product.name} />
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="flex items-center gap-2 font-medium text-sm">
                 <span className="truncate">{product.name}</span>
@@ -97,10 +98,19 @@ export function PolicyCard({ component }: ComponentProps<'policy'>) {
 // The product photos a tool made.
 export function PhotosCard({ component }: ComponentProps<'photos'>) {
   return (
-    <ChatCard dataComponent="photosCard" icon={<ImageIcon />} title={component.photos.length === 1 ? '1 photo' : `${component.photos.length} photos`}>
+    <ChatCard
+      dataComponent="photosCard"
+      icon={<ImageIcon />}
+      title={component.photos.length === 1 ? '1 photo' : `${component.photos.length} photos`}
+      footer={component.photos.length > 0 ? (
+        <span className="me-auto text-muted-foreground text-xs">
+          To show one in your shop, say which product it goes on, e.g. “use photo 1 for the mug”.
+        </span>
+      ) : undefined}
+    >
       {component.photos.length === 0 && <p className="px-4 py-3 text-muted-foreground text-sm">No photos were made this time.</p>}
       <div className="grid grid-cols-2 gap-2 p-3 empty:hidden sm:grid-cols-3">
-        {component.photos.map((photo) => (
+        {component.photos.map((photo, index) => (
           <a
             key={photo._id}
             href={photo.url}
@@ -111,11 +121,14 @@ export function PhotosCard({ component }: ComponentProps<'photos'>) {
           >
             <Image
               src={photo.url}
-              alt="Product photo"
+              alt={`Product photo ${index + 1}`}
               fill
               sizes="(min-width: 640px) 240px, 45vw"
               className="object-cover"
             />
+            <span className="absolute top-1.5 left-1.5 rounded-md bg-background/85 px-1.5 py-0.5 font-medium text-xs tabular-nums">
+              {index + 1}
+            </span>
           </a>
         ))}
       </div>

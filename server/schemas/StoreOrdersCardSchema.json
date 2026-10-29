@@ -3,6 +3,78 @@
         "ChatStoreOrderRow": {
             "description": "An order on the admin's order card.",
             "properties": {
+                "fulfillment": {
+                    "description": "How the customer gets it: pickup or delivery",
+                    "enum": [
+                        "pickup",
+                        "delivery"
+                    ],
+                    "title": "Fulfillment",
+                    "type": "string"
+                },
+                "deliveryFee": {
+                    "description": "What delivery adds to the total",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Deliveryfee",
+                    "type": "number"
+                },
+                "deliveryAddress": {
+                    "anyOf": [
+                        {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Where it is delivered, as the customer typed it",
+                    "title": "Deliveryaddress"
+                },
+                "deliveryLatitude": {
+                    "anyOf": [
+                        {
+                            "maximum": 90,
+                            "minimum": -90,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery pin's degrees north",
+                    "title": "Deliverylatitude"
+                },
+                "deliveryLongitude": {
+                    "anyOf": [
+                        {
+                            "maximum": 180,
+                            "minimum": -180,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery pin's degrees east",
+                    "title": "Deliverylongitude"
+                },
+                "deliveryNotes": {
+                    "anyOf": [
+                        {
+                            "maxLength": 300,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The customer's notes for the delivery",
+                    "title": "Deliverynotes"
+                },
                 "_id": {
                     "description": "Orders _id",
                     "title": "Id",
@@ -132,6 +204,12 @@
                 }
             },
             "required": [
+                "fulfillment",
+                "deliveryFee",
+                "deliveryAddress",
+                "deliveryLatitude",
+                "deliveryLongitude",
+                "deliveryNotes",
                 "_id",
                 "status",
                 "items",

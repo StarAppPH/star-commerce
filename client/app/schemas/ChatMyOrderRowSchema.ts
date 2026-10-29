@@ -6,6 +6,30 @@
  */
 
 /**
+ * How the customer gets it: pickup or delivery
+ */
+export type Fulfillment = "pickup" | "delivery";
+/**
+ * What delivery adds to the total
+ */
+export type Deliveryfee = number;
+/**
+ * Where it is delivered, as the customer typed it
+ */
+export type Deliveryaddress = string | null;
+/**
+ * The delivery pin's degrees north
+ */
+export type Deliverylatitude = number | null;
+/**
+ * The delivery pin's degrees east
+ */
+export type Deliverylongitude = number | null;
+/**
+ * The customer's notes for the delivery
+ */
+export type Deliverynotes = string | null;
+/**
  * Orders _id
  */
 export type Id = string;
@@ -87,6 +111,12 @@ export type Refundedat = string | null;
  * An order on a shopper's order card.
  */
 export interface ChatMyOrderRow {
+  fulfillment: Fulfillment;
+  deliveryFee: Deliveryfee;
+  deliveryAddress: Deliveryaddress;
+  deliveryLatitude: Deliverylatitude;
+  deliveryLongitude: Deliverylongitude;
+  deliveryNotes: Deliverynotes;
   _id: Id;
   status: Status;
   items: Items;

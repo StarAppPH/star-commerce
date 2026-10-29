@@ -25,6 +25,10 @@ export type Price = number;
  * Units free to sell; 0 is sold out
  */
 export type Inventory = number;
+/**
+ * Its photo; null when it has none
+ */
+export type Photourl = string | null;
 
 /**
  * A product on a shop card.
@@ -35,4 +39,5 @@ export interface ChatShopProductRow {
   description: Description;
   price: Price;
   inventory: Inventory;
+  photoUrl: Photourl;
 }

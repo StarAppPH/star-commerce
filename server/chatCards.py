@@ -54,16 +54,19 @@ def _pick(row: dict, keys: tuple[str, ...]) -> dict:
     return {key: row.get(key) for key in keys}
 
 
-_SHOP_PRODUCT = ('_id', 'name', 'description', 'price', 'inventory')
+_SHOP_PRODUCT = ('_id', 'name', 'description', 'price', 'inventory',
+                 'photoUrl')
 _STORE_PRODUCT = ('_id', 'name', 'price', 'inventory', 'reservedQuantity',
-                  'isAvailable', 'soldCount')
+                  'isAvailable', 'soldCount', 'photoUrl')
 _ORDER_ITEM = ('name', 'price', 'quantity')
+_ORDER_DELIVERY = ('fulfillment', 'deliveryFee', 'deliveryAddress',
+                   'deliveryLatitude', 'deliveryLongitude', 'deliveryNotes')
 _STORE_ORDER = ('_id', 'status', 'total', 'currency', 'contactNumber',
                 'createdAt', 'paymentMethod', 'paidAt', 'completedAt',
-                'cancelReason')
+                'cancelReason', *_ORDER_DELIVERY)
 _MY_ORDER = ('_id', 'status', 'total', 'currency', 'createdAt', 'expiresAt',
              'paymentMethod', 'paidAt', 'completedAt', 'cancelReason',
-             'refundedAt')
+             'refundedAt', *_ORDER_DELIVERY)
 _STORE_RETURN = ('_id', 'orderId', 'status', 'reason', 'note',
                  'refundAmount', 'currency', 'createdAt', 'contactNumber',
                  'rejectReason', 'restocked')
@@ -190,6 +193,7 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'addStoreProducts': _storeProducts,
     'addStoreProduct': _storeProduct,
     'updateStoreProduct': _storeProduct,
+    'setProductPhoto': _storeProduct,
     'getStoreOrders': _storeOrders,
     'completeOrder': _storeOrder,
     'cancelStoreOrder': _storeOrder,

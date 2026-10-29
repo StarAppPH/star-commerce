@@ -20,8 +20,11 @@ from typing import Annotated, Literal, Union
 from pydantic import Field
 
 from objects.base import AppModel, ResponseModel
-from objects.order import (ORDER_ITEMS_MAX, CancelReason, NewOrderItem,
-                           OrderItemRow, OrderStatus, PaymentMethod)
+from objects.order import (DELIVERY_ADDRESS_MAX_LENGTH,
+                           DELIVERY_NOTES_MAX_LENGTH, ORDER_ITEMS_MAX,
+                           CancelReason, Fulfillment, NewOrderItem,
+                           OrderDeliveryRow, OrderItemRow, OrderStatus,
+                           PaymentMethod)
 from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                            PHOTOS_PER_CALL_MAX, GeneratedPhotoRow)
 from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
@@ -72,6 +75,8 @@ class ChatShopProductRow(ResponseModel):
     price: float = Field(..., ge=0, description="Price in the store's currency")
     inventory: int = Field(..., ge=0,
                            description='Units free to sell; 0 is sold out')
+    photoUrl: str | None = Field(..., description='Its photo; null when '
+                                 'it has none')
 
 
 class ShopProductsCard(ResponseModel):
@@ -95,6 +100,8 @@ class ChatStoreProductRow(ResponseModel):
                                   description='Units unpaid orders hold')
     isAvailable: bool = Field(..., description='Shown to customers')
     soldCount: int = Field(..., ge=0, description='Units sold so far')
+    photoUrl: str | None = Field(..., description='Its photo; null when '
+                                 'it has none')
 
 
 class StoreProductsCard(ResponseModel):
@@ -105,7 +112,7 @@ class StoreProductsCard(ResponseModel):
         ..., max_length=CHAT_CARD_ROWS_MAX, description='The products')
 
 
-class ChatStoreOrderRow(ResponseModel):
+class ChatStoreOrderRow(OrderDeliveryRow):
     """An order on the admin's order card."""
     id: str = Field(..., alias='_id', description='Orders _id')
     status: OrderStatus = Field(..., description='Where the order is')
@@ -134,7 +141,7 @@ class StoreOrdersCard(ResponseModel):
         ..., max_length=CHAT_CARD_ROWS_MAX, description='The orders')
 
 
-class ChatMyOrderRow(ResponseModel):
+class ChatMyOrderRow(OrderDeliveryRow):
     """An order on a shopper's order card."""
     id: str = Field(..., alias='_id', description='Orders _id')
     status: OrderStatus = Field(..., description='Where the order is')
@@ -376,11 +383,29 @@ class PhotoRequestForm(ResponseModel):
                        description='How many photos to make, prefilled')
 
 
+class FulfillmentForm(ResponseModel):
+    """Asks the shopper how they get their order: picked up at the store,
+    or delivered to the address they pin. Answered with FulfillmentAnswer."""
+    kind: Literal['fulfillmentForm'] = Field(..., description='The form')
+    formId: FormId
+    options: list[Fulfillment] = Field(
+        ..., min_length=1, max_length=2,
+        description='The ways the order can be booked')
+    currency: StoreCurrency = Field(..., description='Fees are in it')
+    storeAddress: str | None = Field(..., description='Where to pick it up')
+    storeLocation: StoreLocationResponse | None = Field(
+        ..., description="The store's pin; null until pinned")
+    deliveryAreas: DeliveryAreas
+    deliveryFee: DeliveryFee
+    freeDeliveryMinimum: FreeDeliveryMinimum
+    handoverDays: HandoverDays
+
+
 ChatComponent = Annotated[Union[
     ShopProductsCard, StoreProductsCard, StoreOrdersCard, MyOrdersCard,
     CheckoutCard, StoreReturnsCard, MyReturnsCard, PolicyCard, PhotosCard,
     StoreCard, StoreDetailsForm, LocationForm, NewProductsForm, PolicyForm,
-    ReturnForm, PhoneVerificationForm, PhotoRequestForm,
+    ReturnForm, PhoneVerificationForm, PhotoRequestForm, FulfillmentForm,
 ], Field(discriminator='kind')]
 
 
@@ -520,10 +545,30 @@ class ReturnDecisionAnswer(AppModel):
                                description='Why it is rejected')
 
 
+class DeliveryAnswer(AppModel):
+    """Where a delivery goes, as the shopper gave it."""
+    address: str = Field(..., max_length=DELIVERY_ADDRESS_MAX_LENGTH,
+                         description='The street address')
+    latitude: float = Field(..., description="The pin's degrees north")
+    longitude: float = Field(..., description="The pin's degrees east")
+    notes: str | None = Field(None, max_length=DELIVERY_NOTES_MAX_LENGTH,
+                              description='For the delivery')
+
+
+class FulfillmentAnswer(AppModel):
+    """A FulfillmentForm's choice: a delivery comes with where it goes."""
+    kind: Literal['fulfillment'] = Field(..., description='The answer')
+    formId: FormId
+    fulfillment: Fulfillment = Field(..., description='Pickup or delivery')
+    delivery: DeliveryAnswer | None = Field(
+        None, description='Where a delivery goes; null for a pickup')
+
+
 # The chat route's `form` param (a plain union: a route param cannot be
 # Annotated); ChatFormAnswerTagged reads it by its kind.
 ChatFormAnswer = (StoreDetailsAnswer | LocationAnswer | NewProductsAnswer
                   | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer
                   | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer
-                  | HandoverAnswer | ReturnDecisionAnswer)
+                  | HandoverAnswer | ReturnDecisionAnswer
+                  | FulfillmentAnswer)
 ChatFormAnswerTagged = Annotated[ChatFormAnswer, Field(discriminator='kind')]

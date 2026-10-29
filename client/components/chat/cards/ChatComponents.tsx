@@ -2,6 +2,7 @@
 import { CheckoutCard } from './CheckoutCard';
 import { MyOrdersCard, StoreOrdersCard } from './OrderCards';
 import { MyReturnsCard, StoreReturnsCard } from './ReturnCards';
+import { FulfillmentForm } from './FulfillmentForm';
 import { PhotosCard, PolicyCard, StoreCard, StoreProductsCard } from './InfoCards';
 import { LocationForm } from './LocationForm';
 import { NewProductsForm } from './NewProductsForm';
@@ -51,6 +52,7 @@ export function ChatComponents({ components, answeredFormIds, busy, onAnswer }: 
           case 'returnForm': return <ReturnForm key={key} component={component} {...shared} />;
           case 'phoneVerificationForm': return <PhoneVerificationForm key={key} component={component} {...shared} />;
           case 'photoRequestForm': return <PhotoRequestForm key={key} component={component} {...shared} />;
+          case 'fulfillmentForm': return <FulfillmentForm key={key} component={component} {...shared} />;
           default: return null;
         }
       })}

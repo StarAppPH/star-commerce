@@ -27,7 +27,9 @@ from typing import Callable
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from actions.CustomerActions import CUSTOMERS
-from actions.OrderActions import ORDERS
+from actions.OrderActions import (DELIVERY_FOR_PICKUP, DELIVERY_REQUIRED,
+                                  NO_DELIVERY_FEE_YET, ORDERS,
+                                  bookableFulfillments, storeDelivery)
 from actions.PolicyActions import _storePolicy
 from actions.StoreActions import STORES, ownerQuery
 from mongoDb import db
@@ -57,6 +59,9 @@ NO_PHOTO_STYLE_YET = ('Set the photo style first (updateMyStoreTheme), then '
                       'open the photo form')
 ORDER_NOT_RETURNABLE = 'Only a completed order of this customer can be returned'
 ORDER_NOT_FOUND = 'Order not found'
+STORE_NOT_FOUND = 'Store not found'
+PICKUP_ONLY = ('Only pickup can be booked at this store: place the order '
+               'without asking how it is fulfilled')
 # Refusals of a form answer, the user's to act on.
 FORM_NOT_FOUND = 'That form is no longer in this chat'
 FORM_ALREADY_ANSWERED = 'You already sent this form'
@@ -101,6 +106,7 @@ ANSWERS_TO = {
     'payment': 'checkout',
     'handover': 'storeOrders',
     'returnDecision': 'storeReturns',
+    'fulfillment': 'fulfillmentForm',
 }
 
 _LABELS = {
@@ -226,6 +232,10 @@ class ShowPhoneVerificationArgs(_Args):
     model_config = ConfigDict(title='showPhoneVerificationArguments')
 
 
+class ShowFulfillmentFormArgs(_Args):
+    model_config = ConfigDict(title='showFulfillmentFormArguments')
+
+
 class FormRefused(Exception):
     """A form tool that cannot open its form: its message goes to the model
     as the tool's error."""
@@ -345,6 +355,36 @@ def _phoneVerification(userId: str, storeId: str,
     return {'kind': 'phoneVerificationForm', 'formId': newFormId()}
 
 
+def _fulfillmentForm(userId: str, storeId: str,
+                     args: ShowFulfillmentFormArgs) -> dict:
+    delivery = storeDelivery(storeId)
+    options = bookableFulfillments(delivery)
+    if not options:
+        raise FormRefused(NO_DELIVERY_FEE_YET)
+    if options == ['pickup']:
+        raise FormRefused(PICKUP_ONLY)
+    store = db.read({'_id': storeId}, STORES,
+                    projection={'currency': 1, 'address': 1, 'location': 1},
+                    findOne=True)
+    if store is None:
+        raise FormRefused(STORE_NOT_FOUND)
+    location = store.get('location')
+    return {
+        'kind': 'fulfillmentForm',
+        'formId': newFormId(),
+        'options': options,
+        'currency': store['currency'],
+        'storeAddress': store.get('address'),
+        'storeLocation': ({'latitude': location['latitude'],
+                           'longitude': location['longitude']}
+                          if location else None),
+        'deliveryAreas': delivery['deliveryAreas'],
+        'deliveryFee': delivery['deliveryFee'],
+        'freeDeliveryMinimum': delivery['freeDeliveryMinimum'],
+        'handoverDays': delivery['handoverDays'],
+    }
+
+
 @dataclass(frozen=True)
 class FormTool:
     toolsets: tuple[str, ...]
@@ -423,6 +463,16 @@ FORM_TOOLS: dict[str, FormTool] = {
         'because the phone number is not verified. When it is done, their '
         'next message says so: then call createOrder again.',
         ShowPhoneVerificationArgs, _phoneVerification),
+    'showFulfillmentForm': FormTool(
+        ('customer', ),
+        'Open a form under your reply where the customer chooses pickup or '
+        'delivery, and for a delivery types the address, pins it on a map '
+        'and adds notes. Use it before createOrder when the store delivers '
+        "(getStorePolicy's deliveryOptions); it refuses when only pickup "
+        'can be booked, and then createOrder needs no fulfillment. Their '
+        'choice comes as their next message: then call createOrder with '
+        'the items and exactly its fulfillment and delivery.',
+        ShowFulfillmentFormArgs, _fulfillmentForm),
 }
 
 
@@ -636,6 +686,26 @@ def _returnDecision(answer, component, userId) -> tuple[str, dict]:
              'decision': 'reject', 'reason': reason})
 
 
+def _fulfillment(answer, component, userId) -> tuple[str, dict]:
+    if answer.fulfillment not in component['options']:
+        raise ValueError(NOT_ON_THE_CARD)
+    if answer.fulfillment == 'pickup':
+        if answer.delivery is not None:
+            raise ValueError(DELIVERY_FOR_PICKUP)
+        return ('I’ll pick it up at the store.',
+                {'kind': 'fulfillment', 'fulfillment': 'pickup',
+                 'delivery': None})
+    if answer.delivery is None:
+        raise ValueError(DELIVERY_REQUIRED)
+    # An empty note is no note.
+    delivery = {**answer.delivery.model_dump(),
+                'notes': (answer.delivery.notes or '').strip() or None}
+    text = (f"Deliver it to {delivery['address']}."
+            + (f" Notes: {delivery['notes']}" if delivery['notes'] else ''))
+    return text, {'kind': 'fulfillment', 'fulfillment': 'delivery',
+                  'delivery': delivery}
+
+
 _ANSWER_TURNS = {
     'storeDetails': _storeDetails,
     'location': _location,
@@ -648,6 +718,7 @@ _ANSWER_TURNS = {
     'payment': _payment,
     'handover': _handover,
     'returnDecision': _returnDecision,
+    'fulfillment': _fulfillment,
 }
 assert set(_ANSWER_TURNS) == set(ANSWERS_TO)
 

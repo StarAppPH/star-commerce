@@ -84,6 +84,20 @@
             "minimum": 0,
             "title": "Soldcount",
             "type": "integer"
+        },
+        "photoUrl": {
+            "anyOf": [
+                {
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The photo the shop shows: the url of one of the store's GeneratedPhotos (setProductPhoto)",
+            "title": "Photourl"
         }
     },
     "required": [

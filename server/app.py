@@ -703,27 +703,33 @@ def createOrder():
     userId = data.get('userId')
     storeId = data.get('storeId')
     items = data.get('items')
+    fulfillment = data.get('fulfillment')
+    delivery = data.get('delivery')
     current_user = get_jwt_identity()
     try:
         if isinstance(userId, (dict, list)):
             raise ValueError('Invalid userId')
         if isinstance(storeId, (dict, list)):
             raise ValueError('Invalid storeId')
+        if isinstance(fulfillment, (dict, list)):
+            raise ValueError('Invalid fulfillment')
         if not isinstance(items, list):
             raise ValueError('Invalid items')
+        if delivery is not None and not isinstance(delivery, dict):
+            raise ValueError('Invalid delivery')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().createOrder(userId, storeId, items)
+        res = ApiRequests().createOrder(userId, storeId, items, fulfillment, delivery)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'createOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'items')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'createOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'items', 'fulfillment', 'delivery')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'createOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'items')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'createOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'items', 'fulfillment', 'delivery')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'createOrder', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'items'))})
+    logging.info({'function': 'createOrder', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'items', 'fulfillment', 'delivery'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Order placed", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
@@ -1487,6 +1493,43 @@ def generateProductPhotos():
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Photos created", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/setProductPhoto', methods=['POST'])
+@jwt_required()
+def setProductPhoto():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    productId = data.get('productId')
+    photoId = data.get('photoId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(productId, (dict, list)):
+            raise ValueError('Invalid productId')
+        if isinstance(photoId, (dict, list)):
+            raise ValueError('Invalid photoId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().setProductPhoto(userId, productId, photoId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'setProductPhoto', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'productId', 'photoId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'setProductPhoto', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'productId', 'photoId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'setProductPhoto', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'productId', 'photoId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Product photo set", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
     return jsonify(response.model_dump(exclude_unset=True)), response.status
 
 

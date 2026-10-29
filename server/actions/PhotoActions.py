@@ -23,6 +23,10 @@ model call; the model is skipped (a 503) with under MODEL_MIN_SECONDS
 left. Each photo is recorded (a GeneratedPhotos document) right after its
 upload: when a later one fails, the saved ones are still returned.
 
+setProductPhoto shows one of the store's photos on one of its products
+(Product.photoUrl, the photo's download URL): the shop shows it. Only a
+photo the store made can be set, never a URL the client or the AI sends.
+
 The clock: every read of now is _now(), which reads this module's
 `datetime`, so a test freezes it by replacing PhotoActions.datetime.
 """
@@ -36,14 +40,15 @@ import time
 import imageModel
 import photoStorage
 from actions.callSlots import slot
+from actions.ProductActions import PRODUCT_NOT_FOUND, PRODUCTS
 from actions.StoreActions import _validText, requireOwnerStore
 from actions.usageCounters import (appDay, giveBackQuotas, takeQuotas,
                                    usageExpiry, usageKey)
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
-                     PHOTOS_PER_CALL_MAX, GeneratedPhoto,
-                     GeneratedPhotosResponse)
+                     PHOTOS_PER_CALL_MAX, AdminProductRow, GeneratedPhoto,
+                     GeneratedPhotosResponse, projectedCopy, projection_of)
 from route_config import route_config
 from utils import generateRandomString, wholeNumber
 
@@ -81,6 +86,7 @@ IMAGE_URLS_COUNT = f'Send 1 to {PHOTO_REFERENCES_MAX} imageUrls'
 IMAGE_URLS_TWICE = 'imageUrls lists the same photo twice'
 PHOTO_COUNT = f'count is a whole number from 1 to {PHOTOS_PER_CALL_MAX}'
 NOTES_LABEL = 'The notes'
+PHOTO_NOT_FOUND = 'Photo not found'
 PHOTO_INSTRUCTION = (
     'Create a professional e-commerce product photo of the item shown in '
     'the reference photos. Keep the product exactly as it is: its shape, '
@@ -266,7 +272,8 @@ class PhotoActions():
         across all stores too. notes is optional extra
         direction from the admin for these photos (up to 300 characters),
         e.g. "show it from above". Confirm the count with the admin before
-        calling. Returns each photo's _id and url. If this tool refuses,
+        calling. Returns each photo's _id and url: to show one in the shop,
+        put it on its product with setProductPhoto. If this tool refuses,
         relay its message to the admin."""
         deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
         store = requireOwnerStore(userId, {'_id': 1, 'photoStyle': 1,
@@ -293,3 +300,40 @@ class PhotoActions():
             'durationMs': round((time.monotonic() - started) * 1000),
         })
         return {'photos': photos}
+
+    @mcp_tool('admin')
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Product photo set',
+                  responseModel=AdminProductRow)
+    def setProductPhoto(self,
+                        userId: str,
+                        productId: str,
+                        photoId: str | None = None) -> dict:
+        """Show one of the store's product photos (its _id from
+        generateProductPhotos) on a product of the admin's store (its
+        productId from listMyStoreProducts): customers see it in the shop.
+        Leave photoId out to take the product's photo off. Confirm the
+        product and the photo with the admin before calling. If it refuses,
+        relay its message to the admin."""
+        store = requireOwnerStore(userId, {'_id': 1})
+        photoUrl = None
+        # An empty photoId is none: the photo comes off.
+        if photoId:
+            photo = db.read({'_id': photoId, 'storeId': store['_id']},
+                            GENERATED_PHOTOS, projection={'url': 1},
+                            findOne=True)
+            if photo is None:
+                raise ValueError(PHOTO_NOT_FOUND)
+            photoUrl = photo['url']
+        updated = None
+        if productId:
+            # The _version bump of every product write (Product).
+            updated = db.findOneAndUpdate(
+                {'_id': productId, 'storeId': store['_id']},
+                {'$set': {'photoUrl': photoUrl}, '$inc': {'_version': 1}},
+                PRODUCTS, upsert=False,
+                projection=projection_of(AdminProductRow))
+        if updated is None:
+            raise ValueError(PRODUCT_NOT_FOUND)
+        return projectedCopy(AdminProductRow, updated)

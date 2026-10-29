@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ShoppingBagIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChatCard, QuantityStepper, SentNote } from './ChatCard';
+import { ChatCard, ProductPhoto, QuantityStepper, SentNote } from './ChatCard';
 import { formatMoney, nonEmpty } from './format';
 import type { ComponentProps } from './types';
 
@@ -43,6 +43,7 @@ export function ShopProductsCard({ component, answered, busy, onAnswer }: Compon
           const soldOut = product.inventory === 0;
           return (
             <li key={product._id} className="flex items-center gap-3 px-4 py-3">
+              <ProductPhoto dataComponent="shopProductsPhoto" url={product.photoUrl} name={product.name} />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="truncate font-medium text-sm">{product.name}</span>
                 {product.description && (

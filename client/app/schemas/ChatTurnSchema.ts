@@ -92,6 +92,7 @@ export type Components =
       | ReturnForm
       | PhoneVerificationForm
       | PhotoRequestForm
+      | FulfillmentForm
     ]
   | [
       (
@@ -112,6 +113,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -131,6 +133,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       )
     ]
   | [
@@ -152,6 +155,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -171,6 +175,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -190,6 +195,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       )
     ]
   | [
@@ -211,6 +217,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -230,6 +237,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -249,6 +257,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -268,6 +277,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       )
     ]
   | [
@@ -289,6 +299,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -308,6 +319,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -327,6 +339,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -346,6 +359,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -365,6 +379,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       )
     ]
   | [
@@ -386,6 +401,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -405,6 +421,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -424,6 +441,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -443,6 +461,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -462,6 +481,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       ),
       (
         | ShopProductsCard
@@ -481,6 +501,7 @@ export type Components =
         | ReturnForm
         | PhoneVerificationForm
         | PhotoRequestForm
+        | FulfillmentForm
       )
     ];
 /**
@@ -532,6 +553,10 @@ export type Price = number;
  * Units free to sell; 0 is sold out
  */
 export type Inventory = number;
+/**
+ * Its photo; null when it has none
+ */
+export type Photourl = string | null;
 /**
  * The products
  *
@@ -592,6 +617,10 @@ export type Isavailable = boolean;
  */
 export type Soldcount = number;
 /**
+ * Its photo; null when it has none
+ */
+export type Photourl1 = string | null;
+/**
  * The products
  *
  * @maxItems 50
@@ -605,6 +634,30 @@ export type Kind2 = "storeOrders";
  * Set when it has paid orders to hand over
  */
 export type Formid1 = string | null;
+/**
+ * How the customer gets it: pickup or delivery
+ */
+export type Fulfillment = "pickup" | "delivery";
+/**
+ * What delivery adds to the total
+ */
+export type Deliveryfee = number;
+/**
+ * Where it is delivered, as the customer typed it
+ */
+export type Deliveryaddress = string | null;
+/**
+ * The delivery pin's degrees north
+ */
+export type Deliverylatitude = number | null;
+/**
+ * The delivery pin's degrees east
+ */
+export type Deliverylongitude = number | null;
+/**
+ * The customer's notes for the delivery
+ */
+export type Deliverynotes = string | null;
 /**
  * Orders _id
  */
@@ -688,6 +741,30 @@ export type Orders = ChatStoreOrderRow[];
  * The card
  */
 export type Kind3 = "myOrders";
+/**
+ * How the customer gets it: pickup or delivery
+ */
+export type Fulfillment1 = "pickup" | "delivery";
+/**
+ * What delivery adds to the total
+ */
+export type Deliveryfee1 = number;
+/**
+ * Where it is delivered, as the customer typed it
+ */
+export type Deliveryaddress1 = string | null;
+/**
+ * The delivery pin's degrees north
+ */
+export type Deliverylatitude1 = number | null;
+/**
+ * The delivery pin's degrees east
+ */
+export type Deliverylongitude1 = number | null;
+/**
+ * The customer's notes for the delivery
+ */
+export type Deliverynotes1 = string | null;
 /**
  * Orders _id
  */
@@ -989,7 +1066,7 @@ export type Deliveryareas = string | null;
 /**
  * What delivery costs, in the store's currency
  */
-export type Deliveryfee = number | null;
+export type Deliveryfee2 = number | null;
 /**
  * The order total from which delivery is free, in the store's currency
  */
@@ -1276,7 +1353,7 @@ export type Deliveryareas1 = string | null;
 /**
  * What delivery costs, in the store's currency
  */
-export type Deliveryfee1 = number | null;
+export type Deliveryfee3 = number | null;
 /**
  * The order total from which delivery is free, in the store's currency
  */
@@ -1382,6 +1459,62 @@ export type Formid10 = string;
  */
 export type Count = number;
 /**
+ * The form
+ */
+export type Kind17 = "fulfillmentForm";
+/**
+ * Answer it with this id
+ */
+export type Formid11 = string;
+/**
+ * The ways the order can be booked
+ *
+ * @minItems 1
+ * @maxItems 2
+ */
+export type Options = ["pickup" | "delivery"] | ["pickup" | "delivery", "pickup" | "delivery"];
+/**
+ * Fees are in it
+ */
+export type Currency12 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * Where to pick it up
+ */
+export type Storeaddress = string | null;
+/**
+ * Where the store delivers
+ */
+export type Deliveryareas2 = string | null;
+/**
+ * What delivery costs, in the store's currency
+ */
+export type Deliveryfee4 = number | null;
+/**
+ * The order total from which delivery is free, in the store's currency
+ */
+export type Freedeliveryminimum2 = number | null;
+/**
+ * Days from payment until the order is handed over or delivered
+ */
+export type Handoverdays2 = number | null;
+/**
  * The form answer this turn sent, when it is one: userText is then its summary
  */
 export type Formanswer =
@@ -1397,16 +1530,17 @@ export type Formanswer =
       | PaymentAnswer
       | HandoverAnswer
       | ReturnDecisionAnswer
+      | FulfillmentAnswer
     )
   | null;
 /**
  * The answer
  */
-export type Kind17 = "storeDetails";
+export type Kind18 = "storeDetails";
 /**
  * Answer it with this id
  */
-export type Formid11 = string;
+export type Formid12 = string;
 /**
  * Store name
  */
@@ -1418,7 +1552,7 @@ export type Description4 = string;
 /**
  * The store's currency
  */
-export type Currency12 =
+export type Currency13 =
   | "PHP"
   | "USD"
   | "EUR"
@@ -1451,11 +1585,11 @@ export type Openinghours2 = string | null;
 /**
  * The answer
  */
-export type Kind18 = "location";
+export type Kind19 = "location";
 /**
  * Answer it with this id
  */
-export type Formid12 = string;
+export type Formid13 = string;
 /**
  * Degrees north
  */
@@ -1467,11 +1601,11 @@ export type Longitude1 = number;
 /**
  * The answer
  */
-export type Kind19 = "newProducts";
+export type Kind20 = "newProducts";
 /**
  * Answer it with this id
  */
-export type Formid13 = string;
+export type Formid14 = string;
 /**
  * The products to add
  *
@@ -1502,11 +1636,11 @@ export type Isavailable1 = boolean;
 /**
  * The answer
  */
-export type Kind20 = "policy";
+export type Kind21 = "policy";
 /**
  * Answer it with this id
  */
-export type Formid14 = string;
+export type Formid15 = string;
 /**
  * Whether a customer can return an item that is not defective
  */
@@ -1542,19 +1676,19 @@ export type Deliveryoptions2 = ["pickup" | "delivery", ...("pickup" | "delivery"
 /**
  * Where the store delivers
  */
-export type Deliveryareas2 = string | null;
+export type Deliveryareas3 = string | null;
 /**
  * What delivery costs, in the store's currency
  */
-export type Deliveryfee2 = number | null;
+export type Deliveryfee5 = number | null;
 /**
  * The order total from which delivery is free, in the store's currency
  */
-export type Freedeliveryminimum2 = number | null;
+export type Freedeliveryminimum3 = number | null;
 /**
  * Days from payment until the order is handed over or delivered
  */
-export type Handoverdays2 = number | null;
+export type Handoverdays3 = number | null;
 /**
  * The ways a customer can pay
  */
@@ -1579,11 +1713,11 @@ export type Additionalterms2 = string | null;
 /**
  * The answer
  */
-export type Kind21 = "return";
+export type Kind22 = "return";
 /**
  * Answer it with this id
  */
-export type Formid15 = string;
+export type Formid16 = string;
 /**
  * What goes back
  *
@@ -1610,19 +1744,19 @@ export type Note1 = string | null;
 /**
  * The answer
  */
-export type Kind22 = "phoneVerified";
-/**
- * Answer it with this id
- */
-export type Formid16 = string;
-/**
- * The answer
- */
-export type Kind23 = "photoRequest";
+export type Kind23 = "phoneVerified";
 /**
  * Answer it with this id
  */
 export type Formid17 = string;
+/**
+ * The answer
+ */
+export type Kind24 = "photoRequest";
+/**
+ * Answer it with this id
+ */
+export type Formid18 = string;
 /**
  * The download URLs of the uploaded photos
  *
@@ -1651,11 +1785,11 @@ export type Notes = string | null;
 /**
  * The answer
  */
-export type Kind24 = "orderItems";
+export type Kind25 = "orderItems";
 /**
  * Answer it with this id
  */
-export type Formid18 = string;
+export type Formid19 = string;
 /**
  * What to order
  *
@@ -1674,11 +1808,11 @@ export type Quantity4 = number;
 /**
  * The answer
  */
-export type Kind25 = "payment";
+export type Kind26 = "payment";
 /**
  * Answer it with this id
  */
-export type Formid19 = string;
+export type Formid20 = string;
 /**
  * How to pay
  */
@@ -1686,11 +1820,11 @@ export type Paymentmethod2 = "card" | "gcash" | "maya" | "grabPay" | "bankTransf
 /**
  * The answer
  */
-export type Kind26 = "handover";
+export type Kind27 = "handover";
 /**
  * Answer it with this id
  */
-export type Formid20 = string;
+export type Formid21 = string;
 /**
  * The orders handed over
  *
@@ -1701,11 +1835,11 @@ export type Orderids = [string, ...string[]];
 /**
  * The answer
  */
-export type Kind27 = "returnDecision";
+export type Kind28 = "returnDecision";
 /**
  * Answer it with this id
  */
-export type Formid21 = string;
+export type Formid22 = string;
 /**
  * The Returns _id
  */
@@ -1718,6 +1852,34 @@ export type Decision = "approve" | "reject";
  * Why it is rejected
  */
 export type Reason3 = string | null;
+/**
+ * The answer
+ */
+export type Kind29 = "fulfillment";
+/**
+ * Answer it with this id
+ */
+export type Formid23 = string;
+/**
+ * Pickup or delivery
+ */
+export type Fulfillment2 = "pickup" | "delivery";
+/**
+ * The street address
+ */
+export type Address4 = string;
+/**
+ * The pin's degrees north
+ */
+export type Latitude2 = number;
+/**
+ * The pin's degrees east
+ */
+export type Longitude2 = number;
+/**
+ * For the delivery
+ */
+export type Notes1 = string | null;
 /**
  * Tool calls it ran
  */
@@ -1809,6 +1971,7 @@ export interface ChatShopProductRow {
   description: Description;
   price: Price;
   inventory: Inventory;
+  photoUrl: Photourl;
 }
 /**
  * The admin's products a tool listed, added or changed.
@@ -1829,6 +1992,7 @@ export interface ChatStoreProductRow {
   reservedQuantity: Reservedquantity;
   isAvailable: Isavailable;
   soldCount: Soldcount;
+  photoUrl: Photourl1;
 }
 /**
  * The store's orders a tool listed or changed. With paid orders it is
@@ -1843,6 +2007,12 @@ export interface StoreOrdersCard {
  * An order on the admin's order card.
  */
 export interface ChatStoreOrderRow {
+  fulfillment: Fulfillment;
+  deliveryFee: Deliveryfee;
+  deliveryAddress: Deliveryaddress;
+  deliveryLatitude: Deliverylatitude;
+  deliveryLongitude: Deliverylongitude;
+  deliveryNotes: Deliverynotes;
   _id: Id4;
   status: Status;
   items: Items;
@@ -1876,6 +2046,12 @@ export interface MyOrdersCard {
  * An order on a shopper's order card.
  */
 export interface ChatMyOrderRow {
+  fulfillment: Fulfillment1;
+  deliveryFee: Deliveryfee1;
+  deliveryAddress: Deliveryaddress1;
+  deliveryLatitude: Deliverylatitude1;
+  deliveryLongitude: Deliverylongitude1;
+  deliveryNotes: Deliverynotes1;
   _id: Id5;
   status: Status1;
   items: Items1;
@@ -1975,7 +2151,7 @@ export interface PolicyCard {
   defectReportDays: Defectreportdays;
   deliveryOptions: Deliveryoptions;
   deliveryAreas: Deliveryareas;
-  deliveryFee: Deliveryfee;
+  deliveryFee: Deliveryfee2;
   freeDeliveryMinimum: Freedeliveryminimum;
   handoverDays: Handoverdays;
   acceptedPaymentMethods: Acceptedpaymentmethods;
@@ -2084,7 +2260,7 @@ export interface PolicyForm {
   defectReportDays: Defectreportdays1;
   deliveryOptions: Deliveryoptions1;
   deliveryAreas: Deliveryareas1;
-  deliveryFee: Deliveryfee1;
+  deliveryFee: Deliveryfee3;
   freeDeliveryMinimum: Freedeliveryminimum1;
   handoverDays: Handoverdays1;
   acceptedPaymentMethods: Acceptedpaymentmethods1;
@@ -2131,14 +2307,33 @@ export interface PhotoRequestForm {
   count: Count;
 }
 /**
+ * Asks the shopper how they get their order: picked up at the store,
+ * or delivered to the address they pin. Answered with FulfillmentAnswer.
+ */
+export interface FulfillmentForm {
+  kind: Kind17;
+  formId: Formid11;
+  options: Options;
+  currency: Currency12;
+  storeAddress: Storeaddress;
+  /**
+   * The store's pin; null until pinned
+   */
+  storeLocation: StoreLocationResponse | null;
+  deliveryAreas: Deliveryareas2;
+  deliveryFee: Deliveryfee4;
+  freeDeliveryMinimum: Freedeliveryminimum2;
+  handoverDays: Handoverdays2;
+}
+/**
  * A StoreDetailsForm, filled in.
  */
 export interface StoreDetailsAnswer {
-  kind: Kind17;
-  formId: Formid11;
+  kind: Kind18;
+  formId: Formid12;
   name: Name9;
   description: Description4;
-  currency: Currency12;
+  currency: Currency13;
   contactNumber: Contactnumber4;
   address: Address3;
   openingHours?: Openinghours2;
@@ -2147,8 +2342,8 @@ export interface StoreDetailsAnswer {
  * A LocationForm's pin.
  */
 export interface LocationAnswer {
-  kind: Kind18;
-  formId: Formid12;
+  kind: Kind19;
+  formId: Formid13;
   latitude: Latitude1;
   longitude: Longitude1;
 }
@@ -2156,8 +2351,8 @@ export interface LocationAnswer {
  * A NewProductsForm, filled in.
  */
 export interface NewProductsAnswer {
-  kind: Kind19;
-  formId: Formid13;
+  kind: Kind20;
+  formId: Formid14;
   products: Products3;
 }
 /**
@@ -2176,8 +2371,8 @@ export interface NewProduct {
  * A PolicyForm's answers: a field left null keeps its answer.
  */
 export interface PolicyAnswer {
-  kind: Kind20;
-  formId: Formid14;
+  kind: Kind21;
+  formId: Formid15;
   acceptsReturns?: Acceptsreturns2;
   returnWindowDays?: Returnwindowdays2;
   returnConditions?: Returnconditions2;
@@ -2186,10 +2381,10 @@ export interface PolicyAnswer {
   returnShippingPaidBy?: Returnshippingpaidby2;
   defectReportDays?: Defectreportdays2;
   deliveryOptions?: Deliveryoptions2;
-  deliveryAreas?: Deliveryareas2;
-  deliveryFee?: Deliveryfee2;
-  freeDeliveryMinimum?: Freedeliveryminimum2;
-  handoverDays?: Handoverdays2;
+  deliveryAreas?: Deliveryareas3;
+  deliveryFee?: Deliveryfee5;
+  freeDeliveryMinimum?: Freedeliveryminimum3;
+  handoverDays?: Handoverdays3;
   acceptedPaymentMethods?: Acceptedpaymentmethods2;
   paidOrderCancellation?: Paidordercancellation2;
   sendsMarketingMessages?: Sendsmarketingmessages2;
@@ -2199,8 +2394,8 @@ export interface PolicyAnswer {
  * A ReturnForm, filled in.
  */
 export interface ReturnAnswer {
-  kind: Kind21;
-  formId: Formid15;
+  kind: Kind22;
+  formId: Formid16;
   items: Items5;
   reason: Reason2;
   note?: Note1;
@@ -2218,15 +2413,15 @@ export interface NewReturnItem {
  * A PhoneVerificationForm done: the number is verified.
  */
 export interface PhoneVerifiedAnswer {
-  kind: Kind22;
-  formId: Formid16;
+  kind: Kind23;
+  formId: Formid17;
 }
 /**
  * A PhotoRequestForm, filled in: the uploaded photos' URLs.
  */
 export interface PhotoRequestAnswer {
-  kind: Kind23;
-  formId: Formid17;
+  kind: Kind24;
+  formId: Formid18;
   imageUrls: Imageurls;
   count: Count1;
   notes?: Notes;
@@ -2235,8 +2430,8 @@ export interface PhotoRequestAnswer {
  * A ShopProductsCard's picks.
  */
 export interface OrderItemsAnswer {
-  kind: Kind24;
-  formId: Formid18;
+  kind: Kind25;
+  formId: Formid19;
   items: Items6;
 }
 /**
@@ -2252,27 +2447,48 @@ export interface NewOrderItem {
  * A CheckoutCard's payment method.
  */
 export interface PaymentAnswer {
-  kind: Kind25;
-  formId: Formid19;
+  kind: Kind26;
+  formId: Formid20;
   paymentMethod: Paymentmethod2;
 }
 /**
  * A StoreOrdersCard's orders handed over.
  */
 export interface HandoverAnswer {
-  kind: Kind26;
-  formId: Formid20;
+  kind: Kind27;
+  formId: Formid21;
   orderIds: Orderids;
 }
 /**
  * A StoreReturnsCard's decision on one requested return.
  */
 export interface ReturnDecisionAnswer {
-  kind: Kind27;
-  formId: Formid21;
+  kind: Kind28;
+  formId: Formid22;
   returnId: Returnid;
   decision: Decision;
   reason?: Reason3;
+}
+/**
+ * A FulfillmentForm's choice: a delivery comes with where it goes.
+ */
+export interface FulfillmentAnswer {
+  kind: Kind29;
+  formId: Formid23;
+  fulfillment: Fulfillment2;
+  /**
+   * Where a delivery goes; null for a pickup
+   */
+  delivery?: DeliveryAnswer | null;
+}
+/**
+ * Where a delivery goes, as the shopper gave it.
+ */
+export interface DeliveryAnswer {
+  address: Address4;
+  latitude: Latitude2;
+  longitude: Longitude2;
+  notes?: Notes1;
 }
 /**
  * The tokens a turn's model calls used, summed over its calls.

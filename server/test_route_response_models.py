@@ -2892,6 +2892,8 @@ MIRRORS = [
      set()),
     (ObjectsModule.AdminStoreResponse, ObjectsModule.Store,
      {'id', 'location'}),
+    (ObjectsModule.ShopStoreResponse, ObjectsModule.Store,
+     {'id', 'location'}),
     (ObjectsModule.StoreThemeResponse, ObjectsModule.Store, set()),
     (ObjectsModule.CustomerSessionResponse, ObjectsModule.Customer, {'id'}),
     (ObjectsModule.ProductRow, ObjectsModule.Product, {'id'}),

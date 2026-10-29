@@ -45,6 +45,10 @@ export type Isavailable = boolean;
  * Units sold so far
  */
 export type Soldcount = number;
+/**
+ * The photo the shop shows: the url of one of the store's GeneratedPhotos (setProductPhoto)
+ */
+export type Photourl = string | null;
 
 /**
  * One product as its store's admin sees it. Each field restates
@@ -60,6 +64,7 @@ export interface AdminProductRow {
   reservedInventory: Reservedinventory;
   isAvailable: Isavailable;
   soldCount: Soldcount;
+  photoUrl?: Photourl;
 }
 /**
  * ReservedInventory as a route sends it. Each field restates

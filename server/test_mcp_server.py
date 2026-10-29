@@ -101,8 +101,8 @@ def test_eachAudienceListsOnlyItsTools():
         'addStoreProducts', 'updateStoreProduct', 'listMyStoreProducts',
         'getStoreOrders', 'completeOrder', 'cancelStoreOrder',
         'getMyStorePolicy', 'updateMyStorePolicy', 'updateMyStoreTheme',
-        'generateProductPhotos', 'getStoreReturns', 'approveReturn',
-        'rejectReturn', 'receiveReturn'
+        'generateProductPhotos', 'setProductPhoto', 'getStoreReturns',
+        'approveReturn', 'rejectReturn', 'receiveReturn'
     }
 
 
@@ -956,7 +956,8 @@ def test_theCheckoutToolsArguments_leaveOutTheInjectedParams():
 
     byName = asyncio.run(tools())
 
-    assert set(byName['createOrder'].input_schema['properties']) == {'items'}
+    assert set(byName['createOrder'].input_schema['properties']) == {
+        'items', 'fulfillment', 'delivery'}
     assert set(byName['payOrder'].input_schema['properties']) == {
         'orderId', 'paymentMethod'}
     assert 'enum' not in str(

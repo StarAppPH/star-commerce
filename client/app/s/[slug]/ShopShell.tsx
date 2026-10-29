@@ -12,13 +12,13 @@ import { Spinner } from '@/components/ui/spinner';
 import { StoreMark } from '@/components/brand/StoreMark';
 import { ChatShellProvider } from '@/components/chat/ChatShell';
 import { matchingConversations } from '@/components/chat/useConversationList';
+import { useBrandColor } from '@/lib/brandColors';
 import { useGuestSession } from '@/lib/GuestSessionContext';
 import { groupConversationsByDay } from '@/lib/storeTime';
 import { cn } from '@/lib/utils';
 import { ShopWorkspaceProvider, useShopWorkspace } from './ShopWorkspace';
 
-// A shop's voice glow. The store's own brand colors replace it once the
-// customer-facing store carries them.
+// A shop's voice glow while its store has no brand colors.
 const SHOP_GLOW = '#EA580C';
 const SHOP_GLOW_SECOND = '#F59E0B';
 
@@ -64,14 +64,16 @@ function ShopFrame({ children }: { children: React.ReactNode }) {
   const { session, reloadConversations } = useShopWorkspace();
   const { store } = session;
   const onTurnSaved = useCallback(() => { reloadConversations(); }, [reloadConversations]);
+  useBrandColor(store.primaryColor);
 
   return (
     <ChatShellProvider
       voice={{
         title: store.name,
         subtitle: 'Ask me anything about the store',
-        glow: SHOP_GLOW,
-        glowSecond: SHOP_GLOW_SECOND,
+        // The store's brand colors when it has them.
+        glow: store.primaryColor ?? SHOP_GLOW,
+        glowSecond: store.secondaryColor ?? store.primaryColor ?? SHOP_GLOW_SECOND,
         variant: 'shop',
       }}
       onTurnSaved={onTurnSaved}

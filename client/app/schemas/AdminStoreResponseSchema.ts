@@ -76,11 +76,12 @@ export type Primarycolor = string | null;
 export type Secondarycolor = string | null;
 
 /**
- * The admin's own store: a StoreResponse plus its photo theme, which
- * customers never get (it feeds the product photos, not the storefront).
- * A theme field is sent only once set (a dict the route builds leaves it
- * out, and exclude_if drops it from a dump), so a store with no theme
- * reads exactly as a StoreResponse. Each field restates Store's
+ * The admin's own store: a StoreResponse plus its photo theme. Its
+ * photo style feeds the product photos only, and customers never get it;
+ * they get the brand colors (ShopStoreResponse). A theme field is sent
+ * only once set (a dict the route builds leaves it out, and exclude_if
+ * drops it from a dump), so a store with no theme reads exactly as a
+ * StoreResponse. Each field restates Store's
  * (test_route_response_models.py's MIRRORS).
  */
 export interface AdminStoreResponse {

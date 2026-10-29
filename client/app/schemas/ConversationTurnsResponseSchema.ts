@@ -67,6 +67,10 @@ export type Price = number;
  */
 export type Inventory = number;
 /**
+ * Its photo; null when it has none
+ */
+export type Photourl = string | null;
+/**
  * The products
  *
  * @maxItems 50
@@ -126,6 +130,10 @@ export type Isavailable = boolean;
  */
 export type Soldcount = number;
 /**
+ * Its photo; null when it has none
+ */
+export type Photourl1 = string | null;
+/**
  * The products
  *
  * @maxItems 50
@@ -139,6 +147,30 @@ export type Kind2 = "storeOrders";
  * Set when it has paid orders to hand over
  */
 export type Formid1 = string | null;
+/**
+ * How the customer gets it: pickup or delivery
+ */
+export type Fulfillment = "pickup" | "delivery";
+/**
+ * What delivery adds to the total
+ */
+export type Deliveryfee = number;
+/**
+ * Where it is delivered, as the customer typed it
+ */
+export type Deliveryaddress = string | null;
+/**
+ * The delivery pin's degrees north
+ */
+export type Deliverylatitude = number | null;
+/**
+ * The delivery pin's degrees east
+ */
+export type Deliverylongitude = number | null;
+/**
+ * The customer's notes for the delivery
+ */
+export type Deliverynotes = string | null;
 /**
  * Orders _id
  */
@@ -222,6 +254,30 @@ export type Orders = ChatStoreOrderRow[];
  * The card
  */
 export type Kind3 = "myOrders";
+/**
+ * How the customer gets it: pickup or delivery
+ */
+export type Fulfillment1 = "pickup" | "delivery";
+/**
+ * What delivery adds to the total
+ */
+export type Deliveryfee1 = number;
+/**
+ * Where it is delivered, as the customer typed it
+ */
+export type Deliveryaddress1 = string | null;
+/**
+ * The delivery pin's degrees north
+ */
+export type Deliverylatitude1 = number | null;
+/**
+ * The delivery pin's degrees east
+ */
+export type Deliverylongitude1 = number | null;
+/**
+ * The customer's notes for the delivery
+ */
+export type Deliverynotes1 = string | null;
 /**
  * Orders _id
  */
@@ -523,7 +579,7 @@ export type Deliveryareas = string | null;
 /**
  * What delivery costs, in the store's currency
  */
-export type Deliveryfee = number | null;
+export type Deliveryfee2 = number | null;
 /**
  * The order total from which delivery is free, in the store's currency
  */
@@ -810,7 +866,7 @@ export type Deliveryareas1 = string | null;
 /**
  * What delivery costs, in the store's currency
  */
-export type Deliveryfee1 = number | null;
+export type Deliveryfee3 = number | null;
 /**
  * The order total from which delivery is free, in the store's currency
  */
@@ -916,6 +972,62 @@ export type Formid10 = string;
  */
 export type Count = number;
 /**
+ * The form
+ */
+export type Kind17 = "fulfillmentForm";
+/**
+ * Answer it with this id
+ */
+export type Formid11 = string;
+/**
+ * The ways the order can be booked
+ *
+ * @minItems 1
+ * @maxItems 2
+ */
+export type Options = ["pickup" | "delivery"] | ["pickup" | "delivery", "pickup" | "delivery"];
+/**
+ * Fees are in it
+ */
+export type Currency12 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * Where to pick it up
+ */
+export type Storeaddress = string | null;
+/**
+ * Where the store delivers
+ */
+export type Deliveryareas2 = string | null;
+/**
+ * What delivery costs, in the store's currency
+ */
+export type Deliveryfee4 = number | null;
+/**
+ * The order total from which delivery is free, in the store's currency
+ */
+export type Freedeliveryminimum2 = number | null;
+/**
+ * Days from payment until the order is handed over or delivered
+ */
+export type Handoverdays2 = number | null;
+/**
  * The cards and forms shown under the reply
  */
 export type Components = (
@@ -936,6 +1048,7 @@ export type Components = (
   | ReturnForm
   | PhoneVerificationForm
   | PhotoRequestForm
+  | FulfillmentForm
 )[];
 /**
  * The form this turn answered
@@ -986,6 +1099,7 @@ export interface ChatShopProductRow {
   description: Description;
   price: Price;
   inventory: Inventory;
+  photoUrl: Photourl;
 }
 /**
  * The admin's products a tool listed, added or changed.
@@ -1006,6 +1120,7 @@ export interface ChatStoreProductRow {
   reservedQuantity: Reservedquantity;
   isAvailable: Isavailable;
   soldCount: Soldcount;
+  photoUrl: Photourl1;
 }
 /**
  * The store's orders a tool listed or changed. With paid orders it is
@@ -1020,6 +1135,12 @@ export interface StoreOrdersCard {
  * An order on the admin's order card.
  */
 export interface ChatStoreOrderRow {
+  fulfillment: Fulfillment;
+  deliveryFee: Deliveryfee;
+  deliveryAddress: Deliveryaddress;
+  deliveryLatitude: Deliverylatitude;
+  deliveryLongitude: Deliverylongitude;
+  deliveryNotes: Deliverynotes;
   _id: Id2;
   status: Status;
   items: Items;
@@ -1053,6 +1174,12 @@ export interface MyOrdersCard {
  * An order on a shopper's order card.
  */
 export interface ChatMyOrderRow {
+  fulfillment: Fulfillment1;
+  deliveryFee: Deliveryfee1;
+  deliveryAddress: Deliveryaddress1;
+  deliveryLatitude: Deliverylatitude1;
+  deliveryLongitude: Deliverylongitude1;
+  deliveryNotes: Deliverynotes1;
   _id: Id3;
   status: Status1;
   items: Items1;
@@ -1152,7 +1279,7 @@ export interface PolicyCard {
   defectReportDays: Defectreportdays;
   deliveryOptions: Deliveryoptions;
   deliveryAreas: Deliveryareas;
-  deliveryFee: Deliveryfee;
+  deliveryFee: Deliveryfee2;
   freeDeliveryMinimum: Freedeliveryminimum;
   handoverDays: Handoverdays;
   acceptedPaymentMethods: Acceptedpaymentmethods;
@@ -1261,7 +1388,7 @@ export interface PolicyForm {
   defectReportDays: Defectreportdays1;
   deliveryOptions: Deliveryoptions1;
   deliveryAreas: Deliveryareas1;
-  deliveryFee: Deliveryfee1;
+  deliveryFee: Deliveryfee3;
   freeDeliveryMinimum: Freedeliveryminimum1;
   handoverDays: Handoverdays1;
   acceptedPaymentMethods: Acceptedpaymentmethods1;
@@ -1306,4 +1433,23 @@ export interface PhotoRequestForm {
   kind: Kind16;
   formId: Formid10;
   count: Count;
+}
+/**
+ * Asks the shopper how they get their order: picked up at the store,
+ * or delivered to the address they pin. Answered with FulfillmentAnswer.
+ */
+export interface FulfillmentForm {
+  kind: Kind17;
+  formId: Formid11;
+  options: Options;
+  currency: Currency12;
+  storeAddress: Storeaddress;
+  /**
+   * The store's pin; null until pinned
+   */
+  storeLocation: StoreLocationResponse | null;
+  deliveryAreas: Deliveryareas2;
+  deliveryFee: Deliveryfee4;
+  freeDeliveryMinimum: Freedeliveryminimum2;
+  handoverDays: Handoverdays2;
 }

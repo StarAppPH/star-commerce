@@ -3,6 +3,78 @@
         "ChatMyOrderRow": {
             "description": "An order on a shopper's order card.",
             "properties": {
+                "fulfillment": {
+                    "description": "How the customer gets it: pickup or delivery",
+                    "enum": [
+                        "pickup",
+                        "delivery"
+                    ],
+                    "title": "Fulfillment",
+                    "type": "string"
+                },
+                "deliveryFee": {
+                    "description": "What delivery adds to the total",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Deliveryfee",
+                    "type": "number"
+                },
+                "deliveryAddress": {
+                    "anyOf": [
+                        {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Where it is delivered, as the customer typed it",
+                    "title": "Deliveryaddress"
+                },
+                "deliveryLatitude": {
+                    "anyOf": [
+                        {
+                            "maximum": 90,
+                            "minimum": -90,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery pin's degrees north",
+                    "title": "Deliverylatitude"
+                },
+                "deliveryLongitude": {
+                    "anyOf": [
+                        {
+                            "maximum": 180,
+                            "minimum": -180,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery pin's degrees east",
+                    "title": "Deliverylongitude"
+                },
+                "deliveryNotes": {
+                    "anyOf": [
+                        {
+                            "maxLength": 300,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The customer's notes for the delivery",
+                    "title": "Deliverynotes"
+                },
                 "_id": {
                     "description": "Orders _id",
                     "title": "Id",
@@ -146,6 +218,12 @@
                 }
             },
             "required": [
+                "fulfillment",
+                "deliveryFee",
+                "deliveryAddress",
+                "deliveryLatitude",
+                "deliveryLongitude",
+                "deliveryNotes",
                 "_id",
                 "status",
                 "items",
@@ -413,6 +491,18 @@
                     "minimum": 0,
                     "title": "Inventory",
                     "type": "integer"
+                },
+                "photoUrl": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Its photo; null when it has none",
+                    "title": "Photourl"
                 }
             },
             "required": [
@@ -420,7 +510,8 @@
                 "name",
                 "description",
                 "price",
-                "inventory"
+                "inventory",
+                "photoUrl"
             ],
             "title": "ChatShopProductRow",
             "type": "object",
@@ -429,6 +520,78 @@
         "ChatStoreOrderRow": {
             "description": "An order on the admin's order card.",
             "properties": {
+                "fulfillment": {
+                    "description": "How the customer gets it: pickup or delivery",
+                    "enum": [
+                        "pickup",
+                        "delivery"
+                    ],
+                    "title": "Fulfillment",
+                    "type": "string"
+                },
+                "deliveryFee": {
+                    "description": "What delivery adds to the total",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Deliveryfee",
+                    "type": "number"
+                },
+                "deliveryAddress": {
+                    "anyOf": [
+                        {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Where it is delivered, as the customer typed it",
+                    "title": "Deliveryaddress"
+                },
+                "deliveryLatitude": {
+                    "anyOf": [
+                        {
+                            "maximum": 90,
+                            "minimum": -90,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery pin's degrees north",
+                    "title": "Deliverylatitude"
+                },
+                "deliveryLongitude": {
+                    "anyOf": [
+                        {
+                            "maximum": 180,
+                            "minimum": -180,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery pin's degrees east",
+                    "title": "Deliverylongitude"
+                },
+                "deliveryNotes": {
+                    "anyOf": [
+                        {
+                            "maxLength": 300,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The customer's notes for the delivery",
+                    "title": "Deliverynotes"
+                },
                 "_id": {
                     "description": "Orders _id",
                     "title": "Id",
@@ -558,6 +721,12 @@
                 }
             },
             "required": [
+                "fulfillment",
+                "deliveryFee",
+                "deliveryAddress",
+                "deliveryLatitude",
+                "deliveryLongitude",
+                "deliveryNotes",
                 "_id",
                 "status",
                 "items",
@@ -615,6 +784,18 @@
                     "minimum": 0,
                     "title": "Soldcount",
                     "type": "integer"
+                },
+                "photoUrl": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Its photo; null when it has none",
+                    "title": "Photourl"
                 }
             },
             "required": [
@@ -624,7 +805,8 @@
                 "inventory",
                 "reservedQuantity",
                 "isAvailable",
-                "soldCount"
+                "soldCount",
+                "photoUrl"
             ],
             "title": "ChatStoreProductRow",
             "type": "object",
@@ -816,6 +998,156 @@
                 "paymentMethods"
             ],
             "title": "CheckoutCard",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "FulfillmentForm": {
+            "description": "Asks the shopper how they get their order: picked up at the store,\nor delivered to the address they pin. Answered with FulfillmentAnswer.",
+            "properties": {
+                "kind": {
+                    "const": "fulfillmentForm",
+                    "description": "The form",
+                    "title": "Kind",
+                    "type": "string"
+                },
+                "formId": {
+                    "description": "Answer it with this id",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "title": "Formid",
+                    "type": "string"
+                },
+                "options": {
+                    "description": "The ways the order can be booked",
+                    "items": {
+                        "enum": [
+                            "pickup",
+                            "delivery"
+                        ],
+                        "type": "string"
+                    },
+                    "maxItems": 2,
+                    "minItems": 1,
+                    "title": "Options",
+                    "type": "array"
+                },
+                "currency": {
+                    "description": "Fees are in it",
+                    "enum": [
+                        "PHP",
+                        "USD",
+                        "EUR",
+                        "GBP",
+                        "JPY",
+                        "SGD",
+                        "AUD",
+                        "CAD",
+                        "HKD",
+                        "CNY",
+                        "KRW",
+                        "MYR",
+                        "THB",
+                        "IDR",
+                        "VND",
+                        "INR",
+                        "AED"
+                    ],
+                    "title": "Currency",
+                    "type": "string"
+                },
+                "storeAddress": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Where to pick it up",
+                    "title": "Storeaddress"
+                },
+                "storeLocation": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/StoreLocationResponse"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The store's pin; null until pinned"
+                },
+                "deliveryAreas": {
+                    "anyOf": [
+                        {
+                            "maxLength": 300,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Where the store delivers",
+                    "title": "Deliveryareas"
+                },
+                "deliveryFee": {
+                    "anyOf": [
+                        {
+                            "maximum": 10000000,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "What delivery costs, in the store's currency",
+                    "title": "Deliveryfee"
+                },
+                "freeDeliveryMinimum": {
+                    "anyOf": [
+                        {
+                            "maximum": 10000000,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The order total from which delivery is free, in the store's currency",
+                    "title": "Freedeliveryminimum"
+                },
+                "handoverDays": {
+                    "anyOf": [
+                        {
+                            "maximum": 365,
+                            "minimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Days from payment until the order is handed over or delivered",
+                    "title": "Handoverdays"
+                }
+            },
+            "required": [
+                "kind",
+                "formId",
+                "options",
+                "currency",
+                "storeAddress",
+                "storeLocation",
+                "deliveryAreas",
+                "deliveryFee",
+                "freeDeliveryMinimum",
+                "handoverDays"
+            ],
+            "title": "FulfillmentForm",
             "type": "object",
             "additionalProperties": false
         },
@@ -2336,6 +2668,7 @@
                 "discriminator": {
                     "mapping": {
                         "checkout": "#/$defs/CheckoutCard",
+                        "fulfillmentForm": "#/$defs/FulfillmentForm",
                         "locationForm": "#/$defs/LocationForm",
                         "myOrders": "#/$defs/MyOrdersCard",
                         "myReturns": "#/$defs/MyReturnsCard",
@@ -2406,6 +2739,9 @@
                     },
                     {
                         "$ref": "#/$defs/PhotoRequestForm"
+                    },
+                    {
+                        "$ref": "#/$defs/FulfillmentForm"
                     }
                 ]
             },

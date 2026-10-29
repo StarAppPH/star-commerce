@@ -92,7 +92,9 @@ _CUSTOMER_UI = (
     '(products, the order to pay, orders, returns, the policy), so keep '
     'your text short and never repeat what a card shows. On the product '
     'card the customer picks quantities to order; on the checkout card they '
-    'choose how to pay. For a return, open showReturnForm; when createOrder '
+    'choose how to pay. Before createOrder at a store that delivers, open '
+    'showFulfillmentForm for pickup or delivery and the address. For a '
+    'return, open showReturnForm; when createOrder '
     'needs a verified phone number, open showPhoneVerification. ' +
     _FORM_ANSWER_RULE)
 

@@ -1,6 +1,7 @@
 'use client';
+import Image from 'next/image';
 import type { ReactNode } from 'react';
-import { CheckIcon } from 'lucide-react';
+import { CheckIcon, ImageIcon } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { NumberField, NumberFieldDecrement, NumberFieldGroup, NumberFieldIncrement, NumberFieldInput } from '@/components/ui/number-field';
 import { cn } from '@/lib/utils';
@@ -70,5 +71,24 @@ export function QuantityStepper({ value, max, onChange, disabled, label, dataCom
         <NumberFieldIncrement aria-label={`More ${label}`} />
       </NumberFieldGroup>
     </NumberField>
+  );
+}
+
+interface ProductPhotoProps {
+  url: string | null | undefined;
+  name: string;
+  dataComponent: string;
+}
+
+// A product's photo on a card row (setProductPhoto), or a blank tile.
+export function ProductPhoto({ url, name, dataComponent }: ProductPhotoProps) {
+  return (
+    <div data-component={dataComponent} className="relative size-12 shrink-0 overflow-hidden rounded-md bg-muted">
+      {url ? (
+        <Image src={url} alt={name} fill sizes="48px" className="object-cover" />
+      ) : (
+        <ImageIcon aria-hidden="true" className="absolute inset-0 m-auto size-4 text-muted-foreground/60" />
+      )}
+    </div>
   );
 }

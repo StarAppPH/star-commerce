@@ -18,11 +18,11 @@ from actions.OrderActions import (NOT_MOVABLE, ORDER_EXPIRED,
                                   ORDER_NOT_FOUND, ORDERS, _moveOrder, _now,
                                   _releaseUnits, _sellUnits,
                                   cancelExpiredOrders, cancelledBy,
-                                  customerAtStore, isExpired,
+                                  customerAtStore, isExpired, orderRow,
                                   ownerStoreScope, unexpiredBy, validOrderId)
 from mcpTools import mcp_tool
 from mongoDb import db
-from objects import MyOrderRow, StoreOrderRow, projectedCopy, projection_of
+from objects import MyOrderRow, StoreOrderRow, projection_of
 from payments import newRefundReference, refundDemoPayment
 from route_config import route_config
 
@@ -115,7 +115,7 @@ class FulfillmentActions():
             projection_of(StoreOrderRow))
         if completed is None:
             raise ValueError(_refusal(scope, ('paid',)))
-        return projectedCopy(StoreOrderRow, completed)
+        return orderRow(StoreOrderRow, completed)
 
     @mcp_tool('admin')
     @route_config(httpMethod='POST',
@@ -145,7 +145,7 @@ class FulfillmentActions():
             raise ValueError(_refusal(scope, ('pending', 'paid')))
         if cancelled['paidAt'] is not None:
             cancelled = _refund(cancelled, projection)
-        return projectedCopy(StoreOrderRow, cancelled)
+        return orderRow(StoreOrderRow, cancelled)
 
     @mcp_tool('customer')
     @route_config(httpMethod='POST',
@@ -176,4 +176,4 @@ class FulfillmentActions():
             projection_of(MyOrderRow))
         if cancelled is None:
             raise ValueError(_refusal(scope, ('pending',), expiredAt=now))
-        return projectedCopy(MyOrderRow, cancelled)
+        return orderRow(MyOrderRow, cancelled)

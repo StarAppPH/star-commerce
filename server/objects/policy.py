@@ -9,7 +9,7 @@ from pydantic import Field, field_validator
 from typing import Annotated, Literal
 
 from objects.base import MongoModel, StoredDocumentKeys, ResponseModel
-from objects.order import PaymentMethod
+from objects.order import Fulfillment, PaymentMethod
 from objects.product import PRODUCT_PRICE_MAX
 
 
@@ -17,8 +17,8 @@ from objects.product import PRODUCT_PRICE_MAX
 # Policies (one per store)
 # ──────────────────────────────────────────────
 
-# How a customer gets an order: picked up at the store, or delivered.
-DeliveryOption = Literal['pickup', 'delivery']
+# How a customer can get an order: an order's Fulfillment.
+DeliveryOption = Fulfillment
 # How a returned item is refunded.
 RefundMethod = Literal['originalPayment', 'storeCredit', 'exchange']
 # Who pays the shipping of a returned item.

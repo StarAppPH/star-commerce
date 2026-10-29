@@ -59,6 +59,10 @@ export type Isavailable = boolean;
  */
 export type Soldcount = number;
 /**
+ * Its photo; null when it has none
+ */
+export type Photourl = string | null;
+/**
  * The products
  *
  * @maxItems 50
@@ -84,4 +88,5 @@ export interface ChatStoreProductRow {
   reservedQuantity: Reservedquantity;
   isAvailable: Isavailable;
   soldCount: Soldcount;
+  photoUrl: Photourl;
 }

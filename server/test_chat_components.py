@@ -37,6 +37,11 @@ COLLECTIONS = [
 ]
 api = ApiRequests()
 
+# An order row's delivery fields for a pickup (OrderDeliveryRow).
+PICKUP = {'fulfillment': 'pickup', 'deliveryFee': 0, 'deliveryAddress': None,
+          'deliveryLatitude': None, 'deliveryLongitude': None,
+          'deliveryNotes': None}
+
 
 @pytest.fixture
 def wiped():
@@ -278,7 +283,7 @@ def test_theShopsProductCard_isTheRoutesResult_andOrdersThroughTheModel(
     assert byName['Ube Cake']['price'] == 650
     assert 'Old Recipe' not in byName  # hidden from customers
     assert set(byName['Pandesal']) == {'_id', 'name', 'description',
-                                       'price', 'inventory'}
+                                       'price', 'inventory', 'photoUrl'}
 
     picked = [{'productId': byName['Pandesal']['_id'], 'quantity': 3},
               {'productId': byName['Ube Cake']['_id'], 'quantity': 1}]
@@ -542,7 +547,10 @@ def test_cards_fromEveryCardTool_fitTheirModels():
         'createdAt': '2099-01-01T00:00:00Z', 'paymentMethod': 'gcash',
         'paidAt': '2099-01-01T00:00:00Z', 'expiresAt': '2099-01-01T00:30:00Z',
         'completedAt': None, 'cancelledAt': None, 'cancelReason': None,
-        'refundedAt': None, 'paymentReference': 'x', 'refundReference': None}
+        'refundedAt': None, 'paymentReference': 'x', 'refundReference': None,
+        'fulfillment': 'delivery', 'deliveryFee': 50,
+        'deliveryAddress': '1 Main St', 'deliveryLatitude': 14.5,
+        'deliveryLongitude': 121.0, 'deliveryNotes': None}
     ret = {'_id': 'r1', 'orderId': 'o1', 'status': 'requested', 'items': [
         {'name': 'A', 'price': 1, 'quantity': 1}], 'reason': 'defective',
         'note': None, 'refundAmount': 1, 'currency': 'PHP',
@@ -570,6 +578,8 @@ def test_cards_fromEveryCardTool_fitTheirModels():
         'addStoreProduct': {**adminProduct, 'reservedInventory': [
             {'orderId': 'o1', 'quantity': 1}]},
         'updateStoreProduct': {**adminProduct, 'reservedInventory': []},
+        'setProductPhoto': {**adminProduct, 'reservedInventory': [],
+                            'photoUrl': 'https://x'},
         'getStoreOrders': {'orders': [order]},
         'completeOrder': order,
         'cancelStoreOrder': order,
@@ -635,7 +645,7 @@ def test_cards_aLaterRowUpdatesTheCardThatListsIt():
             'currency': 'PHP', 'contactNumber': '+639171234567',
             'createdAt': '2099-01-01T00:00:00Z', 'paymentMethod': 'gcash',
             'paidAt': '2099-01-01T00:00:00Z', 'completedAt': None,
-            'cancelReason': None}
+            'cancelReason': None, **PICKUP}
 
     def step(callId, name, result):
         return [{'role': 'assistant', 'toolCalls': [

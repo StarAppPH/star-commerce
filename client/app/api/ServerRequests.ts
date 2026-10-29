@@ -9,6 +9,7 @@ import type { CreatedOrderResponse } from '../schemas/CreatedOrderResponseSchema
 import type { CustomerSessionResponse } from '../schemas/CustomerSessionResponseSchema';
 import type { DevUserListResponse } from '../schemas/DevUserListResponseSchema';
 import type { FirebaseUserObject } from '../schemas/FirebaseUserObjectSchema';
+import type { FulfillmentAnswer } from '../schemas/FulfillmentAnswerSchema';
 import type { GeneratedPhotosResponse } from '../schemas/GeneratedPhotosResponseSchema';
 import type { HandoverAnswer } from '../schemas/HandoverAnswerSchema';
 import type { LocationAnswer } from '../schemas/LocationAnswerSchema';
@@ -17,6 +18,7 @@ import type { MyOrderRow } from '../schemas/MyOrderRowSchema';
 import type { MyReturnListResponse } from '../schemas/MyReturnListResponseSchema';
 import type { MyReturnRow } from '../schemas/MyReturnRowSchema';
 import type { MyStoreResponse } from '../schemas/MyStoreResponseSchema';
+import type { NewOrderDelivery } from '../schemas/NewOrderDeliverySchema';
 import type { NewOrderItem } from '../schemas/NewOrderItemSchema';
 import type { NewProduct } from '../schemas/NewProductSchema';
 import type { NewProductsAnswer } from '../schemas/NewProductsAnswerSchema';
@@ -462,7 +464,7 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
         }
     }
 
-    async createOrder(userId: string, storeId: string, items: NewOrderItem[]): Promise<ApiResponse<CreatedOrderResponse>> {
+    async createOrder(userId: string, storeId: string, items: NewOrderItem[], fulfillment: 'pickup' | 'delivery' | null, delivery: NewOrderDelivery | null): Promise<ApiResponse<CreatedOrderResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/createOrder`, {
             method: 'POST',
@@ -470,7 +472,7 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "storeId": storeId, "items": items}),
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "items": items, "fulfillment": fulfillment, "delivery": delivery}),
             cache: 'no-store'
         });
         const data: ApiResponse<CreatedOrderResponse> & { msg?: string } = await res.json();
@@ -807,7 +809,7 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
         }
     }
 
-    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | FulfillmentAnswer | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendAdminChatMessage`, {
             method: 'POST',
@@ -830,7 +832,7 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
         }
     }
 
-    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | FulfillmentAnswer | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendStoreChatMessage`, {
             method: 'POST',
@@ -921,6 +923,29 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
             return { message: "Failed to fetch data", status: 0, data: null };
         }
     }
+
+    async setProductPhoto(userId: string, productId: string, photoId: string | null): Promise<ApiResponse<AdminProductRow>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/setProductPhoto`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "productId": productId, "photoId": photoId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<AdminProductRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
 }
 
 export interface RouteResponseModels {
@@ -962,6 +987,7 @@ export interface RouteResponseModels {
     listMyConversations: ConversationListResponse;
     getConversationTurns: ConversationTurnsResponse;
     generateProductPhotos: GeneratedPhotosResponse;
+    setProductPhoto: AdminProductRow;
 }
 
 export interface RouteRequestBodies {
@@ -983,7 +1009,7 @@ export interface RouteRequestBodies {
     listMyStoreProducts: { userId: string; search: string | null; limit: number };
     getStoreOrders: { userId: string; status: string | null; period: string | null; startDate: string | null; endDate: string | null; limit: number };
     getMyOrders: { userId: string; storeId: string; status: string | null; limit: number };
-    createOrder: { userId: string; storeId: string; items: NewOrderItem[] };
+    createOrder: { userId: string; storeId: string; items: NewOrderItem[]; fulfillment: 'pickup' | 'delivery' | null; delivery: NewOrderDelivery | null };
     payOrder: { userId: string; storeId: string; orderId: string; paymentMethod: string };
     completeOrder: { userId: string; orderId: string };
     cancelStoreOrder: { userId: string; orderId: string };
@@ -998,11 +1024,12 @@ export interface RouteRequestBodies {
     getMyStorePolicy: { userId: string };
     getStorePolicy: { userId: string; storeId: string };
     updateMyStorePolicy: { userId: string; acceptsReturns: boolean | null; returnWindowDays: number | null; returnConditions: string | null; nonReturnableItems: string | null; refundMethod: string | null; returnShippingPaidBy: string | null; defectReportDays: number | null; deliveryOptions: string[] | null; deliveryAreas: string | null; deliveryFee: number | null; freeDeliveryMinimum: number | null; handoverDays: number | null; acceptedPaymentMethods: string[] | null; paidOrderCancellation: string | null; sendsMarketingMessages: boolean | null; additionalTerms: string | null; clear: string[] | null };
-    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | null };
-    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | null };
+    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | FulfillmentAnswer | null };
+    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: StoreDetailsAnswer | LocationAnswer | NewProductsAnswer | PolicyAnswer | ReturnAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | FulfillmentAnswer | null };
     listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
     getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };
     generateProductPhotos: { userId: string; imageUrls: string[]; count: number; notes: string | null };
+    setProductPhoto: { userId: string; productId: string; photoId: string | null };
 }
 
 export type PublicRoute =

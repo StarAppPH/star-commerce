@@ -36,6 +36,18 @@
                     "minimum": 0,
                     "title": "Inventory",
                     "type": "integer"
+                },
+                "photoUrl": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Its photo; null when it has none",
+                    "title": "Photourl"
                 }
             },
             "required": [
@@ -43,7 +55,8 @@
                 "name",
                 "description",
                 "price",
-                "inventory"
+                "inventory",
+                "photoUrl"
             ],
             "title": "ChatShopProductRow",
             "type": "object",

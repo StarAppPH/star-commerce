@@ -20,6 +20,9 @@ export interface GuestStore {
   contactNumber: string | null;
   address: string | null;
   openingHours: string | null;
+  // The store's brand colors, #RRGGBB; null while unset.
+  primaryColor: string | null;
+  secondaryColor: string | null;
 }
 
 export interface GuestSession {
@@ -93,6 +96,8 @@ export function GuestSessionProvider({ storeSlug, children }: { storeSlug: strin
             contactNumber: store.contactNumber ?? null,
             address: store.address ?? null,
             openingHours: store.openingHours,
+            primaryColor: store.primaryColor ?? null,
+            secondaryColor: store.secondaryColor ?? null,
           },
         };
         sessionRef.current = session;

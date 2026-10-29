@@ -21,6 +21,9 @@ interface MapPickerProps {
   dataComponent: string;
 }
 
+// Where a map opens when there is no pin yet: Metro Manila.
+export const DEFAULT_MAP_START: MapPoint = { latitude: 14.5995, longitude: 120.9842 };
+
 const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 

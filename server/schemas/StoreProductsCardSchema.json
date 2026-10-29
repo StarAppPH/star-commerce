@@ -41,6 +41,18 @@
                     "minimum": 0,
                     "title": "Soldcount",
                     "type": "integer"
+                },
+                "photoUrl": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Its photo; null when it has none",
+                    "title": "Photourl"
                 }
             },
             "required": [
@@ -50,7 +62,8 @@
                 "inventory",
                 "reservedQuantity",
                 "isAvailable",
-                "soldCount"
+                "soldCount",
+                "photoUrl"
             ],
             "title": "ChatStoreProductRow",
             "type": "object",

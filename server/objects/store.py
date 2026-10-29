@@ -174,12 +174,27 @@ def _isNone(value) -> bool:
     return value is None
 
 
+class ShopStoreResponse(StoreResponse):
+    """The store a shopper visits: a StoreResponse plus its brand colors,
+    which the shop is drawn in. A color is sent only once set (the route
+    leaves an unset one out), so a store with none reads exactly as a
+    StoreResponse. Each field restates Store's
+    (test_route_response_models.py's MIRRORS)."""
+    primaryColor: str | None = Field(None, pattern=HEX_COLOR_PATTERN,
+                                     exclude_if=_isNone,
+                                     description='Main brand color, #RRGGBB')
+    secondaryColor: str | None = Field(
+        None, pattern=HEX_COLOR_PATTERN, exclude_if=_isNone,
+        description='Second brand color, #RRGGBB')
+
+
 class AdminStoreResponse(StoreResponse):
-    """The admin's own store: a StoreResponse plus its photo theme, which
-    customers never get (it feeds the product photos, not the storefront).
-    A theme field is sent only once set (a dict the route builds leaves it
-    out, and exclude_if drops it from a dump), so a store with no theme
-    reads exactly as a StoreResponse. Each field restates Store's
+    """The admin's own store: a StoreResponse plus its photo theme. Its
+    photo style feeds the product photos only, and customers never get it;
+    they get the brand colors (ShopStoreResponse). A theme field is sent
+    only once set (a dict the route builds leaves it out, and exclude_if
+    drops it from a dump), so a store with no theme reads exactly as a
+    StoreResponse. Each field restates Store's
     (test_route_response_models.py's MIRRORS)."""
     photoStyle: str | None = Field(
         None, min_length=1, max_length=PHOTO_STYLE_MAX_LENGTH,
@@ -216,7 +231,8 @@ class CustomerSessionResponse(ResponseModel):
     id: str = Field(..., alias='_id', description='Customers _id')
     phoneNumber: str | None = Field(..., pattern=PHONE_NUMBER_PATTERN,
                                     description='Verified contact number')
-    store: StoreResponse = Field(..., description='The store being visited')
+    store: ShopStoreResponse = Field(...,
+                                     description='The store being visited')
 
 
 class PhoneVerifiedResponse(ResponseModel):

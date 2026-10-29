@@ -33,6 +33,10 @@ export type Isavailable = boolean;
  * Units sold so far
  */
 export type Soldcount = number;
+/**
+ * Its photo; null when it has none
+ */
+export type Photourl = string | null;
 
 /**
  * A product on the admin's product card.
@@ -45,4 +49,5 @@ export interface ChatStoreProductRow {
   reservedQuantity: Reservedquantity;
   isAvailable: Isavailable;
   soldCount: Soldcount;
+  photoUrl: Photourl;
 }

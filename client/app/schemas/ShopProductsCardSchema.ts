@@ -55,6 +55,10 @@ export type Price = number;
  */
 export type Inventory = number;
 /**
+ * Its photo; null when it has none
+ */
+export type Photourl = string | null;
+/**
  * The products
  *
  * @maxItems 50
@@ -80,4 +84,5 @@ export interface ChatShopProductRow {
   description: Description;
   price: Price;
   inventory: Inventory;
+  photoUrl: Photourl;
 }

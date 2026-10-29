@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ChatCard, SentNote } from './ChatCard';
+import { OrderDelivery } from './OrderDelivery';
 import { PAYMENT_METHOD_LABELS, formatMoney, itemsText, minutesLeft, orderRef } from './format';
 import type { ComponentProps } from './types';
 
@@ -48,6 +49,7 @@ export function CheckoutCard({ component, answered, busy, onAnswer }: ComponentP
           <span className="min-w-0 text-muted-foreground text-sm">{itemsText(order.items)}</span>
           <span className="font-heading text-2xl">{formatMoney(order.total, order.currency)}</span>
         </div>
+        <OrderDelivery order={order} currency={order.currency} />
         {!answered && (
           <RadioGroup
             data-component="checkoutMethod"

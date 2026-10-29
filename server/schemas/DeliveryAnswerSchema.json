@@ -1,0 +1,43 @@
+{
+    "description": "Where a delivery goes, as the shopper gave it.",
+    "properties": {
+        "address": {
+            "description": "The street address",
+            "maxLength": 200,
+            "title": "Address",
+            "type": "string"
+        },
+        "latitude": {
+            "description": "The pin's degrees north",
+            "title": "Latitude",
+            "type": "number"
+        },
+        "longitude": {
+            "description": "The pin's degrees east",
+            "title": "Longitude",
+            "type": "number"
+        },
+        "notes": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "For the delivery",
+            "title": "Notes"
+        }
+    },
+    "required": [
+        "address",
+        "latitude",
+        "longitude"
+    ],
+    "title": "DeliveryAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

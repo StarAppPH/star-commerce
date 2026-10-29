@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ChatCard, SentNote } from './ChatCard';
+import { OrderDelivery } from './OrderDelivery';
 import {
   CANCEL_REASON_LABELS, ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, formatMoney, formatWhen, itemsText, nonEmpty,
   orderRef,
@@ -75,6 +76,7 @@ export function StoreOrdersCard({ component, answered, busy, onAnswer }: Compone
                 <span className="ms-auto font-medium text-sm">{formatMoney(order.total, order.currency)}</span>
               </div>
               <span className="text-sm">{itemsText(order.items)}</span>
+              <OrderDelivery order={order} currency={order.currency} />
               <span className="text-muted-foreground text-xs">
                 {[
                   `Placed ${formatWhen(order.createdAt)}`,
@@ -113,6 +115,7 @@ export function MyOrdersCard({ component }: ComponentProps<'myOrders'>) {
               <span className="ms-auto font-medium text-sm">{formatMoney(order.total, order.currency)}</span>
             </div>
             <span className="text-sm">{itemsText(order.items)}</span>
+            <OrderDelivery order={order} currency={order.currency} />
             <span className="text-muted-foreground text-xs">
               {[
                 `Placed ${formatWhen(order.createdAt)}`,
