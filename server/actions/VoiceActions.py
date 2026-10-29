@@ -17,11 +17,13 @@ conversation, its lock, a customer's chat caps); the turn still takes the
 lock and the quota itself, so only a racing message can cost a
 transcription the turn then refuses.
 
-Time: one deadline of VOICE_REQUEST_SECONDS from the start bounds the
-call: transcribing has STT_DEADLINE_SECONDS, the turn its own
+Time: VOICE_REQUEST_SECONDS from the start is the call's planned budget:
+transcribing has STT_DEADLINE_SECONDS, the turn its own
 TURN_DEADLINE_SECONDS, speaking TTS_DEADLINE_SECONDS or what is left of
-the request (skipped, audio null, under TTS_MIN_SECONDS), so a voice
-message ends within about 2 minutes, under Cloud Run's request timeout.
+the budget (skipped, audio null, under TTS_MIN_SECONDS). It is no hard
+bound: an upstream that stalls mid-read can extend each call by up to one
+attempt's timeout (voiceModel._send). Cloud Run's request timeout (300 s
+by default) is the hard ceiling.
 
 Daily caps (UTC+8), on VoiceUsage counters (usageCounters, deleted by a TTL
 index): the seconds transcribed and the characters spoken, per customer
@@ -95,9 +97,11 @@ ALL_STORES = 'all'
 # gunicorn's 8 threads for up to TTS_DEADLINE_SECONDS.
 SPEAK_CALLS_AT_ONCE = 2
 _speakSlots = threading.BoundedSemaphore(SPEAK_CALLS_AT_ONCE)
-# The whole voice message's deadline (transcription, the turn, speech), and
-# the least time speech may start with: less, and the reply goes back
-# unspoken.
+# The whole voice message's planned budget (transcription, the turn,
+# speech), and the least of it speech may start with: less, and the reply
+# goes back unspoken. A stalling upstream can overrun it by up to one
+# attempt's timeout per call (voiceModel._send); Cloud Run's request
+# timeout (300 s by default) is the hard ceiling.
 VOICE_REQUEST_SECONDS = (voiceModel.STT_DEADLINE_SECONDS +
                          chatActions.TURN_DEADLINE_SECONDS +
                          voiceModel.TTS_DEADLINE_SECONDS)

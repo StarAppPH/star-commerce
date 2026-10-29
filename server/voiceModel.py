@@ -13,9 +13,11 @@ ElevenLabs' text to speech out (hand-written, no database).
 
 Every call is a plain HTTPS request (no SDK wraps either API) through one
 requests.Session, to a fixed URL (only a voice id that passed
-VOICE_ID_PATTERN goes into a path), with redirects off. Each attempt waits
-at most min(its attempt seconds, the time left before the call's deadline),
-the body read included; _call() retries once, through chatModel's
+VOICE_ID_PATTERN goes into a path), with redirects off. Each attempt is
+given min(its attempt seconds, the time left before the call's deadline),
+the body read included, but requests applies it per socket operation, so a
+stalling server can stretch one attempt to about twice that (_send);
+_call() retries once, through chatModel's
 callWithRetry (callModel's loop):
 only a connection error, a timeout, a 429 or a 5xx, with RETRY_MIN_SECONDS
 left after a RETRY_BACKOFF_SECONDS pause, never any other 4xx. A missing
@@ -215,9 +217,12 @@ def defaultVoiceId() -> str:
 
 def _readBody(response, attemptEnds: float, maxBytes: int) -> bytes:
     """The response body, at most `maxBytes` (_BadBody past it), read
-    before `attemptEnds`: a chunk that arrives once the time is up is a
+    until `attemptEnds`: a chunk that arrives once the time is up is a
     timeout (retried as one), but a body whose last chunk lands just after
-    it is kept whole."""
+    it is kept whole. The time is checked only as each chunk arrives, and
+    each socket read waits up to requests' per-read timeout: a chunk just
+    before `attemptEnds` followed by a stall can run up to one more
+    timeout past it."""
     chunks, size, late = [], 0, False
     for chunk in response.iter_content(READ_CHUNK_BYTES):
         if late:
@@ -233,11 +238,11 @@ def _readBody(response, attemptEnds: float, maxBytes: int) -> bytes:
 def _send(method: str, url: str, timeout: float, maxBytes: int,
           **kwargs) -> tuple[dict, bytes]:
     """One request: its headers and body on a 2xx; _Busy on a 429 or a
-    5xx; _Refused on any other status. Until the headers arrive it is
-    bounded by requests' own `timeout`, which applies to the connect and to
-    each socket read, not to the whole (a server trickling its headers can
-    take longer); the body is then read within `timeout` of the start
-    (_readBody)."""
+    5xx; _Refused on any other status. requests' `timeout` applies to each
+    socket operation (the connect, each read), not to the whole: a server
+    trickling its headers can take longer, and the body read (_readBody)
+    can overrun `attemptEnds` by up to one more read. So one attempt,
+    headers and body, can take up to about twice `timeout`."""
     attemptEnds = time.monotonic() + timeout
     response = httpSession().request(method, url, timeout=timeout,
                                      allow_redirects=False, stream=True,
