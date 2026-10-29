@@ -1,0 +1,22 @@
+{
+    "description": "One item of a requestReturn call. Types only, no limits: the route\nchecks them, so a refusal names the item's position and never quotes\nthe value (NewOrderItem's reason).",
+    "properties": {
+        "item": {
+            "description": "The item's position in the order (1 is its first item)",
+            "title": "Item",
+            "type": "integer"
+        },
+        "quantity": {
+            "description": "Units to return",
+            "title": "Quantity",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "item",
+        "quantity"
+    ],
+    "title": "NewReturnItem",
+    "type": "object",
+    "additionalProperties": false
+}

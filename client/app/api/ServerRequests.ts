@@ -12,9 +12,12 @@ import type { FirebaseUserObject } from '../schemas/FirebaseUserObjectSchema';
 import type { GeneratedPhotosResponse } from '../schemas/GeneratedPhotosResponseSchema';
 import type { MyOrderListResponse } from '../schemas/MyOrderListResponseSchema';
 import type { MyOrderRow } from '../schemas/MyOrderRowSchema';
+import type { MyReturnListResponse } from '../schemas/MyReturnListResponseSchema';
+import type { MyReturnRow } from '../schemas/MyReturnRowSchema';
 import type { MyStoreResponse } from '../schemas/MyStoreResponseSchema';
 import type { NewOrderItem } from '../schemas/NewOrderItemSchema';
 import type { NewProduct } from '../schemas/NewProductSchema';
+import type { NewReturnItem } from '../schemas/NewReturnItemSchema';
 import type { NoContentResponse } from '../schemas/NoContentResponseSchema';
 import type { PhoneVerifiedResponse } from '../schemas/PhoneVerifiedResponseSchema';
 import type { ProductListResponse } from '../schemas/ProductListResponseSchema';
@@ -23,6 +26,8 @@ import type { StoreOrderListResponse } from '../schemas/StoreOrderListResponseSc
 import type { StoreOrderRow } from '../schemas/StoreOrderRowSchema';
 import type { StorePolicyResponse } from '../schemas/StorePolicyResponseSchema';
 import type { StoreResponse } from '../schemas/StoreResponseSchema';
+import type { StoreReturnListResponse } from '../schemas/StoreReturnListResponseSchema';
+import type { StoreReturnRow } from '../schemas/StoreReturnRowSchema';
 import type { StoreThemeResponse } from '../schemas/StoreThemeResponseSchema';
 import type { UserResponse } from '../schemas/UserResponseSchema';
 
@@ -561,6 +566,167 @@ import type { UserResponse } from '../schemas/UserResponseSchema';
         }
     }
 
+    async requestReturn(userId: string, storeId: string, orderId: string, items: NewReturnItem[], reason: string, note: string | null): Promise<ApiResponse<MyReturnRow>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/requestReturn`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "orderId": orderId, "items": items, "reason": reason, "note": note}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<MyReturnRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async getMyReturns(userId: string, storeId: string, limit: number | null): Promise<ApiResponse<MyReturnListResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/getMyReturns`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "limit": limit}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<MyReturnListResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async cancelMyReturn(userId: string, storeId: string, returnId: string): Promise<ApiResponse<MyReturnRow>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/cancelMyReturn`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "returnId": returnId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<MyReturnRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async getStoreReturns(userId: string, status: string | null, limit: number | null): Promise<ApiResponse<StoreReturnListResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/getStoreReturns`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "status": status, "limit": limit}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StoreReturnListResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async approveReturn(userId: string, returnId: string): Promise<ApiResponse<StoreReturnRow>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/approveReturn`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "returnId": returnId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StoreReturnRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async rejectReturn(userId: string, returnId: string, reason: string): Promise<ApiResponse<StoreReturnRow>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/rejectReturn`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "returnId": returnId, "reason": reason}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StoreReturnRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async receiveReturn(userId: string, returnId: string, restock: boolean): Promise<ApiResponse<StoreReturnRow>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/receiveReturn`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "returnId": returnId, "restock": restock}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StoreReturnRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
     async getMyStorePolicy(userId: string): Promise<ApiResponse<StorePolicyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/getMyStorePolicy`, {
@@ -770,6 +936,13 @@ export interface RouteResponseModels {
     completeOrder: StoreOrderRow;
     cancelStoreOrder: StoreOrderRow;
     cancelMyOrder: MyOrderRow;
+    requestReturn: MyReturnRow;
+    getMyReturns: MyReturnListResponse;
+    cancelMyReturn: MyReturnRow;
+    getStoreReturns: StoreReturnListResponse;
+    approveReturn: StoreReturnRow;
+    rejectReturn: StoreReturnRow;
+    receiveReturn: StoreReturnRow;
     getMyStorePolicy: StorePolicyResponse;
     getStorePolicy: StorePolicyResponse;
     updateMyStorePolicy: StorePolicyResponse;
@@ -804,6 +977,13 @@ export interface RouteRequestBodies {
     completeOrder: { userId: string; orderId: string };
     cancelStoreOrder: { userId: string; orderId: string };
     cancelMyOrder: { userId: string; storeId: string; orderId: string };
+    requestReturn: { userId: string; storeId: string; orderId: string; items: NewReturnItem[]; reason: string; note: string | null };
+    getMyReturns: { userId: string; storeId: string; limit: number | null };
+    cancelMyReturn: { userId: string; storeId: string; returnId: string };
+    getStoreReturns: { userId: string; status: string | null; limit: number | null };
+    approveReturn: { userId: string; returnId: string };
+    rejectReturn: { userId: string; returnId: string; reason: string };
+    receiveReturn: { userId: string; returnId: string; restock: boolean };
     getMyStorePolicy: { userId: string };
     getStorePolicy: { userId: string; storeId: string };
     updateMyStorePolicy: { userId: string; acceptsReturns: boolean | null; returnWindowDays: number | null; returnConditions: string | null; nonReturnableItems: string | null; refundMethod: string | null; returnShippingPaidBy: string | null; defectReportDays: number | null; deliveryOptions: string[] | null; deliveryAreas: string | null; deliveryFee: number | null; freeDeliveryMinimum: number | null; handoverDays: number | null; acceptedPaymentMethods: string[] | null; paidOrderCancellation: string | null; sendsMarketingMessages: boolean | null; additionalTerms: string | null; clear: string[] | null };

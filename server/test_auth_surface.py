@@ -99,6 +99,17 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     'completeOrder',
     'cancelStoreOrder',
     'cancelMyOrder',
+    # Returns: requestReturn, getMyReturns and cancelMyReturn reach only
+    # the caller's own orders and returns at the connection's store
+    # (requireCustomer); the admin routes only the returns of the store
+    # the caller owns (requireOwnerStore).
+    'requestReturn',
+    'getMyReturns',
+    'cancelMyReturn',
+    'getStoreReturns',
+    'approveReturn',
+    'rejectReturn',
+    'receiveReturn',
     # Policies: the admin's own store's policy (requireOwnerStore); a
     # customer reads the policy of the connection's store
     # (requireCustomer).

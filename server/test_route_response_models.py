@@ -2903,6 +2903,11 @@ MIRRORS = [
     (ObjectsModule.MyOrderRow, ObjectsModule.Order, {'id', 'items'}),
     (ObjectsModule.OrderItemRow, ObjectsModule.OrderItem, set()),
     (ObjectsModule.StorePolicyResponse, ObjectsModule.Policy, set()),
+    # items is a list of ReturnItemRow on the rows, of ReturnItem on the
+    # document: mirrored by the entry after these two.
+    (ObjectsModule.MyReturnRow, ObjectsModule.Return, {'id', 'items'}),
+    (ObjectsModule.StoreReturnRow, ObjectsModule.Return, {'id', 'items'}),
+    (ObjectsModule.ReturnItemRow, ObjectsModule.ReturnItem, set()),
 ]
 
 

@@ -24,6 +24,11 @@ cancelStoreOrder refunds a paid order only after it turned it cancelled,
 so an order is never paid and refunded at once. A refund that fails
 leaves it cancelled with no refundedAt: a real gateway needs a retry of
 those (out of scope for the demo).
+
+receiveReturn refunds a return the same way (FulfillmentActions.
+recordedRefund): only after it turned it received, against the order's
+payment, whatever the store's refundMethod says. A failed refund leaves it
+received with no refundedAt.
 """
 
 import secrets
@@ -49,7 +54,8 @@ def chargeDemoPayment(orderId: str, reference: str, amount: float,
 
 def newRefundReference() -> str:
     """The reference of a refund about to be made, refunding nothing: what
-    cancelStoreOrder stores once the refund went through."""
+    cancelStoreOrder and receiveReturn store once the refund went
+    through."""
     return REFUND_REFERENCE_PREFIX + secrets.token_hex(8)
 
 
