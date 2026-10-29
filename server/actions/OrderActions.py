@@ -136,13 +136,32 @@ def orderTotal(items: list[dict]) -> float:
     return round(sum(i['price'] * i['quantity'] for i in items), 2)
 
 
-def validOrderId(orderId: str) -> str:
-    """The order id a route was sent, refused as not found when it is no
-    text or empty, so a query operator never reaches a filter and the
+def validId(documentId: str, notFound: str) -> str:
+    """The document id a route was sent, refused with `notFound` when it is
+    no text or empty, so a query operator never reaches a filter and the
     value is never quoted."""
-    if not isinstance(orderId, str) or not orderId:
-        raise ValueError(ORDER_NOT_FOUND)
-    return orderId
+    if not isinstance(documentId, str) or not documentId:
+        raise ValueError(notFound)
+    return documentId
+
+
+def validOrderId(orderId: str) -> str:
+    """The order id a route was sent (validId)."""
+    return validId(orderId, ORDER_NOT_FOUND)
+
+
+def ownerStoreScope(userId: str, documentId: str, notFound: str) -> dict:
+    """The filter of the document `documentId` (an order, a return) in the
+    admin's own store (requireOwnerStore): another store's is not found."""
+    store = requireOwnerStore(userId, {'_id': 1})
+    return {'_id': validId(documentId, notFound), 'storeId': store['_id']}
+
+
+def validItemCount(items: list, message: str) -> None:
+    """Refuse with `message` a list param that is no list of 1 to
+    ORDER_ITEMS_MAX items (an order's, a return's)."""
+    if not isinstance(items, list) or not 1 <= len(items) <= ORDER_ITEMS_MAX:
+        raise ValueError(message)
 
 
 def customerAtStore(userId: str, storeId: str) -> dict:
@@ -236,11 +255,15 @@ def _listOrders(model, match: dict, limit: int | None) -> dict:
     }
 
 
-def _releaseUnits(item: dict) -> dict:
-    """The product update of a cancelled order's item (expired, or
-    cancelled by the store or the customer): its units back in
-    inventory."""
+def _inventoryUnits(item: dict) -> dict:
+    """The product update that puts an item's units ({quantity}) in
+    inventory, with the _version bump of every inventory write."""
     return {'$inc': {'inventory': item['quantity'], '_version': 1}}
+
+
+# The product update of a cancelled order's item (expired, or cancelled by
+# the store or the customer): its units back in inventory.
+_releaseUnits = _inventoryUnits
 
 
 def _sellUnits(item: dict) -> dict:
@@ -346,8 +369,7 @@ def _validOrderItem(item: dict,
 def _validOrderItems(items: list) -> list[tuple[str, int]]:
     """createOrder's items as (productId, quantity) pairs, each refusal
     naming the item's position, never its value."""
-    if not isinstance(items, list) or not 1 <= len(items) <= ORDER_ITEMS_MAX:
-        raise ValueError(ITEMS_COUNT)
+    validItemCount(items, ITEMS_COUNT)
     return validBatch(items, NewOrderItem, 'Item', _validOrderItem)
 
 
