@@ -37,7 +37,8 @@ export function AdminSidebar() {
   const [search, setSearch] = useState('');
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
-  const resetShown = Boolean(userData) && storeResetAvailable();
+  // Reset needs a loaded store (a store not set up yet is ready with none).
+  const resetShown = Boolean(userData) && storeState.status === 'ready' && storeResetAvailable();
 
   const store = storeState.status === 'ready' ? storeState.store : null;
   // A store not set up yet has its setup chats.
@@ -163,7 +164,7 @@ export function AdminSidebar() {
         {resetShown && (
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton data-component="adminResetStore" onClick={() => setResetOpen(true)}>
+              <SidebarMenuButton data-component="adminResetStore" className="text-destructive" onClick={() => setResetOpen(true)}>
                 <Trash2Icon />
                 <span>Reset my store</span>
               </SidebarMenuButton>

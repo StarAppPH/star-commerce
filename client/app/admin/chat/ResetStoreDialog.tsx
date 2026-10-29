@@ -20,6 +20,9 @@ export function storeResetAvailable(): boolean {
 // A store not set up yet has no name to type, so it types this word.
 const SETUP_CONFIRM_WORD = 'reset';
 
+// The same folding the server applies to the typed text.
+const foldName = (text: string): string => text.normalize('NFKC').trim().toLowerCase();
+
 export function ResetStoreDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const router = useRouter();
   const { adminRequest } = useAuth();
@@ -31,7 +34,7 @@ export function ResetStoreDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   const store = storeState.status === 'ready' ? storeState.store : null;
   const expected = store?.name ?? SETUP_CONFIRM_WORD;
-  const matches = typed.trim().toLowerCase() === expected.trim().toLowerCase();
+  const matches = foldName(typed) === foldName(expected);
 
   const changeOpen = (next: boolean) => {
     if (working) return;
@@ -40,13 +43,15 @@ export function ResetStoreDialog({ open, onOpenChange }: { open: boolean; onOpen
   };
 
   const resetStore = async () => {
+    if (!matches || working) return;
     setWorking(true);
     try {
       const res = await adminRequest(() => server.resetMyStore(userId, typed.trim()));
       showApiResponseSnackbar(res);
-      if (res.status !== 200) return;
+      // A failure may still have reset the store, so the screen reloads either way.
       await reloadStore();
       await reloadConversations();
+      if (res.status !== 200) return;
       changeOpen(false);
       router.replace('/admin/chat');
     } finally {
@@ -63,40 +68,52 @@ export function ResetStoreDialog({ open, onOpenChange }: { open: boolean; onOpen
             This deletes the following for good. It can’t be undone.
           </DialogDescription>
         </DialogHeader>
-        <DialogPanel className="flex flex-col gap-4">
-          <ul className="list-disc ps-5 text-sm">
-            <li>Your products</li>
-            <li>Your orders and returns, including your customers’</li>
-            <li>Your store policy</li>
-            <li>Your photos and uploads</li>
-            <li>All chats with your store, yours and your customers’</li>
-          </ul>
-          <p className="text-sm">Your account stays, and your store starts again from setup.</p>
-          <Field>
-            <FieldLabel>Type “{expected}” to confirm</FieldLabel>
-            <Input
-              data-component="adminResetStoreConfirm"
-              autoComplete="off"
-              value={typed}
-              disabled={working}
-              onChange={(event) => setTyped(event.target.value)}
-            />
-          </Field>
-        </DialogPanel>
-        <DialogFooter>
-          <Button data-component="adminResetStoreCancel" variant="outline" disabled={working} onClick={() => changeOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            data-component="adminResetStoreSubmit"
-            variant="destructive"
-            loading={working}
-            disabled={!matches || working}
-            onClick={resetStore}
-          >
-            Reset my store
-          </Button>
-        </DialogFooter>
+        <form
+          className="flex min-h-0 flex-col"
+          onSubmit={(event) => {
+            event.preventDefault();
+            resetStore();
+          }}
+        >
+          <DialogPanel className="flex flex-col gap-4">
+            <ul className="list-disc ps-5 text-sm">
+              <li>Your store’s details: name, description, contact number, address, opening hours, map pin, brand colors, photo style, voice and currency</li>
+              <li>Your products</li>
+              <li>Your orders and returns, including your customers’</li>
+              <li>Your store policy</li>
+              <li>Generated product photos, and photos you uploaded and files you sent in this store’s chats. Files you sent in other stores’ chats stay.</li>
+              <li>Every chat with your store, including your customers’</li>
+            </ul>
+            <p className="text-sm">
+              Your shop link stops working, and anyone can then take the store’s name and link.
+            </p>
+            <p className="text-sm">Your account stays, and your store starts again from setup.</p>
+            <Field data-component="adminResetStoreField">
+              <FieldLabel>Type “{expected}” to confirm</FieldLabel>
+              <Input
+                data-component="adminResetStoreConfirm"
+                autoComplete="off"
+                value={typed}
+                disabled={working}
+                onChange={(event) => setTyped(event.target.value)}
+              />
+            </Field>
+          </DialogPanel>
+          <DialogFooter>
+            <Button data-component="adminResetStoreCancel" type="button" variant="outline" disabled={working} onClick={() => changeOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              data-component="adminResetStoreSubmit"
+              type="submit"
+              variant="destructive"
+              loading={working}
+              disabled={!matches || working}
+            >
+              Reset my store
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogPopup>
     </Dialog>
   );
