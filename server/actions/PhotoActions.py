@@ -41,8 +41,9 @@ import photoStorage
 from actions.callSlots import slot
 from actions.ProductActions import PRODUCT_NOT_FOUND, PRODUCTS
 from actions.StoreActions import _validText, requireOwnerStore
-from actions.usageCounters import (appDay, envCap, giveBackQuotas,
-                                   takeQuotas, usageExpiry, usageKey)
+# ALL_STORES is imported for the tests, which read it here.
+from actions.usageCounters import (ALL_STORES, appDay, envCap,
+                                   giveBackQuotas, takeDailyQuotas)
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
@@ -61,8 +62,6 @@ STORE_DAILY_PHOTO_CAP = 100
 # off), else DEFAULT_PHOTO_DAILY_CAP_ALL.
 PHOTO_DAILY_CAP_ALL_VARIABLE = 'PHOTO_DAILY_CAP_ALL'
 DEFAULT_PHOTO_DAILY_CAP_ALL = 1000
-# The owner of the all-stores counter (a store _id is a random token).
-ALL_STORES = 'all'
 # The photo calls one process runs at once: each holds one of gunicorn's 8
 # threads for up to PHOTO_DEADLINE_SECONDS. With the chat's 4, 2 stay free
 # for the rest of the app.
@@ -106,14 +105,8 @@ def _validImageUrls(userId: str, imageUrls) -> list[str]:
     if (not isinstance(imageUrls, list)
             or not 1 <= len(imageUrls) <= PHOTO_REFERENCES_MAX):
         raise ValueError(IMAGE_URLS_COUNT)
-    paths = []
-    for i, url in enumerate(imageUrls):
-        label = f'imageUrls[{i}]'
-        path = photoStorage.objectPathFromUrl(url, label)
-        paths.append(photoStorage.ownImagePath(userId, path, label))
-    if len(set(paths)) != len(paths):
-        raise ValueError(IMAGE_URLS_TWICE)
-    return paths
+    return [path for _, path in photoStorage.ownPathsOfUrls(
+        userId, imageUrls, 'imageUrls', IMAGE_URLS_TWICE)]
 
 
 def _validCount(count) -> int:
@@ -164,15 +157,11 @@ def _takePhotoQuota(storeId: str, count: int) -> list[str]:
     (dailyCapAll), refused when either would pass (and then counted against
     neither: usageCounters.takeQuotas). A cap of 0 is photos turned off.
     Returns the two counters' keys."""
-    capAll = dailyCapAll()
-    if capAll == 0:
-        raise ValueError(PHOTOS_TURNED_OFF)
-    day = appDay(_now())
-    return takeQuotas(PHOTO_USAGE, [
-        (usageKey('photos', storeId, day), STORE_DAILY_PHOTO_CAP,
-         PHOTO_CAP_REACHED),
-        (usageKey('photos', ALL_STORES, day), capAll, PHOTO_ALL_CAP_REACHED),
-    ], usageExpiry(day), amount=count)
+    return takeDailyQuotas(
+        PHOTO_USAGE,
+        [('photos', storeId, STORE_DAILY_PHOTO_CAP, PHOTO_CAP_REACHED)],
+        ('photos', PHOTO_ALL_CAP_REACHED), dailyCapAll(),
+        PHOTOS_TURNED_OFF, appDay(_now()), amount=count)
 
 
 def _makeImages(userId: str, store: dict, paths: list[str], count: int,

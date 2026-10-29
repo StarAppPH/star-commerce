@@ -4,7 +4,7 @@ Package rule (every objects module): no validator may EVER mutate a value it
 receives (see objects/__init__.py)."""
 import datetime
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from typing import Literal
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
@@ -29,6 +29,25 @@ CHAT_TITLE_MAX_LENGTH = 80
 CHAT_TOOL_CALL_ID_MAX_LENGTH = 128
 CHAT_TOOL_NAME_MAX_LENGTH = 64
 CHAT_TOOL_ARGUMENTS_MAX_LENGTH = 16000
+# Attachments: the files a user sends with a message (uploaded to Storage
+# under users/<uid>/ first), read from Storage and given to the model.
+ChatAttachmentType = Literal['image/jpeg', 'image/png', 'application/pdf']
+CHAT_ATTACHMENT_TYPES = ('image/jpeg', 'image/png', 'application/pdf')
+# The type each file name extension stands for: a file whose Storage type
+# is another is refused.
+CHAT_ATTACHMENT_EXTENSIONS = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+                              '.png': 'image/png', '.pdf': 'application/pdf'}
+CHAT_ATTACHMENTS_MAX = 4
+# Each file at most (storage.rules allows no larger upload), and one
+# request's files together: this message's, then the history's.
+CHAT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
+CHAT_ATTACHMENTS_MAX_TOTAL_BYTES = 20 * 1024 * 1024
+CHAT_ATTACHMENT_NAME_MAX_LENGTH = 120
+# The files of the last HISTORY_ATTACHMENT_TURNS turns are sent to the
+# model again, newest first, within what this message leaves of
+# CHAT_ATTACHMENTS_MAX_TOTAL_BYTES (one budget per request); the others are
+# a note in their turn's text.
+HISTORY_ATTACHMENT_TURNS = 3
 # What the model reads for a form answer: its summary and its details
 # (chatForms.answerTurn), bounded by the answer models' own limits.
 CHAT_USER_CONTENT_MAX_LENGTH = 64000
@@ -92,6 +111,19 @@ class ChatTokenUsage(AppModel):
                               description='Input tokens read from the cache')
 
 
+class ChatAttachment(AppModel):
+    """One file a turn's user message carried, as stored: never its bytes,
+    which stay in Storage at `path`."""
+    path: str = Field(..., min_length=1,
+                      description='Its Storage path, users/<uid>/...')
+    contentType: ChatAttachmentType = Field(..., description='Its type')
+    name: str = Field(..., min_length=1,
+                      max_length=CHAT_ATTACHMENT_NAME_MAX_LENGTH,
+                      description="Its file name, from the path's last "
+                      'segment, sanitised')
+    size: int = Field(..., ge=0, description='Its size in bytes')
+
+
 class ChatTurn(MongoModel):
     """A ChatTurns document: one user message and the reply to it, with the
     tool steps in between. Replayed whole as the history of the next turns,
@@ -104,13 +136,17 @@ class ChatTurn(MongoModel):
                         description='The Users or Customers _id it belongs to')
     storeId: str = Field(..., min_length=1, description='The Stores _id')
     seq: int = Field(..., ge=0, description='Its place in the conversation')
-    userText: str = Field(..., min_length=1,
-                          max_length=CHAT_MESSAGE_MAX_LENGTH,
-                          description='What the user sent')
+    userText: str = Field(..., max_length=CHAT_MESSAGE_MAX_LENGTH,
+                          description='What the user sent ("" when only '
+                          'files were)')
     userContent: str | None = Field(
         None, max_length=CHAT_USER_CONTENT_MAX_LENGTH,
         description="What the model read for the user's turn, when it is "
         "more than userText: a form answer's summary and details")
+    attachments: list[ChatAttachment] = Field(
+        [], max_length=CHAT_ATTACHMENTS_MAX,
+        description='The files the user sent with it (none on a turn '
+        'stored before attachments)')
     steps: list[ChatStep] = Field(..., description='The tool steps, in order')
     replyText: str = Field(..., description="The assistant's reply")
     components: list[ChatComponent] = Field(
@@ -124,13 +160,21 @@ class ChatTurn(MongoModel):
     model: str = Field(..., description='The model that answered')
     createdAt: datetime.datetime = Field(..., description='When it was saved')
 
+    @model_validator(mode='after')
+    def _textOrAttachments(self):
+        if not self.userText and not self.attachments:
+            raise ValueError('A turn holds text or an attachment')
+        return self
+
 
 class ChatUsage(MongoModel):
     """A ChatUsage document: how many chat messages a customer, or a store's
-    customers, sent on one day (UTC+8). Its _id is
-    "<customer|store>:<id>:<YYYY-MM-DD>"; a TTL index on expireAt deletes
-    it once the day is over."""
-    count: int = Field(..., ge=0, description='Messages sent that day')
+    customers, sent on one day (UTC+8), or how many files they attached
+    (customers, a store, all stores). Its _id is
+    "<kind>:<id>:<YYYY-MM-DD>"; a TTL index on expireAt deletes it once the
+    day is over."""
+    count: int = Field(..., ge=0,
+                       description='Messages (or files) sent that day')
     expireAt: datetime.datetime = Field(...,
                                         description='When it is deleted')
 
@@ -168,15 +212,33 @@ class ConversationListResponse(ResponseModel):
         'null when this page is the last')
 
 
+class ChatAttachmentRow(ResponseModel):
+    """One file of a turn of getConversationTurns, which the client reads
+    through the Storage SDK by its path (the owner's own folder). Each
+    field restates ChatAttachment's."""
+    path: str = Field(..., min_length=1,
+                      description='Its Storage path, users/<uid>/...')
+    contentType: ChatAttachmentType = Field(..., description='Its type')
+    name: str = Field(..., min_length=1,
+                      max_length=CHAT_ATTACHMENT_NAME_MAX_LENGTH,
+                      description="Its file name, from the path's last "
+                      'segment, sanitised')
+
+
 class ChatTurnRow(ResponseModel):
-    """One turn of getConversationTurns: the user's text, the reply and
-    its components, never the tool steps. Each field restates ChatTurn's;
-    answeredFormId is its formAnswer's formId (null when it sent none), so
-    the client shows that form as answered."""
+    """One turn of getConversationTurns: the user's text, the files sent
+    with it, the reply and its components, never the tool steps. Each
+    field restates ChatTurn's; answeredFormId is its formAnswer's formId
+    (null when it sent none), so the client shows that form as
+    answered."""
     seq: int = Field(..., ge=0, description='Its place in the conversation')
-    userText: str = Field(..., min_length=1,
-                          max_length=CHAT_MESSAGE_MAX_LENGTH,
-                          description='What the user sent')
+    userText: str = Field(..., max_length=CHAT_MESSAGE_MAX_LENGTH,
+                          description='What the user sent ("" when only '
+                          'files were)')
+    attachments: list[ChatAttachmentRow] = Field(
+        [], max_length=CHAT_ATTACHMENTS_MAX,
+        description='The files the user sent with it (none on a turn '
+        'stored before attachments)')
     replyText: str = Field(..., description="The assistant's reply")
     components: list[ChatComponent] = Field(
         ..., description='The cards and forms shown under the reply')

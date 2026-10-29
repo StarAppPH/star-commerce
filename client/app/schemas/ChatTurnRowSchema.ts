@@ -10,9 +10,32 @@
  */
 export type Seq = number;
 /**
- * What the user sent
+ * What the user sent ("" when only files were)
  */
 export type Usertext = string;
+/**
+ * The files the user sent with it (none on a turn stored before attachments)
+ *
+ * @maxItems 4
+ */
+export type Attachments =
+  | []
+  | [ChatAttachmentRow]
+  | [ChatAttachmentRow, ChatAttachmentRow]
+  | [ChatAttachmentRow, ChatAttachmentRow, ChatAttachmentRow]
+  | [ChatAttachmentRow, ChatAttachmentRow, ChatAttachmentRow, ChatAttachmentRow];
+/**
+ * Its Storage path, users/<uid>/...
+ */
+export type Path = string;
+/**
+ * Its type
+ */
+export type Contenttype = "image/jpeg" | "image/png" | "application/pdf";
+/**
+ * Its file name, from the path's last segment, sanitised
+ */
+export type Name = string;
 /**
  * The assistant's reply
  */
@@ -53,7 +76,7 @@ export type Id = string;
 /**
  * Product name
  */
-export type Name = string;
+export type Name1 = string;
 /**
  * What the product is
  */
@@ -108,7 +131,7 @@ export type Id1 = string;
 /**
  * Product name
  */
-export type Name1 = string;
+export type Name2 = string;
 /**
  * Price in the store's currency
  */
@@ -186,7 +209,7 @@ export type Status = "pending" | "paid" | "completed" | "cancelled";
 /**
  * Product name when ordered
  */
-export type Name2 = string;
+export type Name3 = string;
 /**
  * Unit price paid, in the order currency
  */
@@ -392,7 +415,7 @@ export type Status2 = "requested" | "approved" | "rejected" | "received" | "canc
 /**
  * Product name when ordered
  */
-export type Name3 = string;
+export type Name4 = string;
 /**
  * Unit price paid, in the order currency
  */
@@ -644,7 +667,7 @@ export type Kind9 = "store";
 /**
  * Store name
  */
-export type Name4 = string | null;
+export type Name5 = string | null;
 /**
  * The store's link name
  */
@@ -738,7 +761,7 @@ export type Currency8 =
 /**
  * Product name
  */
-export type Name5 = string | null;
+export type Name6 = string | null;
 /**
  * Price
  */
@@ -815,18 +838,30 @@ export type Answeredformid = string | null;
 export type Createdat4 = string;
 
 /**
- * One turn of getConversationTurns: the user's text, the reply and
- * its components, never the tool steps. Each field restates ChatTurn's;
- * answeredFormId is its formAnswer's formId (null when it sent none), so
- * the client shows that form as answered.
+ * One turn of getConversationTurns: the user's text, the files sent
+ * with it, the reply and its components, never the tool steps. Each
+ * field restates ChatTurn's; answeredFormId is its formAnswer's formId
+ * (null when it sent none), so the client shows that form as
+ * answered.
  */
 export interface ChatTurnRow {
   seq: Seq;
   userText: Usertext;
+  attachments?: Attachments;
   replyText: Replytext;
   components: Components;
   answeredFormId: Answeredformid;
   createdAt: Createdat4;
+}
+/**
+ * One file of a turn of getConversationTurns, which the client reads
+ * through the Storage SDK by its path (the owner's own folder). Each
+ * field restates ChatAttachment's.
+ */
+export interface ChatAttachmentRow {
+  path: Path;
+  contentType: Contenttype;
+  name: Name;
 }
 /**
  * The products a shopper asked about. Answered with OrderItemsAnswer:
@@ -843,7 +878,7 @@ export interface ShopProductsCard {
  */
 export interface ChatShopProductRow {
   _id: Id;
-  name: Name;
+  name: Name1;
   description: Description;
   price: Price;
   inventory: Inventory;
@@ -862,7 +897,7 @@ export interface StoreProductsCard {
  */
 export interface ChatStoreProductRow {
   _id: Id1;
-  name: Name1;
+  name: Name2;
   price: Price1;
   inventory: Inventory1;
   reservedQuantity: Reservedquantity;
@@ -908,7 +943,7 @@ export interface ChatStoreOrderRow {
  * test_route_response_models.py's MIRRORS keeps in step.
  */
 export interface OrderItemRow {
-  name: Name2;
+  name: Name3;
   price: Price2;
   quantity: Quantity;
 }
@@ -988,7 +1023,7 @@ export interface ChatStoreReturnRow {
  * productId.
  */
 export interface ReturnItemRow {
-  name: Name3;
+  name: Name4;
   price: Price3;
   quantity: Quantity1;
 }
@@ -1054,7 +1089,7 @@ export interface GeneratedPhotoRow {
  */
 export interface StoreCard {
   kind: Kind9;
-  name: Name4;
+  name: Name5;
   slug: Slug;
   currency: Currency7;
   description: Description1;
@@ -1102,7 +1137,7 @@ export interface NewProductsForm {
  * form.
  */
 export interface ChatProductDraft {
-  name: Name5;
+  name: Name6;
   price: Price4;
   inventory: Inventory2;
   description: Description2;

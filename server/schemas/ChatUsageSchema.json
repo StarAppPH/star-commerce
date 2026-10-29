@@ -1,5 +1,5 @@
 {
-    "description": "A ChatUsage document: how many chat messages a customer, or a store's\ncustomers, sent on one day (UTC+8). Its _id is\n\"<customer|store>:<id>:<YYYY-MM-DD>\"; a TTL index on expireAt deletes\nit once the day is over.",
+    "description": "A ChatUsage document: how many chat messages a customer, or a store's\ncustomers, sent on one day (UTC+8), or how many files they attached\n(customers, a store, all stores). Its _id is\n\"<kind>:<id>:<YYYY-MM-DD>\"; a TTL index on expireAt deletes it once the\nday is over.",
     "properties": {
         "_id": {
             "title": "Id",
@@ -18,7 +18,7 @@
             "title": "Version"
         },
         "count": {
-            "description": "Messages sent that day",
+            "description": "Messages (or files) sent that day",
             "minimum": 0,
             "title": "Count",
             "type": "integer"

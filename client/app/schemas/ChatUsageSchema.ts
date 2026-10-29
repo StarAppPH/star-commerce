@@ -8,7 +8,7 @@
 export type Id = string;
 export type Version = number | null;
 /**
- * Messages sent that day
+ * Messages (or files) sent that day
  */
 export type Count = number;
 /**
@@ -18,9 +18,10 @@ export type Expireat = string;
 
 /**
  * A ChatUsage document: how many chat messages a customer, or a store's
- * customers, sent on one day (UTC+8). Its _id is
- * "<customer|store>:<id>:<YYYY-MM-DD>"; a TTL index on expireAt deletes
- * it once the day is over.
+ * customers, sent on one day (UTC+8), or how many files they attached
+ * (customers, a store, all stores). Its _id is
+ * "<kind>:<id>:<YYYY-MM-DD>"; a TTL index on expireAt deletes it once the
+ * day is over.
  */
 export interface ChatUsage {
   _id?: Id;

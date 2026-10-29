@@ -24,13 +24,40 @@ export type Storeid = string;
  */
 export type Seq = number;
 /**
- * What the user sent
+ * What the user sent ("" when only files were)
  */
 export type Usertext = string;
 /**
  * What the model read for the user's turn, when it is more than userText: a form answer's summary and details
  */
 export type Usercontent = string | null;
+/**
+ * The files the user sent with it (none on a turn stored before attachments)
+ *
+ * @maxItems 4
+ */
+export type Attachments =
+  | []
+  | [ChatAttachment]
+  | [ChatAttachment, ChatAttachment]
+  | [ChatAttachment, ChatAttachment, ChatAttachment]
+  | [ChatAttachment, ChatAttachment, ChatAttachment, ChatAttachment];
+/**
+ * Its Storage path, users/<uid>/...
+ */
+export type Path = string;
+/**
+ * Its type
+ */
+export type Contenttype = "image/jpeg" | "image/png" | "application/pdf";
+/**
+ * Its file name, from the path's last segment, sanitised
+ */
+export type Name = string;
+/**
+ * Its size in bytes
+ */
+export type Size = number;
 /**
  * Who sent it
  */
@@ -50,7 +77,7 @@ export type Id1 = string;
 /**
  * The tool called
  */
-export type Name = string;
+export type Name1 = string;
 /**
  * Its arguments, a JSON string
  */
@@ -477,7 +504,7 @@ export type Id2 = string;
 /**
  * Product name
  */
-export type Name1 = string;
+export type Name2 = string;
 /**
  * What the product is
  */
@@ -532,7 +559,7 @@ export type Id3 = string;
 /**
  * Product name
  */
-export type Name2 = string;
+export type Name3 = string;
 /**
  * Price in the store's currency
  */
@@ -610,7 +637,7 @@ export type Status = "pending" | "paid" | "completed" | "cancelled";
 /**
  * Product name when ordered
  */
-export type Name3 = string;
+export type Name4 = string;
 /**
  * Unit price paid, in the order currency
  */
@@ -816,7 +843,7 @@ export type Status2 = "requested" | "approved" | "rejected" | "received" | "canc
 /**
  * Product name when ordered
  */
-export type Name4 = string;
+export type Name5 = string;
 /**
  * Unit price paid, in the order currency
  */
@@ -1068,7 +1095,7 @@ export type Kind9 = "store";
 /**
  * Store name
  */
-export type Name5 = string | null;
+export type Name6 = string | null;
 /**
  * The store's link name
  */
@@ -1162,7 +1189,7 @@ export type Currency8 =
 /**
  * Product name
  */
-export type Name6 = string | null;
+export type Name7 = string | null;
 /**
  * Price
  */
@@ -1259,7 +1286,7 @@ export type Products3 = [NewProduct, ...NewProduct[]];
 /**
  * Product name
  */
-export type Name7 = string;
+export type Name8 = string;
 /**
  * Price in the store's currency
  */
@@ -1444,6 +1471,7 @@ export interface ChatTurn {
   seq: Seq;
   userText: Usertext;
   userContent?: Usercontent;
+  attachments?: Attachments;
   steps: Steps;
   replyText: Replytext;
   components?: Components;
@@ -1455,6 +1483,16 @@ export interface ChatTurn {
   usage: ChatTokenUsage;
   model: Model;
   createdAt: Createdat4;
+}
+/**
+ * One file a turn's user message carried, as stored: never its bytes,
+ * which stay in Storage at `path`.
+ */
+export interface ChatAttachment {
+  path: Path;
+  contentType: Contenttype;
+  name: Name;
+  size: Size;
 }
 /**
  * One message of a turn between the user's text and the reply, exactly
@@ -1472,7 +1510,7 @@ export interface ChatStep {
  */
 export interface ChatToolCall {
   id: Id1;
-  name: Name;
+  name: Name1;
   arguments: Arguments;
 }
 /**
@@ -1490,7 +1528,7 @@ export interface ShopProductsCard {
  */
 export interface ChatShopProductRow {
   _id: Id2;
-  name: Name1;
+  name: Name2;
   description: Description;
   price: Price;
   inventory: Inventory;
@@ -1509,7 +1547,7 @@ export interface StoreProductsCard {
  */
 export interface ChatStoreProductRow {
   _id: Id3;
-  name: Name2;
+  name: Name3;
   price: Price1;
   inventory: Inventory1;
   reservedQuantity: Reservedquantity;
@@ -1555,7 +1593,7 @@ export interface ChatStoreOrderRow {
  * test_route_response_models.py's MIRRORS keeps in step.
  */
 export interface OrderItemRow {
-  name: Name3;
+  name: Name4;
   price: Price2;
   quantity: Quantity;
 }
@@ -1635,7 +1673,7 @@ export interface ChatStoreReturnRow {
  * productId.
  */
 export interface ReturnItemRow {
-  name: Name4;
+  name: Name5;
   price: Price3;
   quantity: Quantity1;
 }
@@ -1701,7 +1739,7 @@ export interface GeneratedPhotoRow {
  */
 export interface StoreCard {
   kind: Kind9;
-  name: Name5;
+  name: Name6;
   slug: Slug;
   currency: Currency7;
   description: Description1;
@@ -1749,7 +1787,7 @@ export interface NewProductsForm {
  * form.
  */
 export interface ChatProductDraft {
-  name: Name6;
+  name: Name7;
   price: Price4;
   inventory: Inventory2;
   description: Description2;
@@ -1808,7 +1846,7 @@ export interface NewProductsAnswer {
  * refusal names the product's position and never quotes the value.
  */
 export interface NewProduct {
-  name: Name7;
+  name: Name8;
   price: Price5;
   inventory: Inventory3;
   description?: Description3;

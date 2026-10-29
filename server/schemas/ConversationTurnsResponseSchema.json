@@ -1,5 +1,41 @@
 {
     "$defs": {
+        "ChatAttachmentRow": {
+            "description": "One file of a turn of getConversationTurns, which the client reads\nthrough the Storage SDK by its path (the owner's own folder). Each\nfield restates ChatAttachment's.",
+            "properties": {
+                "path": {
+                    "description": "Its Storage path, users/<uid>/...",
+                    "minLength": 1,
+                    "title": "Path",
+                    "type": "string"
+                },
+                "contentType": {
+                    "description": "Its type",
+                    "enum": [
+                        "image/jpeg",
+                        "image/png",
+                        "application/pdf"
+                    ],
+                    "title": "Contenttype",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Its file name, from the path's last segment, sanitised",
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "path",
+                "contentType",
+                "name"
+            ],
+            "title": "ChatAttachmentRow",
+            "type": "object",
+            "additionalProperties": false
+        },
         "ChatMyOrderRow": {
             "description": "An order on a shopper's order card.",
             "properties": {
@@ -945,7 +981,7 @@
             "additionalProperties": false
         },
         "ChatTurnRow": {
-            "description": "One turn of getConversationTurns: the user's text, the reply and\nits components, never the tool steps. Each field restates ChatTurn's;\nansweredFormId is its formAnswer's formId (null when it sent none), so\nthe client shows that form as answered.",
+            "description": "One turn of getConversationTurns: the user's text, the files sent\nwith it, the reply and its components, never the tool steps. Each\nfield restates ChatTurn's; answeredFormId is its formAnswer's formId\n(null when it sent none), so the client shows that form as\nanswered.",
             "properties": {
                 "seq": {
                     "description": "Its place in the conversation",
@@ -954,11 +990,20 @@
                     "type": "integer"
                 },
                 "userText": {
-                    "description": "What the user sent",
+                    "description": "What the user sent (\"\" when only files were)",
                     "maxLength": 2000,
-                    "minLength": 1,
                     "title": "Usertext",
                     "type": "string"
+                },
+                "attachments": {
+                    "default": [],
+                    "description": "The files the user sent with it (none on a turn stored before attachments)",
+                    "items": {
+                        "$ref": "#/$defs/ChatAttachmentRow"
+                    },
+                    "maxItems": 4,
+                    "title": "Attachments",
+                    "type": "array"
                 },
                 "replyText": {
                     "description": "The assistant's reply",

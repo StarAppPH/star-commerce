@@ -30,7 +30,7 @@ export function ShopWorkspaceProvider({ session, children }: { session: GuestSes
 
   const transport = useMemo<ChatTransport>(() => ({
     send: (message, conversationId, form) => guestRequest((current) => server.sendStoreChatMessage(
-      current.customerId, current.store.id, message, conversationId, form,
+      current.customerId, current.store.id, message, conversationId, form, null,
     )),
     loadTurns: (conversationId, beforeSeq, limit) => guestRequest((current) => server.getConversationTurns(
       current.customerId, conversationId, beforeSeq, limit,

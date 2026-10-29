@@ -58,8 +58,9 @@ from actions import ChatActions as chatActions
 from actions.callSlots import slot
 from actions.OrderActions import customerAtStore
 from actions.StoreActions import _validText, requireOwnerStore, setUpStore
-from actions.usageCounters import (appDay, envCap, giveBackQuotas,
-                                   takeQuotas, usageExpiry, usageKey)
+# ALL_STORES and usageKey are imported for the tests, which read them here.
+from actions.usageCounters import (ALL_STORES, appDay, envCap,
+                                   giveBackQuotas, takeDailyQuotas, usageKey)
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import (VOICE_PAGE_TOKEN_MAX_LENGTH, VOICE_SEARCH_MAX_LENGTH,
@@ -92,8 +93,6 @@ VOICE_LIMITS = {
     TTS: (CUSTOMER_DAILY_TTS_CHARS, STORE_DAILY_TTS_CHARS,
           VOICE_DAILY_CHARS_ALL_VARIABLE, DEFAULT_VOICE_DAILY_CHARS_ALL),
 }
-# The owner of the all-stores counters (a store _id is a random token).
-ALL_STORES = 'all'
 # The speakChatTurn calls one process runs at once: each holds one of
 # gunicorn's 8 threads for up to TTS_DEADLINE_SECONDS.
 SPEAK_CALLS_AT_ONCE = 2
@@ -130,21 +129,17 @@ def _takeVoiceQuota(direction: str, audience: str, userId: str,
     turned off). Refused when any would pass (and then counted against none:
     usageCounters.takeQuotas). Returns the counters' keys."""
     customerCap, storeCap, variable, default = VOICE_LIMITS[direction]
-    capAll = envCap(variable, default, f'{direction}DailyCapAllInvalid')
-    if capAll == 0:
-        raise ValueError(VOICE_TURNED_OFF)
-    day = appDay(_now())
     counters = []
     if audience == 'customer':
-        counters.append((usageKey(f'{direction}Customer', userId, day),
-                         customerCap, VOICE_CAP_REACHED))
-    counters += [
-        (usageKey(f'{direction}Store', storeId, day), storeCap,
-         VOICE_CAP_REACHED),
-        (usageKey(f'{direction}All', ALL_STORES, day), capAll,
-         VOICE_CAP_REACHED),
-    ]
-    return takeQuotas(VOICE_USAGE, counters, usageExpiry(day), amount=amount)
+        counters.append((f'{direction}Customer', userId, customerCap,
+                         VOICE_CAP_REACHED))
+    counters.append((f'{direction}Store', storeId, storeCap,
+                     VOICE_CAP_REACHED))
+    return takeDailyQuotas(VOICE_USAGE, counters,
+                           (f'{direction}All', VOICE_CAP_REACHED),
+                           envCap(variable, default,
+                                  f'{direction}DailyCapAllInvalid'),
+                           VOICE_TURNED_OFF, appDay(_now()), amount=amount)
 
 
 def _metered(direction: str, audience: str, userId: str, storeId: str,

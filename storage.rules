@@ -6,16 +6,18 @@ rules_version = '2';
 //   firebase deploy --only storage
 //
 // A signed-in user may read and delete only the files under users/<their
-// uid>/, and upload there only a JPEG or PNG under 10 MB (the apps accept no
-// other image type; HEIC/HEIF must be converted first). Everything else is
-// denied: no match below allows it. The product photos the server makes
+// uid>/, and upload there only a JPEG or PNG under 10 MB (the apps accept
+// no other image type; HEIC/HEIF must be converted first), and under
+// users/<their uid>/chat/ (the chat's attachments) a PDF too. Rules that
+// match one path are OR'ed, so the chat block only widens its folder; each
+// matches() tests the whole content type. The server checks every file's
+// type and contents itself. Everything else is denied: no match below
+// allows it. The product photos the server makes
 // (server/photoStorage.py) are under stores/<storeId>/photos/: anyone may
 // get one by its path (customers see them) but nobody may list the folder
 // (a store's drafts stay unlisted), and only the server writes there (its
 // admin credentials bypass these rules).
 //
-// To accept PDFs too, widen the type test:
-//   request.resource.contentType.matches('image/(jpeg|png)|application/pdf')
 // To open another path, add a match block, e.g. product images anyone may
 // read and any signed-in user may upload:
 //   match /products/{allPaths=**} {
@@ -31,6 +33,11 @@ service firebase.storage {
       allow create, update: if request.auth != null && request.auth.uid == uid
                             && request.resource.size < 10 * 1024 * 1024
                             && request.resource.contentType.matches('image/(jpeg|png)');
+    }
+    match /users/{uid}/chat/{allPaths=**} {
+      allow create, update: if request.auth != null && request.auth.uid == uid
+                            && request.resource.size < 10 * 1024 * 1024
+                            && request.resource.contentType.matches('application/pdf');
     }
     match /stores/{storeId}/photos/{file} {
       allow get: if true;
