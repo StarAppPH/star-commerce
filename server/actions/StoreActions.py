@@ -263,7 +263,7 @@ class StoreActions():
         calling. Send only the fields the owner wants changed: a field left
         out keeps its value, and an empty one ("") clears it. If this tool
         refuses, relay its message to the owner and ask again."""
-        store = requireOwnerStore(userId, {'_id': 1, '_version': 1})
+        requireAdmin(userId)
         # The generated HTTP handler passes a missing body key as None, so
         # None is "unchanged" and "" is how a field is cleared.
         changes = {}
@@ -276,9 +276,12 @@ class StoreActions():
             if value is not None:
                 changes[field] = hexColor(value, field)
         if voiceId is not None:
+            # ElevenLabs is asked first: the store's _version is read
+            # after it, so the lookup never widens the write's race.
             changes[STORE_VOICE_FIELD] = _validVoiceId(voiceId)
         if not changes:
             raise ValueError(NO_THEME_SENT)
+        store = ownerStore(userId, {'_id': 1, '_version': 1})
         updated = db.findOneAndUpdate(
             {'_id': store['_id'], '_version': store['_version']},
             {'$set': changes, '$inc': {'_version': 1}},

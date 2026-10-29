@@ -231,7 +231,7 @@ def test_sendStoreVoiceMessage_answersTheTranscriptAndSpeaksTheReply(
     assert chatReply[0]['messages'][-1] == {'role': 'user',
                                             'content': SECRET_TRANSCRIPT}
     assert speech['speak'] == [(voiceModel.spokenText(SECRET_REPLY), None)]
-    assert counter('sttCustomer', f'{store["_id"]}/{customerId}') == 2
+    assert counter('sttCustomer', customerId) == 2
     assert counter('ttsStore', store['_id']) == len(
         voiceModel.spokenText(SECRET_REPLY))
 
@@ -251,7 +251,7 @@ def test_sendAdminVoiceMessage_whenSpeakingFails_stillSendsTheReply(
     assert res['audio'] is None
     assert db.read({'conversationId': res['conversationId']}, 'ChatTurns')
     assert counter('ttsStore', store['_id']) == 0
-    assert counter('sttCustomer', f'{store["_id"]}/{ADMIN}') is None
+    assert counter('sttCustomer', ADMIN) is None
 
 
 def test_speakChatTurn_speaksTheSavedReply(clean, speech, chatReply):
