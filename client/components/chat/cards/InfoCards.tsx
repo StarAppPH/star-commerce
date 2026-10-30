@@ -1,9 +1,10 @@
 'use client';
 import Image from 'next/image';
-import { ExternalLinkIcon, ImageIcon, MapPinIcon, PackageSearchIcon, ScrollTextIcon, StoreIcon } from 'lucide-react';
+import { ExternalLinkIcon, ImageIcon, MapPinIcon, PackageSearchIcon, ScrollTextIcon, StoreIcon, TriangleAlertIcon } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChatCard, ProductPhoto, PromptUsed } from './ChatCard';
+import { ChatCard, PhotoPrompts, ProductPhoto } from './ChatCard';
 import { type PolicyAnswers, type PolicyQuestion, missingDeliveryZones, offersDelivery, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
 import { POLICY_VALUE_LABELS, formatMoney, zoneRuleText } from './format';
 import type { ComponentProps } from './types';
@@ -122,6 +123,12 @@ export function PhotosCard({ component }: ComponentProps<'photos'>) {
         </span>
       ) : undefined}
     >
+      {component.notGenerated && (
+        <Alert data-component="photosCardNotGenerated" variant="warning" className="m-3 mb-0 w-auto">
+          <TriangleAlertIcon />
+          <AlertDescription>{component.notGenerated}</AlertDescription>
+        </Alert>
+      )}
       {component.photos.length === 0 && <p className="px-4 py-3 text-muted-foreground text-sm">No photos were made this time.</p>}
       <div className="grid grid-cols-2 gap-2 p-3 empty:hidden sm:grid-cols-3">
         {component.photos.map((photo, index) => (
@@ -146,7 +153,7 @@ export function PhotosCard({ component }: ComponentProps<'photos'>) {
           </a>
         ))}
       </div>
-      {component.prompt && component.photos.length > 0 && <PromptUsed dataComponent="photosCardPrompt" prompt={component.prompt} />}
+      <PhotoPrompts dataComponent="photosCardPrompt" photos={component.photos} prompt={component.prompt} />
     </ChatCard>
   );
 }

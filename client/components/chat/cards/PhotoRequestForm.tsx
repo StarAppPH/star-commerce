@@ -4,7 +4,6 @@ import Image from 'next/image';
 import { ImagePlusIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { auth } from '@/lib/firebase';
 import { useSnackbar } from '@/lib/SnackbarContext';
@@ -22,7 +21,8 @@ function imageUrlsOf(urls: string[]): ImageUrls | null {
 // The server's limits (objects/photo.py).
 const PHOTOS_MAX = 10;
 const NOTES_MAX = 300;
-const COUNTS = [1, 2, 3, 4].map((count) => ({ value: String(count), label: `${count} ${count === 1 ? 'photo' : 'photos'}` }));
+// Every photo call makes this many (PHOTOS_PER_CALL).
+const PHOTOS_MADE = 3;
 
 interface Picked {
   file: File;
@@ -35,7 +35,6 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
   const { showSnackbar } = useSnackbar();
   const inputId = useId();
   const [picked, setPicked] = useState<Picked[]>([]);
-  const [count, setCount] = useState(String(component.count));
   const [notes, setNotes] = useState('');
   const [uploading, setUploading] = useState(false);
   const locked = answered || busy || uploading;
@@ -83,7 +82,6 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
         kind: 'photoRequest',
         formId: component.formId,
         imageUrls,
-        count: Number(count),
         notes: notes.trim() === '' ? null : notes.trim(),
       });
     } catch {
@@ -100,7 +98,7 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
       title="Photos of one item"
       footer={answered ? <SentNote text="Photos sent" /> : (
         <Button data-component="photoRequestSend" loading={uploading} disabled={picked.length === 0 || busy} onClick={send}>
-          Make {count} {count === '1' ? 'photo' : 'photos'}
+          Make {PHOTOS_MADE} photos
         </Button>
       )}
     >
@@ -154,24 +152,11 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
             )}
           </div>
           <p className="text-muted-foreground text-xs">Up to 10 JPG or PNG photos of the same item, each under 10 MB.</p>
-          <div className="grid gap-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
-            <Field>
-              <FieldLabel>How many to make</FieldLabel>
-              <Select items={COUNTS} value={count} disabled={locked} onValueChange={(value) => { if (value) setCount(value); }}>
-                <SelectTrigger data-component="photoRequestCount">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectPopup>
-                  {COUNTS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
-                </SelectPopup>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel>Notes <span className="font-normal text-muted-foreground">(optional)</span></FieldLabel>
-              <Textarea data-component="photoRequestNotes" value={notes} maxLength={NOTES_MAX} placeholder="Show it from above" disabled={locked} onChange={(event) => setNotes(event.target.value)} />
-              <FieldDescription>Uses your store’s photo style.</FieldDescription>
-            </Field>
-          </div>
+          <Field>
+            <FieldLabel>Special request <span className="font-normal text-muted-foreground">(optional)</span></FieldLabel>
+            <Textarea data-component="photoRequestNotes" value={notes} maxLength={NOTES_MAX} placeholder="Show it from above" disabled={locked} onChange={(event) => setNotes(event.target.value)} />
+            <FieldDescription>Photo 1 uses your brand colors; photos 2 and 3 also use your store’s photo style.</FieldDescription>
+          </Field>
         </div>
       )}
     </ChatCard>

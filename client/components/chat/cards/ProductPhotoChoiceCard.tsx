@@ -5,7 +5,7 @@ import { CheckIcon, ImageIcon, TriangleAlertIcon } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ChatCard, PromptUsed, SentNote } from './ChatCard';
+import { ChatCard, PhotoPrompts, SentNote } from './ChatCard';
 import type { ComponentOf, ComponentProps } from './types';
 
 type Choice = ComponentOf<'productPhotoChoice'>['photos'][number];
@@ -17,8 +17,8 @@ function choiceLabel(photo: Choice, index: number): string {
 }
 
 // A new product's photo choices (makeProductPhotoChoices): its original and
-// the styled photos made from it in the store's look. The owner picks one
-// for the shop.
+// the photos made from it, in the store's brand colors and photo style. The
+// owner picks one for the shop.
 export function ProductPhotoChoiceCard({ component, answered, busy, onAnswer }: ComponentProps<'productPhotoChoice'>) {
   const [picked, setPicked] = useState<string | null>(null);
   const locked = answered || busy;
@@ -80,7 +80,7 @@ export function ProductPhotoChoiceCard({ component, answered, busy, onAnswer }: 
           );
         })}
       </div>
-      {component.prompt && <PromptUsed dataComponent="productPhotoChoicePrompt" prompt={component.prompt} />}
+      <PhotoPrompts dataComponent="productPhotoChoicePrompt" photos={component.photos} prompt={component.prompt} />
     </ChatCard>
   );
 }

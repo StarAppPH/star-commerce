@@ -1181,11 +1181,15 @@ def _validBefore(before) -> dict:
 def _turnRow(row: dict) -> dict:
     """A ChatTurns row as getConversationTurns sends it: a turn saved
     before turns had components shows none, one saved with a component kind
-    since retired shows the rest (chatForms.COMPONENT_KINDS), and one that
-    answered no form has a null answeredFormId."""
+    since retired shows the rest (chatForms.COMPONENT_KINDS), a photo form
+    saved when it asked how many photos to make shows without that count,
+    and one that answered no form has a null answeredFormId."""
     row = {'components': [], 'answeredFormId': None, **row}
-    row['components'] = [c for c in row['components']
-                         if c.get('kind') in chatForms.COMPONENT_KINDS]
+    row['components'] = [
+        {k: v for k, v in c.items() if k != 'count'}
+        if c.get('kind') == 'photoRequestForm' else c
+        for c in row['components']
+        if c.get('kind') in chatForms.COMPONENT_KINDS]
     return row
 
 

@@ -174,8 +174,9 @@ def _policy(result: dict, context: CardContext) -> dict:
 
 def _photos(result: dict, context: CardContext) -> dict:
     return {'kind': 'photos',
-            'photos': [_pick(p, ('_id', 'url')) for p in result['photos']],
-            'prompt': result.get('prompt')}
+            'photos': [_pick(p, ('_id', 'url', 'prompt'))
+                       for p in result['photos']],
+            'notGenerated': result.get('notGenerated')}
 
 
 def _photoChoice(result: dict, context: CardContext) -> dict:
@@ -184,9 +185,8 @@ def _photoChoice(result: dict, context: CardContext) -> dict:
     return {'kind': 'productPhotoChoice', 'formId': newFormId(),
             'productId': result['productId'],
             'productName': result['productName'],
-            'photos': [_pick(p, ('_id', 'url', 'source'))
+            'photos': [_pick(p, ('_id', 'url', 'source', 'prompt'))
                        for p in result['photos']],
-            'prompt': result['prompt'],
             'notGenerated': result['notGenerated']}
 
 

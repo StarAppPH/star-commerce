@@ -97,19 +97,49 @@ export function ProductPhoto({ url, name, dataComponent }: ProductPhotoProps) {
 interface PromptUsedProps {
   prompt: string;
   dataComponent: string;
+  label?: string;
 }
 
 // The prompt the image model was given for a card's photos, folded away.
-export function PromptUsed({ prompt, dataComponent }: PromptUsedProps) {
+function PromptUsed({ prompt, dataComponent, label = 'Prompt used' }: PromptUsedProps) {
   return (
     <Collapsible data-component={dataComponent} className="border-t">
       <CollapsibleTrigger className="group flex w-full items-center gap-1.5 px-4 py-2.5 text-muted-foreground text-xs hover:text-foreground">
         <ChevronDownIcon aria-hidden="true" className="size-3.5 transition-transform group-data-panel-open:rotate-180" />
-        Prompt used
+        {label}
       </CollapsibleTrigger>
       <CollapsiblePanel>
         <p className="whitespace-pre-wrap px-4 pb-3 text-muted-foreground text-xs">{prompt}</p>
       </CollapsiblePanel>
     </Collapsible>
   );
+}
+
+interface PhotoPromptsProps {
+  photos: { prompt?: string | null }[];
+  // A card saved before each photo carried its own prompt has one for all.
+  prompt?: string | null;
+  dataComponent: string;
+}
+
+// "photo 1", "photos 2 and 3".
+function photoNumbers(numbers: number[]): string {
+  if (numbers.length === 1) return `photo ${numbers[0]}`;
+  return `photos ${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]}`;
+}
+
+// The prompts a card's photos were made with, each with the photos (by
+// their number on the card) it made.
+export function PhotoPrompts({ photos, prompt, dataComponent }: PhotoPromptsProps) {
+  const groups: { prompt: string; numbers: number[] }[] = [];
+  photos.forEach((photo, index) => {
+    if (!photo.prompt) return;
+    const group = groups.find((other) => other.prompt === photo.prompt);
+    if (group) group.numbers.push(index + 1);
+    else groups.push({ prompt: photo.prompt, numbers: [index + 1] });
+  });
+  if (groups.length === 0) return prompt && photos.length > 0 ? <PromptUsed dataComponent={dataComponent} prompt={prompt} /> : null;
+  return groups.map((group) => (
+    <PromptUsed key={group.numbers[0]} dataComponent={dataComponent} prompt={group.prompt} label={`Prompt used for ${photoNumbers(group.numbers)}`} />
+  ));
 }

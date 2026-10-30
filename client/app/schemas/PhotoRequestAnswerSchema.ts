@@ -31,10 +31,6 @@ export type Imageurls =
   | [string, string, string, string, string, string, string, string, string]
   | [string, string, string, string, string, string, string, string, string, string];
 /**
- * How many photos to make
- */
-export type Count = number;
-/**
  * Extra direction
  */
 export type Notes = string | null;
@@ -46,6 +42,5 @@ export interface PhotoRequestAnswer {
   kind: Kind;
   formId: Formid;
   imageUrls: Imageurls;
-  count: Count;
   notes?: Notes;
 }

@@ -13,19 +13,11 @@
             "minLength": 1,
             "title": "Formid",
             "type": "string"
-        },
-        "count": {
-            "description": "How many photos to make, prefilled",
-            "maximum": 4,
-            "minimum": 1,
-            "title": "Count",
-            "type": "integer"
         }
     },
     "required": [
         "kind",
-        "formId",
-        "count"
+        "formId"
     ],
     "title": "PhotoRequestForm",
     "type": "object",

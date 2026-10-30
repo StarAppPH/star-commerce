@@ -15,11 +15,13 @@ from objects.base import MongoModel, ResponseModel
 # ──────────────────────────────────────────────
 
 PHOTO_NOTES_MAX_LENGTH = 300
-# The admin's reference photos per call, and the photos one call makes.
+# The admin's reference photos per call.
 PHOTO_REFERENCES_MAX = 10
-PHOTOS_PER_CALL_MAX = 4
-# The styled photos makeProductPhotoChoices makes next to the original.
-PHOTO_CHOICES_GENERATED = 3
+# The photos every photo call makes (generateProductPhotos, and
+# makeProductPhotoChoices next to the original): the first in the global
+# prompt, the others in the global prompt plus the store's photo style.
+PHOTOS_PER_CALL = 3
+PHOTOS_THEMED = PHOTOS_PER_CALL - 1
 # The most products findProductsInPhoto finds in one photo.
 PHOTO_FIND_ITEMS_MAX = 12
 
@@ -58,15 +60,21 @@ class GeneratedPhoto(MongoModel):
 class GeneratedPhotoRow(ResponseModel):
     id: str = Field(..., alias='_id', description='GeneratedPhotos _id')
     url: str = Field(..., min_length=1, description='Its download URL')
+    prompt: str | None = Field(
+        None, description='The prompt the model was given for it; null on '
+        'a card saved before each photo carried its own')
 
 
 class GeneratedPhotosResponse(ResponseModel):
-    """What generateProductPhotos sends: the photos it saved and the prompt
-    they were made with."""
+    """What generateProductPhotos sends: the photos it saved, each with
+    the prompt it was made with."""
     photos: list[GeneratedPhotoRow] = Field(
-        ..., description='The photos made, in order')
-    prompt: str = Field(..., min_length=1,
-                        description='The prompt the model was given')
+        ..., max_length=PHOTOS_PER_CALL,
+        description='The photos made, in order: the first in the global '
+        'prompt, the others in the store\'s photo style too')
+    notGenerated: str | None = Field(
+        ..., description='Why fewer photos than asked were made (no photo '
+        'style, a model call failed); null when all were')
 
 
 class PhotoChoiceRow(ResponseModel):
@@ -74,23 +82,24 @@ class PhotoChoiceRow(ResponseModel):
     id: str = Field(..., alias='_id', description='GeneratedPhotos _id')
     url: str = Field(..., min_length=1, description='Its download URL')
     source: PhotoSource = Field(..., description='Styled, or the original')
+    prompt: str | None = Field(
+        None, description='The prompt the model was given for it; null for '
+        'the original, and on a card saved before each photo carried its '
+        'own')
 
 
 class ProductPhotoChoicesResponse(ResponseModel):
     """What makeProductPhotoChoices sends: the product, its original photo
-    first, then the styled ones made."""
+    first, then the ones made, each with its prompt."""
     productId: str = Field(..., min_length=1, description='The Products _id')
     productName: str = Field(..., min_length=1, description='Product name')
     photos: list[PhotoChoiceRow] = Field(
-        ..., min_length=1, max_length=1 + PHOTO_CHOICES_GENERATED,
-        description='The original first, then the styled photos')
-    prompt: str | None = Field(
-        ..., description='The prompt the styled photos were made with; null '
-        'when none were made')
+        ..., min_length=1, max_length=1 + PHOTOS_PER_CALL,
+        description='The original first, then the photos made')
     notGenerated: str | None = Field(
-        ..., description='Why no styled photos were made (no photo style, '
-        "today's limit reached, generation unavailable); null when they "
-        'were')
+        ..., description='Why fewer photos than asked were made (no photo '
+        "style, today's limit reached, generation unavailable); null when "
+        'all were')
 
 
 class FoundProductRow(ResponseModel):

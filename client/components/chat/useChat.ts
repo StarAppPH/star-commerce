@@ -139,7 +139,7 @@ function answerLabel(form: ChatFormAnswer): string {
     case 'location': return 'Here is the store’s pin.';
     case 'newProducts': return `Add ${form.products.length === 1 ? 'this product' : `these ${form.products.length} products`}.`;
     case 'phoneVerified': return 'I verified my phone number.';
-    case 'photoRequest': return `Make ${form.count} product ${form.count === 1 ? 'photo' : 'photos'}.`;
+    case 'photoRequest': return 'Make 3 product photos.';
     case 'orderItems': return 'I’d like to order these.';
     case 'payment': return 'I’ll pay now.';
     case 'handover': return `Mark ${form.orderIds.length === 1 ? 'this order' : `these ${form.orderIds.length} orders`} handed over.`;

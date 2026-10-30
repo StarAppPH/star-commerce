@@ -12,6 +12,19 @@
                     "minLength": 1,
                     "title": "Url",
                     "type": "string"
+                },
+                "prompt": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The prompt the model was given for it; null on a card saved before each photo carried its own",
+                    "title": "Prompt"
                 }
             },
             "required": [
@@ -51,6 +64,19 @@
             "default": null,
             "description": "The prompt they were made with; null on a card saved before prompts were shown",
             "title": "Prompt"
+        },
+        "notGenerated": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Why fewer photos than asked were made; null when all were",
+            "title": "Notgenerated"
         }
     },
     "required": [

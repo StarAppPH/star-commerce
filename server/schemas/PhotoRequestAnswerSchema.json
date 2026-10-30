@@ -26,13 +26,6 @@
             "title": "Imageurls",
             "type": "array"
         },
-        "count": {
-            "description": "How many photos to make",
-            "maximum": 4,
-            "minimum": 1,
-            "title": "Count",
-            "type": "integer"
-        },
         "notes": {
             "anyOf": [
                 {
@@ -51,8 +44,7 @@
     "required": [
         "kind",
         "formId",
-        "imageUrls",
-        "count"
+        "imageUrls"
     ],
     "title": "PhotoRequestAnswer",
     "type": "object",

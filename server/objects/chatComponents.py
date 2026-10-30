@@ -24,8 +24,8 @@ from objects.order import (ORDER_ITEMS_MAX, CancelReason, NewOrderItem,
                            OrderDeliveryRow, OrderItemRow, OrderStatus,
                            PaymentMethod)
 from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
-                           PHOTOS_PER_CALL_MAX, PHOTO_CHOICES_GENERATED,
-                           GeneratedPhotoRow, PhotoChoiceRow)
+                           PHOTOS_PER_CALL, GeneratedPhotoRow,
+                           PhotoChoiceRow)
 from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
                             AdditionalTerms, DefectReportDays, DeliveryAreas,
                             DeliveryOptions,
@@ -256,9 +256,13 @@ class PhotosCard(ResponseModel):
     """The product photos a tool made."""
     kind: Literal['photos'] = Field(..., description='The card')
     photos: list[GeneratedPhotoRow] = Field(..., description='The photos')
+    # Only on a card saved before each photo carried its own prompt.
     prompt: str | None = Field(
         None, description='The prompt they were made with; null on a card '
         'saved before prompts were shown')
+    notGenerated: str | None = Field(
+        None, description='Why fewer photos than asked were made; null when '
+        'all were')
 
 
 class ProductPhotoChoiceCard(ResponseModel):
@@ -269,12 +273,13 @@ class ProductPhotoChoiceCard(ResponseModel):
     productId: str = Field(..., description='The Products _id')
     productName: str = Field(..., description='Product name')
     photos: list[PhotoChoiceRow] = Field(
-        ..., min_length=1, max_length=1 + PHOTO_CHOICES_GENERATED,
-        description='The original first, then the styled photos')
-    prompt: str | None = Field(..., description='The prompt the styled '
+        ..., min_length=1, max_length=1 + PHOTOS_PER_CALL,
+        description='The original first, then the photos made')
+    # Only on a card saved before each photo carried its own prompt.
+    prompt: str | None = Field(None, description='The prompt the styled '
                                'photos were made with; null when none were')
-    notGenerated: str | None = Field(..., description='Why no styled photos '
-                                     'were made; null when they were')
+    notGenerated: str | None = Field(..., description='Why fewer photos than '
+                                     'asked were made; null when all were')
 
 
 class StoreCard(ResponseModel):
@@ -342,8 +347,6 @@ class PhotoRequestForm(ResponseModel):
     Answered with PhotoRequestAnswer."""
     kind: Literal['photoRequestForm'] = Field(..., description='The form')
     formId: FormId
-    count: int = Field(..., ge=1, le=PHOTOS_PER_CALL_MAX,
-                       description='How many photos to make, prefilled')
 
 
 class DeliveryPinForm(ResponseModel):
@@ -439,8 +442,6 @@ class PhotoRequestAnswer(AppModel):
         min_length=1, max_length=CHAT_PHOTO_URL_MAX_LENGTH)]] = Field(
             ..., min_length=1, max_length=PHOTO_REFERENCES_MAX,
             description='The download URLs of the uploaded photos')
-    count: int = Field(..., ge=1, le=PHOTOS_PER_CALL_MAX,
-                       description='How many photos to make')
     notes: str | None = Field(None, max_length=PHOTO_NOTES_MAX_LENGTH,
                               description='Extra direction')
 
