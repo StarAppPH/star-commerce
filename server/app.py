@@ -264,11 +264,11 @@ def createUserStore():
     name = data.get('name')
     description = data.get('description')
     contactNumber = data.get('contactNumber')
-    address = data.get('address')
     primaryColor = data.get('primaryColor')
     secondaryColor = data.get('secondaryColor')
     currency = data.get('currency')
     openingHours = data.get('openingHours')
+    address = data.get('address')
     current_user = get_jwt_identity()
     try:
         if isinstance(userId, (dict, list)):
@@ -279,8 +279,6 @@ def createUserStore():
             raise ValueError('Invalid description')
         if isinstance(contactNumber, (dict, list)):
             raise ValueError('Invalid contactNumber')
-        if isinstance(address, (dict, list)):
-            raise ValueError('Invalid address')
         if isinstance(primaryColor, (dict, list)):
             raise ValueError('Invalid primaryColor')
         if isinstance(secondaryColor, (dict, list)):
@@ -289,19 +287,21 @@ def createUserStore():
             raise ValueError('Invalid currency')
         if isinstance(openingHours, (dict, list)):
             raise ValueError('Invalid openingHours')
+        if isinstance(address, (dict, list)):
+            raise ValueError('Invalid address')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().createUserStore(userId, name, description, contactNumber, address, primaryColor, secondaryColor, currency, openingHours)
+        res = ApiRequests().createUserStore(userId, name, description, contactNumber, primaryColor, secondaryColor, currency, openingHours, address)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'createUserStore', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'address', 'primaryColor', 'secondaryColor', 'currency', 'openingHours')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'createUserStore', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'primaryColor', 'secondaryColor', 'currency', 'openingHours', 'address')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'createUserStore', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'address', 'primaryColor', 'secondaryColor', 'currency', 'openingHours')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'createUserStore', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'primaryColor', 'secondaryColor', 'currency', 'openingHours', 'address')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'createUserStore', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'address', 'primaryColor', 'secondaryColor', 'currency', 'openingHours'))})
+    logging.info({'function': 'createUserStore', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'primaryColor', 'secondaryColor', 'currency', 'openingHours', 'address'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Store created", status=200, current_user=current_user, data=res, jwtToken=jwtToken)

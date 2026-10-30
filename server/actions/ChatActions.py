@@ -827,7 +827,9 @@ def _runModel(toolset: str, userId: str, storeId: str,
     TURN_DEADLINE_SECONDS (or `deadline`). `refusal` is
     chatModel.complete's, on the first call only, logged at
     `refusalLevel`. Before each route tool runs, one of its thinking texts
-    is saved as what the turn `turnKey` is doing (chatThinking.note)."""
+    is saved as what the turn `turnKey` is doing (chatThinking.note).
+    A setup turn whose createUserStore succeeded goes on with the admin's
+    tools (chatForms.setsUpTheStore)."""
     from chatTools import TOOLS
     if deadline is None:
         deadline = time.monotonic() + TURN_DEADLINE_SECONDS
@@ -873,6 +875,12 @@ def _runModel(toolset: str, userId: str, storeId: str,
                     content = chatModel.runTool(toolset, call['name'],
                                                 call['arguments'], userId,
                                                 storeId)
+                    if chatForms.setsUpTheStore(toolset, call['name'],
+                                                content):
+                        # The store exists now: the rest of the turn has
+                        # the admin's tools, so the model can open the map.
+                        toolset = 'admin'
+                        formTools = chatForms.formToolNames(toolset)
                 toolStep = _toolStep(call['id'], content)
                 steps.append(toolStep)
                 messages.append(_stepMessage(toolStep))

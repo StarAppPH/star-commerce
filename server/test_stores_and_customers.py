@@ -341,6 +341,18 @@ def test_createUserStore_aNewStoreHasNoLocation_andNoneCurrencyIsPHP(clean):
     assert api.getUserStore(ADMIN)['store']['location'] is None
 
 
+def test_createUserStore_withoutAnAddress_storesNone(clean):
+    """The setup chat asks no address: the map pin suggests it after."""
+    createTestUser(ADMIN)
+    details = {k: v for k, v in STORE_DETAILS.items() if k != 'address'}
+
+    created = api.createUserStore(ADMIN, 'Bakery A', **details)
+
+    assert created['address'] is None
+    assert db.read({}, 'Stores')[0]['address'] is None
+    assert api.getUserStore(ADMIN)['store']['address'] is None
+
+
 def test_createUserStore_anOwnerIndexCollisionIsAlreadyHasAStore(
         clean, monkeypatch):
     createTestUser(ADMIN)

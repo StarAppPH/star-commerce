@@ -48,6 +48,9 @@ CHAT_TURNS = 'ChatTurns'
 SETUP_TOOLSET = 'adminSetup'
 # Its route tools (chatToolsCreator.py copies them from the admin's).
 SETUP_ROUTE_TOOLS = ('createUserStore', 'getUserStore')
+# The setup tool that sets the store up: once it succeeds, the turn goes on
+# with the admin's tools (the map to pin the store among them).
+SETS_UP_THE_STORE = 'createUserStore'
 # What a form tool tells the model.
 FORM_SHOWN = ('The form is on screen under your reply. Ask the user to fill '
               'it in there; its answer comes as their next message.')
@@ -362,6 +365,18 @@ FORM_TOOLS: dict[str, FormTool] = {
         'inside an area.',
         ShowDeliveryZonesFormArgs, _deliveryZonesForm),
 }
+
+
+def setsUpTheStore(toolset: str, name: str, content: str) -> bool:
+    """Whether the tool `name` of `toolset`, whose tool message is
+    `content`, just set the store up."""
+    if toolset != SETUP_TOOLSET or name != SETS_UP_THE_STORE:
+        return False
+    try:
+        result = json.loads(content)
+    except ValueError:
+        return False
+    return isinstance(result, dict) and 'error' not in result
 
 
 def formToolNames(toolset: str) -> set[str]:
