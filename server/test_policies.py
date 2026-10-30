@@ -18,7 +18,7 @@ from actions.PolicyActions import (ANSWER_RULES, CLEAR_FIELDS, NOT_APPLICABLE,
                                    UPDATE_POLICY_DESCRIPTION, PolicyActions)
 from actions.StoreActions import ALREADY_HAS_A_STORE, NO_STORE_YET, SET_UP
 from ApiRequests import ApiRequests
-from conftest import (STORE_DETAILS, TOKEN, TOKEN_UID, assertExactShape,
+from conftest import (BRAND_COLORS, STORE_DETAILS, TOKEN, TOKEN_UID, assertExactShape,
                       createTestStore, createTestUser, firebaseClaims,
                       guestAt, wipeCollections)
 from mongoDb import LEGACY_STORE_SLUG_INDEX, STORE_SLUG_INDEX, db
@@ -222,7 +222,8 @@ def test_createUserStore_fillsTheSignUpStore(clean, firebase, anotherUser):
     assert stored['createdAt'] == empty['createdAt']
     assert stored['slug'] == 'bakery-a'
     assert stored['name'] == 'Bakery A'
-    assert api.getUserStore(TOKEN_UID) == {'store': created}
+    assert api.getUserStore(TOKEN_UID) == {
+        'store': {**created, **BRAND_COLORS}}
     # The sign-up Policy stays the one policy of the store.
     assert db.read({}, 'Policies', countOnly=True) == 1
     assert _policyDoc(empty['_id']) == policyBefore

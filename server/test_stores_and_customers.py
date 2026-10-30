@@ -11,7 +11,7 @@ from pymongo.errors import DuplicateKeyError
 
 from actions.StoreActions import SLUG_ATTEMPTS, _isOwnerCollision, storeSlug
 from ApiRequests import ApiRequests
-from conftest import (STORE_DETAILS, TEST_GEOCODED_ADDRESS, TOKEN,
+from conftest import (BRAND_COLORS, STORE_DETAILS, TEST_GEOCODED_ADDRESS, TOKEN,
                       FakeGeocodingSession, assertExactShape, createTestStore,
                       createTestUser, guestAt, guestClaims,
                       wipeCollections)
@@ -66,7 +66,7 @@ def test_createUserStore_thenGetUserStore(clean):
     [stored] = db.read({}, 'Stores')
     StoreView.model_validate(stored)
     assert stored['ownerUserId'] == ADMIN
-    assert api.getUserStore(ADMIN) == {'store': created}
+    assert api.getUserStore(ADMIN) == {'store': {**created, **BRAND_COLORS}}
 
 
 def test_createUserStore_inAnotherCurrency(clean):
@@ -179,6 +179,8 @@ def test_createUserStore_storesAndReturnsEveryDetail(clean):
                                   description='  Fresh bread  ',
                                   contactNumber=' +639171234567 ',
                                   address=' 12 Rizal St ',
+                                  primaryColor='#1A73E8',
+                                  secondaryColor='#FBBC04',
                                   openingHours=' Mon-Sat 7am-7pm ')
 
     assertExactShape(StoreResponse, created)
@@ -193,7 +195,7 @@ def test_createUserStore_storesAndReturnsEveryDetail(clean):
             stored['openingHours'], stored['location']) == (
                 'Fresh bread', '+639171234567', '12 Rizal St',
                 'Mon-Sat 7am-7pm', None)
-    assert api.getUserStore(ADMIN) == {'store': created}
+    assert api.getUserStore(ADMIN) == {'store': {**created, **BRAND_COLORS}}
 
 
 @pytest.mark.parametrize('field, value, message', [
@@ -219,6 +221,16 @@ def test_createUserStore_storesAndReturnsEveryDetail(clean):
     ('address', 5, '^An address must be text$'),
     ('contactNumber', 123, '^The contact number must be text$'),
     ('openingHours', 5, '^The opening hours text must be text$'),
+    ('primaryColor', None, '^primaryColor is required: a hex color like '
+     '#1A73E8$'),
+    ('primaryColor', '  ', '^primaryColor is required: a hex color like '
+     '#1A73E8$'),
+    ('secondaryColor', '', '^secondaryColor is required: a hex color like '
+     '#1A73E8$'),
+    ('primaryColor', '#SECRET', '^primaryColor must be a hex color like '
+     '#1A73E8$'),
+    ('secondaryColor', 'red', '^secondaryColor must be a hex color like '
+     '#1A73E8$'),
 ])
 def test_createUserStore_refusesAnInvalidDetail(clean, field, value, message):
     createTestUser(ADMIN)
@@ -228,6 +240,20 @@ def test_createUserStore_refusesAnInvalidDetail(clean, field, value, message):
 
     assert SECRET not in str(error.value)
     assert db.read({}, 'Stores') == []
+
+
+def test_createUserStore_storesTheBrandColorsUppercase(clean):
+    createTestUser(ADMIN)
+
+    created = _storeWith(primaryColor=' #1a73e8 ', secondaryColor='#fbbc04')
+
+    assertExactShape(StoreResponse, created)
+    [stored] = db.read({}, 'Stores')
+    assert (stored['primaryColor'], stored['secondaryColor']) == (
+        '#1A73E8', '#FBBC04')
+    mine = api.getUserStore(ADMIN)['store']
+    assert (mine['primaryColor'], mine['secondaryColor']) == (
+        '#1A73E8', '#FBBC04')
 
 
 @pytest.mark.parametrize('field, label', [
@@ -397,7 +423,7 @@ def test_setUserStoreLocation_savesTheLocation(clean):
     StoreView.model_validate(stored)
     assert stored['location'] == res['location']
     assert stored['_version'] == 1
-    assert api.getUserStore(ADMIN) == {'store': res}
+    assert api.getUserStore(ADMIN) == {'store': {**res, **BRAND_COLORS}}
 
     again = api.setUserStoreLocation(ADMIN, 10, 20)
 
@@ -486,7 +512,7 @@ def test_updateMyStoreDetails_changesOnlyWhatIsSent(clean):
     [stored] = db.read({}, 'Stores')
     StoreView.model_validate(stored)
     assert stored['_version'] == 2
-    assert api.getUserStore(ADMIN) == {'store': res}
+    assert api.getUserStore(ADMIN) == {'store': {**res, **BRAND_COLORS}}
 
     renamed = api.updateMyStoreDetails(ADMIN, name='Bakery Z',
                                        contactNumber='+639181234567',
@@ -629,7 +655,7 @@ def test_startGuestSession_sendsTheStoresPublicDetails(clean, firebase):
     assert store['contactNumber'] == STORE_DETAILS['contactNumber']
     assert store['address'] == STORE_DETAILS['address']
     assert store['location'] == {'latitude': 14.5, 'longitude': 121.0}
-    assert store == pinned
+    assert store == {**pinned, **BRAND_COLORS}
 
 
 # ----------------------------- guest sessions ----------------------------- #
@@ -641,7 +667,8 @@ def test_startGuestSession_createsTheCustomerOnce(clean, firebase):
     res = _guestSession(firebase)
 
     assertExactShape(CustomerSessionResponse, res)
-    assert res == {'_id': GUEST, 'phoneNumber': None, 'store': store}
+    assert res == {'_id': GUEST, 'phoneNumber': None,
+                   'store': {**store, **BRAND_COLORS}}
     [stored] = db.read({}, 'Customers')
     CustomerView.model_validate(stored)
     assert stored['phoneNumber'] is None

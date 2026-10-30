@@ -18,8 +18,9 @@ import geocoding
 import voiceModel
 from mongoDb import db
 from mcpTools import mcp_tool
-from objects import (DEFAULT_STORE_CURRENCY, LATITUDE_LIMIT, LONGITUDE_LIMIT,
-                     PHONE_NUMBER_PATTERN, PHOTO_STYLE_MAX_LENGTH,
+from objects import (DEFAULT_STORE_CURRENCY, HEX_COLOR_EXAMPLE,
+                     LATITUDE_LIMIT, LONGITUDE_LIMIT, PHONE_NUMBER_PATTERN,
+                     PHOTO_STYLE_MAX_LENGTH,
                      STORE_ADDRESS_MAX_LENGTH, STORE_DESCRIPTION_MAX_LENGTH,
                      STORE_NAME_MAX_LENGTH, STORE_OPENING_HOURS_MAX_LENGTH,
                      STORE_SLUG_MAX_LENGTH, STORE_OWNER_ONLY_FIELDS,
@@ -60,7 +61,7 @@ NO_PIN_YET = 'Pin the store on the map first'
 # What createUserStore writes: the details the admin gives, and the slug
 # that sets the store up.
 STORE_DETAILS = ('name', 'slug', 'currency', 'description', 'contactNumber',
-                 'address', 'openingHours')
+                 'address', 'openingHours', 'primaryColor', 'secondaryColor')
 
 
 def ownerQuery(userId: str) -> dict:
@@ -226,6 +227,16 @@ def _validContactNumber(contactNumber: str) -> str:
     return stripped
 
 
+def _requiredColor(value: str | None, field: str) -> str:
+    """A brand color a store must have: hexColor's, refused when missing
+    or empty."""
+    color = hexColor(value, field)
+    if color is None:
+        raise ValueError(f'{field} is required: a hex color like '
+                         f'{HEX_COLOR_EXAMPLE}')
+    return color
+
+
 def _validCoordinate(value: float, label: str, limit: int) -> float:
     """A latitude or longitude: a number from -limit to limit (a bool is no
     number). The range check alone also refuses NaN and infinity (every
@@ -281,13 +292,15 @@ class StoreActions():
         the photo style: the background, lighting and mood they want (up
         to 300 characters, e.g. "white marble counter, soft morning light,
         calm and airy"), and for the store's two brand colors as hex codes
-        like #1A73E8 (primaryColor and secondaryColor; the photos use them
-        only as accents in the background and props). voiceId is the voice
+        like #1A73E8 (primaryColor and secondaryColor; the shop and the
+        admin's screens are drawn in them, and the photos use them only as
+        accents in the background and props). voiceId is the voice
         the store's assistant speaks its replies with: only a voiceId
         listVoices returned, for the voice the owner chose ("" goes back to
-        the default voice; getUserStore shows the voice saved). Never invent a style, a color or a voice: use
-        only what the owner said, and confirm them with the owner before
-        calling. Send only the fields the owner wants changed: a field left
+        the default voice; getUserStore shows the voice saved). Never invent a style or a voice: use only
+        what the owner said. If the owner asks you to pick the colors,
+        suggest two that suit the store. Confirm every value with the owner
+        before calling. Send only the fields the owner wants changed: a field left
         out keeps its value, and an empty one ("") clears it. If this tool
         refuses, relay its message to the owner and ask again."""
         requireAdmin(userId)
@@ -335,14 +348,19 @@ class StoreActions():
                         description: str,
                         contactNumber: str,
                         address: str,
+                        primaryColor: str,
+                        secondaryColor: str,
                         currency: StoreCurrency = DEFAULT_STORE_CURRENCY,
                         openingHours: str | None = None) -> dict:
         """Create the admin's store (an admin has one store). Before calling,
         ask the admin for each detail, one question at a time: the store's
         name, a short description of what it sells, its currency (default
-        PHP), its contact number, its address and, if the admin wants, its
+        PHP), its contact number, its address, its two brand colors as hex
+        codes like #1A73E8 (primaryColor and secondaryColor: the shop and
+        the admin's screens are drawn in them) and, if the admin wants, its
         opening hours. Never invent or guess a value: use only what the
-        admin said. Give the contact number in international format, e.g.
+        admin said, except the colors: if the admin asks you to pick them,
+        suggest two that suit the store and use them once the admin agrees. Give the contact number in international format, e.g.
         +639171234567. Confirm all the details with the admin before
         calling. The store has no map location yet: the admin pins it on
         the map separately afterwards. Before calling, tell the admin that
@@ -362,6 +380,8 @@ class StoreActions():
                                  STORE_DESCRIPTION_MAX_LENGTH)
         contactNumber = _validContactNumber(contactNumber)
         address = _validText(address, 'An address', STORE_ADDRESS_MAX_LENGTH)
+        primaryColor = _requiredColor(primaryColor, 'primaryColor')
+        secondaryColor = _requiredColor(secondaryColor, 'secondaryColor')
         openingHours = _validText(openingHours, 'The opening hours text',
                                   STORE_OPENING_HOURS_MAX_LENGTH,
                                   required=False)
@@ -390,6 +410,8 @@ class StoreActions():
                           contactNumber=contactNumber,
                           address=address,
                           openingHours=openingHours,
+                          primaryColor=primaryColor,
+                          secondaryColor=secondaryColor,
                           location=None,
                           createdAt=createdAt,
                           _version=0).model_dump(by_alias=True)

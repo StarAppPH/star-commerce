@@ -7,12 +7,12 @@ import { Button } from '@/components/ui/button';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Spinner } from '@/components/ui/spinner';
 import { ChatShellProvider } from '@/components/chat/ChatShell';
-import type { ChatComponent } from '@/components/chat/cards/types';
 import { useAuth } from '@/lib/AuthContext';
+import { useBrandColor } from '@/lib/brandColors';
 import { AdminSidebar } from './AdminSidebar';
 import { AdminWorkspaceProvider, useAdminWorkspace } from './AdminWorkspace';
 
-// The admin's voice glow: teal into blue (a shop's is its own warm tones).
+// The admin's voice glow before the store has brand colors: teal into blue.
 const ADMIN_GLOW = '#0D9488';
 const ADMIN_GLOW_SECOND = '#3B82F6';
 
@@ -44,13 +44,18 @@ export default function AdminChatLayout({ children }: { children: React.ReactNod
 function AdminChatFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { storeState, conversations, reloadConversations, reloadStore } = useAdminWorkspace();
-  // A saved turn moves its chat to the top; one that set up or changed the
-  // store (a store card) changes the store too.
-  const onTurnSaved = useCallback((components: ChatComponent[]) => {
+  // A saved turn moves its chat to the top, and the store is read again: a
+  // turn may have set it up or changed it, its brand colors included (a
+  // theme change shows no card).
+  const onTurnSaved = useCallback(() => {
     reloadConversations();
-    if (components.some((component) => component.kind === 'store')) reloadStore();
+    reloadStore();
   }, [reloadConversations, reloadStore]);
   const store = storeState.status === 'ready' ? storeState.store : null;
+  // The admin's screens are drawn in the store's brand colors, like its shop.
+  const primaryColor = store?.primaryColor ?? null;
+  const secondaryColor = store?.secondaryColor ?? null;
+  useBrandColor(primaryColor);
   const openId = pathname.startsWith('/admin/chat/') ? pathname.slice('/admin/chat/'.length) : null;
   const openChat = openId ? conversations.find((row) => row._id === openId) : undefined;
   const title = openId ? (openChat?.title ?? 'Chat') : store ? 'New chat' : 'Set up my store';
@@ -60,8 +65,8 @@ function AdminChatFrame({ children }: { children: React.ReactNode }) {
       voice={{
         title: store?.name ?? 'Star Commerce',
         subtitle: 'Your store assistant',
-        glow: ADMIN_GLOW,
-        glowSecond: ADMIN_GLOW_SECOND,
+        glow: primaryColor ?? ADMIN_GLOW,
+        glowSecond: secondaryColor ?? primaryColor ?? ADMIN_GLOW_SECOND,
         variant: 'admin',
       }}
       onTurnSaved={onTurnSaved}
