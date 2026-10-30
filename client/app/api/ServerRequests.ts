@@ -214,7 +214,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async createUserStore(userId: string, name: string, description: string, contactNumber: string, address: string, currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED', openingHours: string | null): Promise<ApiResponse<StoreResponse>> {
+    async createUserStore(userId: string, name: string, description: string, contactNumber: string, address: string, primaryColor: string, secondaryColor: string, currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED', openingHours: string | null): Promise<ApiResponse<StoreResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/createUserStore`, {
             method: 'POST',
@@ -222,7 +222,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "name": name, "description": description, "contactNumber": contactNumber, "address": address, "currency": currency, "openingHours": openingHours}),
+            body: JSON.stringify({"userId": userId, "name": name, "description": description, "contactNumber": contactNumber, "address": address, "primaryColor": primaryColor, "secondaryColor": secondaryColor, "currency": currency, "openingHours": openingHours}),
             cache: 'no-store'
         });
         const data: ApiResponse<StoreResponse> & { msg?: string } = await res.json();
@@ -1217,7 +1217,7 @@ export interface RouteRequestBodies {
     getUserRoleTypes: { userId: string };
     getUserStore: { userId: string };
     updateMyStoreTheme: { userId: string; photoStyle: string | null; primaryColor: string | null; secondaryColor: string | null; voiceId: string | null };
-    createUserStore: { userId: string; name: string; description: string; contactNumber: string; address: string; currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED'; openingHours: string | null };
+    createUserStore: { userId: string; name: string; description: string; contactNumber: string; address: string; primaryColor: string; secondaryColor: string; currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED'; openingHours: string | null };
     updateMyStoreDetails: { userId: string; name: string | null; description: string | null; contactNumber: string | null; address: string | null; openingHours: string | null };
     suggestStoreAddress: { userId: string };
     setUserStoreLocation: { userId: string; latitude: number; longitude: number };

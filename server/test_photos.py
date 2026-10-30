@@ -28,7 +28,7 @@ from actions import PhotoActions, usageCounters
 from actions.StoreActions import NO_STORE_YET, NO_THEME_SENT
 from ApiRequests import ApiRequests
 from conftest import (assertExactShape, createTestStore, createTestUser,
-                      modelKeys, wipeCollections)
+                      modelKeys, wipeCollections, withoutBrandColors)
 from mongoDb import db
 from objects import (PHOTO_NOTES_MAX_LENGTH, AdminStoreResponse,
                      GeneratedPhotosResponse, MyStoreResponse, StoreResponse,
@@ -138,7 +138,7 @@ def test_objectPathFromUrl_readsOurBucketsDownloadUrl(clean):
 
 
 def test_updateMyStoreTheme_thenGetUserStore_carriesTheTheme(clean):
-    createTestStore(ADMIN)
+    withoutBrandColors(createTestStore(ADMIN))
 
     theme = api.updateMyStoreTheme(ADMIN, photoStyle='  soft light  ',
                                    primaryColor='#1a73e8')
@@ -1154,7 +1154,7 @@ def test_theme_aStyleOf300CharactersWorks_301IsRefused(clean):
     {'c': '#112233'}])
 @pytest.mark.parametrize('field', ['primaryColor', 'secondaryColor'])
 def test_theme_aBadColor_isRefused_andNothingIsSaved(clean, field, color):
-    store = createTestStore(ADMIN)
+    store = withoutBrandColors(createTestStore(ADMIN))
 
     with pytest.raises(ValueError) as error:
         # The good style rides along: a refusal saves none of it.
@@ -1186,7 +1186,7 @@ def test_theme_onlyTheCallersOwnStoreChanges(clean):
 
 
 def test_theme_aCustomerOrAnAdminWithoutAStore_changesNothing(clean):
-    store = createTestStore(ADMIN)
+    store = withoutBrandColors(createTestStore(ADMIN))
     createTestUser(NO_STORE_ADMIN)
 
     with pytest.raises(PermissionError):
@@ -1213,7 +1213,7 @@ def test_theResponsesACustomerCanSee_carryNoThemeField(clean):
 
 
 def test_theOwnersView_ofAStoreWithNoTheme_leavesTheFieldsOut(clean):
-    createTestStore(ADMIN)
+    withoutBrandColors(createTestStore(ADMIN))
 
     mine = api.getUserStore(ADMIN)['store']
 
@@ -1242,7 +1242,8 @@ def test_photoPrompt_hasTheColorsLineOnlyWhenAColorIsSet(colors, expected,
 
 
 def test_generate_withNoColors_thePromptHasNoColorsLine(fakes):
-    _, url = themedStoreWithPhoto(fakes)
+    store, url = themedStoreWithPhoto(fakes)
+    withoutBrandColors(store)
 
     api.generateProductPhotos(ADMIN, [url])
 

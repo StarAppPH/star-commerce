@@ -39,7 +39,9 @@ export function AdminWorkspaceProvider({ userId, children }: { userId: string; c
     if (res.status === 200) {
       setStoreState({ status: 'ready', store: res.data.store });
     } else {
-      setStoreState({ status: 'error', message: res.message });
+      // A store already shown stays: a failed re-read after a chat turn
+      // never takes the admin's screen away.
+      setStoreState((current) => (current.status === 'ready' ? current : { status: 'error', message: res.message }));
     }
   }, [adminRequest, server, userId]);
 

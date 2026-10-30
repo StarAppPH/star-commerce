@@ -10,7 +10,7 @@ from actions.PhotoActions import PHOTO_NOT_FOUND
 from actions.ProductActions import PRODUCT_NOT_FOUND
 from ApiRequests import ApiRequests
 from conftest import (TOKEN, addProduct, assertExactShape, createTestStore,
-                      guestClaims, wipeCollections)
+                      guestClaims, wipeCollections, withoutBrandColors)
 from mongoDb import db
 from objects import (AdminProductListResponse, AdminProductRow,
                      CustomerSessionResponse, GeneratedPhoto,
@@ -155,7 +155,7 @@ def test_theShop_getsTheBrandColors_neverThePhotoStyle(clean, firebase):
 
 
 def test_aColorNotSet_isLeftOut(clean, firebase):
-    store = createTestStore(ADMIN)
+    store = withoutBrandColors(createTestStore(ADMIN))
     api.updateMyStoreTheme(ADMIN, primaryColor='#112233')
 
     shop = shopper(firebase, store)['store']

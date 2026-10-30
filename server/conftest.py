@@ -715,11 +715,14 @@ def emptyUsers(monkeypatch):
 # An admin's store and its products, made through the routes, for
 # test_stores_and_customers.py, test_products.py and test_mcp_server.py.
 
+# The brand colors createUserStore requires, as stored.
+BRAND_COLORS = {'primaryColor': '#1A73E8', 'secondaryColor': '#FBBC04'}
 # The details createUserStore requires besides the name.
 STORE_DETAILS = {
     'description': 'Fresh bread and pastries',
     'contactNumber': '+639171234567',
     'address': '12 Rizal St, Quezon City',
+    **BRAND_COLORS,
 }
 
 
@@ -731,6 +734,16 @@ def createTestStore(adminId: str, name: str = 'Bakery A',
     createTestUser(adminId)
     return ApiRequests().createUserStore(adminId, name, **STORE_DETAILS,
                                          currency=currency)
+
+
+def withoutBrandColors(store: dict) -> dict:
+    """`store` (createTestStore's) made a store from before createUserStore
+    required the brand colors: neither color stored. Returns `store`."""
+    from mongoDb import db
+    db.db['Stores'].update_one({'_id': store['_id']},
+                               {'$unset': {'primaryColor': '',
+                                           'secondaryColor': ''}})
+    return store
 
 
 def addProduct(storeId: str, name: str, price: float, soldCount: int = 0,

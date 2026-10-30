@@ -38,8 +38,8 @@ import photoStorage
 import pubSub as pubSubModule
 from actions import ChatActions, PhotoActions, VoiceActions, usageCounters
 from ApiRequests import ApiRequests
-from conftest import (STORE_DETAILS, TOKEN, addOrder, addProduct,
-                      assertExactShape, createTestStore, createTestUser,
+from conftest import (BRAND_COLORS, STORE_DETAILS, TOKEN, addOrder,
+                      addProduct, assertExactShape, createTestStore, createTestUser,
                       guestClaims, wipeCollections)
 from mongoDb import db
 from objects import (ChatAttachment, ChatTurn, Conversation, Customer,
@@ -608,7 +608,7 @@ def test_afterAReset_theSameNameAndSlugCanBeUsedAgain(storage, firebase):
 
     assert created['_id'] == newId
     assert created['slug'] == 'bakery-a'
-    assert api.getUserStore(ADMIN_A) == {'store': created}
+    assert api.getUserStore(ADMIN_A) == {'store': {**created, **BRAND_COLORS}}
     # A set-up store takes its name again, not the word.
     with pytest.raises(ValueError, match="^Type your store's name"):
         api.resetMyStore(ADMIN_A, 'reset')

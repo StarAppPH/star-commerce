@@ -166,7 +166,9 @@ CHAT_PROMPTS = {
         'You help a new store owner set up their store. Until it exists you '
         'can do only that. ' + _ASK_RULE + "In this order: the store's name, "
         'what it sells, its currency (suggest the likely one from what they '
-        'said), its contact number, its address, then opening hours (e.g. '
+        'said), its contact number, its address, its two brand colors '
+        '(hex codes like #1A73E8; the shop is drawn in them; if they ask you '
+        'to pick, suggest two that suit the store), then opening hours (e.g. '
         'Mon–Sat 9am–6pm; they may skip it). Read back a short summary; when '
         'they say yes, call createUserStore. Once the store exists, tell them '
         'that next they can add products, pin the store on a map and answer '

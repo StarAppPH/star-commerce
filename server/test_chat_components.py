@@ -266,7 +266,8 @@ def test_theStoreDetailsAskedInChat_createTheStore(wiped, firebase, model):
     created = json.dumps({'name': 'Kalye Coffee',
                           'description': 'Small-batch coffee',
                           'currency': 'PHP', 'contactNumber': '+639171234567',
-                          'address': '14 Maginhawa St'})
+                          'address': '14 Maginhawa St',
+                          'primaryColor': '#6F4E37', 'secondaryColor': '#F5E6D3'})
     model(calls(('c1', 'createUserStore', created)),
           reply('Your store is live.'))
 
@@ -288,7 +289,8 @@ def test_aRefusedStoreDetail_goesBackToTheModel(wiped, firebase, model):
     adminId = signedUpAdmin(firebase)
     bad = json.dumps({'name': 'Kalye Coffee', 'description': 'Coffee',
                       'currency': 'PHP', 'contactNumber': 'call me',
-                      'address': '14 Maginhawa St'})
+                      'address': '14 Maginhawa St',
+                      'primaryColor': '#6F4E37', 'secondaryColor': '#F5E6D3'})
     fake = model(calls(('c1', 'createUserStore', bad)),
                  reply('That number does not look right. What is it?'))
 

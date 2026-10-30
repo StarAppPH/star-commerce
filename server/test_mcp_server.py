@@ -36,7 +36,7 @@ from ApiRequests import ApiRequests
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import NoContentResponse
-from conftest import (STORE_DETAILS, addOrder, addProduct, createTestStore,
+from conftest import (BRAND_COLORS, STORE_DETAILS, addOrder, addProduct, createTestStore,
                       createTestUser, guestAt, storeWithProducts,
                       verifiedGuestAt, wipeCollections)
 
@@ -127,11 +127,12 @@ def test_anAdminToolsArguments_leaveOutTheInjectedParams():
     create = byName['createUserStore'].input_schema
 
     assert set(create['properties']) == {
-        'name', 'description', 'contactNumber', 'address', 'currency',
-        'openingHours'
+        'name', 'description', 'contactNumber', 'address', 'primaryColor',
+        'secondaryColor', 'currency', 'openingHours'
     }
     assert set(create['required']) == {
-        'name', 'description', 'contactNumber', 'address'
+        'name', 'description', 'contactNumber', 'address', 'primaryColor',
+        'secondaryColor'
     }
     assert 'PHP' in str(create['properties']['currency'])
     assert 'XYZ' not in str(create['properties']['currency'])
@@ -449,7 +450,7 @@ def test_e2e_adminOnboarding_getUserStoreThenCreateUserStore(clean):
 
     assert not created.is_error, _text(created)
     store = api.getUserStore(ADMIN)['store']
-    assert created.structured_content == store
+    assert {**created.structured_content, **BRAND_COLORS} == store
     assert store['currency'] == 'PHP'
     assert store['slug'] == 'bakery-a'
     assert store['openingHours'] == 'Mon-Sat 7am-7pm'
