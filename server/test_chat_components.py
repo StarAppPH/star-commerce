@@ -285,6 +285,86 @@ def test_theStoreDetailsAskedInChat_createTheStore(wiped, firebase, model):
         chatModel.CHAT_PROMPTS['admin'])
 
 
+def test_theSetupPrompt_asksNoAddress_andOpensTheMapAfterCreating():
+    setup = chatModel.CHAT_PROMPTS['adminSetup']
+    assert 'Never ask for the address' in setup
+    assert 'its address, ' not in setup and 'open the map' in setup
+    assert setup.index('createUserStore') < setup.index('open the map')
+    admin = chatModel.CHAT_PROMPTS['admin']
+    assert (admin.index('setUserStoreLocation')
+            < admin.index('suggestStoreAddress'))
+
+
+@pytest.mark.parametrize('toolset, name, content, setsUp', [
+    ('adminSetup', 'createUserStore', '{"name": "Kalye Coffee"}', True),
+    ('adminSetup', 'createUserStore', '{"error": "Bad number"}', False),
+    ('adminSetup', 'createUserStore', 'not json', False),
+    ('adminSetup', 'getUserStore', '{"store": null}', False),
+    ('admin', 'createUserStore', '{"name": "Kalye Coffee"}', False),
+])
+def test_setsUpTheStore(toolset, name, content, setsUp):
+    assert chatForms.setsUpTheStore(toolset, name, content) is setsUp
+
+
+def test_aStoreJustCreated_opensTheMapInTheSameTurn(wiped, firebase, model):
+    """No address is asked: once createUserStore succeeds the turn goes on
+    with the admin's tools, the model opens the map, and the pin it sends
+    next gets the address suggested from it."""
+    adminId = signedUpAdmin(firebase)
+    created = json.dumps({'name': 'Kalye Coffee',
+                          'description': 'Small-batch coffee',
+                          'currency': 'PHP', 'contactNumber': '+639171234567',
+                          'primaryColor': '#6F4E37',
+                          'secondaryColor': '#F5E6D3'})
+    fake = model(calls(('c1', 'createUserStore', created)),
+                 calls(('c2', 'showStoreLocationForm', '{}')),
+                 reply("Your store is live. I've put a map below, pin your "
+                       'store.'))
+
+    res = adminSays('Yes, create it', userId=adminId)
+
+    assert fake.requests[0]['tools'] == chatTools.TOOLS['adminSetup']
+    assert fake.requests[1]['tools'] == chatTools.TOOLS['admin']
+    assert fake.requests[2]['tools'] == chatTools.TOOLS['admin']
+    # The prompt stays the setup one for the rest of the turn.
+    assert fake.requests[1]['messages'][0]['content'] == (
+        chatModel.CHAT_PROMPTS['adminSetup'])
+    store, form = res['components']
+    assert store['kind'] == 'store' and store['address'] is None
+    assert form['kind'] == 'locationForm'
+    assert form['location'] is None and form['address'] is None
+    assert api.getUserStore(adminId)['store']['address'] is None
+
+    # The pin comes next: saved, then an address is suggested from it.
+    pin = {'kind': 'location', 'formId': form['formId'],
+           'latitude': 14.6507, 'longitude': 121.0494}
+    model(calls(('c3', 'setUserStoreLocation',
+                 json.dumps({'latitude': 14.6507, 'longitude': 121.0494}))),
+          calls(('c4', 'suggestStoreAddress', '{}')),
+          reply(f'Use {TEST_GEOCODED_ADDRESS} as your address?'))
+    adminSays(None, res['conversationId'], pin, userId=adminId)
+    stored = api.getUserStore(adminId)['store']
+    assert stored['location'] == {'latitude': 14.6507, 'longitude': 121.0494}
+    assert stored['address'] is None  # not before the owner's yes
+
+
+def test_aRefusedCreate_keepsTheSetupTools(wiped, firebase, model):
+    adminId = signedUpAdmin(firebase)
+    bad = json.dumps({'name': 'Kalye Coffee', 'description': 'Coffee',
+                      'currency': 'PHP', 'contactNumber': 'call me',
+                      'primaryColor': '#6F4E37', 'secondaryColor': '#F5E6D3'})
+    fake = model(calls(('c1', 'createUserStore', bad)),
+                 calls(('c2', 'showStoreLocationForm', '{}')),
+                 reply('That number does not look right. What is it?'))
+
+    res = adminSays('Yes, create it', userId=adminId)
+
+    assert fake.requests[1]['tools'] == chatTools.TOOLS['adminSetup']
+    assert res['components'] == []
+    tool = json.loads(fake.requests[2]['messages'][-1]['content'])
+    assert set(tool) == {'error'}
+
+
 def test_aRefusedStoreDetail_goesBackToTheModel(wiped, firebase, model):
     adminId = signedUpAdmin(firebase)
     bad = json.dumps({'name': 'Kalye Coffee', 'description': 'Coffee',

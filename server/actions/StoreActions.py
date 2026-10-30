@@ -500,27 +500,29 @@ class StoreActions():
                         name: str,
                         description: str,
                         contactNumber: str,
-                        address: str,
                         primaryColor: str,
                         secondaryColor: str,
                         currency: StoreCurrency = DEFAULT_STORE_CURRENCY,
-                        openingHours: str | None = None) -> dict:
+                        openingHours: str | None = None,
+                        address: str | None = None) -> dict:
         """Create the admin's store (an admin has one store). Before calling,
         ask the admin for each detail, one question at a time: the store's
         name, a short description of what it sells, its currency (default
-        PHP), its contact number, its address, its two brand colors as hex
-        codes like #1A73E8 (primaryColor and secondaryColor: the shop and
-        the admin's screens are drawn in them) and, if the admin wants, its
-        opening hours. Never invent or guess a value: use only what the
-        admin said, except the colors: if the admin asks you to pick them,
-        suggest two that suit the store and use them once the admin agrees. Give the contact number in international format, e.g.
-        +639171234567. Confirm all the details with the admin before
-        calling. The store has no map location yet: the admin pins it on
-        the map separately afterwards. Before calling, tell the admin that
-        the contact number and the address are shown to every customer,
-        anonymous visitors included. If this tool refuses a detail, relay
-        its message to the admin so they can correct that detail, then
-        call again."""
+        PHP), its contact number, its two brand colors as hex codes like
+        #1A73E8 (primaryColor and secondaryColor: the shop and the admin's
+        screens are drawn in them) and, if the admin wants, its opening
+        hours. Do not ask for the address: the admin pins the store on the
+        map right after it is created, and the address is suggested from
+        the pin (pass address only when the admin already said it). Never
+        invent or guess a value: use only what the admin said, except the
+        colors: if the admin asks you to pick them, suggest two that suit
+        the store and use them once the admin agrees. Give the contact
+        number in international format, e.g. +639171234567. Confirm all the
+        details with the admin before calling. Before calling, tell the
+        admin that the contact number and the address are shown to every
+        customer, anonymous visitors included. If this tool refuses a
+        detail, relay its message to the admin so they can correct that
+        detail, then call again."""
         # This fills in the empty store sign-up created, or creates the
         # store of an admin who has none (one from before that). The unique
         # index on ownerUserId is what enforces "one store per admin" for a
@@ -532,7 +534,12 @@ class StoreActions():
         description = _validText(description, 'A description',
                                  STORE_DESCRIPTION_MAX_LENGTH)
         contactNumber = _validContactNumber(contactNumber)
-        address = _validText(address, 'An address', STORE_ADDRESS_MAX_LENGTH)
+        # Left out, the store has no address yet: the chat suggests one
+        # from the map pin after the store is created. One that is sent
+        # must be a real address.
+        if address is not None:
+            address = _validText(address, 'An address',
+                                 STORE_ADDRESS_MAX_LENGTH)
         primaryColor = _requiredColor(primaryColor, 'primaryColor')
         secondaryColor = _requiredColor(secondaryColor, 'secondaryColor')
         openingHours = _validText(openingHours, 'The opening hours text',
@@ -661,7 +668,8 @@ class StoreActions():
         and differs from address, ask the owner whether to use it as the
         store's address, and save it with updateMyStoreDetails only once
         they say yes; never change the address on your own. When it is
-        null, say nothing about it."""
+        null, say nothing about it, unless the store has no address yet
+        (address is null): then ask the owner to type it."""
         requireAdmin(userId)
         store = ownerStore(userId, {'address': 1, 'location': 1})
         location = store.get('location')
