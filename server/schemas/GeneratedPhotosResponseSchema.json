@@ -46,10 +46,23 @@
             "maxItems": 3,
             "title": "Photos",
             "type": "array"
+        },
+        "notGenerated": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Why fewer photos than asked were made (no photo style, a model call failed); null when all were",
+            "title": "Notgenerated"
         }
     },
     "required": [
-        "photos"
+        "photos",
+        "notGenerated"
     ],
     "title": "GeneratedPhotosResponse",
     "type": "object",

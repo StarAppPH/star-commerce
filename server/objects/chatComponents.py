@@ -23,9 +23,10 @@ from objects.base import AppModel, ResponseModel
 from objects.order import (ORDER_ITEMS_MAX, CancelReason, NewOrderItem,
                            OrderDeliveryRow, OrderItemRow, OrderStatus,
                            PaymentMethod)
-from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
+from objects.photo import (PHOTO_COLOR_FOCUS_MAX_LENGTH, PHOTO_COLORS_MAX,
+                           PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                            PHOTOS_PER_CALL, GeneratedPhotoRow,
-                           PhotoChoiceRow)
+                           PhotoChoiceRow, PhotoColorRow)
 from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
                             AdditionalTerms, DefectReportDays, DeliveryAreas,
                             DeliveryOptions,
@@ -37,7 +38,7 @@ from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
 from objects.product import PRODUCT_BATCH_MAX, NewProduct
 from objects.returns import (RETURN_REJECT_REASON_MAX_LENGTH,
                              ReturnItemRow, ReturnReason, ReturnStatus)
-from objects.store import (DELIVERY_ZONES_MAX, DeliveryZoneResponse,
+from objects.store import (DELIVERY_ZONES_MAX, HEX_COLOR_PATTERN, DeliveryZoneResponse,
                            DeliveryZoneRule,
                            Latitude, Longitude, StoreCurrency,
                            StoreLocationResponse)
@@ -282,6 +283,22 @@ class ProductPhotoChoiceCard(ResponseModel):
                                      'asked were made; null when all were')
 
 
+class PhotoColorsCard(ResponseModel):
+    """The main colors findColorsInPhoto read from a photo the admin
+    attached, as swatches. Answered with BrandColorsAnswer."""
+    kind: Literal['photoColors'] = Field(..., description='The card')
+    formId: FormId
+    colors: list[PhotoColorRow] = Field(
+        ..., min_length=1, max_length=PHOTO_COLORS_MAX,
+        description='The main colors, biggest share first')
+    focus: str | None = Field(
+        ..., max_length=PHOTO_COLOR_FOCUS_MAX_LENGTH,
+        description='The part of the photo read; null for the whole photo')
+    focusFound: bool | None = Field(
+        ..., description='Whether the focus was found (false: the colors '
+        "are the whole photo's); null without a focus")
+
+
 class StoreCard(ResponseModel):
     """The admin's store a tool read, created or pinned."""
     kind: Literal['store'] = Field(..., description='The card')
@@ -388,7 +405,7 @@ class DeliveryZonesForm(ResponseModel):
 ChatComponent = Annotated[Union[
     ShopProductsCard, StoreProductsCard, StoreOrdersCard, MyOrdersCard,
     CheckoutCard, StoreReturnsCard, MyReturnsCard, PolicyCard, PhotosCard,
-    ProductPhotoChoiceCard, StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
+    ProductPhotoChoiceCard, PhotoColorsCard, StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
     PhotoRequestForm, DeliveryPinForm, DeliveryZonesForm,
 ], Field(discriminator='kind')]
 
@@ -505,10 +522,22 @@ class ProductPhotoAnswer(AppModel):
     photoId: AnswerId = Field(..., description='The GeneratedPhotos _id')
 
 
+class BrandColorsAnswer(AppModel):
+    """A PhotoColorsCard's picks: the store's brand colors, each one of the
+    card's colors (null: keep the store's own)."""
+    kind: Literal['brandColors'] = Field(..., description='The answer')
+    formId: FormId
+    primaryColor: str | None = Field(None, pattern=HEX_COLOR_PATTERN,
+                                     description='The primary color')
+    secondaryColor: str | None = Field(None, pattern=HEX_COLOR_PATTERN,
+                                       description='The secondary color')
+
+
 # The chat route's `form` param (a plain union: a route param cannot be
 # Annotated); ChatFormAnswerTagged reads it by its kind.
 ChatFormAnswer = (LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer
                   | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer
                   | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer
-                  | DeliveryZonesAnswer | ProductPhotoAnswer)
+                  | DeliveryZonesAnswer | ProductPhotoAnswer
+                  | BrandColorsAnswer)
 ChatFormAnswerTagged = Annotated[ChatFormAnswer, Field(discriminator='kind')]

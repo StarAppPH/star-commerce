@@ -1,0 +1,53 @@
+{
+    "description": "A PhotoColorsCard's picks: the store's brand colors, each one of the\ncard's colors (null: keep the store's own).",
+    "properties": {
+        "kind": {
+            "const": "brandColors",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "primaryColor": {
+            "anyOf": [
+                {
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The primary color",
+            "title": "Primarycolor"
+        },
+        "secondaryColor": {
+            "anyOf": [
+                {
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The secondary color",
+            "title": "Secondarycolor"
+        }
+    },
+    "required": [
+        "kind",
+        "formId"
+    ],
+    "title": "BrandColorsAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -3,6 +3,7 @@ import type { ApiResponse } from "./ApiResponse";
 import type { AddressSuggestionResponse } from '../schemas/AddressSuggestionResponseSchema';
 import type { AdminProductListResponse } from '../schemas/AdminProductListResponseSchema';
 import type { AdminProductRow } from '../schemas/AdminProductRowSchema';
+import type { BrandColorsAnswer } from '../schemas/BrandColorsAnswerSchema';
 import type { ChatReplyResponse } from '../schemas/ChatReplyResponseSchema';
 import type { ChatThinkingResponse } from '../schemas/ChatThinkingResponseSchema';
 import type { ConversationListResponse } from '../schemas/ConversationListResponseSchema';
@@ -34,6 +35,7 @@ import type { OrderItemsAnswer } from '../schemas/OrderItemsAnswerSchema';
 import type { PaymentAnswer } from '../schemas/PaymentAnswerSchema';
 import type { PhoneVerifiedAnswer } from '../schemas/PhoneVerifiedAnswerSchema';
 import type { PhoneVerifiedResponse } from '../schemas/PhoneVerifiedResponseSchema';
+import type { PhotoColorsResponse } from '../schemas/PhotoColorsResponseSchema';
 import type { PhotoRequestAnswer } from '../schemas/PhotoRequestAnswerSchema';
 import type { ProductListResponse } from '../schemas/ProductListResponseSchema';
 import type { ProductPhotoAnswer } from '../schemas/ProductPhotoAnswerSchema';
@@ -910,7 +912,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendAdminChatMessage`, {
             method: 'POST',
@@ -933,7 +935,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendStoreChatMessage`, {
             method: 'POST',
@@ -1209,6 +1211,29 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
+    async findColorsInPhoto(userId: string, imageUrl: string, focus: string | null): Promise<ApiResponse<PhotoColorsResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/findColorsInPhoto`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "imageUrl": imageUrl, "focus": focus}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<PhotoColorsResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
     async setProductPhoto(userId: string, productId: string, photoId: string | null): Promise<ApiResponse<AdminProductRow>> {
         try {
         const res = await fetch(`${this.apiUrl}/setProductPhoto`, {
@@ -1284,6 +1309,7 @@ export interface RouteResponseModels {
     generateProductPhotos: GeneratedPhotosResponse;
     makeProductPhotoChoices: ProductPhotoChoicesResponse;
     findProductsInPhoto: FoundProductsResponse;
+    findColorsInPhoto: PhotoColorsResponse;
     setProductPhoto: AdminProductRow;
 }
 
@@ -1325,8 +1351,8 @@ export interface RouteRequestBodies {
     getMyStorePolicy: { userId: string };
     getStorePolicy: { userId: string; storeId: string };
     updateMyStorePolicy: { userId: string; acceptsReturns: boolean | null; returnWindowDays: number | null; returnConditions: string | null; nonReturnableItems: string | null; refundMethod: string | null; returnShippingPaidBy: string | null; defectReportDays: number | null; deliveryOptions: string[] | null; deliveryAreas: string | null; handoverDays: number | null; acceptedPaymentMethods: string[] | null; paidOrderCancellation: string | null; paidOrderCancellationHours: number | null; additionalTerms: string | null; clear: string[] | null };
-    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
-    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
+    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
+    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
     getChatThinking: { userId: string; turnKey: string };
     listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
     getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };
@@ -1338,6 +1364,7 @@ export interface RouteRequestBodies {
     generateProductPhotos: { userId: string; imageUrls: string[]; notes: string | null; productName: string | null };
     makeProductPhotoChoices: { userId: string; productId: string; imageUrl: string; notes: string | null };
     findProductsInPhoto: { userId: string; imageUrl: string };
+    findColorsInPhoto: { userId: string; imageUrl: string; focus: string | null };
     setProductPhoto: { userId: string; productId: string; photoId: string | null };
 }
 

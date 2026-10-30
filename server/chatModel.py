@@ -156,8 +156,10 @@ CHAT_PROMPTS = {
             example='I can only help with running your store. What would '
             'you like to do?') + _ATTACHMENT_RULE +
         " Pass an attached image's url to generateProductPhotos only when "
-        'the owner asks for product photos, and to findProductsInPhoto '
-        'when it shows several products the owner wants to add.'),
+        'the owner asks for product photos, to findProductsInPhoto '
+        'when it shows several products the owner wants to add, and to '
+        'findColorsInPhoto when the owner wants a color from it: never '
+        'guess a hex code from an image.'),
     'customer': (
         "You are this store's shopping assistant. Answer from the tools "
         'only, never invent prices, stock or policies. A null policy field '
@@ -174,7 +176,9 @@ CHAT_PROMPTS = {
         'what it sells, its currency (suggest the likely one from what they '
         'said), its contact number, its two brand colors (hex codes like '
         '#1A73E8; the shop is drawn in them; if they ask you to pick, suggest '
-        'two that suit the store), then opening hours (e.g. Mon–Sat 9am–6pm; '
+        'two that suit the store; if they want them from a logo or image '
+        'they attached, call findColorsInPhoto and let them pick from its '
+        'swatches, never guess), then opening hours (e.g. Mon–Sat 9am–6pm; '
         'they may skip it). Never ask for the address: it comes from the map '
         'pin. Read back a short summary; when they say yes, call '
         'createUserStore. Once it succeeds you have the store tools: open '

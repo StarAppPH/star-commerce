@@ -796,7 +796,48 @@ export type Notgenerated1 = string | null;
 /**
  * The card
  */
-export type Kind10 = "store";
+export type Kind10 = "photoColors";
+/**
+ * Answer it with this id
+ */
+export type Formid5 = string;
+/**
+ * The main colors, biggest share first
+ *
+ * @minItems 1
+ * @maxItems 6
+ */
+export type Colors =
+  | [PhotoColorRow]
+  | [PhotoColorRow, PhotoColorRow]
+  | [PhotoColorRow, PhotoColorRow, PhotoColorRow]
+  | [PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow]
+  | [PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow]
+  | [PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow];
+/**
+ * The color, like #1A73E8
+ */
+export type Hex = string;
+/**
+ * Its share of the pixels read, 0 to 1
+ */
+export type Share = number;
+/**
+ * White, black or grey: rarely a brand color
+ */
+export type Neutral = boolean;
+/**
+ * The part of the photo read; null for the whole photo
+ */
+export type Focus = string | null;
+/**
+ * Whether the focus was found (false: the colors are the whole photo's); null without a focus
+ */
+export type Focusfound = boolean | null;
+/**
+ * The card
+ */
+export type Kind11 = "store";
 /**
  * Store name
  */
@@ -853,11 +894,11 @@ export type Longitude = number;
 /**
  * The form
  */
-export type Kind11 = "locationForm";
+export type Kind12 = "locationForm";
 /**
  * Answer it with this id
  */
-export type Formid5 = string;
+export type Formid6 = string;
 /**
  * The store's address
  */
@@ -865,11 +906,11 @@ export type Address1 = string | null;
 /**
  * The form
  */
-export type Kind12 = "newProductsForm";
+export type Kind13 = "newProductsForm";
 /**
  * Answer it with this id
  */
-export type Formid6 = string;
+export type Formid7 = string;
 /**
  * Prices are in it
  */
@@ -922,15 +963,7 @@ export type Photos2 = (string | null)[];
 /**
  * The form
  */
-export type Kind13 = "phoneVerificationForm";
-/**
- * Answer it with this id
- */
-export type Formid7 = string;
-/**
- * The form
- */
-export type Kind14 = "photoRequestForm";
+export type Kind14 = "phoneVerificationForm";
 /**
  * Answer it with this id
  */
@@ -938,11 +971,19 @@ export type Formid8 = string;
 /**
  * The form
  */
-export type Kind15 = "deliveryPinForm";
+export type Kind15 = "photoRequestForm";
 /**
  * Answer it with this id
  */
 export type Formid9 = string;
+/**
+ * The form
+ */
+export type Kind16 = "deliveryPinForm";
+/**
+ * Answer it with this id
+ */
+export type Formid10 = string;
 /**
  * The zones' fees and totals are in it
  */
@@ -1058,11 +1099,11 @@ export type Points = [StoreLocationResponse, StoreLocationResponse, StoreLocatio
 /**
  * The form
  */
-export type Kind16 = "deliveryZonesForm";
+export type Kind17 = "deliveryZonesForm";
 /**
  * Answer it with this id
  */
-export type Formid10 = string;
+export type Formid11 = string;
 /**
  * The zones' fees and totals are in it
  */
@@ -1160,6 +1201,7 @@ export type Components = (
   | PolicyCard
   | PhotosCard
   | ProductPhotoChoiceCard
+  | PhotoColorsCard
   | StoreCard
   | LocationForm
   | NewProductsForm
@@ -1469,10 +1511,30 @@ export interface PhotoChoiceRow {
   prompt?: Prompt2;
 }
 /**
+ * The main colors findColorsInPhoto read from a photo the admin
+ * attached, as swatches. Answered with BrandColorsAnswer.
+ */
+export interface PhotoColorsCard {
+  kind: Kind10;
+  formId: Formid5;
+  colors: Colors;
+  focus: Focus;
+  focusFound: Focusfound;
+}
+/**
+ * A color findColorsInPhoto read: its hex code and how much of the
+ * photo (or of the part it looked at) it covers.
+ */
+export interface PhotoColorRow {
+  hex: Hex;
+  share: Share;
+  neutral: Neutral;
+}
+/**
  * The admin's store a tool read, created or pinned.
  */
 export interface StoreCard {
-  kind: Kind10;
+  kind: Kind11;
   name: Name6;
   slug: Slug;
   currency: Currency7;
@@ -1499,8 +1561,8 @@ export interface StoreLocationResponse {
  * LocationAnswer.
  */
 export interface LocationForm {
-  kind: Kind11;
-  formId: Formid5;
+  kind: Kind12;
+  formId: Formid6;
   /**
    * The pin so far; null when there is none
    */
@@ -1511,8 +1573,8 @@ export interface LocationForm {
  * Asks the admin for new products. Answered with NewProductsAnswer.
  */
 export interface NewProductsForm {
-  kind: Kind12;
-  formId: Formid6;
+  kind: Kind13;
+  formId: Formid7;
   currency: Currency8;
   products: Products2;
   photos?: Photos2;
@@ -1533,16 +1595,16 @@ export interface ChatProductDraft {
  * stored it.
  */
 export interface PhoneVerificationForm {
-  kind: Kind13;
-  formId: Formid7;
+  kind: Kind14;
+  formId: Formid8;
 }
 /**
  * Asks the admin for photos of one item to turn into product photos.
  * Answered with PhotoRequestAnswer.
  */
 export interface PhotoRequestForm {
-  kind: Kind14;
-  formId: Formid8;
+  kind: Kind15;
+  formId: Formid9;
 }
 /**
  * Asks the shopper to pin where their delivery goes: a map and "use
@@ -1550,8 +1612,8 @@ export interface PhotoRequestForm {
  * Answered with DeliveryPinAnswer.
  */
 export interface DeliveryPinForm {
-  kind: Kind15;
-  formId: Formid9;
+  kind: Kind16;
+  formId: Formid10;
   /**
    * The store's pin, where the map opens; null until pinned
    */
@@ -1577,8 +1639,8 @@ export interface DeliveryZoneResponse {
  * DeliveryZonesAnswer.
  */
 export interface DeliveryZonesForm {
-  kind: Kind16;
-  formId: Formid10;
+  kind: Kind17;
+  formId: Formid11;
   currency: Currency10;
   /**
    * The store's pin, where the map opens; null until pinned

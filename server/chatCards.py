@@ -14,7 +14,7 @@ turn's tools have run (build), in the order the tools ran:
 
 A card that takes a choice gets a formId (chatForms.ANSWERS_TO): products to
 order, an order to pay, paid orders to hand over, requested returns to
-decide. A tool that refused (an {"error": ...} result) shows nothing, and so
+decide, colors to pick the brand colors from. A tool that refused (an {"error": ...} result) shows nothing, and so
 does a result that does not fit its card: it is logged, and the turn goes on.
 At most CHAT_COMPONENTS_PER_TURN_MAX components are kept, the latest.
 """
@@ -190,6 +190,17 @@ def _photoChoice(result: dict, context: CardContext) -> dict:
             'notGenerated': result['notGenerated']}
 
 
+def _photoColors(result: dict, context: CardContext) -> dict | None:
+    """The colors read from a photo, the admin picking the brand colors
+    from them (answered with BrandColorsAnswer); none read, no card."""
+    if not result['colors']:
+        return None
+    return {'kind': 'photoColors', 'formId': newFormId(),
+            'colors': [_pick(c, ('hex', 'share', 'neutral'))
+                       for c in result['colors']],
+            'focus': result['focus'], 'focusFound': result['focusFound']}
+
+
 def _store(result: dict, context: CardContext) -> dict | None:
     # getUserStore wraps it ({"store": ...}, null before it is set up).
     store = result['store'] if 'store' in result else result
@@ -229,6 +240,7 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'getStorePolicy': _policy,
     'generateProductPhotos': _photos,
     'makeProductPhotoChoices': _photoChoice,
+    'findColorsInPhoto': _photoColors,
     'getUserStore': _store,
     'createUserStore': _store,
     'setUserStoreLocation': _store,

@@ -45,10 +45,11 @@ from utils import generateRandomString
 # ChatActions.CHAT_TURNS (ChatActions imports this module).
 CHAT_TURNS = 'ChatTurns'
 # The toolset of an admin whose store is not set up yet: the store's
-# details, nothing else (a route tool needs a set-up store).
+# details, and its brand colors read from a logo (findColorsInPhoto, the one
+# route tool that needs no set-up store).
 SETUP_TOOLSET = 'adminSetup'
 # Its route tools (chatToolsCreator.py copies them from the admin's).
-SETUP_ROUTE_TOOLS = ('createUserStore', 'getUserStore')
+SETUP_ROUTE_TOOLS = ('createUserStore', 'getUserStore', 'findColorsInPhoto')
 # The setup tool that sets the store up: once it succeeds, the turn goes on
 # with the admin's tools (the map to pin the store among them).
 SETS_UP_THE_STORE = 'createUserStore'
@@ -97,6 +98,7 @@ ANSWERS_TO = {
     'deliveryPin': 'deliveryPinForm',
     'deliveryZones': 'deliveryZonesForm',
     'productPhoto': 'productPhotoChoice',
+    'brandColors': 'photoColors',
 }
 
 # How a payment method reads in the user's turn.
@@ -608,6 +610,23 @@ def _productPhoto(answer, component, userId) -> tuple[str, dict]:
              'photoId': answer.photoId})
 
 
+def _brandColors(answer, component, userId) -> tuple[str, dict]:
+    picks = [(role, color.upper()) for role, color in
+             (('primary', answer.primaryColor),
+              ('secondary', answer.secondaryColor)) if color is not None]
+    if not picks:
+        raise ValueError(NOTHING_PICKED)
+    _unique([color for _, color in picks])
+    shown = {color['hex'] for color in component['colors']}
+    if any(color not in shown for _, color in picks):
+        raise ValueError(NOT_ON_THE_CARD)
+    text = ' and '.join(f'{color} as the {role} color'
+                        for role, color in picks)
+    return (f'Use {text}',
+            {'kind': 'brandColors', **{f'{role}Color': color
+                                       for role, color in picks}})
+
+
 def _zoneRules(zone: dict) -> dict:
     """A zone's delivery policy, without its shape."""
     return {rule: zone.get(rule) for rule in DELIVERY_ZONE_RULES}
@@ -651,6 +670,7 @@ _ANSWER_TURNS = {
     'deliveryPin': _deliveryPin,
     'deliveryZones': _deliveryZones,
     'productPhoto': _productPhoto,
+    'brandColors': _brandColors,
 }
 assert set(_ANSWER_TURNS) == set(ANSWERS_TO)
 

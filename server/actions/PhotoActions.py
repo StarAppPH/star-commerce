@@ -47,6 +47,15 @@ Every photo the model made keeps its prompt (GeneratedPhoto.prompt), and
 both photo tools return it on each photo: the admin sees what the model was
 asked.
 
+findColorsInPhoto reads the main colors of a photo the admin attached
+(colorFinder.py, Pillow), for the store's brand colors: the chat model
+cannot read exact colors from an image. With a focus ("the logo"), SAM finds
+that part first and only it is read. Only that SAM call costs: each store
+asks for at most STORE_DAILY_COLOR_FIND_CAP a day, all stores together
+COLOR_FIND_DAILY_CAP_ALL (given back when it fails); without a focus it
+takes no quota and no photo slot. It answers before the store is set up
+too, so a new admin's brand colors can come from their logo.
+
 setProductPhoto shows one of the store's photos on one of its products
 (Product.photoUrl, the photo's download URL): the shop shows it. Only a
 photo the store holds can be set (made by the model, or an original
@@ -62,13 +71,15 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import colorFinder
 import imageModel
 import photoStorage
 import productFinder
 import samModel
 from actions.callSlots import slot
 from actions.ProductActions import PRODUCT_NOT_FOUND, PRODUCTS
-from actions.StoreActions import _validText, requireOwnerStore
+from actions.StoreActions import (_validText, requireAnyOwnerStore,
+                                  requireOwnerStore)
 # ALL_STORES is imported for the tests, which read it here.
 from actions.usageCounters import (ALL_STORES, appDay, envCap,
                                    giveBackQuotas, takeDailyQuotas)
@@ -76,6 +87,7 @@ from mcpTools import mcp_tool
 from mongoDb import db
 from services.__request import ServiceUnavailable
 from objects import (PHOTO_NOTES_MAX_LENGTH, FoundProductsResponse,
+                     PHOTO_COLOR_FOCUS_MAX_LENGTH, PhotoColorsResponse,
                      PHOTO_REFERENCES_MAX, PHOTOS_PER_CALL, PHOTOS_THEMED,
                      PRODUCT_NAME_MAX_LENGTH,
                      AdminProductRow, GeneratedPhoto, GeneratedPhotosResponse,
@@ -90,8 +102,10 @@ PHOTO_USAGE = 'PhotoUsage'
 PHOTOS_KIND = 'photos'
 # The kind of the group photo counters (findProductsInPhoto).
 FINDS_KIND = 'productFinds'
+# The kind of the focused color read counters (findColorsInPhoto).
+COLOR_FINDS_KIND = 'colorFinds'
 # What a store reset carries over to the new store (StoreActions).
-STORE_USAGE_KINDS = (PHOTO_USAGE, (PHOTOS_KIND, FINDS_KIND))
+STORE_USAGE_KINDS = (PHOTO_USAGE, (PHOTOS_KIND, FINDS_KIND, COLOR_FINDS_KIND))
 # Read at import, so it stays the real timezone when a test replaces this
 # module's `datetime`.
 UTC = datetime.timezone.utc
@@ -109,6 +123,19 @@ FIND_CAP_REACHED = ("Your store has reached today's limit of group photos, "
                     'try again tomorrow')
 FIND_ALL_CAP_REACHED = 'Finding products is busy today, try again tomorrow'
 FINDS_TURNED_OFF = 'Finding products in a photo is turned off right now'
+# Focused color reads (a SAM call) a store, and all stores together, make a
+# day: COLOR_FIND_DAILY_CAP_ALL (0 turns them off), else the default.
+STORE_DAILY_COLOR_FIND_CAP = 50
+COLOR_FIND_DAILY_CAP_ALL_VARIABLE = 'COLOR_FIND_DAILY_CAP_ALL'
+DEFAULT_COLOR_FIND_DAILY_CAP_ALL = 500
+COLOR_FIND_CAP_REACHED = ("Your store has reached today's limit of reading "
+                          'part of a photo: try again tomorrow, or ask for '
+                          "the whole photo's colors")
+COLOR_FIND_ALL_CAP_REACHED = ('Reading part of a photo is busy today: ask '
+                              "for the whole photo's colors")
+COLOR_FINDS_TURNED_OFF = ('Reading part of a photo is turned off right '
+                          "now: ask for the whole photo's colors")
+COLOR_FOCUS_LABEL = 'The part of the photo'
 # The photo calls one process runs at once: each holds one of gunicorn's 8
 # threads for up to PHOTO_DEADLINE_SECONDS. With the chat's 4, 2 stay free
 # for the rest of the app.
@@ -267,6 +294,33 @@ def _takeFindQuota(storeId: str) -> list[str]:
         [(FINDS_KIND, storeId, STORE_DAILY_FIND_CAP, FIND_CAP_REACHED)],
         (FINDS_KIND, FIND_ALL_CAP_REACHED), capAll, FINDS_TURNED_OFF,
         appDay(_now()))
+
+
+def _takeColorFindQuota(storeId: str) -> list[str]:
+    """Count one focused color read against the store's daily cap and all
+    stores' (COLOR_FIND_DAILY_CAP_ALL), as _takePhotoQuota does."""
+    capAll = envCap(COLOR_FIND_DAILY_CAP_ALL_VARIABLE,
+                    DEFAULT_COLOR_FIND_DAILY_CAP_ALL,
+                    'colorFindDailyCapAllInvalid')
+    return takeDailyQuotas(
+        PHOTO_USAGE,
+        [(COLOR_FINDS_KIND, storeId, STORE_DAILY_COLOR_FIND_CAP,
+          COLOR_FIND_CAP_REACHED)],
+        (COLOR_FINDS_KIND, COLOR_FIND_ALL_CAP_REACHED), capAll,
+        COLOR_FINDS_TURNED_OFF, appDay(_now()))
+
+
+def _readFocusedColors(storeId: str, data: bytes, focus: str,
+                       deadline: float) -> colorFinder.ColorReading:
+    """The colors of the photo's `focus`, SAM finding it: one photo slot
+    and one color find quota, given back when the read fails."""
+    with slot(_photoSlots, samModel.unavailable):
+        keys = _takeColorFindQuota(storeId)
+        try:
+            return colorFinder.readColors(data, focus, deadline)
+        except Exception:
+            giveBackQuotas(PHOTO_USAGE, keys)
+            raise
 
 
 def _references(read: list[tuple[bytes, str]]
@@ -584,6 +638,69 @@ class PhotoActions():
             'durationMs': round((time.monotonic() - started) * 1000),
         })
         return {'products': products, 'notFound': finding.notFound}
+
+    @mcp_tool('admin',
+              thinkingText=['Reading the colors in your photo',
+                            'Matching your colors',
+                            'Picking out the main colors'])
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Colors read',
+                  responseModel=PhotoColorsResponse)
+    def findColorsInPhoto(self,
+                          userId: str,
+                          imageUrl: str,
+                          focus: str | None = None) -> dict:
+        """Read the exact main colors, as hex codes, of an image the admin
+        attached (imageUrl, the attached image's url: never invent or
+        change one). Call it whenever the admin wants a color from an
+        image (their logo, a photo, a screenshot): you cannot read exact
+        colors yourself, so never guess a hex code from an image and never
+        ask the admin for one they say they do not know. focus is a short
+        phrase (2 to 6 words) naming the part of the image the admin
+        means, as it looks ("green square logo", "red shop sign"); leave it
+        out for the whole image. Returns up to 6 colors, biggest share
+        first, each with its share of the part read and whether it is a
+        neutral (white, black or grey); focusFound false means the focus
+        was not found and the colors are the whole image's (say so). The
+        chat shows them as swatches the admin picks the primary and
+        secondary color from; suggest the biggest non-neutral color for
+        the primary. When the admin picks on the card, or names a color,
+        save it with updateMyStoreTheme (createUserStore while setting up
+        the store). If this tool refuses, relay its message to the
+        admin."""
+        deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+        # A store not set up yet reads colors too (its brand colors come
+        # from createUserStore).
+        store = requireAnyOwnerStore(userId, {'_id': 1})
+        if not isinstance(imageUrl, str) or not imageUrl.strip():
+            raise ValueError(IMAGE_URL_MISSING)
+        path = photoStorage.ownImagePath(
+            userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
+            'imageUrl')
+        focus = _validText(focus, COLOR_FOCUS_LABEL,
+                           PHOTO_COLOR_FOCUS_MAX_LENGTH, required=False)
+        started = time.monotonic()
+        [(data, _)] = photoStorage.readOwnImages(
+            userId, [('imageUrl', path)], deadline)
+        if focus is None:
+            reading = colorFinder.readColors(data, None, deadline)
+        else:
+            reading = _readFocusedColors(store['_id'], data, focus,
+                                         deadline)
+        # Never the URL, the path, the focus or the colors.
+        logging.info({
+            'event': 'photoColors',
+            'storeId': store['_id'],
+            'colors': len(reading.colors),
+            'focused': focus is not None,
+            'focusFound': reading.focusFound,
+            'durationMs': round((time.monotonic() - started) * 1000),
+        })
+        return {'colors': [{'hex': color.hex, 'share': color.share,
+                            'neutral': color.neutral}
+                           for color in reading.colors],
+                'focus': focus, 'focusFound': reading.focusFound}
 
     @mcp_tool('admin',
               thinkingText=['Setting the product photo',

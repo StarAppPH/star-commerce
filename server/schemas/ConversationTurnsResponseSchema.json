@@ -1053,6 +1053,7 @@
                                 "myReturns": "#/$defs/MyReturnsCard",
                                 "newProductsForm": "#/$defs/NewProductsForm",
                                 "phoneVerificationForm": "#/$defs/PhoneVerificationForm",
+                                "photoColors": "#/$defs/PhotoColorsCard",
                                 "photoRequestForm": "#/$defs/PhotoRequestForm",
                                 "photos": "#/$defs/PhotosCard",
                                 "policy": "#/$defs/PolicyCard",
@@ -1095,6 +1096,9 @@
                             },
                             {
                                 "$ref": "#/$defs/ProductPhotoChoiceCard"
+                            },
+                            {
+                                "$ref": "#/$defs/PhotoColorsCard"
                             },
                             {
                                 "$ref": "#/$defs/StoreCard"
@@ -1816,6 +1820,100 @@
                 "source"
             ],
             "title": "PhotoChoiceRow",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "PhotoColorRow": {
+            "description": "A color findColorsInPhoto read: its hex code and how much of the\nphoto (or of the part it looked at) it covers.",
+            "properties": {
+                "hex": {
+                    "description": "The color, like #1A73E8",
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "title": "Hex",
+                    "type": "string"
+                },
+                "share": {
+                    "description": "Its share of the pixels read, 0 to 1",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1,
+                    "title": "Share",
+                    "type": "number"
+                },
+                "neutral": {
+                    "description": "White, black or grey: rarely a brand color",
+                    "title": "Neutral",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "hex",
+                "share",
+                "neutral"
+            ],
+            "title": "PhotoColorRow",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "PhotoColorsCard": {
+            "description": "The main colors findColorsInPhoto read from a photo the admin\nattached, as swatches. Answered with BrandColorsAnswer.",
+            "properties": {
+                "kind": {
+                    "const": "photoColors",
+                    "description": "The card",
+                    "title": "Kind",
+                    "type": "string"
+                },
+                "formId": {
+                    "description": "Answer it with this id",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "title": "Formid",
+                    "type": "string"
+                },
+                "colors": {
+                    "description": "The main colors, biggest share first",
+                    "items": {
+                        "$ref": "#/$defs/PhotoColorRow"
+                    },
+                    "maxItems": 6,
+                    "minItems": 1,
+                    "title": "Colors",
+                    "type": "array"
+                },
+                "focus": {
+                    "anyOf": [
+                        {
+                            "maxLength": 60,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The part of the photo read; null for the whole photo",
+                    "title": "Focus"
+                },
+                "focusFound": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Whether the focus was found (false: the colors are the whole photo's); null without a focus",
+                    "title": "Focusfound"
+                }
+            },
+            "required": [
+                "kind",
+                "formId",
+                "colors",
+                "focus",
+                "focusFound"
+            ],
+            "title": "PhotoColorsCard",
             "type": "object",
             "additionalProperties": false
         },

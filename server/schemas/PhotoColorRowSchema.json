@@ -1,0 +1,31 @@
+{
+    "description": "A color findColorsInPhoto read: its hex code and how much of the\nphoto (or of the part it looked at) it covers.",
+    "properties": {
+        "hex": {
+            "description": "The color, like #1A73E8",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Hex",
+            "type": "string"
+        },
+        "share": {
+            "description": "Its share of the pixels read, 0 to 1",
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "title": "Share",
+            "type": "number"
+        },
+        "neutral": {
+            "description": "White, black or grey: rarely a brand color",
+            "title": "Neutral",
+            "type": "boolean"
+        }
+    },
+    "required": [
+        "hex",
+        "share",
+        "neutral"
+    ],
+    "title": "PhotoColorRow",
+    "type": "object",
+    "additionalProperties": false
+}
