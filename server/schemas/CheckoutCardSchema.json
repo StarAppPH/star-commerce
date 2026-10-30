@@ -1,5 +1,31 @@
 {
     "$defs": {
+        "BankAccountRow": {
+            "description": "BankAccount as a route sends it (MIRRORS keeps it in step).",
+            "properties": {
+                "bankName": {
+                    "description": "The bank, e.g. BDO",
+                    "maxLength": 60,
+                    "minLength": 1,
+                    "title": "Bankname",
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "description": "The account or mobile number a customer pays to",
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "title": "Accountnumber",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "bankName",
+                "accountNumber"
+            ],
+            "title": "BankAccountRow",
+            "type": "object",
+            "additionalProperties": false
+        },
         "ChatMyOrderRow": {
             "description": "An order on a shopper's order card.",
             "properties": {
@@ -112,6 +138,7 @@
                     "description": "Where the order is",
                     "enum": [
                         "pending",
+                        "awaitingPayment",
                         "paid",
                         "completed",
                         "cancelled"
@@ -173,11 +200,15 @@
                     "anyOf": [
                         {
                             "enum": [
+                                "cash",
                                 "card",
+                                "eWallet",
+                                "bankTransfer",
+                                "check",
+                                "crypto",
                                 "gcash",
                                 "maya",
-                                "grabPay",
-                                "bankTransfer"
+                                "grabPay"
                             ],
                             "type": "string"
                         },
@@ -185,7 +216,7 @@
                             "type": "null"
                         }
                     ],
-                    "description": "How it was paid",
+                    "description": "How it is or was paid",
                     "title": "Paymentmethod"
                 },
                 "paidAt": {
@@ -271,6 +302,32 @@
             "type": "object",
             "additionalProperties": false
         },
+        "EwalletAccountRow": {
+            "description": "EwalletAccount as a route sends it. Each field restates\nEwalletAccount's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "ewalletName": {
+                    "description": "The e-wallet, e.g. GCash",
+                    "maxLength": 60,
+                    "minLength": 1,
+                    "title": "Ewalletname",
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "description": "The account or mobile number a customer pays to",
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "title": "Accountnumber",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "ewalletName",
+                "accountNumber"
+            ],
+            "title": "EwalletAccountRow",
+            "type": "object",
+            "additionalProperties": false
+        },
         "OrderItemRow": {
             "description": "One item of an order as a route sends it: OrderItem without its\nproductId. Each field restates OrderItem's, which\ntest_route_response_models.py's MIRRORS keeps in step.",
             "properties": {
@@ -303,6 +360,92 @@
             "title": "OrderItemRow",
             "type": "object",
             "additionalProperties": false
+        },
+        "PaymentOption": {
+            "description": "One way a customer can pay an order at checkout, as payOrder takes\nit (paymentMethod and paymentProvider). With a provider it is paid\nthere and then; without one it is paid by hand to the store, to the\naccounts listed (none for cash), and the store confirms it.",
+            "properties": {
+                "method": {
+                    "description": "The way to pay",
+                    "enum": [
+                        "cash",
+                        "card",
+                        "eWallet",
+                        "bankTransfer",
+                        "check",
+                        "crypto"
+                    ],
+                    "title": "Method",
+                    "type": "string"
+                },
+                "provider": {
+                    "anyOf": [
+                        {
+                            "const": "demo",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The payment provider that takes it; null: paid by hand to the store, which then confirms it",
+                    "title": "Provider"
+                },
+                "eWallets": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "$ref": "#/$defs/EwalletAccountRow"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "A manual eWallet: the store's accounts to pay to",
+                    "title": "Ewallets"
+                },
+                "banks": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "$ref": "#/$defs/BankAccountRow"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "bankTransfer: the store's accounts to transfer to",
+                    "title": "Banks"
+                },
+                "checkPayees": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "check: the names a check is made out to",
+                    "title": "Checkpayees"
+                }
+            },
+            "required": [
+                "method",
+                "provider",
+                "eWallets",
+                "banks",
+                "checkPayees"
+            ],
+            "title": "PaymentOption",
+            "type": "object",
+            "additionalProperties": false
         }
     },
     "description": "The order a shopper just placed, unpaid. Answered with PaymentAnswer:\nthe payment method the shopper picked.",
@@ -328,27 +471,54 @@
             ],
             "description": "The order to pay"
         },
-        "paymentMethods": {
+        "paymentOptions": {
+            "anyOf": [
+                {
+                    "items": {
+                        "$ref": "#/$defs/PaymentOption"
+                    },
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
             "description": "The ways the shopper can pay it (never none)",
-            "items": {
-                "enum": [
-                    "card",
-                    "gcash",
-                    "maya",
-                    "grabPay",
-                    "bankTransfer"
-                ],
-                "type": "string"
-            },
-            "title": "Paymentmethods",
-            "type": "array"
+            "title": "Paymentoptions"
+        },
+        "paymentMethods": {
+            "anyOf": [
+                {
+                    "items": {
+                        "enum": [
+                            "cash",
+                            "card",
+                            "eWallet",
+                            "bankTransfer",
+                            "check",
+                            "crypto",
+                            "gcash",
+                            "maya",
+                            "grabPay"
+                        ],
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The ways the shopper could pay it, on a card saved before payment options",
+            "title": "Paymentmethods"
         }
     },
     "required": [
         "kind",
         "formId",
-        "order",
-        "paymentMethods"
+        "order"
     ],
     "title": "CheckoutCard",
     "type": "object",

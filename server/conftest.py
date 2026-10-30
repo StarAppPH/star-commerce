@@ -782,10 +782,48 @@ def appTime(year: int, month: int, day: int, hour: int = 0, minute: int = 0,
                              millisecond * 1000, tzinfo=Timezone().getTimezone())
 
 
+# Every way to pay, each with what it needs (Policy.authorizedPaymentMethods,
+# as stored): an eWallet both through the provider and by hand, so the store
+# offers every kind of checkout option (objects.paymentOptions).
+ALL_PAYMENT_METHODS = [
+    {'method': 'cash', 'provider': None, 'eWallets': None, 'banks': None,
+     'checkPayees': None},
+    {'method': 'card', 'provider': 'demo', 'eWallets': None, 'banks': None,
+     'checkPayees': None},
+    {'method': 'eWallet', 'provider': 'demo',
+     'eWallets': [{'ewalletName': 'GCash', 'accountNumber': '09171234567'}],
+     'banks': None, 'checkPayees': None},
+    {'method': 'bankTransfer', 'provider': None, 'eWallets': None,
+     'banks': [{'bankName': 'BDO', 'accountNumber': '001234567890'}],
+     'checkPayees': None},
+    {'method': 'check', 'provider': None, 'eWallets': None, 'banks': None,
+     'checkPayees': ['Bakery A Inc.']},
+    {'method': 'crypto', 'provider': 'demo', 'eWallets': None, 'banks': None,
+     'checkPayees': None},
+]
+
+
+def takePayments(store: dict, methods: list[dict] | None = None) -> dict:
+    """`store` (createTestStore's) taking payment the ways `methods` says
+    (ALL_PAYMENT_METHODS by default): its policy's authorizedPaymentMethods,
+    which createOrder needs. Returns `store`."""
+    from actions.StoreActions import ensurePolicy
+    stored = db.read({'_id': store['_id']}, 'Stores',
+                     projection={'createdAt': 1}, findOne=True)
+    ensurePolicy(store['_id'], stored['createdAt'])
+    db.db['Policies'].update_one(
+        {'storeId': store['_id']},
+        {'$set': {'authorizedPaymentMethods':
+                  ALL_PAYMENT_METHODS if methods is None else methods},
+         '$inc': {'_version': 1}})
+    return store
+
+
 def storeWithProducts(adminId: str, name: str = 'Bakery A',
                       currency: str = 'PHP') -> dict:
-    """A store with three available products and one hidden one."""
-    store = createTestStore(adminId, name, currency)
+    """A store with three available products and one hidden one, taking
+    every way to pay (takePayments)."""
+    store = takePayments(createTestStore(adminId, name, currency))
     addProduct(store['_id'], 'Pandesal', 5, soldCount=120,
                description='Soft bread roll')
     addProduct(store['_id'], 'Ensaymada', 45, soldCount=80)

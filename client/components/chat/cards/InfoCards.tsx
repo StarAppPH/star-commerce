@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChatCard, PhotoPrompts, ProductPhoto } from './ChatCard';
 import { type PolicyAnswers, type PolicyQuestion, missingDeliveryZones, offersDelivery, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
-import { POLICY_VALUE_LABELS, formatMoney, zoneRuleText } from './format';
+import type { AuthorizedPaymentMethodRow } from '@/app/schemas/AuthorizedPaymentMethodRowSchema';
+import { PAYMENT_METHOD_LABELS, PAYMENT_PROVIDER_LABELS, POLICY_VALUE_LABELS, formatMoney, zoneRuleText } from './format';
 import type { ComponentProps } from './types';
 
 // The admin's products a tool listed, added or changed.
@@ -50,10 +51,29 @@ function shown(value: PolicyRowValue, money: (amount: number) => string, isMoney
   return POLICY_VALUE_LABELS[value] ?? value;
 }
 
-// The policy questions in the order a store's policy page reads.
-export function policyRows(answers: PolicyAnswers): { question: PolicyQuestion; label: string; value: PolicyRowValue; money?: boolean }[] {
+// One payment method the store takes, with what paying that way needs.
+function paymentMethodText(method: AuthorizedPaymentMethodRow): string {
+  const ways: string[] = [];
+  if (method.provider !== null) ways.push(`online through ${PAYMENT_PROVIDER_LABELS[method.provider] ?? method.provider}`);
+  if (method.eWallets) ways.push(method.eWallets.map((account) => `${account.ewalletName} ${account.accountNumber}`).join(', '));
+  if (method.banks) ways.push(method.banks.map((account) => `${account.bankName} ${account.accountNumber}`).join(', '));
+  if (method.checkPayees) ways.push(`payable to ${method.checkPayees.join(' or ')}`);
+  const label = PAYMENT_METHOD_LABELS[method.method] ?? method.method;
+  return ways.length > 0 ? `${label} (${ways.join('; ')})` : label;
+}
+
+// The policy questions in the order a store's policy page reads. A policy card
+// saved before each payment method had its details lists the bare methods.
+export function policyRows(
+  answers: PolicyAnswers & { acceptedPaymentMethods?: string[] | null },
+): { question: PolicyQuestion; label: string; value: PolicyRowValue; money?: boolean }[] {
+  const methods = answers.authorizedPaymentMethods;
   return [
-    { question: 'acceptedPaymentMethods', label: 'Payment methods', value: answers.acceptedPaymentMethods },
+    {
+      question: 'authorizedPaymentMethods',
+      label: 'Payment methods',
+      value: methods ? methods.map(paymentMethodText) : answers.acceptedPaymentMethods ?? null,
+    },
     { question: 'paidOrderCancellation', label: 'Cancelling a paid order', value: answers.paidOrderCancellation },
     { question: 'paidOrderCancellationHours', label: 'Hours after payment to cancel', value: answers.paidOrderCancellationHours },
     { question: 'deliveryOptions', label: 'Pickup or delivery', value: answers.deliveryOptions },

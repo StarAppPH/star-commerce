@@ -103,8 +103,8 @@ ANSWERS_TO = {
 
 # How a payment method reads in the user's turn.
 _LABELS = {
-    'card': 'card', 'gcash': 'GCash', 'maya': 'Maya', 'grabPay': 'GrabPay',
-    'bankTransfer': 'bank transfer',
+    'cash': 'cash', 'card': 'card', 'eWallet': 'e-wallet',
+    'bankTransfer': 'bank transfer', 'check': 'check', 'crypto': 'crypto',
 }
 
 
@@ -550,13 +550,21 @@ def _orderItems(answer, component, userId) -> tuple[str, dict]:
 
 
 def _payment(answer, component, userId) -> tuple[str, dict]:
-    if answer.paymentMethod not in component['paymentMethods']:
+    # A card saved before payment options has none, so it takes no answer.
+    if not any(option['method'] == answer.paymentMethod
+               and option['provider'] == answer.paymentProvider
+               for option in component.get('paymentOptions') or []):
         raise ValueError(NOT_ON_THE_CARD)
     order = component['order']
-    return (f'Pay {order["total"]:g} {order["currency"]} with '
-            f'{_label(answer.paymentMethod)}',
+    how = _label(answer.paymentMethod)
+    if answer.paymentProvider is None:
+        how += ', paid to the store'
+    else:
+        how += ' online'
+    return (f'Pay {order["total"]:g} {order["currency"]} by {how}',
             {'kind': 'payment', 'orderId': order['_id'],
-             'paymentMethod': answer.paymentMethod})
+             'paymentMethod': answer.paymentMethod,
+             'paymentProvider': answer.paymentProvider})
 
 
 def _handover(answer, component, userId) -> tuple[str, dict]:

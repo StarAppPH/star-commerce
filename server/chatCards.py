@@ -65,7 +65,7 @@ _ORDER_DELIVERY = ('fulfillment', 'deliveryFee', 'deliveryDistanceKm',
                    'deliveryLatitude', 'deliveryLongitude', 'deliveryNotes')
 _STORE_ORDER = ('_id', 'status', 'total', 'currency', 'contactNumber',
                 'createdAt', 'paymentMethod', 'paidAt', 'completedAt',
-                'cancelReason', *_ORDER_DELIVERY)
+                'cancelReason', 'manualPaymentReference', *_ORDER_DELIVERY)
 _MY_ORDER = ('_id', 'status', 'total', 'currency', 'createdAt', 'expiresAt',
              'paymentMethod', 'paidAt', 'completedAt', 'cancelReason',
              'refundedAt', *_ORDER_DELIVERY)
@@ -142,7 +142,7 @@ def _myOrder(result: dict, context: CardContext) -> dict:
 def _checkout(result: dict, context: CardContext) -> dict:
     return {'kind': 'checkout', 'formId': newFormId(),
             'order': _withItems(result['order'], _MY_ORDER),
-            'paymentMethods': result['paymentMethods']}
+            'paymentOptions': result['paymentOptions']}
 
 
 def _storeReturns(result: dict, context: CardContext) -> dict:
@@ -226,6 +226,8 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'cancelStoreOrder': _storeOrder,
     'getMyOrders': _myOrders,
     'payOrder': _myOrder,
+    'addPaymentReference': _myOrder,
+    'confirmOrderPayment': _storeOrder,
     'cancelMyOrder': _myOrder,
     'createOrder': _checkout,
     'getStoreReturns': _storeReturns,

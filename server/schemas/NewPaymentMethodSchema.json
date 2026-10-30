@@ -1,0 +1,123 @@
+{
+    "$defs": {
+        "NewBankAccount": {
+            "description": "A bank account of an updateMyStorePolicy call. Types only, no\nlimits: the route checks them, never quoting a value.",
+            "properties": {
+                "bankName": {
+                    "description": "The bank, e.g. BDO",
+                    "title": "Bankname",
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "description": "The account number a customer transfers to",
+                    "title": "Accountnumber",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "bankName",
+                "accountNumber"
+            ],
+            "title": "NewBankAccount",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "NewEwalletAccount": {
+            "description": "An e-wallet account of an updateMyStorePolicy call. Types only, no\nlimits: the route checks them, never quoting a value.",
+            "properties": {
+                "ewalletName": {
+                    "description": "The e-wallet, e.g. GCash",
+                    "title": "Ewalletname",
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "description": "The account or mobile number a customer pays to",
+                    "title": "Accountnumber",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "ewalletName",
+                "accountNumber"
+            ],
+            "title": "NewEwalletAccount",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A payment method of an updateMyStorePolicy call. Types only, no\nlimits: the route checks them, so a refusal names the method's\nposition and never quotes the value (NewProduct's reason).",
+    "properties": {
+        "method": {
+            "description": "cash, card, eWallet, bankTransfer, check or crypto",
+            "title": "Method",
+            "type": "string"
+        },
+        "provider": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The payment provider that takes it (card, crypto, and optionally eWallet); null: paid by hand to the store",
+            "title": "Provider"
+        },
+        "eWallets": {
+            "anyOf": [
+                {
+                    "items": {
+                        "$ref": "#/$defs/NewEwalletAccount"
+                    },
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "eWallet: the store's own accounts",
+            "title": "Ewallets"
+        },
+        "banks": {
+            "anyOf": [
+                {
+                    "items": {
+                        "$ref": "#/$defs/NewBankAccount"
+                    },
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "bankTransfer: the store's bank accounts",
+            "title": "Banks"
+        },
+        "checkPayees": {
+            "anyOf": [
+                {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "check: the account names a check is made out to",
+            "title": "Checkpayees"
+        }
+    },
+    "required": [
+        "method"
+    ],
+    "title": "NewPaymentMethod",
+    "type": "object",
+    "additionalProperties": false
+}

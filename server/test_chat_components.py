@@ -528,20 +528,25 @@ def test_theShopsProductCard_isTheRoutesResult_andOrdersThroughTheModel(
     assert checkout['kind'] == 'checkout' and checkout['formId']
     assert checkout['order']['status'] == 'pending'
     assert checkout['order']['total'] == 665
-    assert checkout['paymentMethods']
+    assert checkout['paymentOptions']
 
-    method = checkout['paymentMethods'][0]
+    online = next(option for option in checkout['paymentOptions']
+                  if option['provider'] is not None)
+    method, provider = online['method'], online['provider']
     fake = model(calls(('c3', 'payOrder', json.dumps({
-        'orderId': checkout['order']['_id'], 'paymentMethod': method}))),
+        'orderId': checkout['order']['_id'], 'paymentMethod': method,
+        'paymentProvider': provider}))),
         reply('Paid, thank you!'))
     third = customerSays(customerId, store['_id'], None,
                          first['conversationId'],
                          {'kind': 'payment', 'formId': checkout['formId'],
-                          'paymentMethod': method})
+                          'paymentMethod': method,
+                          'paymentProvider': provider})
     details = formAnswerDetails(fake.requests[0]['messages'][-1]['content'])
     assert details == {'kind': 'payment',
                        'orderId': checkout['order']['_id'],
-                       'paymentMethod': method}
+                       'paymentMethod': method,
+                       'paymentProvider': provider}
     [paid] = third['components']
     assert paid['kind'] == 'myOrders'
     assert paid['orders'][0]['status'] == 'paid'
@@ -756,20 +761,28 @@ def test_aPolicySectionAskedInChat_isSavedByTheModel(wiped, model):
     model(reply('GCash and card; cancel before handover. Save?'))
     adminSays('Before handover', cid)
     model(calls(('c1', 'updateMyStorePolicy', json.dumps({
-        'acceptedPaymentMethods': ['gcash', 'card'],
+        'authorizedPaymentMethods': [
+            {'method': 'eWallet', 'eWallets': [
+                {'ewalletName': 'GCash', 'accountNumber': '09171234567'}]},
+            {'method': 'card', 'provider': 'demo'}],
         'paidOrderCancellation': 'beforeHandover'}))),
         reply('Saved. Next: delivery.'))
 
     res = adminSays('Yes', cid)
 
+    saved = [
+        {'method': 'eWallet', 'provider': None, 'eWallets': [
+            {'ewalletName': 'GCash', 'accountNumber': '09171234567'}],
+         'banks': None, 'checkPayees': None},
+        {'method': 'card', 'provider': 'demo', 'eWallets': None,
+         'banks': None, 'checkPayees': None}]
     [card] = res['components']
     assert card['kind'] == 'policy'
-    assert card['acceptedPaymentMethods'] == ['gcash', 'card']
+    assert card['authorizedPaymentMethods'] == saved
     assert card['paidOrderCancellation'] == 'beforeHandover'
     # An answer of another section is kept.
     assert card['handoverDays'] == 2
-    assert api.getMyStorePolicy(ADMIN)['acceptedPaymentMethods'] == [
-        'gcash', 'card']
+    assert api.getMyStorePolicy(ADMIN)['authorizedPaymentMethods'] == saved
 
 
 def test_aStorePin_isSaved_andItsAddressSavedOnlyOnAYes(wiped, model,
@@ -902,7 +915,12 @@ def test_cards_fromEveryCardTool_fitTheirModels():
         'payOrder': order,
         'cancelMyOrder': order,
         'createOrder': {'order': {**order, 'status': 'pending'},
-                        'paymentMethods': ['gcash']},
+                        'paymentOptions': [
+                            {'method': 'cash', 'provider': None,
+                             'eWallets': None, 'banks': None,
+                             'checkPayees': None}]},
+        'addPaymentReference': order,
+        'confirmOrderPayment': order,
         'getStoreReturns': {'returns': [ret]},
         'approveReturn': ret,
         'rejectReturn': ret,

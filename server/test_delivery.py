@@ -316,7 +316,8 @@ def test_payOrder_chargesTheTotalWithTheFee(clean, firebase, monkeypatch):
                             items(products['Pandesal']), 'delivery',
                             HOME)['order']
 
-    paid = api.payOrder(customerId, store['_id'], order['_id'], 'gcash')
+    paid = api.payOrder(customerId, store['_id'], order['_id'], 'eWallet',
+                        'demo')
 
     assert paid['total'] == 98.09 and paid['deliveryFee'] == HOME_FEE
     assert paid['deliveryAddress'] == HOME['address']

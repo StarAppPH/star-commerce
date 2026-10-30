@@ -20,14 +20,16 @@ from typing import Annotated, Literal, Union
 from pydantic import Field
 
 from objects.base import AppModel, ResponseModel
-from objects.order import (ORDER_ITEMS_MAX, CancelReason, NewOrderItem,
-                           OrderDeliveryRow, OrderItemRow, OrderStatus,
-                           PaymentMethod)
+from objects.order import (MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
+                           ORDER_ITEMS_MAX, CancelReason, NewOrderItem,
+                           OrderDeliveryRow, OrderItemRow, OrderStatus)
+from objects.payment import (OrderPaymentMethod, PaymentMethod,
+                             PaymentOption, PaymentProvider)
 from objects.photo import (PHOTO_COLOR_FOCUS_MAX_LENGTH, PHOTO_COLORS_MAX,
                            PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                            PHOTOS_PER_CALL, GeneratedPhotoRow,
                            PhotoChoiceRow, PhotoColorRow)
-from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
+from objects.policy import (AcceptsReturns, AuthorizedPaymentMethodRows,
                             AdditionalTerms, DefectReportDays, DeliveryAreas,
                             DeliveryOptions,
                             HandoverDays, NonReturnableItems,
@@ -116,14 +118,19 @@ class ChatStoreOrderRow(OrderDeliveryRow):
     currency: StoreCurrency = Field(..., description="The order's currency")
     contactNumber: str = Field(..., description="The customer's number")
     createdAt: datetime.datetime = Field(..., description='When it was placed')
-    paymentMethod: PaymentMethod | None = Field(...,
-                                                description='How it was paid')
+    paymentMethod: OrderPaymentMethod | None = Field(
+        ..., description='How it is or was paid')
     paidAt: datetime.datetime | None = Field(...,
                                              description='When it was paid')
     completedAt: datetime.datetime | None = Field(
         ..., description='When it was handed over')
     cancelReason: CancelReason | None = Field(...,
                                               description='Why it was cancelled')
+    # Null on a card saved before payments made by hand.
+    manualPaymentReference: str | None = Field(
+        None, max_length=MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
+        description='The reference the customer gave for a payment made by '
+        'hand')
 
 
 class StoreOrdersCard(ResponseModel):
@@ -146,8 +153,8 @@ class ChatMyOrderRow(OrderDeliveryRow):
     createdAt: datetime.datetime = Field(..., description='When it was placed')
     expiresAt: datetime.datetime = Field(
         ..., description='Unpaid by then, it is cancelled')
-    paymentMethod: PaymentMethod | None = Field(...,
-                                                description='How it was paid')
+    paymentMethod: OrderPaymentMethod | None = Field(
+        ..., description='How it is or was paid')
     paidAt: datetime.datetime | None = Field(...,
                                              description='When it was paid')
     completedAt: datetime.datetime | None = Field(
@@ -171,8 +178,14 @@ class CheckoutCard(ResponseModel):
     kind: Literal['checkout'] = Field(..., description='The card')
     formId: FormId
     order: ChatMyOrderRow = Field(..., description='The order to pay')
-    paymentMethods: list[PaymentMethod] = Field(
-        ..., description='The ways the shopper can pay it (never none)')
+    # Null on a card saved before payment options.
+    paymentOptions: list[PaymentOption] | None = Field(
+        None, description='The ways the shopper can pay it (never none)')
+    # Only on a card saved before payment options: it can no longer be
+    # answered.
+    paymentMethods: list[OrderPaymentMethod] | None = Field(
+        None, description='The ways the shopper could pay it, on a card '
+        'saved before payment options')
 
 
 class ChatStoreReturnRow(ResponseModel):
@@ -243,7 +256,12 @@ class PolicyCard(ResponseModel):
     deliveryOptions: DeliveryOptions
     deliveryAreas: DeliveryAreas
     handoverDays: HandoverDays
-    acceptedPaymentMethods: AcceptedPaymentMethods
+    # Null on a card saved before authorizedPaymentMethods.
+    authorizedPaymentMethods: AuthorizedPaymentMethodRows = None
+    # Only on a card saved before authorizedPaymentMethods.
+    acceptedPaymentMethods: list[OrderPaymentMethod] | None = Field(
+        None, description='The ways a customer could pay, on a card saved '
+        'before each method had its details')
     paidOrderCancellation: PaidOrderCancellationAnswer
     paidOrderCancellationHours: PaidOrderCancellationHours
     additionalTerms: AdditionalTerms
@@ -477,6 +495,9 @@ class PaymentAnswer(AppModel):
     kind: Literal['payment'] = Field(..., description='The answer')
     formId: FormId
     paymentMethod: PaymentMethod = Field(..., description='How to pay')
+    paymentProvider: PaymentProvider | None = Field(
+        None, description='The provider of the option picked; null: paid by '
+        'hand to the store')
 
 
 class HandoverAnswer(AppModel):

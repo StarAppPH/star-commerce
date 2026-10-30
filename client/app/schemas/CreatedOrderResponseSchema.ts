@@ -44,7 +44,7 @@ export type Id = string;
 /**
  * Where the order is
  */
-export type Status = "pending" | "paid" | "completed" | "cancelled";
+export type Status = "pending" | "awaitingPayment" | "paid" | "completed" | "cancelled";
 /**
  * What was ordered
  *
@@ -94,15 +94,24 @@ export type Currency =
  */
 export type Createdat = string;
 /**
- * How the customer paid
+ * How the customer pays or paid
  */
-export type Paymentmethod = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+export type Paymentmethod =
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
+/**
+ * The payment provider it was paid through; null: paid by hand to the store (or not chosen yet)
+ */
+export type Paymentprovider = "demo" | null;
+/**
+ * The reference the customer gave for a payment made by hand, e.g. a bank transfer's
+ */
+export type Manualpaymentreference = string | null;
 /**
  * When it was paid
  */
 export type Paidat = string | null;
 /**
- * Unpaid by then, it is cancelled (UTC)
+ * Still pending (no way to pay chosen) by then, it is cancelled (UTC)
  */
 export type Expiresat = string;
 /**
@@ -123,15 +132,53 @@ export type Cancelreason = ("expired" | "byStore" | "byCustomer") | null;
 export type Refundedat = string | null;
 /**
  * The ways the customer can pay it
+ *
+ * @minItems 1
  */
-export type Paymentmethods = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[];
+export type Paymentoptions = [PaymentOption, ...PaymentOption[]];
+/**
+ * The way to pay
+ */
+export type Method = "cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto";
+/**
+ * The payment provider that takes it; null: paid by hand to the store, which then confirms it
+ */
+export type Provider = "demo" | null;
+/**
+ * A manual eWallet: the store's accounts to pay to
+ */
+export type Ewallets = EwalletAccountRow[] | null;
+/**
+ * The e-wallet, e.g. GCash
+ */
+export type Ewalletname = string;
+/**
+ * The account or mobile number a customer pays to
+ */
+export type Accountnumber = string;
+/**
+ * bankTransfer: the store's accounts to transfer to
+ */
+export type Banks = BankAccountRow[] | null;
+/**
+ * The bank, e.g. BDO
+ */
+export type Bankname = string;
+/**
+ * The account or mobile number a customer pays to
+ */
+export type Accountnumber1 = string;
+/**
+ * check: the names a check is made out to
+ */
+export type Checkpayees = string[] | null;
 
 export interface CreatedOrderResponse {
   /**
    * The order just placed
    */
   order: MyOrderRow;
-  paymentMethods: Paymentmethods;
+  paymentOptions: Paymentoptions;
 }
 /**
  * One order as the customer who placed it sees it: StoreOrderRow
@@ -155,6 +202,8 @@ export interface MyOrderRow {
   currency: Currency;
   createdAt: Createdat;
   paymentMethod: Paymentmethod;
+  paymentProvider?: Paymentprovider;
+  manualPaymentReference?: Manualpaymentreference;
   paidAt: Paidat;
   expiresAt: Expiresat;
   completedAt: Completedat;
@@ -171,4 +220,33 @@ export interface OrderItemRow {
   name: Name;
   price: Price;
   quantity: Quantity;
+}
+/**
+ * One way a customer can pay an order at checkout, as payOrder takes
+ * it (paymentMethod and paymentProvider). With a provider it is paid
+ * there and then; without one it is paid by hand to the store, to the
+ * accounts listed (none for cash), and the store confirms it.
+ */
+export interface PaymentOption {
+  method: Method;
+  provider: Provider;
+  eWallets: Ewallets;
+  banks: Banks;
+  checkPayees: Checkpayees;
+}
+/**
+ * EwalletAccount as a route sends it. Each field restates
+ * EwalletAccount's, which test_route_response_models.py's MIRRORS keeps
+ * in step.
+ */
+export interface EwalletAccountRow {
+  ewalletName: Ewalletname;
+  accountNumber: Accountnumber;
+}
+/**
+ * BankAccount as a route sends it (MIRRORS keeps it in step).
+ */
+export interface BankAccountRow {
+  bankName: Bankname;
+  accountNumber: Accountnumber1;
 }

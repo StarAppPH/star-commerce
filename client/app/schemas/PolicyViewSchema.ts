@@ -58,13 +58,148 @@ export type Deliveryareas = string | null;
  */
 export type Handoverdays = number | null;
 /**
- * The ways a customer can pay
+ * The ways a customer can pay, each with what paying that way needs
  */
-export type Acceptedpaymentmethods =
+export type Authorizedpaymentmethods =
+  | [AuthorizedPaymentMethod]
+  | [AuthorizedPaymentMethod, AuthorizedPaymentMethod]
+  | [AuthorizedPaymentMethod, AuthorizedPaymentMethod, AuthorizedPaymentMethod]
+  | [AuthorizedPaymentMethod, AuthorizedPaymentMethod, AuthorizedPaymentMethod, AuthorizedPaymentMethod]
   | [
-      "card" | "gcash" | "maya" | "grabPay" | "bankTransfer",
-      ...("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[]
+      AuthorizedPaymentMethod,
+      AuthorizedPaymentMethod,
+      AuthorizedPaymentMethod,
+      AuthorizedPaymentMethod,
+      AuthorizedPaymentMethod
     ]
+  | [
+      AuthorizedPaymentMethod,
+      AuthorizedPaymentMethod,
+      AuthorizedPaymentMethod,
+      AuthorizedPaymentMethod,
+      AuthorizedPaymentMethod,
+      AuthorizedPaymentMethod
+    ]
+  | null;
+/**
+ * The way to pay
+ */
+export type Method = "cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto";
+/**
+ * The payment provider that takes it; null: paid by hand to the store only
+ */
+export type Provider = "demo" | null;
+/**
+ * eWallet: the store's own accounts, paid to by hand
+ */
+export type Ewallets =
+  | [EwalletAccount]
+  | [EwalletAccount, EwalletAccount]
+  | [EwalletAccount, EwalletAccount, EwalletAccount]
+  | [EwalletAccount, EwalletAccount, EwalletAccount, EwalletAccount]
+  | [EwalletAccount, EwalletAccount, EwalletAccount, EwalletAccount, EwalletAccount]
+  | [EwalletAccount, EwalletAccount, EwalletAccount, EwalletAccount, EwalletAccount, EwalletAccount]
+  | [EwalletAccount, EwalletAccount, EwalletAccount, EwalletAccount, EwalletAccount, EwalletAccount, EwalletAccount]
+  | [
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount
+    ]
+  | [
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount
+    ]
+  | [
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount,
+      EwalletAccount
+    ]
+  | null;
+/**
+ * The e-wallet, e.g. GCash
+ */
+export type Ewalletname = string;
+/**
+ * The account or mobile number a customer pays to
+ */
+export type Accountnumber = string;
+/**
+ * bankTransfer: the store's bank accounts
+ */
+export type Banks =
+  | [BankAccount]
+  | [BankAccount, BankAccount]
+  | [BankAccount, BankAccount, BankAccount]
+  | [BankAccount, BankAccount, BankAccount, BankAccount]
+  | [BankAccount, BankAccount, BankAccount, BankAccount, BankAccount]
+  | [BankAccount, BankAccount, BankAccount, BankAccount, BankAccount, BankAccount]
+  | [BankAccount, BankAccount, BankAccount, BankAccount, BankAccount, BankAccount, BankAccount]
+  | [BankAccount, BankAccount, BankAccount, BankAccount, BankAccount, BankAccount, BankAccount, BankAccount]
+  | [
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount
+    ]
+  | [
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount,
+      BankAccount
+    ]
+  | null;
+/**
+ * The bank, e.g. BDO
+ */
+export type Bankname = string;
+/**
+ * The account or mobile number a customer pays to
+ */
+export type Accountnumber1 = string;
+/**
+ * check: the account names a check is made out to
+ */
+export type Checkpayees =
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string]
   | null;
 /**
  * Whether a customer can cancel a paid order
@@ -104,10 +239,38 @@ export interface PolicyView {
   deliveryOptions?: Deliveryoptions;
   deliveryAreas?: Deliveryareas;
   handoverDays?: Handoverdays;
-  acceptedPaymentMethods?: Acceptedpaymentmethods;
+  authorizedPaymentMethods?: Authorizedpaymentmethods;
   paidOrderCancellation?: Paidordercancellation;
   paidOrderCancellationHours?: Paidordercancellationhours;
   additionalTerms?: Additionalterms;
   createdAt: Createdat;
   updatedAt: Updatedat;
+}
+/**
+ * A way the store takes payment, with what a customer needs to pay
+ * that way: cash nothing; card and crypto their provider; eWallet the
+ * store's own accounts, a provider, or both; bankTransfer the store's
+ * bank accounts; check the names a check is made out to.
+ */
+export interface AuthorizedPaymentMethod {
+  method: Method;
+  provider?: Provider;
+  eWallets?: Ewallets;
+  banks?: Banks;
+  checkPayees?: Checkpayees;
+}
+/**
+ * One of the store's own e-wallet accounts a customer pays to by
+ * hand.
+ */
+export interface EwalletAccount {
+  ewalletName: Ewalletname;
+  accountNumber: Accountnumber;
+}
+/**
+ * One of the store's bank accounts a customer transfers to by hand.
+ */
+export interface BankAccount {
+  bankName: Bankname;
+  accountNumber: Accountnumber1;
 }

@@ -1,0 +1,26 @@
+{
+    "description": "BankAccount as a route sends it (MIRRORS keeps it in step).",
+    "properties": {
+        "bankName": {
+            "description": "The bank, e.g. BDO",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Bankname",
+            "type": "string"
+        },
+        "accountNumber": {
+            "description": "The account or mobile number a customer pays to",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Accountnumber",
+            "type": "string"
+        }
+    },
+    "required": [
+        "bankName",
+        "accountNumber"
+    ],
+    "title": "BankAccountRow",
+    "type": "object",
+    "additionalProperties": false
+}

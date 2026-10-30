@@ -2912,7 +2912,15 @@ MIRRORS = [
     (ObjectsModule.StoreOrderRow, ObjectsModule.Order, {'id', 'items'}),
     (ObjectsModule.MyOrderRow, ObjectsModule.Order, {'id', 'items'}),
     (ObjectsModule.OrderItemRow, ObjectsModule.OrderItem, set()),
-    (ObjectsModule.StorePolicyResponse, ObjectsModule.Policy, set()),
+    # authorizedPaymentMethods is a list of AuthorizedPaymentMethodRow on the
+    # row, of AuthorizedPaymentMethod on the document: mirrored by the
+    # entries after this one.
+    (ObjectsModule.StorePolicyResponse, ObjectsModule.Policy,
+     {'authorizedPaymentMethods'}),
+    (ObjectsModule.AuthorizedPaymentMethodRow,
+     ObjectsModule.AuthorizedPaymentMethod, {'eWallets', 'banks'}),
+    (ObjectsModule.EwalletAccountRow, ObjectsModule.EwalletAccount, set()),
+    (ObjectsModule.BankAccountRow, ObjectsModule.BankAccount, set()),
     # items is a list of ReturnItemRow on the rows, of ReturnItem on the
     # document: mirrored by the entry after these two.
     (ObjectsModule.MyReturnRow, ObjectsModule.Return, {'id', 'items'}),

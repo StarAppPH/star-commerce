@@ -1,8 +1,12 @@
 import type { DeliveryZoneRule } from '@/app/schemas/DeliveryZoneRuleSchema';
 import type { StorePolicyResponse } from '@/app/schemas/StorePolicyResponseSchema';
 
-// A store's policy answers (the policy card's, the policy route's).
-export type PolicyAnswers = Omit<StorePolicyResponse, 'updatedAt' | 'deliveryZones'>;
+// A store's policy answers (the policy card's, the policy route's):
+// authorizedPaymentMethods is absent on a policy card saved before each
+// payment method had its details.
+export type PolicyAnswers = Omit<StorePolicyResponse, 'updatedAt' | 'deliveryZones' | 'authorizedPaymentMethods'> & {
+  authorizedPaymentMethods?: StorePolicyResponse['authorizedPaymentMethods'];
+};
 export type PolicyQuestion = keyof PolicyAnswers;
 
 // The answers with the store's delivery zones beside them: null or absent on
@@ -11,7 +15,7 @@ export type PolicyWithZones = PolicyAnswers & { deliveryZones?: readonly Deliver
 
 // Every policy question.
 export const POLICY_QUESTIONS: PolicyQuestion[] = [
-  'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'deliveryOptions', 'deliveryAreas',
+  'authorizedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'deliveryOptions', 'deliveryAreas',
   'handoverDays', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems',
   'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'additionalTerms',
 ];

@@ -1,0 +1,22 @@
+{
+    "description": "A bank account of an updateMyStorePolicy call. Types only, no\nlimits: the route checks them, never quoting a value.",
+    "properties": {
+        "bankName": {
+            "description": "The bank, e.g. BDO",
+            "title": "Bankname",
+            "type": "string"
+        },
+        "accountNumber": {
+            "description": "The account number a customer transfers to",
+            "title": "Accountnumber",
+            "type": "string"
+        }
+    },
+    "required": [
+        "bankName",
+        "accountNumber"
+    ],
+    "title": "NewBankAccount",
+    "type": "object",
+    "additionalProperties": false
+}

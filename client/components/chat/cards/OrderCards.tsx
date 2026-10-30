@@ -16,6 +16,7 @@ type BadgeVariant = 'info' | 'success' | 'warning' | 'error' | 'secondary';
 
 const STATUS_VARIANTS: Record<string, BadgeVariant> = {
   pending: 'warning',
+  awaitingPayment: 'warning',
   paid: 'info',
   completed: 'success',
   cancelled: 'secondary',
@@ -80,6 +81,10 @@ export function StoreOrdersCard({ component, answered, busy, onAnswer }: Compone
               <span className="text-muted-foreground text-xs">
                 {[
                   `Placed ${formatWhen(order.createdAt)}`,
+                  order.status === 'awaitingPayment' && order.paymentMethod
+                    ? `pays by ${(PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod).toLowerCase()}: confirm once it arrives`
+                    : null,
+                  order.manualPaymentReference ? `reference ${order.manualPaymentReference}` : null,
                   order.paidAt && order.paymentMethod
                     ? `paid by ${PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod} ${formatWhen(order.paidAt)}`
                     : null,
@@ -119,7 +124,10 @@ export function MyOrdersCard({ component }: ComponentProps<'myOrders'>) {
             <span className="text-muted-foreground text-xs">
               {[
                 `Placed ${formatWhen(order.createdAt)}`,
-                order.status === 'pending' ? `pay by ${formatWhen(order.expiresAt)}` : null,
+                order.status === 'pending' ? `choose how to pay by ${formatWhen(order.expiresAt)}` : null,
+                order.status === 'awaitingPayment' && order.paymentMethod
+                  ? `paying by ${(PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod).toLowerCase()}: the store confirms it once it arrives`
+                  : null,
                 order.paidAt && order.paymentMethod
                   ? `paid by ${PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}`
                   : null,
