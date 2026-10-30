@@ -1,0 +1,56 @@
+{
+    "$defs": {
+        "FoundProductRow": {
+            "description": "A product findProductsInPhoto found: its name and its cut-out\nphoto.",
+            "properties": {
+                "name": {
+                    "description": "Product name",
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "imageUrl": {
+                    "description": "The cut-out photo's URL, the admin's own upload",
+                    "minLength": 1,
+                    "title": "Imageurl",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "name",
+                "imageUrl"
+            ],
+            "title": "FoundProductRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "What findProductsInPhoto sends: the products found, in the photo's\norder, and those named but not located.",
+    "properties": {
+        "products": {
+            "description": "The products found, left to right",
+            "items": {
+                "$ref": "#/$defs/FoundProductRow"
+            },
+            "maxItems": 12,
+            "title": "Products",
+            "type": "array"
+        },
+        "notFound": {
+            "description": "The names of products seen but not located",
+            "items": {
+                "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Notfound",
+            "type": "array"
+        }
+    },
+    "required": [
+        "products",
+        "notFound"
+    ],
+    "title": "FoundProductsResponse",
+    "type": "object",
+    "additionalProperties": false
+}

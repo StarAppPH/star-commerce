@@ -30,6 +30,16 @@ the admin picks one of them all (the chat's ProductPhotoChoiceCard). When no
 styled photo can be made (no photo style, a daily cap reached, the model
 unavailable or declining), the original is still offered, with the reason.
 
+findProductsInPhoto is the first step of adding several products from one
+group photo the admin attached: productFinder.py names each product (Muse
+Spark) and finds it (SAM, samModel.py), cuts each one out and saves it in
+the admin's own users/<uid>/found/ folder, and returns each name with its
+cut-out's URL, which the new products form then takes as that row's photo
+(and makeProductPhotoChoices as its original). Each store looks through at
+most STORE_DAILY_FIND_CAP group photos a day, and all stores together at
+most PRODUCT_FIND_DAILY_CAP_ALL (PhotoUsage counters, given back when the
+find fails).
+
 Every photo the model made keeps its prompt (GeneratedPhoto.prompt), and
 both photo tools return it: the admin sees what the model was asked.
 
@@ -49,6 +59,8 @@ import time
 
 import imageModel
 import photoStorage
+import productFinder
+import samModel
 from actions.callSlots import slot
 from actions.ProductActions import PRODUCT_NOT_FOUND, PRODUCTS
 from actions.StoreActions import _validText, requireOwnerStore
@@ -59,6 +71,7 @@ from mcpTools import mcp_tool
 from mongoDb import db
 from services.__request import ServiceUnavailable
 from objects import (PHOTO_CHOICES_GENERATED, PHOTO_NOTES_MAX_LENGTH,
+                     FoundProductsResponse,
                      PHOTO_REFERENCES_MAX, PHOTOS_PER_CALL_MAX,
                      PRODUCT_NAME_MAX_LENGTH,
                      AdminProductRow, GeneratedPhoto, GeneratedPhotosResponse,
@@ -71,8 +84,10 @@ GENERATED_PHOTOS = 'GeneratedPhotos'
 PHOTO_USAGE = 'PhotoUsage'
 # The kind of the photo counters, the store's and all stores'.
 PHOTOS_KIND = 'photos'
+# The kind of the group photo counters (findProductsInPhoto).
+FINDS_KIND = 'productFinds'
 # What a store reset carries over to the new store (StoreActions).
-STORE_USAGE_KINDS = (PHOTO_USAGE, (PHOTOS_KIND, ))
+STORE_USAGE_KINDS = (PHOTO_USAGE, (PHOTOS_KIND, FINDS_KIND))
 # Read at import, so it stays the real timezone when a test replaces this
 # module's `datetime`.
 UTC = datetime.timezone.utc
@@ -81,6 +96,15 @@ STORE_DAILY_PHOTO_CAP = 100
 # off), else DEFAULT_PHOTO_DAILY_CAP_ALL.
 PHOTO_DAILY_CAP_ALL_VARIABLE = 'PHOTO_DAILY_CAP_ALL'
 DEFAULT_PHOTO_DAILY_CAP_ALL = 1000
+# Group photos a store, and all stores together, look through a day:
+# PRODUCT_FIND_DAILY_CAP_ALL (0 turns it off), else the default.
+STORE_DAILY_FIND_CAP = 20
+FIND_DAILY_CAP_ALL_VARIABLE = 'PRODUCT_FIND_DAILY_CAP_ALL'
+DEFAULT_FIND_DAILY_CAP_ALL = 200
+FIND_CAP_REACHED = ("Your store has reached today's limit of group photos, "
+                    'try again tomorrow')
+FIND_ALL_CAP_REACHED = 'Finding products is busy today, try again tomorrow'
+FINDS_TURNED_OFF = 'Finding products in a photo is turned off right now'
 # The photo calls one process runs at once: each holds one of gunicorn's 8
 # threads for up to PHOTO_DEADLINE_SECONDS. With the chat's 4, 2 stay free
 # for the rest of the app.
@@ -205,6 +229,18 @@ def _takePhotoQuota(storeId: str, count: int) -> list[str]:
         [(PHOTOS_KIND, storeId, STORE_DAILY_PHOTO_CAP, PHOTO_CAP_REACHED)],
         (PHOTOS_KIND, PHOTO_ALL_CAP_REACHED), dailyCapAll(),
         PHOTOS_TURNED_OFF, appDay(_now()), amount=count)
+
+
+def _takeFindQuota(storeId: str) -> list[str]:
+    """Count one group photo against the store's daily cap and all
+    stores' (PRODUCT_FIND_DAILY_CAP_ALL), as _takePhotoQuota does."""
+    capAll = envCap(FIND_DAILY_CAP_ALL_VARIABLE, DEFAULT_FIND_DAILY_CAP_ALL,
+                    'productFindDailyCapAllInvalid')
+    return takeDailyQuotas(
+        PHOTO_USAGE,
+        [(FINDS_KIND, storeId, STORE_DAILY_FIND_CAP, FIND_CAP_REACHED)],
+        (FINDS_KIND, FIND_ALL_CAP_REACHED), capAll, FINDS_TURNED_OFF,
+        appDay(_now()))
 
 
 def _references(read: list[tuple[bytes, str]]
@@ -379,8 +415,10 @@ class PhotoActions():
         unavailable), the original is still returned and notGenerated says
         why: tell the admin. Returns the photos (original first) and the
         prompt the styled ones were made with; the chat shows them as a
-        card the admin picks from. Call it for one product per turn; when
-        the admin picks a photo, call setProductPhoto with it, then call
+        card the admin picks from, numbered in this order (1 is the
+        original). Call it for one product per turn; when the admin picks a
+        photo on the card, or names one by its number ("use the 2nd"), call
+        setProductPhoto with it, then call
         this for the next product with a photo. If this tool refuses, relay
         its message to the admin."""
         deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
@@ -448,6 +486,66 @@ class PhotoActions():
                 'notGenerated': notGenerated}
 
     @mcp_tool('admin',
+              thinkingText=['Looking for products in your photo',
+                            'Naming your products',
+                            'Cutting out each product'])
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Products found',
+                  responseModel=FoundProductsResponse)
+    def findProductsInPhoto(self,
+                            userId: str,
+                            imageUrl: str) -> dict:
+        """Find the products in one photo of several products side by side
+        that the admin attached (imageUrl, the attached image's url: never
+        invent or change one): names each product and cuts its photo out
+        (up to 12; things there for scale, such as a ball, are left out).
+        Returns the products found, left to right, each a name and the
+        imageUrl of its cut-out photo, and notFound, the names of products
+        seen but not located. Then open showNewProductsForm with one row per
+        product found, its name and that imageUrl (prices and stock only
+        as the admin said them), and tell the admin to check the names and
+        fill in the rest, and which products were not found (they can add
+        those rows themselves). A store looks through at most 20 group
+        photos a day. If this tool refuses, relay its message to the
+        admin."""
+        deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+        store = requireOwnerStore(userId, {'_id': 1})
+        if not isinstance(imageUrl, str) or not imageUrl.strip():
+            raise ValueError(IMAGE_URL_MISSING)
+        path = photoStorage.ownImagePath(
+            userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
+            'imageUrl')
+        started = time.monotonic()
+        with slot(_photoSlots, samModel.unavailable):
+            keys = _takeFindQuota(store['_id'])
+            try:
+                [(data, _)] = photoStorage.readOwnImages(
+                    userId, [('imageUrl', path)], deadline)
+                finding = productFinder.findProducts(data, deadline)
+            except Exception:
+                # A find that failed is not counted.
+                giveBackQuotas(PHOTO_USAGE, keys)
+                raise
+            saveBy = time.monotonic() + SAVE_SECONDS
+            products = []
+            for product in finding.found:
+                saved = photoStorage.saveFoundPhoto(
+                    userId, generateRandomString(), product.photo, saveBy)
+                products.append({'name': product.name,
+                                 'imageUrl': photoStorage.publicPathUrl(
+                                     saved)})
+        # Never the URL, the path or the names.
+        logging.info({
+            'event': 'productsInPhoto',
+            'storeId': store['_id'],
+            'found': len(products),
+            'notFound': len(finding.notFound),
+            'durationMs': round((time.monotonic() - started) * 1000),
+        })
+        return {'products': products, 'notFound': finding.notFound}
+
+    @mcp_tool('admin',
               thinkingText=['Setting the product photo',
                             'Updating the product photo',
                             'Putting the photo on the product'])
@@ -464,7 +562,8 @@ class PhotoActions():
         the admin's store (its productId from listMyStoreProducts): customers
         see it in the shop. Leave photoId out to take the product's photo
         off. Confirm the product and the photo with the admin before
-        calling, unless they picked it on a photo choice card. If it
+        calling, unless they picked it on a photo choice card or named its
+        number there. If it
         refuses, relay its message to the admin."""
         store = requireOwnerStore(userId, {'_id': 1})
         photoUrl = None

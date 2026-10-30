@@ -34,10 +34,11 @@ from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
 from actions.StoreActions import STORES, ownerQuery
 import photoStorage
 from mongoDb import db
-from objects import (CHAT_MESSAGE_MAX_LENGTH, PHOTOS_PER_CALL_MAX,
-                     PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH,
-                     PRODUCT_INVENTORY_MAX, PRODUCT_NAME_MAX_LENGTH,
-                     PRODUCT_PRICE_MAX, ChatComponent, ChatFormAnswerTagged,
+from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_MESSAGE_MAX_LENGTH,
+                     PHOTOS_PER_CALL_MAX, PRODUCT_BATCH_MAX,
+                     PRODUCT_DESCRIPTION_MAX_LENGTH, PRODUCT_INVENTORY_MAX,
+                     PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
+                     ChatComponent, ChatFormAnswerTagged,
                      DELIVERY_ZONE_RULES, deliveryZoneAt, ruledZones)
 from utils import generateRandomString
 
@@ -71,6 +72,10 @@ PICKED_TWICE = 'Each one once'
 REJECT_NEEDS_REASON = 'Say why you reject it'
 PHONE_NOT_VERIFIED = 'Verify your phone number first'
 FORM_ANSWER_PREFIX = 'Form answer: '
+# The attachments a new products row may take as its photo.
+PHOTO_EXTENSIONS = tuple(extension for extension, contentType
+                         in CHAT_ATTACHMENT_EXTENSIONS.items()
+                         if contentType.startswith('image/'))
 
 _ANSWER = TypeAdapter(ChatFormAnswerTagged)
 _COMPONENT = TypeAdapter(ChatComponent)
@@ -152,6 +157,7 @@ class ProductDraftArgs(_Args):
     price: float | None = None
     inventory: int | None = None
     description: str | None = None
+    imageUrl: str | None = None
 
 
 class ShowNewProductsFormArgs(_Args):
@@ -212,10 +218,24 @@ def _locationForm(userId: str, storeId: str,
     }
 
 
+def _draftPhoto(userId: str, imageUrl) -> str | None:
+    """The Storage path of a prefill's photo: the owner's own JPG or PNG
+    (one they attached), else None (left for the owner to add)."""
+    if imageUrl is None:
+        return None
+    try:
+        path = photoStorage.ownImagePath(
+            userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
+            'imageUrl')
+    except ValueError:
+        return None
+    return path if photoStorage.hasExtension(path, PHOTO_EXTENSIONS) else None
+
+
 def _newProductsForm(userId: str, storeId: str,
                      args: ShowNewProductsFormArgs) -> dict:
     store = _ownStore(userId, {'currency': 1})
-    drafts = []
+    drafts, photos = [], []
     for draft in args.products or []:
         price, inventory = draft.price, draft.inventory
         drafts.append({
@@ -229,8 +249,13 @@ def _newProductsForm(userId: str, storeId: str,
             'description': _clip(draft.description,
                                  PRODUCT_DESCRIPTION_MAX_LENGTH),
         })
+        photos.append(_draftPhoto(userId, draft.imageUrl))
+    # A photo on several rows shows them all (a list, a screenshot): no
+    # row's own photo.
+    photos = [None if photos.count(path) > 1 else path for path in photos]
     return {'kind': 'newProductsForm', 'formId': newFormId(),
-            'currency': store['currency'], 'products': drafts}
+            'currency': store['currency'], 'products': drafts,
+            'photos': photos}
 
 
 def _photoRequestForm(userId: str, storeId: str,
@@ -319,9 +344,18 @@ FORM_TOOLS: dict[str, FormTool] = {
     'showNewProductsForm': FormTool(
         ('admin', ),
         'Open a form under your reply where the owner lists new products: '
-        'name, price, units in stock and an optional description, one row '
-        'each. Prefill only what the owner already said; never invent a '
-        'price or a stock count. Use it to add products instead of asking '
+        'name, price, units in stock, an optional description and an '
+        'optional photo, one row each. Prefill each row from what the owner '
+        'gave in this conversation: their words and the files they attached '
+        '(a photo, a screenshot, a price list, a PDF), one row per product '
+        'they show. Take a name, price or description only where it is '
+        'written or said; never guess a price or a stock count, and leave a '
+        'field empty when it is not there. Keep a unit a price is for (per '
+        'pack of 25, per box) in the name or description. Give a row '
+        'imageUrl, the url of an attached image, only when that image is a '
+        'photo of that one product alone, never a list or a screenshot of '
+        'several. In your reply, say what you filled in from their files '
+        'so the owner checks it. Use it to add products instead of asking '
         'each detail in chat. The owner may upload one photo per product '
         'there. Their list comes as their next message: then call '
         'addStoreProducts with it. For each product sent with an imageUrl, '

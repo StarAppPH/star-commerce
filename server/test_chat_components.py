@@ -1041,6 +1041,50 @@ def test_aNewProductsAnswer_withAPhotoNotTheirs_isRefused(wiped, photoBucket,
     assert fake.requests == []
 
 
+def test_aNewProductsForm_prefillsOnlyTheOwnersOwnPhotos(wiped, photoBucket,
+                                                        model):
+    createTestStore(ADMIN)
+    mug = f'users/{ADMIN}/chat/a/mug.jpg'
+    sheet = uploadUrl(ADMIN, 'price-list.png')
+    model(calls(('c1', 'showNewProductsForm', json.dumps({'products': [
+                    {'name': 'Mug', 'imageUrl': photoStorage.publicPathUrl(mug)},
+                    {'name': 'Plate', 'imageUrl': uploadUrl('someone-else')},
+                    {'name': 'Bowl', 'imageUrl': uploadUrl(ADMIN, 'list.pdf')},
+                    {'name': 'Cup', 'imageUrl': 'https://example.com/cup.jpg'},
+                    {'name': 'Tray', 'imageUrl': sheet},
+                    {'name': 'Box', 'imageUrl': sheet},
+                    {'name': 'Lid'}]}))),
+          reply('I filled in what your files show.'))
+    [form] = adminSays('Add these')['components']
+    # Only an image the owner uploaded, on one row: a photo on several rows
+    # shows them all (a list, a screenshot).
+    assert form['photos'] == [mug, None, None, None, None, None, None]
+    assert [p['name'] for p in form['products']] == [
+        'Mug', 'Plate', 'Bowl', 'Cup', 'Tray', 'Box', 'Lid']
+    tool = chatForms.FORM_TOOLS['showNewProductsForm']
+    assert 'files they attached' in tool.description
+    assert 'never a list or a screenshot' in tool.description
+
+
+def test_aNewProductsAnswer_takesAPrefilledPhoto(wiped, photoBucket, model):
+    createTestStore(ADMIN)
+    url = uploadUrl(ADMIN, 'mug.png')
+    model(calls(('c1', 'showNewProductsForm', json.dumps(
+              {'products': [{'name': 'Mug', 'imageUrl': url}]}))),
+          reply('Check the photo.'))
+    res = adminSays('Add this mug')
+    [form] = res['components']
+    assert form['photos'] == [f'users/{ADMIN}/chat-photos/mug.png']
+    fake = model(reply('Adding it.'))
+
+    adminSays(None, res['conversationId'], {
+        'kind': 'newProducts', 'formId': form['formId'], 'products': [
+            {'name': 'Mug', 'price': 250, 'inventory': 3, 'imageUrl': url}]})
+
+    products = formAnswerDetails(lastUserContent(fake))['products']
+    assert products[0]['imageUrl'] == url
+
+
 CHOICES = {'productId': 'p-mug', 'productName': 'Mug', 'photos': [
     {'_id': 'ph-original', 'url': 'https://x/o.png', 'source': 'original'},
     {'_id': 'ph-styled-1', 'url': 'https://x/1.jpg', 'source': 'generated'},

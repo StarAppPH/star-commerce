@@ -1531,6 +1531,22 @@
                     "maxItems": 50,
                     "title": "Products",
                     "type": "array"
+                },
+                "photos": {
+                    "description": "Each prefilled row's photo (by position): the Storage path of an image the owner attached; null without one",
+                    "items": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "maxItems": 50,
+                    "title": "Photos",
+                    "type": "array"
                 }
             },
             "required": [
