@@ -68,7 +68,10 @@ def _currentNotPayableMessage(orderId: str) -> str:
 class PaymentActions():
 
     # The tool description is PAY_ORDER_DESCRIPTION.
-    @mcp_tool('customer', description=PAY_ORDER_DESCRIPTION)
+    @mcp_tool('customer', description=PAY_ORDER_DESCRIPTION,
+              thinkingText=['Processing your payment',
+                            'Paying for your order',
+                            'Confirming your payment'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Order paid',

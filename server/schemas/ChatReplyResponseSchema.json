@@ -495,6 +495,42 @@
             "type": "object",
             "additionalProperties": false
         },
+        "ChatSpeech": {
+            "description": "What the browser streams a reply's speech with, straight from\nElevenLabs (VoiceActions.replySpeech): a single-use token (15 minutes),\nthe voice and model, and the text to speak.",
+            "properties": {
+                "token": {
+                    "description": "ElevenLabs' single-use token for one text-to-speech stream",
+                    "minLength": 1,
+                    "title": "Token",
+                    "type": "string"
+                },
+                "voiceId": {
+                    "description": "The voice to speak in",
+                    "title": "Voiceid",
+                    "type": "string"
+                },
+                "modelId": {
+                    "description": "The ElevenLabs model",
+                    "title": "Modelid",
+                    "type": "string"
+                },
+                "text": {
+                    "description": "The reply as it is spoken (no markdown)",
+                    "minLength": 1,
+                    "title": "Text",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "token",
+                "voiceId",
+                "modelId",
+                "text"
+            ],
+            "title": "ChatSpeech",
+            "type": "object",
+            "additionalProperties": false
+        },
         "ChatStoreOrderRow": {
             "description": "An order on the admin's order card.",
             "properties": {
@@ -2132,6 +2168,17 @@
             "minimum": 0,
             "title": "Turnseq",
             "type": "integer"
+        },
+        "speech": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/ChatSpeech"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "How to stream the reply spoken, when the message asked for it (speak); null otherwise, or when it cannot be spoken (a voice cap reached, ElevenLabs unavailable)"
         }
     },
     "required": [
@@ -2139,7 +2186,8 @@
         "userText",
         "reply",
         "components",
-        "turnSeq"
+        "turnSeq",
+        "speech"
     ],
     "title": "ChatReplyResponse",
     "type": "object",

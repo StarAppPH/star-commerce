@@ -39,11 +39,34 @@ function toBlocks(text: string): Block[] {
   return blocks.filter((block) => block.kind !== 'paragraph' || block.lines.length > 0);
 }
 
+// A 6-digit hex color the assistant names, like #2E7D32. An order's short
+// reference has the same shape (#<last 6 of its id>), so one right after
+// "order" stays plain text.
+const HEX_COLOR = /(#[0-9A-Fa-f]{6})(?![0-9A-Za-z])/g;
+const AFTER_ORDER = /\border\s*$/i;
+
+function withSwatches(text: string): React.ReactNode[] {
+  return text.split(HEX_COLOR).map((part, index, parts) => {
+    const isColor = index % 2 === 1 && !AFTER_ORDER.test(parts[index - 1]);
+    if (!isColor) return <React.Fragment key={index}>{part}</React.Fragment>;
+    return (
+      <span key={index} data-component="assistantTextColor" className="inline-flex items-baseline gap-1 whitespace-nowrap">
+        <span
+          aria-hidden
+          className="inline-block size-[0.9em] translate-y-[0.1em] rounded-[4px] border border-black/15 dark:border-white/20"
+          style={{ backgroundColor: part }}
+        />
+        {part}
+      </span>
+    );
+  });
+}
+
 function inline(text: string): React.ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, index) => (
     part.startsWith('**') && part.endsWith('**') && part.length > 4
-      ? <strong key={index} className="font-semibold">{part.slice(2, -2)}</strong>
-      : <React.Fragment key={index}>{part}</React.Fragment>
+      ? <strong key={index} className="font-semibold">{withSwatches(part.slice(2, -2))}</strong>
+      : <React.Fragment key={index}>{withSwatches(part)}</React.Fragment>
   ));
 }
 

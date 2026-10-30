@@ -1,0 +1,54 @@
+{
+    "description": "A ThinkingSpeech document: one thinking text spoken once in one\nElevenLabs voice, reused for every turn after. Its _id is\nchatThinking.speechKey(voiceId, text). syncThinkingSpeech deletes the\nclips of texts no tool has any more.",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "voiceId": {
+            "description": "ElevenLabs' voice id",
+            "title": "Voiceid",
+            "type": "string"
+        },
+        "text": {
+            "description": "The thinking text spoken",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+        },
+        "audio": {
+            "description": "The text spoken (base64 MP3)",
+            "minLength": 1,
+            "title": "Audio",
+            "type": "string"
+        },
+        "createdAt": {
+            "description": "When it was spoken",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "voiceId",
+        "text",
+        "audio",
+        "createdAt"
+    ],
+    "title": "ThinkingSpeech",
+    "type": "object",
+    "additionalProperties": false
+}

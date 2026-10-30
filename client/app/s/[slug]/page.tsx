@@ -71,7 +71,8 @@ export default function ShopHomePage() {
           dataComponent="shopHomeComposer"
           variant="shop"
           placeholder={placeholder}
-          onSend={chat.ask}
+          onSend={chat.sendMessage}
+          onUpload={chat.upload}
           onVoice={openVoice}
         />
       </div>

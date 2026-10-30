@@ -253,7 +253,8 @@ from objects.chat import (ChatAudience, CHAT_MESSAGE_MAX_LENGTH,
                           HISTORY_ATTACHMENT_TURNS, Conversation,
                           ConversationView, ChatToolCall, ChatStep,
                           ChatTokenUsage, ChatAttachment, ChatTurn,
-                          ChatUsage, ChatReplyResponse, ConversationRow,
+                          ChatUsage, ChatSpeech, ChatReplyResponse,
+                          ConversationRow,
                           ConversationListResponse, ChatAttachmentRow,
                           ChatTurnRow, ConversationTurnsResponse)
 from objects.voice import (VoiceAudioFormat, VOICE_NAME_MAX_LENGTH,
@@ -265,6 +266,8 @@ from objects.voice import (VoiceAudioFormat, VOICE_NAME_MAX_LENGTH,
                            VOICE_PAGE_TOKEN_MAX_LENGTH, VoiceUsage,
                            VoiceReplyResponse, SpokenReplyResponse, VoiceRow,
                            VoiceListResponse)
+from objects.thinking import (TURN_KEY_PATTERN, ChatThinking, ThinkingSpeech,
+                              ChatThinkingResponse, SpokenThinkingResponse)
 
 
 # AppCreator (_classes_from_module) generates TS schemas only for classes

@@ -1,0 +1,23 @@
+{
+    "description": "What speakChatThinking sends: the turn's thinking text, spoken.",
+    "properties": {
+        "audio": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The thinking text spoken (base64 MP3); null when the turn is doing nothing to say or it could not be spoken",
+            "title": "Audio"
+        }
+    },
+    "required": [
+        "audio"
+    ],
+    "title": "SpokenThinkingResponse",
+    "type": "object",
+    "additionalProperties": false
+}

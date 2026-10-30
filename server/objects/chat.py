@@ -179,6 +179,19 @@ class ChatUsage(MongoModel):
                                         description='When it is deleted')
 
 
+class ChatSpeech(ResponseModel):
+    """What the browser streams a reply's speech with, straight from
+    ElevenLabs (VoiceActions.replySpeech): a single-use token (15 minutes),
+    the voice and model, and the text to speak."""
+    token: str = Field(..., min_length=1,
+                       description="ElevenLabs' single-use token for one "
+                       'text-to-speech stream')
+    voiceId: str = Field(..., description='The voice to speak in')
+    modelId: str = Field(..., description='The ElevenLabs model')
+    text: str = Field(..., min_length=1,
+                      description='The reply as it is spoken (no markdown)')
+
+
 class ChatReplyResponse(ResponseModel):
     """What a chat route sends: the assistant's reply to the message, with
     the cards and forms to show under it."""
@@ -190,6 +203,10 @@ class ChatReplyResponse(ResponseModel):
         ..., description='The cards and forms to show under the reply')
     turnSeq: int = Field(..., ge=0,
                          description='The seq of the turn just saved')
+    speech: ChatSpeech | None = Field(
+        ..., description='How to stream the reply spoken, when the message '
+        'asked for it (speak); null otherwise, or when it cannot be spoken '
+        '(a voice cap reached, ElevenLabs unavailable)')
 
 
 class ConversationRow(ResponseModel):

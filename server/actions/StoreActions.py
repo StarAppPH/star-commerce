@@ -400,7 +400,10 @@ def _validCoordinate(value: float, label: str, limit: int) -> float:
 
 class StoreActions():
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Reading your business',
+                            'Accessing your business',
+                            'Getting your business'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Store fetched',
@@ -412,7 +415,10 @@ class StoreActions():
         requireAdmin(userId)
         return myStoreResponse(userId)
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=["Saving your store's look",
+                            'Updating your theme',
+                            'Styling your store'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Store theme saved',
@@ -468,7 +474,10 @@ class StoreActions():
         # voice is not sent back (getUserStore sends it).
         return {field: updated.get(field) for field in STORE_THEME_FIELDS}
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Creating your store',
+                            'Setting up your business',
+                            'Opening your store'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Store created',
@@ -560,7 +569,10 @@ class StoreActions():
         raise ValueError(
             'Could not pick a link name for this store, try another name')
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Saving your store details',
+                            'Updating your business',
+                            'Writing down your details'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Store details saved',
@@ -612,7 +624,10 @@ class StoreActions():
             raise ValueError(STORE_CHANGED)
         return projectedCopy(StoreResponse, updated)
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Finding your address',
+                            'Looking up the address',
+                            'Reading the map pin'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Address suggested',
@@ -634,7 +649,10 @@ class StoreActions():
                     location['latitude'], location['longitude']),
                 'address': store.get('address')}
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Saving your store pin',
+                            'Pinning your store',
+                            'Marking your location'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Store location saved',

@@ -84,6 +84,7 @@ import unicodedata
 import chatCards
 import chatForms
 import chatModel
+import chatThinking
 import photoStorage
 from actions.OrderActions import customerAtStore
 from actions.ProductActions import _validLimit
@@ -101,7 +102,7 @@ from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_ATTACHMENT_MAX_BYTES,
                      CHAT_ATTACHMENTS_MAX, CHAT_ATTACHMENTS_MAX_TOTAL_BYTES,
                      CHAT_MESSAGE_MAX_LENGTH, CHAT_TITLE_MAX_LENGTH,
                      CHAT_TOOL_CALL_ID_MAX_LENGTH, HISTORY_ATTACHMENT_TURNS,
-                     ChatAttachment, ChatFormAnswer,
+                     ChatAttachment, ChatFormAnswer, ChatThinkingResponse,
                      ChatReplyResponse, ChatStep, ChatTokenUsage,
                      ChatToolCall, ChatTurn, ChatTurnRow, Conversation,
                      ConversationListResponse, ConversationRow,
@@ -812,7 +813,8 @@ class _Usage:
 def _runModel(toolset: str, userId: str, storeId: str,
               messages: list[dict], progress: dict,
               deadline: float | None = None,
-              refusal=None, refusalLevel: int = logging.ERROR) -> dict:
+              refusal=None, refusalLevel: int = logging.ERROR,
+              turnKey: str | None = None) -> dict:
     """Call the model with the tools of `toolset` (chatTools.TOOLS) until
     it replies in text, running its tool calls in between (at most
     MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call without tools): a
@@ -824,7 +826,8 @@ def _runModel(toolset: str, userId: str, storeId: str,
     (before any tool runs). Raises unavailable() past
     TURN_DEADLINE_SECONDS (or `deadline`). `refusal` is
     chatModel.complete's, on the first call only, logged at
-    `refusalLevel`."""
+    `refusalLevel`. Before each route tool runs, one of its thinking texts
+    is saved as what the turn `turnKey` is doing (chatThinking.note)."""
     from chatTools import TOOLS
     if deadline is None:
         deadline = time.monotonic() + TURN_DEADLINE_SECONDS
@@ -865,6 +868,8 @@ def _runModel(toolset: str, userId: str, storeId: str,
                     toolNames.append(chatModel.toolLogName(toolset,
                                                            call['name']))
                     chatModel.remainingSeconds(deadline)
+                    chatThinking.note(userId, storeId, turnKey,
+                                      call['name'])
                     content = chatModel.runTool(toolset, call['name'],
                                                 call['arguments'], userId,
                                                 storeId)
@@ -936,18 +941,22 @@ def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
 
 
 def _chatTurn(audience: str, toolset: str, userId: str, storeId: str,
-              message, conversationId, form=None, attachments=None) -> dict:
+              message, conversationId, form=None, attachments=None,
+              turnKey=None) -> dict:
     """One message (or form answer) of `userId` at `storeId` (with the
     files of the download URLs `attachments`, checked first:
     _validAttachments) and the assistant's reply, with the tools of
     `toolset`, saved as a turn of the conversation `conversationId` (None:
-    a new one). Refused (503) while CHAT_TURNS_AT_ONCE turns run."""
+    a new one). `turnKey` names the turn to getChatThinking.
+    Refused (503) while CHAT_TURNS_AT_ONCE turns run."""
+    chatThinking.validTurnKey(turnKey)
     files = _validAttachments(userId, attachments)
     if files and form is not None:
         raise ValueError(FORM_WITH_ATTACHMENTS)
     with slot(_turnSlots, chatModel.unavailable):
         return _slottedTurn(audience, toolset, userId, storeId, message,
-                            conversationId, form, attachments=files)
+                            conversationId, form, attachments=files,
+                            turnKey=turnKey)
 
 
 def _userTurn(message, formAnswer, conversationId: str | None,
@@ -974,11 +983,13 @@ def _newTitle(userText: str, files: list[tuple[str, str]]) -> str:
 
 
 def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
-                 message, conversationId, form, attachments=()) -> dict:
+                 message, conversationId, form, attachments=(),
+                 turnKey=None) -> dict:
     """The turn of _chatTurn, in its slot. `attachments` are the
     message's files, checked (_validAttachments: their labels and paths;
     _chatTurn refuses them with a form answer); the voice route sends
-    none."""
+    none. What the turn `turnKey` is doing is cleared when it ends."""
+    turnKey = chatThinking.validTurnKey(turnKey)
     files = list(attachments)
     formAnswer = chatForms.validAnswer(form)
     if formAnswer is None:
@@ -1052,7 +1063,7 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
                       'content': chatModel.CHAT_PROMPTS[toolset]},
                      *historyMessages, userMessage],
                     progress, deadline=deadline, refusal=refusal,
-                    refusalLevel=refusalLevel)
+                    refusalLevel=refusalLevel, turnKey=turnKey)
             if history['withoutFiles'] is None:
                 answer = run(history['messages'], ownRefusal)
             else:
@@ -1087,6 +1098,7 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
         busyUntil = None  # cleared by the save
     finally:
         inFlight.release()
+        chatThinking.clear(userId, turnKey)
         if busyUntil is not None:
             _releaseLock(conversationId, busyUntil)
     if history['gone']:
@@ -1118,6 +1130,18 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
     return {'conversationId': conversationId,
             'userText': userTurn['userText'], 'reply': answer['reply'],
             'components': components, 'turnSeq': seq}
+
+
+def _withSpeech(audience: str, userId: str, storeId: str, speak,
+                turn: dict) -> dict:
+    """The saved `turn` as a chat route sends it: with `speech`
+    (VoiceActions.replySpeech) when `speak` is true, else null. Asked once
+    the turn is saved, so speech never fails the reply."""
+    # Imported here: VoiceActions imports this module.
+    from actions.VoiceActions import replySpeech
+    return {**turn, 'speech': replySpeech(audience, userId, storeId,
+                                          turn['reply'])
+            if speak is True else None}
 
 
 def _validBeforeSeq(beforeSeq) -> dict:
@@ -1176,7 +1200,9 @@ class ChatActions():
                              message: str | None = None,
                              conversationId: str | None = None,
                              form: ChatFormAnswer | None = None,
-                             attachments: list[str] | None = None) -> dict:
+                             attachments: list[str] | None = None,
+                             turnKey: str | None = None,
+                             speak: bool | None = None) -> dict:
         """Send the admin's message, or a form's answer (`form`, in its
         conversation), to the store assistant at the store the admin owns,
         and return its reply with the cards and forms to show under it. No
@@ -1185,11 +1211,14 @@ class ChatActions():
         `attachments` are the Storage download URLs of up to 4 JPEGs, PNGs
         or PDFs (one PDF at most) the admin uploaded under
         users/<uid>/chat/ (the message may then be empty; never with a
-        form)."""
+        form). `turnKey`, a random id of the client's, lets getChatThinking
+        tell what the assistant is doing while it answers. `speak` adds
+        `speech`, how the browser streams the reply spoken."""
         store = requireAnyOwnerStore(userId, {'_id': 1, 'slug': 1})
         toolset = 'admin' if isSetUp(store) else chatForms.SETUP_TOOLSET
-        return _chatTurn('admin', toolset, userId, store['_id'], message,
-                         conversationId, form, attachments)
+        return _withSpeech('admin', userId, store['_id'], speak, _chatTurn(
+            'admin', toolset, userId, store['_id'], message,
+            conversationId, form, attachments, turnKey))
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,
@@ -1201,7 +1230,9 @@ class ChatActions():
                              message: str | None = None,
                              conversationId: str | None = None,
                              form: ChatFormAnswer | None = None,
-                             attachments: list[str] | None = None) -> dict:
+                             attachments: list[str] | None = None,
+                             turnKey: str | None = None,
+                             speak: bool | None = None) -> dict:
         """Send the customer's message, or a form's answer (`form`, in its
         conversation), to the shopping assistant of the store being
         visited, and return its reply with the cards and forms to show
@@ -1210,11 +1241,28 @@ class ChatActions():
         or PDFs (one PDF at most) the customer uploaded under
         users/<uid>/chat/ (the message may then be empty; never with a
         form). Capped per customer and per store each day, messages and
-        files alike."""
+        files alike. `turnKey`, a random id of the client's, lets
+        getChatThinking tell what the assistant is doing while it
+        answers. `speak` adds `speech`, how the browser streams the reply
+        spoken."""
         customerAtStore(userId, storeId)
         setUpStore(storeId, {'_id': 1})
-        return _chatTurn('customer', 'customer', userId, storeId, message,
-                         conversationId, form, attachments)
+        return _withSpeech('customer', userId, storeId, speak, _chatTurn(
+            'customer', 'customer', userId, storeId, message,
+            conversationId, form, attachments, turnKey))
+
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Thinking fetched',
+                  responseModel=ChatThinkingResponse)
+    def getChatThinking(self, userId: str, turnKey: str) -> dict:
+        """What the assistant is doing in the caller's own chat turn
+        `turnKey` (the turnKey sent with the message), while it answers:
+        the running tool's thinking text, or null before its first tool and
+        once the turn is over."""
+        thinking = chatThinking.current(userId, turnKey)
+        return {'thinkingText': None if thinking is None
+                else thinking['thinkingText']}
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,

@@ -52,6 +52,40 @@ DESCRIPTIONS = {
     'updateStoreProduct': "Change a product of the admin's store. First find its productId\n(the product's _id) with listMyStoreProducts, never guess one. Then\nsend only the fields the admin wants changed: name, description,\nprice (in the store's currency), inventory and isAvailable (false\nhides it from customers). Inventory is the units free to sell, set\nto the new count (not an amount to add): if the admin gives the\ntotal on hand, subtract the product's reservedQuantity (from\nlistMyStoreProducts) or ask the admin. A description cannot be\nremoved yet: tell the admin so (an empty one leaves it unchanged).\nNever invent or guess a value: use only what the admin said, and\nconfirm the change with the admin before calling. If this tool\nrefuses because the data is outdated, call listMyStoreProducts\nagain, confirm the change with the admin against the fresh values,\nthen retry. If it refuses for another reason, relay its message to\nthe admin.",
 }
 
+THINKING_TEXTS = {
+    'addStoreProduct': ('Adding your product', 'Saving the new product', 'Putting the product in your store'),
+    'addStoreProducts': ('Adding your products', 'Saving the new products', 'Stocking your store'),
+    'approveReturn': ('Approving the return', 'Accepting the return', 'Okaying the return'),
+    'cancelMyOrder': ('Cancelling your order', 'Calling off your order', 'Stopping your order'),
+    'cancelMyReturn': ('Cancelling your return', 'Withdrawing your return', 'Calling off your return'),
+    'cancelStoreOrder': ('Cancelling the order', 'Calling off the order', 'Stopping the order'),
+    'completeOrder': ('Completing the order', 'Marking the order complete', 'Wrapping up the order'),
+    'createOrder': ('Placing your order', 'Preparing your order', 'Writing up your order'),
+    'createUserStore': ('Creating your store', 'Setting up your business', 'Opening your store'),
+    'generateProductPhotos': ('Making your product photos', 'Styling your photos', 'Creating new photos'),
+    'getMyOrders': ('Checking your orders', 'Looking up your orders', 'Reading your orders'),
+    'getMyReturns': ('Checking your returns', 'Looking up your returns', 'Reading your returns'),
+    'getMyStorePolicy': ('Reading your store policy', 'Checking your policy', 'Looking up your policy'),
+    'getStoreOrders': ('Reading your orders', 'Checking your orders', 'Looking through your orders'),
+    'getStorePolicy': ('Reading the store policy', "Checking the store's rules", 'Looking up the policy'),
+    'getStoreReturns': ('Reading your returns', 'Checking return requests', 'Looking through returns'),
+    'getUserStore': ('Reading your business', 'Accessing your business', 'Getting your business'),
+    'listMyStoreProducts': ('Reading your products', 'Checking your inventory', 'Looking through your products'),
+    'listStoreProducts': ('Browsing the shelves', 'Looking through the products', 'Checking what is in stock'),
+    'listVoices': ('Finding voices', 'Browsing the voices', 'Looking up voices'),
+    'payOrder': ('Processing your payment', 'Paying for your order', 'Confirming your payment'),
+    'receiveReturn': ('Receiving the return', 'Processing the refund', 'Checking in the returned items'),
+    'rejectReturn': ('Rejecting the return', 'Declining the return', 'Turning down the return'),
+    'requestReturn': ('Requesting your return', 'Sending your return request', 'Starting your return'),
+    'setProductPhoto': ('Setting the product photo', 'Updating the product photo', 'Putting the photo on the product'),
+    'setUserStoreLocation': ('Saving your store pin', 'Pinning your store', 'Marking your location'),
+    'suggestStoreAddress': ('Finding your address', 'Looking up the address', 'Reading the map pin'),
+    'updateMyStoreDetails': ('Saving your store details', 'Updating your business', 'Writing down your details'),
+    'updateMyStorePolicy': ('Saving your policy', 'Updating your store policy', 'Writing down your policy'),
+    'updateMyStoreTheme': ("Saving your store's look", 'Updating your theme', 'Styling your store'),
+    'updateStoreProduct': ('Updating the product', 'Saving your changes', 'Editing the product'),
+}
+
 
 class AddStoreProductArgs(BaseModel):
     model_config = ConfigDict(extra='ignore',

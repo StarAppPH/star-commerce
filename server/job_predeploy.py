@@ -50,6 +50,10 @@ def buildIndexes() -> int:
     """Builds the indexes of the main database; 0 when they are in place."""
     from mongoDb import db
     db.ensureIndexes()
+    # The spoken thinking texts kept in step with the tools' texts. It
+    # never fails the deploy: a clip it misses is spoken on first use.
+    import chatThinking
+    print('Thinking speech: ' + str(chatThinking.syncThinkingSpeech()))
     return 0
 # <<< star-app per-repo: indexes
 
