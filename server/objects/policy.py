@@ -37,8 +37,7 @@ PolicyField = Literal['acceptsReturns', 'returnWindowDays', 'returnConditions',
                       'offersFreeDelivery', 'freeDeliveryMinimum',
                       'handoverDays',
                       'acceptedPaymentMethods', 'paidOrderCancellation',
-                      'paidOrderCancellationHours',
-                      'sendsMarketingMessages', 'additionalTerms']
+                      'paidOrderCancellationHours', 'additionalTerms']
 POLICY_TEXT_MAX_LENGTH = 300
 POLICY_TERMS_MAX_LENGTH = 1000
 POLICY_DAYS_MAX = 365
@@ -102,8 +101,6 @@ PaidOrderCancellationHours = Annotated[int | None, Field(
     description='Hours after payment a customer can cancel a paid order '
     '(before handover), with paidOrderCancellation withinHours')]
 # The rest
-SendsMarketingMessages = Annotated[bool | None, Field(
-    description='Whether the store messages customers about offers')]
 AdditionalTerms = Annotated[str | None, Field(
     min_length=1, max_length=POLICY_TERMS_MAX_LENGTH,
     description='Any other terms, as the admin gave them')]
@@ -145,7 +142,6 @@ class Policy(MongoModel):
     acceptedPaymentMethods: AcceptedPaymentMethods = None
     paidOrderCancellation: PaidOrderCancellationAnswer = None
     paidOrderCancellationHours: PaidOrderCancellationHours = None
-    sendsMarketingMessages: SendsMarketingMessages = None
     additionalTerms: AdditionalTerms = None
     createdAt: datetime.datetime = Field(..., description='When it was created')
     updatedAt: datetime.datetime = Field(...,
@@ -229,7 +225,6 @@ class StorePolicyResponse(ResponseModel):
     acceptedPaymentMethods: AcceptedPaymentMethods = Field(...)
     paidOrderCancellation: PaidOrderCancellationAnswer = Field(...)
     paidOrderCancellationHours: PaidOrderCancellationHours = Field(...)
-    sendsMarketingMessages: SendsMarketingMessages = Field(...)
     additionalTerms: AdditionalTerms = Field(...)
     deliveryFeePerKm: DeliveryFeePerKm = Field(...)
     updatedAt: datetime.datetime = Field(...,

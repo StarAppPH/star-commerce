@@ -366,7 +366,7 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
     # Falsy but real values are applied, a text is stored stripped.
     time.sleep(0.01)
     first = api.updateMyStorePolicy(ADMIN,
-                                    sendsMarketingMessages=False,
+                                    acceptsReturns=False,
                                     offersFreeDelivery=True,
                                     handoverDays=0,
                                     freeDeliveryMinimum=0,
@@ -376,7 +376,7 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
     assertExactShape(StorePolicyResponse, first)
     stored = _policyDoc(storeId)
     PolicyView.model_validate(stored)
-    want = _expected(sendsMarketingMessages=False,
+    want = _expected(acceptsReturns=False,
                      offersFreeDelivery=True,
                      handoverDays=0,
                      freeDeliveryMinimum=0,
@@ -476,7 +476,6 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
                      handoverDays=2,
                      acceptedPaymentMethods=['gcash'],
                      paidOrderCancellation='beforeHandover',
-                     sendsMarketingMessages=True,
                      additionalTerms='terms')
     api.updateMyStorePolicy(ADMIN, **full)
     start = _policyDoc(storeId)
@@ -696,7 +695,6 @@ def test_updateMyStorePolicy_refusesBadValues_withoutQuotingThem(clean):
         ('freeDeliveryMinimum', True),
         ('acceptsReturns', 'yes'),
         ('acceptsReturns', 1),
-        ('sendsMarketingMessages', 0),
         ('refundMethod', sentinel),
         ('returnShippingPaidBy', sentinel),
         ('paidOrderCancellation', sentinel),
@@ -807,7 +805,7 @@ def test_updateMyStorePolicy_aLostVersionRace_isRefusedAndWritesNothing(
             db.db['Policies'].update_one(
                 {'storeId': storeId},
                 {'$inc': {'_version': 1},
-                 '$set': {'sendsMarketingMessages': True}})
+                 '$set': {'acceptsReturns': True}})
         return found
 
     monkeypatch.setattr(db, 'read', racing)
@@ -819,14 +817,14 @@ def test_updateMyStorePolicy_aLostVersionRace_isRefusedAndWritesNothing(
 
     after = _policyDoc(storeId)
     # Only the racer's state is stored.
-    assert _answers(after) == _expected(sendsMarketingMessages=True)
+    assert _answers(after) == _expected(acceptsReturns=True)
     assert after['_version'] == start['_version'] + 1
     assert after['updatedAt'] == start['updatedAt']
 
     # Trying again works.
     api.updateMyStorePolicy(ADMIN, handoverDays=3)
     assert _answers(_policyDoc(storeId)) == _expected(
-        sendsMarketingMessages=True, handoverDays=3)
+        acceptsReturns=True, handoverDays=3)
 
     # A policy deleted between ensurePolicy and the read is the same refusal.
     realRead2 = db.read

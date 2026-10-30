@@ -2318,18 +2318,6 @@
                     "description": "Hours after payment a customer can cancel a paid order (before handover), with paidOrderCancellation withinHours",
                     "title": "Paidordercancellationhours"
                 },
-                "sendsMarketingMessages": {
-                    "anyOf": [
-                        {
-                            "type": "boolean"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Whether the store messages customers about offers",
-                    "title": "Sendsmarketingmessages"
-                },
                 "additionalTerms": {
                     "anyOf": [
                         {
@@ -2376,7 +2364,6 @@
                 "acceptedPaymentMethods",
                 "paidOrderCancellation",
                 "paidOrderCancellationHours",
-                "sendsMarketingMessages",
                 "additionalTerms",
                 "deliveryFeePerKm"
             ],

@@ -8,7 +8,7 @@ export type PolicyQuestion = keyof PolicyAnswers;
 export const POLICY_QUESTIONS: PolicyQuestion[] = [
   'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'deliveryOptions', 'deliveryAreas',
   'offersFreeDelivery', 'freeDeliveryMinimum', 'handoverDays', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems',
-  'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'sendsMarketingMessages', 'additionalTerms',
+  'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'additionalTerms',
 ];
 const RETURN_QUESTIONS: PolicyQuestion[] = ['returnWindowDays', 'returnConditions', 'refundMethod', 'returnShippingPaidBy'];
 const DELIVERY_QUESTIONS: PolicyQuestion[] = ['deliveryAreas', 'offersFreeDelivery', 'freeDeliveryMinimum'];

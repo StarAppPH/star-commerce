@@ -139,7 +139,7 @@ may skip any):
   nonReturnableItems, refundMethod ({_oneOf(RefundMethod)}) and
   returnShippingPaidBy ({_oneOf(ReturnShippingPayer)}); defectReportDays, how
   long a customer has to report a defective or wrong item;
-- then the rest: sendsMarketingMessages and additionalTerms.
+- then the rest: additionalTerms.
 Use only what the admin said, never guess, and confirm the answers with the
 admin before calling. Send only the fields the admin answered: a field left
 out keeps its answer. To take an answer back, list the field in `clear`
@@ -282,7 +282,6 @@ class PolicyActions():
                             acceptedPaymentMethods: list[str] | None = None,
                             paidOrderCancellation: str | None = None,
                             paidOrderCancellationHours: int | None = None,
-                            sendsMarketingMessages: bool | None = None,
                             additionalTerms: str | None = None,
                             clear: list[str] | None = None) -> dict:
         params = dict(locals())
