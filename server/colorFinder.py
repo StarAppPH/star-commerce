@@ -1,8 +1,8 @@
 """colorFinder.py — the main colors of a photo the admin attached, as hex
 codes (hand-written, no database).
 
-readColors() takes one photo (a JPEG or PNG) and, optionally, a focus: a
-short phrase naming the part to read ("green square logo").
+readColors() takes one photo (a JPEG, PNG or WebP) and, optionally, a
+focus: a short phrase naming the part to read ("green square logo").
 1. With a focus, SAM (productFinder.biggestMatch) finds it and only its box
    is read; no match reads the whole photo (focusFound false).
 2. The part read is shrunk to COLOR_SAMPLE_SIDE pixels on its long side,

@@ -47,7 +47,7 @@ FIND_CROP_MARGIN = 0.08
 FIND_SAME_BOX_IOU = 0.7
 # A photo of more pixels is refused (Pillow's decompression bomb guard).
 FIND_MAX_PIXELS = 50_000_000
-NOT_A_PHOTO = "The photo couldn't be read: send a JPG or PNG photo"
+NOT_A_PHOTO = "The photo couldn't be read: send a JPG, PNG or WebP photo"
 PHOTO_TOO_LARGE = 'The photo is too large: send one under 50 megapixels'
 
 LIST_PROMPT = (
@@ -202,10 +202,10 @@ def biggestMatch(dataUrl: str, phrase: str, deadline: float
 
 
 def findProducts(data: bytes, deadline: float) -> Finding:
-    """The products in the photo `data` (a JPEG or PNG), named and cut out,
-    before `deadline` (time.monotonic()). A model failure is a 503; a SAM
-    failure for one product makes it not found, unless every one failed
-    (a 503)."""
+    """The products in the photo `data` (a JPEG, PNG or WebP), named and
+    cut out, before `deadline` (time.monotonic()). A model failure is a
+    503; a SAM failure for one product makes it not found, unless every
+    one failed (a 503)."""
     image = uprightImage(data)
     dataUrl = modelCopy(image)
     listed = _listProducts(dataUrl, deadline)

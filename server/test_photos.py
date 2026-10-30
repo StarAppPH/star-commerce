@@ -9,6 +9,7 @@ import asyncio
 import base64
 import datetime
 import importlib
+import io
 import json
 import logging
 import time
@@ -208,8 +209,9 @@ def test_generateProductPhotos_savesEachPhotoReturned(fakes, monkeypatch):
     for call in calls.values():
         assert call['model'] == imageModel.IMAGE_MODEL
         assert call['image'] == [(JPEG, 'image/jpeg')]
-        assert 'primary #112233' in call['prompt']
         assert 'Special request: from above' in call['prompt']
+    assert 'primary brand color #112233' in calls[1]['prompt']
+    assert 'primary #112233' in calls[PHOTOS_THEMED]['prompt']
     assert 'Style:' not in calls[1]['prompt']
     assert calls[PHOTOS_THEMED]['prompt'].endswith(
         '\nStyle: white marble, morning light')
@@ -773,6 +775,7 @@ def test_ownImagePath_heicByName_asksToConvert(name):
     {'contentType': 'image/JPEG; charset=x'},
     {'contentType': 'image/png', 'data': b'\x89PNG\r\n\x1a\n' + b'png'},
     {'data': b'\xff\xd8\xff' + b'x' * (MAX - 3), 'size': MAX},
+    {'contentType': 'image/webp', 'data': b'RIFF\x00\x00\x00\x00WEBPVP8 '},
 ])
 def test_readOwnImages_acceptsTheBoundaries(fakes, stored):
     [(data, contentType)] = readOne(fakes, **stored)
@@ -786,10 +789,12 @@ def test_readOwnImages_acceptsTheBoundaries(fakes, stored):
     ({'size': None}, 'is over 10 MB'),
     # The metadata understates it: the read bound (end + 1 byte) catches it.
     ({'data': b'x' * (MAX + 5), 'size': 10}, 'is over 10 MB'),
-    ({'contentType': None}, 'must be a JPG or PNG photo'),
-    ({'contentType': 'image/webp'}, 'must be a JPG or PNG photo'),
-    ({'contentType': 'image/gif'}, 'must be a JPG or PNG photo'),
-    ({'contentType': 'application/pdf'}, 'must be a JPG or PNG photo'),
+    ({'contentType': None}, 'must be a JPG, PNG or WebP photo'),
+    ({'contentType': 'image/gif'}, 'must be a JPG, PNG or WebP photo'),
+    ({'contentType': 'application/pdf'}, 'must be a JPG, PNG or WebP photo'),
+    # A WebP's RIFF header without its WEBP mark (a WAV, say) is no WebP.
+    ({'contentType': 'image/webp', 'data': b'RIFF\x00\x00\x00\x00WAVE'},
+     photoStorage.NOT_A_REAL_PHOTO),
     ({'contentType': 'image/heic'}, photoStorage.CONVERT_PHOTO),
     ({'contentType': 'image/HEIF; charset=x'}, photoStorage.CONVERT_PHOTO),
 ])
@@ -801,6 +806,53 @@ def test_readOwnImages_refusesABadObject_withoutQuotingItsPath(fakes, stored,
     assert message in str(error.value)
     assert str(error.value).startswith('imageUrls[0]')
     assert MINE not in str(error.value)
+
+
+def webp(mode: str) -> bytes:
+    from PIL import Image
+    out = io.BytesIO()
+    color = (10, 200, 30, 128) if mode == 'RGBA' else (10, 200, 30)
+    Image.new(mode, (4, 3), color).save(out, 'WEBP')
+    return out.getvalue()
+
+
+def test_modelImage_aWebP_becomesAJpeg_orAPngWithTransparency():
+    """Meta does not say it takes WebP: a WebP goes to it as a JPEG, or a
+    PNG when it has transparency; a JPEG or PNG goes as it is."""
+    from PIL import Image
+    opaque, clear = webp('RGB'), webp('RGBA')
+
+    data, contentType = photoStorage.modelImage(opaque, 'image/webp', 'x')
+    assert contentType == 'image/jpeg' and data.startswith(b'\xff\xd8\xff')
+    data, contentType = photoStorage.modelImage(clear, 'image/webp', 'x')
+    assert contentType == 'image/png'
+    with Image.open(io.BytesIO(data)) as image:
+        assert image.mode == 'RGBA' and image.size == (4, 3)
+    assert photoStorage.modelImage(JPEG, 'image/jpeg', 'x') == (
+        JPEG, 'image/jpeg')
+
+
+@pytest.mark.parametrize('data', [
+    b'RIFF\x00\x00\x00\x00WEBPVP8 broken', JPEG])
+def test_modelImage_aWebPThatCannotBeRead_isRefused_namingItsPlace(data):
+    with pytest.raises(ValueError) as error:
+        photoStorage.modelImage(data, 'image/webp', 'imageUrls[1]')
+
+    assert str(error.value) == (
+        f'imageUrls[1] {photoStorage.NOT_A_REAL_PHOTO}')
+
+
+def test_references_aWebP_goesToTheModelAsAJpeg():
+    [(name, data, contentType)] = PhotoActions._references(
+        [(webp('RGB'), 'image/webp')])
+
+    assert (name, contentType) == ('reference0.jpg', 'image/jpeg')
+    assert data.startswith(b'\xff\xd8\xff')
+
+
+def test_storePhotoPath_aWebPOriginal_isSavedAsWebp():
+    assert photoStorage.storePhotoPath('s1', 'p1', 'image/webp') == (
+        'stores/s1/photos/p1.webp')
 
 
 def test_readOwnImages_downloadsAtMostOneByteOverTheLimit(fakes, monkeypatch):
@@ -1361,8 +1413,43 @@ def test_photoPrompts_theGlobalPromptsLines_thenTheStoreThemeLast():
         PhotoActions.PHOTO_INSTRUCTION,
         'Special request: on a desk',
         'Product: Blue Mug',
-        PhotoActions.brandColorsLine('#112233', '#445566')]
-    assert themed == f'{globalPrompt}\nStyle: calm'
+        PhotoActions.backgroundLine('#112233')]
+    assert themed.split('\n') == [
+        PhotoActions.PHOTO_INSTRUCTION,
+        'Special request: on a desk',
+        'Product: Blue Mug',
+        PhotoActions.brandColorsLine('#112233', '#445566'),
+        'Style: calm']
+
+
+def test_globalPhotoPrompt_isTheProductOnAPlainPrimaryColorBackground():
+    prompt = PhotoActions.globalPhotoPrompt(
+        {'primaryColor': '#112233', 'secondaryColor': '#445566'}, None)
+
+    assert prompt.split('\n') == [PhotoActions.PHOTO_INSTRUCTION,
+                                  PhotoActions.backgroundLine('#112233')]
+    assert 'plain, seamless background' in prompt
+    assert 'primary brand color #112233' in prompt
+    assert 'Show only the product' in prompt
+    assert '#445566' not in prompt and 'Brand colors:' not in prompt
+
+
+def test_globalPhotoPrompt_withoutAPrimaryColor_keepsTheBrandColorsLine():
+    prompt = PhotoActions.globalPhotoPrompt({'secondaryColor': '#445566'},
+                                            None)
+
+    assert prompt.split('\n') == [
+        PhotoActions.PHOTO_INSTRUCTION,
+        PhotoActions.brandColorsLine(None, '#445566')]
+    assert 'Background:' not in prompt
+
+
+def test_themedPrompts_neverGetThePlainBackground():
+    prompt = PhotoActions.photoPrompt(
+        {'photoStyle': 'calm', 'primaryColor': '#112233'}, None)
+
+    assert 'Background:' not in prompt
+    assert prompt.endswith('\nStyle: calm')
 
 
 def test_photoPrompts_aStoreWithNoPhotoStyle_getsTheGlobalPromptOnly():

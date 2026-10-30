@@ -218,8 +218,8 @@ def _locationForm(userId: str, storeId: str,
 
 
 def _draftPhoto(userId: str, imageUrl) -> str | None:
-    """The Storage path of a prefill's photo: the owner's own JPG or PNG
-    (one they attached), else None (left for the owner to add)."""
+    """The Storage path of a prefill's photo: the owner's own JPG, PNG or
+    WebP (one they attached), else None (left for the owner to add)."""
     if imageUrl is None:
         return None
     try:

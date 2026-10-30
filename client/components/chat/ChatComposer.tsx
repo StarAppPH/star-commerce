@@ -101,7 +101,7 @@ export function ChatComposer({
         dataComponent={`${dataComponent}Attach`}
         inputDataComponent={`${dataComponent}Files`}
         label="Attach photos or a PDF"
-        accept="image/jpeg,image/png,application/pdf"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
         multiple
         disabled={locked || full}
         variant={variant}

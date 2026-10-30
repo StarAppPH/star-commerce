@@ -6,8 +6,8 @@ rules_version = '2';
 //   firebase deploy --only storage
 //
 // A signed-in user may read and delete only the files under users/<their
-// uid>/, and upload there only a JPEG or PNG under 10 MB (the apps accept
-// no other image type; HEIC/HEIF must be converted first), and under
+// uid>/, and upload there only a JPEG, PNG or WebP under 10 MB (the apps
+// accept no other image type; HEIC/HEIF must be converted first), and under
 // users/<their uid>/chat/ (the chat's attachments) a PDF too. Rules that
 // match one path are OR'ed, so the chat block only widens its folder; each
 // matches() tests the whole content type. The server checks every file's
@@ -32,7 +32,7 @@ service firebase.storage {
       allow read, delete: if request.auth != null && request.auth.uid == uid;
       allow create, update: if request.auth != null && request.auth.uid == uid
                             && request.resource.size < 10 * 1024 * 1024
-                            && request.resource.contentType.matches('image/(jpeg|png)');
+                            && request.resource.contentType.matches('image/(jpeg|png|webp)');
     }
     match /users/{uid}/chat/{allPaths=**} {
       allow create, update: if request.auth != null && request.auth.uid == uid

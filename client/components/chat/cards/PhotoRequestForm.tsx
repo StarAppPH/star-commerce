@@ -151,7 +151,7 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
               </label>
             )}
           </div>
-          <p className="text-muted-foreground text-xs">Up to 10 JPG or PNG photos of the same item, each under 10 MB.</p>
+          <p className="text-muted-foreground text-xs">Up to 10 JPG, PNG or WebP photos of the same item, each under 10 MB.</p>
           <Field>
             <FieldLabel>Special request <span className="font-normal text-muted-foreground">(optional)</span></FieldLabel>
             <Textarea data-component="photoRequestNotes" value={notes} maxLength={NOTES_MAX} placeholder="Show it from above" disabled={locked} onChange={(event) => setNotes(event.target.value)} />

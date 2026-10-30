@@ -67,6 +67,7 @@
                     "enum": [
                         "image/jpeg",
                         "image/png",
+                        "image/webp",
                         "application/pdf"
                     ],
                     "title": "Contenttype",

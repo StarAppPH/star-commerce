@@ -18,12 +18,14 @@ bucket. Every other environment ignores both.
   type, and by contents: a file's first bytes must be its type's
   (SIGNATURES). ownFiles() and downloadFiles() are its two steps, for a
   caller that budgets between them.
-  readOwnImages() is it for photos: JPEGs or PNGs of at most
+  readOwnImages() is it for photos: JPEGs, PNGs or WebPs of at most
   MAX_IMAGE_BYTES each (and PHOTO_REFERENCES_MAX_TOTAL_BYTES together);
-  the chat's attachments add PDFs.
+  the chat's attachments add PDFs. modelImage() turns a WebP into a PNG
+  or JPEG before its bytes go to Meta, which does not say it takes WebP.
 - publicPathUrl(): the canonical download URL of a path, without a token
   (objectPathFromUrl reads it back).
-- saveStorePhoto(): writes stores/<storeId>/photos/<photoId>.jpg, which
+- saveStorePhoto(): writes stores/<storeId>/photos/<photoId>.jpg (.png or
+  .webp for such an original), which
   storage.rules lets anyone get (never list) and only the server (admin
   credentials) write, and returns its download URL.
 - deletePrefix(): deletes every file of one folder, a store's
@@ -38,6 +40,7 @@ credentials: without a loopback emulator, every call is a 503. A Storage failure
 ("Photo storage is unavailable right now"), logged by class only.
 """
 
+import io
 import logging
 import os
 import re
@@ -66,17 +69,20 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024
 PHOTO_REFERENCES_MAX_TOTAL_BYTES = 25 * 1024 * 1024
 REFERENCES_TOO_LARGE = ('The photos are over 25 MB together: send fewer or '
                         'smaller photos')
-IMAGE_CONTENT_TYPES = ('image/jpeg', 'image/png')
+WEBP_CONTENT_TYPE = 'image/webp'
+IMAGE_CONTENT_TYPES = ('image/jpeg', 'image/png', WEBP_CONTENT_TYPE)
 HEIC_CONTENT_TYPES = ('image/heic', 'image/heif')
 HEIC_EXTENSIONS = ('.heic', '.heif')
-# The first bytes of each type's files, and the ISO-BMFF brands of a
-# HEIC/HEIF one (its ftyp box): a file whose contents are not its type's is
-# refused.
+# The first bytes of each type's files (a WebP's RIFF header has its size
+# between them: WEBP_SIGNATURE), and the ISO-BMFF brands of a HEIC/HEIF one
+# (its ftyp box): a file whose contents are not its type's is refused.
 SIGNATURES = {'image/jpeg': b'\xff\xd8\xff',
               'image/png': b'\x89PNG\r\n\x1a\n',
-              'application/pdf': b'%PDF-'}
+              'application/pdf': b'%PDF-',
+              WEBP_CONTENT_TYPE: b'RIFF'}
+WEBP_SIGNATURE = b'WEBP'  # bytes 8 to 12, after RIFF and the size
 HEIC_BRANDS = (b'heic', b'heix', b'hevc', b'heim', b'heis', b'mif1', b'msf1')
-NOT_A_REAL_PHOTO = "isn't a real JPG or PNG photo"
+NOT_A_REAL_PHOTO = "isn't a real JPG, PNG or WebP photo"
 # What a skipped file of a skipUnreadable read is.
 GONE = 'gone'
 REFUSED = 'refused'
@@ -96,7 +102,12 @@ FOLDER_PREFIX_PATTERN = re.compile(
     r'/([^/\\\x00-\x1f\x7f]+)/')
 # What routeErrors' 503 names: "Photo storage is unavailable right now".
 STORAGE_SERVICE = 'photo storage'
-CONVERT_PHOTO = 'Convert the photo to JPG or PNG before uploading'
+CONVERT_PHOTO = 'Convert the photo to JPG, PNG or WebP before uploading'
+# A WebP as modelImage() turns it: JPEG at this quality, PNG with
+# transparency; at most this many pixels (else MODEL_IMAGE_TOO_LARGE).
+MODEL_IMAGE_JPEG_QUALITY = 90
+MODEL_IMAGE_MAX_PIXELS = 50_000_000
+MODEL_IMAGE_TOO_LARGE = 'is too large: send a smaller photo'
 # Each Storage request waits at most STORAGE_TIMEOUT_SECONDS, and the SDK's
 # retries stop after STORAGE_RETRY_SECONDS, both cut to the time the photo
 # call has left (its deadline).
@@ -324,7 +335,9 @@ def _checkContents(data: bytes, contentType: str, label: str,
     (after the label)."""
     if _isHeicData(data):
         raise ValueError(f'{label} is a HEIC or HEIF photo. {CONVERT_PHOTO}')
-    if not data.startswith(SIGNATURES[contentType]):
+    if not data.startswith(SIGNATURES[contentType]) or (
+            contentType == WEBP_CONTENT_TYPE
+            and data[8:12] != WEBP_SIGNATURE):
         raise ValueError(f'{label} {notReal}')
 
 
@@ -458,21 +471,54 @@ def readOwnFiles(uid: str, files: list[tuple[str, str]],
 def readOwnImages(uid: str, photos: list[tuple[str, str]],
                   deadline: float) -> list[tuple[bytes, str]]:
     """The bytes and content type of each photo (its label and path) under
-    the caller `uid`'s own folder: JPEGs or PNGs of at most MAX_IMAGE_BYTES
+    the caller `uid`'s own folder: JPEGs, PNGs or WebPs of at most
+    MAX_IMAGE_BYTES
     each and PHOTO_REFERENCES_MAX_TOTAL_BYTES together (readOwnFiles), read
     before `deadline` (time.monotonic())."""
     return readOwnFiles(uid, photos, IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES,
                         PHOTO_REFERENCES_MAX_TOTAL_BYTES, deadline,
-                        wrongType='must be a JPG or PNG photo',
+                        wrongType='must be a JPG, PNG or WebP photo',
                         notReal=NOT_A_REAL_PHOTO,
                         totalTooLarge=REFERENCES_TOO_LARGE)
 
 
+def modelImage(data: bytes, contentType: str,
+               label: str) -> tuple[bytes, str]:
+    """The photo (its bytes and content type) as Meta takes it: a JPEG or
+    PNG as is, a WebP turned into a PNG when it has transparency, else a
+    JPEG (MODEL_IMAGE_JPEG_QUALITY). A WebP that cannot be read is
+    NOT_A_REAL_PHOTO, one over MODEL_IMAGE_MAX_PIXELS MODEL_IMAGE_TOO_LARGE
+    (after the label)."""
+    if contentType != WEBP_CONTENT_TYPE:
+        return data, contentType
+    from PIL import Image
+    try:
+        with Image.open(io.BytesIO(data)) as opened:
+            if opened.format != 'WEBP':
+                raise ValueError(f'{label} {NOT_A_REAL_PHOTO}')
+            if opened.width * opened.height > MODEL_IMAGE_MAX_PIXELS:
+                raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}')
+            hasAlpha = opened.mode in ('RGBA', 'LA') or (
+                'transparency' in opened.info)
+            image = opened.convert('RGBA' if hasAlpha else 'RGB')
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}') from None
+    except (OSError, SyntaxError):
+        raise ValueError(f'{label} {NOT_A_REAL_PHOTO}') from None
+    out = io.BytesIO()
+    if hasAlpha:
+        image.save(out, 'PNG')
+        return out.getvalue(), 'image/png'
+    image.save(out, 'JPEG', quality=MODEL_IMAGE_JPEG_QUALITY)
+    return out.getvalue(), 'image/jpeg'
+
+
 def storePhotoPath(storeId: str, photoId: str,
                    contentType: str = STORE_PHOTO_CONTENT_TYPE) -> str:
-    """Where a store photo of `contentType` (a JPEG, or an admin's PNG
-    original) is saved."""
-    extension = 'png' if contentType == 'image/png' else 'jpg'
+    """Where a store photo of `contentType` (a JPEG, or an admin's PNG or
+    WebP original) is saved."""
+    extension = {'image/png': 'png', WEBP_CONTENT_TYPE: 'webp'}.get(
+        contentType, 'jpg')
     return f'{storeFolder(storeId)}photos/{photoId}.{extension}'
 
 
@@ -519,11 +565,11 @@ def _upload(path: str, data: bytes, contentType: str,
 def saveStorePhoto(storeId: str, photoId: str, data: bytes,
                    deadline: float,
                    contentType: str = STORE_PHOTO_CONTENT_TYPE) -> str:
-    """Write `data` (a JPEG, or a PNG original: `contentType`) to
+    """Write `data` (a JPEG, or a PNG or WebP original: `contentType`) to
     storePhotoPath(storeId, photoId, contentType) (_upload) and return its
     download URL."""
     if contentType not in IMAGE_CONTENT_TYPES:
-        raise ValueError('A store photo is a JPEG or a PNG')
+        raise ValueError('A store photo is a JPEG, a PNG or a WebP')
     return _upload(storePhotoPath(storeId, photoId, contentType), data,
                    contentType, deadline)
 

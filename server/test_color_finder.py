@@ -119,6 +119,16 @@ def test_aJpeg_isReadWithinItsCompression():
         assert got == pytest.approx(want, abs=6)
 
 
+def test_aLosslessWebP_isReadExactly():
+    out = io.BytesIO()
+    Image.open(io.BytesIO(photo('PNG'))).save(out, 'WEBP', lossless=True)
+
+    reading = colorFinder.readColors(out.getvalue(), None, 0)
+
+    assert hexes(reading.colors) == hexes(
+        colorFinder.readColors(photo('PNG'), None, 0).colors)
+
+
 def test_transparentPixels_areLeftOut():
     logo = Image.new('RGBA', (100, 100), (0, 0, 0, 0))
     ImageDraw.Draw(logo).ellipse((10, 10, 89, 89), fill=GREEN)
