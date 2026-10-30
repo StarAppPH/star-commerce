@@ -75,10 +75,6 @@ export type Paidordercancellation = ("notAllowed" | "beforeHandover" | "withinHo
  */
 export type Paidordercancellationhours = number | null;
 /**
- * Whether the store messages customers about offers
- */
-export type Sendsmarketingmessages = boolean | null;
-/**
  * Any other terms, as the admin gave them
  */
 export type Additionalterms = string | null;
@@ -111,7 +107,6 @@ export interface PolicyView {
   acceptedPaymentMethods?: Acceptedpaymentmethods;
   paidOrderCancellation?: Paidordercancellation;
   paidOrderCancellationHours?: Paidordercancellationhours;
-  sendsMarketingMessages?: Sendsmarketingmessages;
   additionalTerms?: Additionalterms;
   createdAt: Createdat;
   updatedAt: Updatedat;

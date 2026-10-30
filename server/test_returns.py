@@ -491,7 +491,7 @@ def test_requestReturn_policyWindows_byAnswerReasonAndAppDay(
     # (label, answers, reason, handover, window, refusal): with a `window`
     # in days the request passes one second before the window's end and
     # fails at it, with `refusal`; with none it fails at any time.
-    other = {'sendsMarketingMessages': True}
+    other = {'handoverDays': 2}
     open7 = {'acceptsReturns': True, 'returnWindowDays': 7}
     noWindow = {'acceptsReturns': True, 'returnWindowDays': None}
     both = {**open7, 'defectReportDays': 3}

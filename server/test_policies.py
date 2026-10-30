@@ -366,7 +366,7 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
     # Falsy but real values are applied, a text is stored stripped.
     time.sleep(0.01)
     first = api.updateMyStorePolicy(ADMIN,
-                                    sendsMarketingMessages=False,
+                                    acceptsReturns=False,
                                     handoverDays=0,
                                     deliveryOptions=['pickup', 'delivery'],
                                     additionalTerms='  No haggling  ')
@@ -374,7 +374,7 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
     assertExactShape(StorePolicyResponse, first)
     stored = _policyDoc(storeId)
     PolicyView.model_validate(stored)
-    want = _expected(sendsMarketingMessages=False,
+    want = _expected(acceptsReturns=False,
                      handoverDays=0,
                      deliveryOptions=['pickup', 'delivery'],
                      additionalTerms='No haggling')
@@ -411,10 +411,10 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
 
     # clear sets an answer back to not said, and only that one.
     time.sleep(0.01)
-    api.updateMyStorePolicy(ADMIN, clear=['sendsMarketingMessages',
+    api.updateMyStorePolicy(ADMIN, clear=['acceptsReturns',
                                           'handoverDays'])
     cleared = _policyDoc(storeId)
-    want = {**want, 'sendsMarketingMessages': None, 'handoverDays': None}
+    want = {**want, 'acceptsReturns': None, 'handoverDays': None}
     assert _answers(cleared) == want
     assert cleared['_version'] == after['_version'] + 1
     assert cleared['updatedAt'] > after['updatedAt']
@@ -432,21 +432,23 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
 def test_updateMyStorePolicy_refusesClearMisuse_andAnEmptyUpdate(clean):
     store = _setUpStore()
     storeId = store['_id']
-    api.updateMyStorePolicy(ADMIN, sendsMarketingMessages=False,
+    api.updateMyStorePolicy(ADMIN, acceptsReturns=False,
                             handoverDays=2)
     before = _policyDoc(storeId)
 
-    # A retired answer (offersFreeDelivery) is no policy field any more.
-    for badClear in (['bogus'], 'sendsMarketingMessages', [5],
-                     ['sendsMarketingMessages', None],
-                     ['updatedAt'], ['storeId'], ['offersFreeDelivery']):
+    # A retired answer (offersFreeDelivery, sendsMarketingMessages) is no
+    # policy field any more.
+    for badClear in (['bogus'], 'acceptsReturns', [5],
+                     ['acceptsReturns', None],
+                     ['updatedAt'], ['storeId'], ['offersFreeDelivery'],
+                     ['sendsMarketingMessages']):
         assert _refusal(api.updateMyStorePolicy, ADMIN,
                         clear=badClear) == CLEAR_FIELDS
     # A field both cleared and given a value.
     assert _refusal(api.updateMyStorePolicy, ADMIN,
-                    sendsMarketingMessages=True,
-                    clear=['sendsMarketingMessages']) == (
-                        'sendsMarketingMessages is both cleared and given a '
+                    acceptsReturns=True,
+                    clear=['acceptsReturns']) == (
+                        'acceptsReturns is both cleared and given a '
                         'value: send one')
     # An empty update: nothing sent, nothing cleared, or only blanks.
     for kwargs in ({}, {'clear': []}, {'returnConditions': '',
@@ -473,7 +475,6 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
                      handoverDays=2,
                      acceptedPaymentMethods=['gcash'],
                      paidOrderCancellation='beforeHandover',
-                     sendsMarketingMessages=True,
                      additionalTerms='terms')
     api.updateMyStorePolicy(ADMIN, **full)
     start = _policyDoc(storeId)
@@ -638,7 +639,6 @@ def test_updateMyStorePolicy_refusesBadValues_withoutQuotingThem(clean):
         ('handoverDays', 366),
         ('acceptsReturns', 'yes'),
         ('acceptsReturns', 1),
-        ('sendsMarketingMessages', 0),
         ('refundMethod', sentinel),
         ('returnShippingPaidBy', sentinel),
         ('paidOrderCancellation', sentinel),
@@ -743,7 +743,7 @@ def test_updateMyStorePolicy_aLostVersionRace_isRefusedAndWritesNothing(
             db.db['Policies'].update_one(
                 {'storeId': storeId},
                 {'$inc': {'_version': 1},
-                 '$set': {'sendsMarketingMessages': True}})
+                 '$set': {'acceptsReturns': True}})
         return found
 
     monkeypatch.setattr(db, 'read', racing)
@@ -755,14 +755,14 @@ def test_updateMyStorePolicy_aLostVersionRace_isRefusedAndWritesNothing(
 
     after = _policyDoc(storeId)
     # Only the racer's state is stored.
-    assert _answers(after) == _expected(sendsMarketingMessages=True)
+    assert _answers(after) == _expected(acceptsReturns=True)
     assert after['_version'] == start['_version'] + 1
     assert after['updatedAt'] == start['updatedAt']
 
     # Trying again works.
     api.updateMyStorePolicy(ADMIN, handoverDays=3)
     assert _answers(_policyDoc(storeId)) == _expected(
-        sendsMarketingMessages=True, handoverDays=3)
+        acceptsReturns=True, handoverDays=3)
 
     # A policy deleted between ensurePolicy and the read is the same refusal.
     realRead2 = db.read

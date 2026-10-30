@@ -13,7 +13,7 @@ export type PolicyWithZones = PolicyAnswers & { deliveryZones?: readonly Deliver
 export const POLICY_QUESTIONS: PolicyQuestion[] = [
   'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'deliveryOptions', 'deliveryAreas',
   'handoverDays', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems',
-  'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'sendsMarketingMessages', 'additionalTerms',
+  'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'additionalTerms',
 ];
 const RETURN_QUESTIONS: PolicyQuestion[] = ['returnWindowDays', 'returnConditions', 'refundMethod', 'returnShippingPaidBy'];
 const DELIVERY_QUESTIONS: PolicyQuestion[] = ['deliveryAreas'];

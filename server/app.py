@@ -1386,7 +1386,6 @@ def updateMyStorePolicy():
     acceptedPaymentMethods = data.get('acceptedPaymentMethods')
     paidOrderCancellation = data.get('paidOrderCancellation')
     paidOrderCancellationHours = data.get('paidOrderCancellationHours')
-    sendsMarketingMessages = data.get('sendsMarketingMessages')
     additionalTerms = data.get('additionalTerms')
     clear = data.get('clear')
     current_user = get_jwt_identity()
@@ -1415,8 +1414,6 @@ def updateMyStorePolicy():
             raise ValueError('Invalid paidOrderCancellation')
         if isinstance(paidOrderCancellationHours, (dict, list)):
             raise ValueError('Invalid paidOrderCancellationHours')
-        if isinstance(sendsMarketingMessages, (dict, list)):
-            raise ValueError('Invalid sendsMarketingMessages')
         if isinstance(additionalTerms, (dict, list)):
             raise ValueError('Invalid additionalTerms')
         if deliveryOptions is not None and not isinstance(deliveryOptions, list):
@@ -1427,17 +1424,17 @@ def updateMyStorePolicy():
             raise ValueError('Invalid clear')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().updateMyStorePolicy(userId, acceptsReturns, returnWindowDays, returnConditions, nonReturnableItems, refundMethod, returnShippingPaidBy, defectReportDays, deliveryOptions, deliveryAreas, handoverDays, acceptedPaymentMethods, paidOrderCancellation, paidOrderCancellationHours, sendsMarketingMessages, additionalTerms, clear)
+        res = ApiRequests().updateMyStorePolicy(userId, acceptsReturns, returnWindowDays, returnConditions, nonReturnableItems, refundMethod, returnShippingPaidBy, defectReportDays, deliveryOptions, deliveryAreas, handoverDays, acceptedPaymentMethods, paidOrderCancellation, paidOrderCancellationHours, additionalTerms, clear)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'updateMyStorePolicy', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear'))})
+    logging.info({'function': 'updateMyStorePolicy', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'additionalTerms', 'clear'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Policy saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)

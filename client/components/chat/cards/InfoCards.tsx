@@ -65,7 +65,6 @@ export function policyRows(answers: PolicyAnswers): { question: PolicyQuestion; 
     { question: 'refundMethod', label: 'Refund', value: answers.refundMethod },
     { question: 'returnShippingPaidBy', label: 'Return shipping paid by', value: answers.returnShippingPaidBy },
     { question: 'defectReportDays', label: 'Days to report a defect', value: answers.defectReportDays },
-    { question: 'sendsMarketingMessages', label: 'Sends offers', value: answers.sendsMarketingMessages },
     { question: 'additionalTerms', label: 'Other terms', value: answers.additionalTerms },
   ];
 }

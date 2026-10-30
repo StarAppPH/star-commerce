@@ -33,7 +33,7 @@ from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
                             PaidOrderCancellationAnswer,
                             PaidOrderCancellationHours, RefundMethodAnswer,
                             ReturnConditions, ReturnShippingPaidBy,
-                            ReturnWindowDays, SendsMarketingMessages)
+                            ReturnWindowDays)
 from objects.product import PRODUCT_BATCH_MAX, NewProduct
 from objects.returns import (RETURN_REJECT_REASON_MAX_LENGTH,
                              ReturnItemRow, ReturnReason, ReturnStatus)
@@ -245,7 +245,6 @@ class PolicyCard(ResponseModel):
     acceptedPaymentMethods: AcceptedPaymentMethods
     paidOrderCancellation: PaidOrderCancellationAnswer
     paidOrderCancellationHours: PaidOrderCancellationHours
-    sendsMarketingMessages: SendsMarketingMessages
     additionalTerms: AdditionalTerms
     # Null on a card saved before zones had policies.
     deliveryZones: list[DeliveryZoneRule] | None = Field(
