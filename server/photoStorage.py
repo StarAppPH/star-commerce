@@ -466,8 +466,12 @@ def readOwnImages(uid: str, photos: list[tuple[str, str]],
                         totalTooLarge=REFERENCES_TOO_LARGE)
 
 
-def storePhotoPath(storeId: str, photoId: str) -> str:
-    return f'{storeFolder(storeId)}photos/{photoId}.jpg'
+def storePhotoPath(storeId: str, photoId: str,
+                   contentType: str = STORE_PHOTO_CONTENT_TYPE) -> str:
+    """Where a store photo of `contentType` (a JPEG, or an admin's PNG
+    original) is saved."""
+    extension = 'png' if contentType == 'image/png' else 'jpg'
+    return f'{storeFolder(storeId)}photos/{photoId}.{extension}'
 
 
 def publicPathUrl(path: str) -> str:
@@ -489,18 +493,22 @@ def downloadUrl(path: str, token: str) -> str:
 
 
 def saveStorePhoto(storeId: str, photoId: str, data: bytes,
-                   deadline: float) -> str:
-    """Write the JPEG `data` to storePhotoPath(storeId, photoId) with a
-    fresh random download token, before `deadline` (time.monotonic()), and
-    return its download URL. Create-only (if_generation_match=0: the path
-    is a fresh id), which also lets the SDK retry the upload."""
+                   deadline: float,
+                   contentType: str = STORE_PHOTO_CONTENT_TYPE) -> str:
+    """Write `data` (a JPEG, or a PNG original: `contentType`) to
+    storePhotoPath(storeId, photoId, contentType) with a fresh random
+    download token, before `deadline` (time.monotonic()), and return its
+    download URL. Create-only (if_generation_match=0: the path is a fresh
+    id), which also lets the SDK retry the upload."""
     from google.api_core.exceptions import PreconditionFailed
-    path = storePhotoPath(storeId, photoId)
+    if contentType not in IMAGE_CONTENT_TYPES:
+        raise ValueError('A store photo is a JPEG or a PNG')
+    path = storePhotoPath(storeId, photoId, contentType)
     token = secrets.token_urlsafe(24)
     try:
         blob = _bucket().blob(path)
         blob.metadata = {DOWNLOAD_TOKEN_KEY: token}
-        blob.upload_from_string(data, content_type=STORE_PHOTO_CONTENT_TYPE,
+        blob.upload_from_string(data, content_type=contentType,
                                 if_generation_match=0, **_limits(deadline))
     except PreconditionFailed:
         # A retry found the object there: the path is a fresh id, so it is

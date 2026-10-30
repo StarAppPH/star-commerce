@@ -24,7 +24,8 @@ from objects.order import (ORDER_ITEMS_MAX, CancelReason, NewOrderItem,
                            OrderDeliveryRow, OrderItemRow, OrderStatus,
                            PaymentMethod)
 from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
-                           PHOTOS_PER_CALL_MAX, GeneratedPhotoRow)
+                           PHOTOS_PER_CALL_MAX, PHOTO_CHOICES_GENERATED,
+                           GeneratedPhotoRow, PhotoChoiceRow)
 from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
                             AdditionalTerms, DefectReportDays, DeliveryAreas,
                             DeliveryFeePerKm, DeliveryOptions, FreeDeliveryMinimum,
@@ -252,6 +253,25 @@ class PhotosCard(ResponseModel):
     """The product photos a tool made."""
     kind: Literal['photos'] = Field(..., description='The card')
     photos: list[GeneratedPhotoRow] = Field(..., description='The photos')
+    prompt: str | None = Field(
+        None, description='The prompt they were made with; null on a card '
+        'saved before prompts were shown')
+
+
+class ProductPhotoChoiceCard(ResponseModel):
+    """The photos the admin picks one of for a product: its original and
+    the styled ones made from it. Answered with ProductPhotoAnswer."""
+    kind: Literal['productPhotoChoice'] = Field(..., description='The card')
+    formId: FormId
+    productId: str = Field(..., description='The Products _id')
+    productName: str = Field(..., description='Product name')
+    photos: list[PhotoChoiceRow] = Field(
+        ..., min_length=1, max_length=1 + PHOTO_CHOICES_GENERATED,
+        description='The original first, then the styled photos')
+    prompt: str | None = Field(..., description='The prompt the styled '
+                               'photos were made with; null when none were')
+    notGenerated: str | None = Field(..., description='Why no styled photos '
+                                     'were made; null when they were')
 
 
 class StoreCard(ResponseModel):
@@ -331,7 +351,7 @@ class DeliveryPinForm(ResponseModel):
 ChatComponent = Annotated[Union[
     ShopProductsCard, StoreProductsCard, StoreOrdersCard, MyOrdersCard,
     CheckoutCard, StoreReturnsCard, MyReturnsCard, PolicyCard, PhotosCard,
-    StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
+    ProductPhotoChoiceCard, StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
     PhotoRequestForm, DeliveryPinForm,
 ], Field(discriminator='kind')]
 
@@ -354,11 +374,19 @@ class LocationAnswer(AppModel):
     longitude: Longitude = Field(..., description='Degrees east')
 
 
+class NewProductAnswerRow(NewProduct):
+    """A NewProductsForm row: a product to add, and the photo the admin
+    uploaded for it, if any."""
+    imageUrl: str | None = Field(
+        None, min_length=1, max_length=CHAT_PHOTO_URL_MAX_LENGTH,
+        description="The uploaded photo's download URL; null without one")
+
+
 class NewProductsAnswer(AppModel):
     """A NewProductsForm, filled in."""
     kind: Literal['newProducts'] = Field(..., description='The answer')
     formId: FormId
-    products: list[NewProduct] = Field(..., min_length=1,
+    products: list[NewProductAnswerRow] = Field(..., min_length=1,
                                        max_length=PRODUCT_BATCH_MAX,
                                        description='The products to add')
 
@@ -428,9 +456,18 @@ class DeliveryPinAnswer(AppModel):
     longitude: Longitude = Field(..., description='Degrees east')
 
 
+class ProductPhotoAnswer(AppModel):
+    """A ProductPhotoChoiceCard's pick: the photo to put on the product."""
+    kind: Literal['productPhoto'] = Field(..., description='The answer')
+    formId: FormId
+    productId: AnswerId = Field(..., description="The card's Products _id")
+    photoId: AnswerId = Field(..., description='The GeneratedPhotos _id')
+
+
 # The chat route's `form` param (a plain union: a route param cannot be
 # Annotated); ChatFormAnswerTagged reads it by its kind.
 ChatFormAnswer = (LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer
                   | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer
-                  | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer)
+                  | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer
+                  | ProductPhotoAnswer)
 ChatFormAnswerTagged = Annotated[ChatFormAnswer, Field(discriminator='kind')]

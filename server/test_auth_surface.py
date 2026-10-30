@@ -73,6 +73,9 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     # A product photo: requireOwnerStore, and only a photo and a product of
     # that store.
     'setProductPhoto',
+    # A new product's photo choices: requireOwnerStore, a product of that
+    # store, and a photo under the caller's own users/<uid>/ folder.
+    'makeProductPhotoChoices',
     # The map component pins the admin's store: requireAdmin, and only the
     # store the caller owns.
     'setUserStoreLocation',

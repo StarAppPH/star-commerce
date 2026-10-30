@@ -23,7 +23,7 @@
             "additionalProperties": false
         }
     },
-    "description": "What generateProductPhotos sends: the photos it saved.",
+    "description": "What generateProductPhotos sends: the photos it saved and the prompt\nthey were made with.",
     "properties": {
         "photos": {
             "description": "The photos made, in order",
@@ -32,10 +32,17 @@
             },
             "title": "Photos",
             "type": "array"
+        },
+        "prompt": {
+            "description": "The prompt the model was given",
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
         }
     },
     "required": [
-        "photos"
+        "photos",
+        "prompt"
     ],
     "title": "GeneratedPhotosResponse",
     "type": "object",

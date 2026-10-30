@@ -31,6 +31,7 @@ from actions.OrderActions import (NO_STORE_PIN_YET, NOT_OFFERED,
                                   bookableFulfillments, offeredFulfillments,
                                   storeDelivery)
 from actions.StoreActions import STORES, ownerQuery
+import photoStorage
 from mongoDb import db
 from objects import (CHAT_MESSAGE_MAX_LENGTH, PHOTOS_PER_CALL_MAX,
                      PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH,
@@ -86,6 +87,7 @@ ANSWERS_TO = {
     'handover': 'storeOrders',
     'returnDecision': 'storeReturns',
     'deliveryPin': 'deliveryPinForm',
+    'productPhoto': 'productPhotoChoice',
 }
 
 # How a payment method reads in the user's turn.
@@ -292,8 +294,13 @@ FORM_TOOLS: dict[str, FormTool] = {
         'name, price, units in stock and an optional description, one row '
         'each. Prefill only what the owner already said; never invent a '
         'price or a stock count. Use it to add products instead of asking '
-        'each detail in chat. Their list comes as their next message: then '
-        'call addStoreProducts with it.',
+        'each detail in chat. The owner may upload one photo per product '
+        'there. Their list comes as their next message: then call '
+        'addStoreProducts with it. For each product sent with an imageUrl, '
+        'then call makeProductPhotoChoices with its new _id and that '
+        'imageUrl, one product per turn, the first right after '
+        'addStoreProducts; the owner picks a photo on its card, and you then '
+        'call setProductPhoto and go on to the next.',
         ShowNewProductsFormArgs, _newProductsForm),
     'showPhotoRequestForm': FormTool(
         ('admin', ),
@@ -411,8 +418,18 @@ def _location(answer, component, userId) -> tuple[str, dict]:
 
 def _newProducts(answer, component, userId) -> tuple[str, dict]:
     currency = component['currency']
+    # Each photo is the user's own upload, checked here (nothing read) so
+    # the model is never handed another URL; makeProductPhotoChoices
+    # checks it again.
+    for i, product in enumerate(answer.products):
+        if product.imageUrl is not None:
+            label = f'The photo of product {i + 1}'
+            photoStorage.ownImagePath(
+                userId, photoStorage.objectPathFromUrl(product.imageUrl,
+                                                       label), label)
     lines = [f'- {p.name}, {p.price:g} {currency}, {p.inventory} in stock'
              + (f': {p.description}' if p.description else '')
+             + (' (with a photo)' if p.imageUrl is not None else '')
              for p in answer.products]
     return ('Add these products:\n' + '\n'.join(lines),
             answer.model_dump(exclude={'formId'}))
@@ -492,6 +509,23 @@ def _returnDecision(answer, component, userId) -> tuple[str, dict]:
              'decision': 'reject', 'reason': reason})
 
 
+def _productPhoto(answer, component, userId) -> tuple[str, dict]:
+    photos = component['photos']
+    position = next((i for i, photo in enumerate(photos)
+                     if photo['_id'] == answer.photoId), None)
+    if position is None or answer.productId != component['productId']:
+        raise ValueError(NOT_ON_THE_CARD)
+    if photos[position]['source'] == 'original':
+        label = 'the original photo'
+    else:
+        styled = [p for p in photos[:position + 1]
+                  if p['source'] == 'generated']
+        label = f'styled photo {len(styled)}'
+    return (f'Use {label} for {component["productName"]}',
+            {'kind': 'productPhoto', 'productId': component['productId'],
+             'photoId': answer.photoId})
+
+
 def _deliveryPin(answer, component, userId) -> tuple[str, dict]:
     return (f'Deliver to my pin at {answer.latitude:.5f}, '
             f'{answer.longitude:.5f}',
@@ -508,6 +542,7 @@ _ANSWER_TURNS = {
     'handover': _handover,
     'returnDecision': _returnDecision,
     'deliveryPin': _deliveryPin,
+    'productPhoto': _productPhoto,
 }
 assert set(_ANSWER_TURNS) == set(ANSWERS_TO)
 

@@ -105,7 +105,8 @@ def test_eachAudienceListsOnlyItsTools():
         'getMyStorePolicy', 'updateMyStorePolicy', 'updateMyStoreTheme',
         'generateProductPhotos', 'setProductPhoto', 'getStoreReturns',
         'approveReturn', 'rejectReturn', 'receiveReturn', 'listVoices',
-        'setUserStoreLocation', 'suggestStoreAddress', 'updateMyStoreDetails'
+        'setUserStoreLocation', 'suggestStoreAddress', 'updateMyStoreDetails',
+        'makeProductPhotoChoices'
     }
 
 

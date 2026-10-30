@@ -3,7 +3,7 @@ import Image from 'next/image';
 import { ExternalLinkIcon, ImageIcon, MapPinIcon, PackageSearchIcon, ScrollTextIcon, StoreIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChatCard, ProductPhoto } from './ChatCard';
+import { ChatCard, ProductPhoto, PromptUsed } from './ChatCard';
 import { type PolicyAnswers, type PolicyQuestion, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
 import { POLICY_VALUE_LABELS, deliveryPerKmText, formatMoney } from './format';
 import type { ComponentProps } from './types';
@@ -142,6 +142,7 @@ export function PhotosCard({ component }: ComponentProps<'photos'>) {
           </a>
         ))}
       </div>
+      {component.prompt && component.photos.length > 0 && <PromptUsed dataComponent="photosCardPrompt" prompt={component.prompt} />}
     </ChatCard>
   );
 }

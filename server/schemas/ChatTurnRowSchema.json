@@ -1311,6 +1311,39 @@
             "type": "object",
             "additionalProperties": false
         },
+        "PhotoChoiceRow": {
+            "description": "One photo the admin may put on the product.",
+            "properties": {
+                "_id": {
+                    "description": "GeneratedPhotos _id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "url": {
+                    "description": "Its download URL",
+                    "minLength": 1,
+                    "title": "Url",
+                    "type": "string"
+                },
+                "source": {
+                    "description": "Styled, or the original",
+                    "enum": [
+                        "generated",
+                        "original"
+                    ],
+                    "title": "Source",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "_id",
+                "url",
+                "source"
+            ],
+            "title": "PhotoChoiceRow",
+            "type": "object",
+            "additionalProperties": false
+        },
         "PhotoRequestForm": {
             "description": "Asks the admin for photos of one item to turn into product photos.\nAnswered with PhotoRequestAnswer.",
             "properties": {
@@ -1360,6 +1393,19 @@
                     },
                     "title": "Photos",
                     "type": "array"
+                },
+                "prompt": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The prompt they were made with; null on a card saved before prompts were shown",
+                    "title": "Prompt"
                 }
             },
             "required": [
@@ -1679,6 +1725,80 @@
                 "deliveryFeePerKm"
             ],
             "title": "PolicyCard",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "ProductPhotoChoiceCard": {
+            "description": "The photos the admin picks one of for a product: its original and\nthe styled ones made from it. Answered with ProductPhotoAnswer.",
+            "properties": {
+                "kind": {
+                    "const": "productPhotoChoice",
+                    "description": "The card",
+                    "title": "Kind",
+                    "type": "string"
+                },
+                "formId": {
+                    "description": "Answer it with this id",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "title": "Formid",
+                    "type": "string"
+                },
+                "productId": {
+                    "description": "The Products _id",
+                    "title": "Productid",
+                    "type": "string"
+                },
+                "productName": {
+                    "description": "Product name",
+                    "title": "Productname",
+                    "type": "string"
+                },
+                "photos": {
+                    "description": "The original first, then the styled photos",
+                    "items": {
+                        "$ref": "#/$defs/PhotoChoiceRow"
+                    },
+                    "maxItems": 4,
+                    "minItems": 1,
+                    "title": "Photos",
+                    "type": "array"
+                },
+                "prompt": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The prompt the styled photos were made with; null when none were",
+                    "title": "Prompt"
+                },
+                "notGenerated": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Why no styled photos were made; null when they were",
+                    "title": "Notgenerated"
+                }
+            },
+            "required": [
+                "kind",
+                "formId",
+                "productId",
+                "productName",
+                "photos",
+                "prompt",
+                "notGenerated"
+            ],
+            "title": "ProductPhotoChoiceCard",
             "type": "object",
             "additionalProperties": false
         },
@@ -2116,6 +2236,7 @@
                         "photoRequestForm": "#/$defs/PhotoRequestForm",
                         "photos": "#/$defs/PhotosCard",
                         "policy": "#/$defs/PolicyCard",
+                        "productPhotoChoice": "#/$defs/ProductPhotoChoiceCard",
                         "shopProducts": "#/$defs/ShopProductsCard",
                         "store": "#/$defs/StoreCard",
                         "storeOrders": "#/$defs/StoreOrdersCard",
@@ -2151,6 +2272,9 @@
                     },
                     {
                         "$ref": "#/$defs/PhotosCard"
+                    },
+                    {
+                        "$ref": "#/$defs/ProductPhotoChoiceCard"
                     },
                     {
                         "$ref": "#/$defs/StoreCard"

@@ -17,12 +17,18 @@ export type Url = string;
  * The photos made, in order
  */
 export type Photos = GeneratedPhotoRow[];
+/**
+ * The prompt the model was given
+ */
+export type Prompt = string;
 
 /**
- * What generateProductPhotos sends: the photos it saved.
+ * What generateProductPhotos sends: the photos it saved and the prompt
+ * they were made with.
  */
 export interface GeneratedPhotosResponse {
   photos: Photos;
+  prompt: Prompt;
 }
 export interface GeneratedPhotoRow {
   _id: Id;

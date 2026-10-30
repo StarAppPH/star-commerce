@@ -111,6 +111,7 @@ export type Components =
       | MyReturnsCard
       | PolicyCard
       | PhotosCard
+      | ProductPhotoChoiceCard
       | StoreCard
       | LocationForm
       | NewProductsForm
@@ -129,6 +130,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -146,6 +148,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -165,6 +168,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -182,6 +186,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -199,6 +204,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -218,6 +224,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -235,6 +242,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -252,6 +260,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -269,6 +278,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -288,6 +298,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -305,6 +316,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -322,6 +334,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -339,6 +352,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -356,6 +370,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -375,6 +390,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -392,6 +408,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -409,6 +426,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -426,6 +444,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -443,6 +462,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -460,6 +480,7 @@ export type Components =
         | MyReturnsCard
         | PolicyCard
         | PhotosCard
+        | ProductPhotoChoiceCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -1089,9 +1110,60 @@ export type Url = string;
  */
 export type Photos = GeneratedPhotoRow[];
 /**
+ * The prompt they were made with; null on a card saved before prompts were shown
+ */
+export type Prompt = string | null;
+/**
  * The card
  */
-export type Kind9 = "store";
+export type Kind9 = "productPhotoChoice";
+/**
+ * Answer it with this id
+ */
+export type Formid4 = string;
+/**
+ * The Products _id
+ */
+export type Productid = string;
+/**
+ * Product name
+ */
+export type Productname = string;
+/**
+ * The original first, then the styled photos
+ *
+ * @minItems 1
+ * @maxItems 4
+ */
+export type Photos1 =
+  | [PhotoChoiceRow]
+  | [PhotoChoiceRow, PhotoChoiceRow]
+  | [PhotoChoiceRow, PhotoChoiceRow, PhotoChoiceRow]
+  | [PhotoChoiceRow, PhotoChoiceRow, PhotoChoiceRow, PhotoChoiceRow];
+/**
+ * GeneratedPhotos _id
+ */
+export type Id9 = string;
+/**
+ * Its download URL
+ */
+export type Url1 = string;
+/**
+ * Styled, or the original
+ */
+export type Source = "generated" | "original";
+/**
+ * The prompt the styled photos were made with; null when none were
+ */
+export type Prompt1 = string | null;
+/**
+ * Why no styled photos were made; null when they were
+ */
+export type Notgenerated = string | null;
+/**
+ * The card
+ */
+export type Kind10 = "store";
 /**
  * Store name
  */
@@ -1148,11 +1220,11 @@ export type Longitude = number;
 /**
  * The form
  */
-export type Kind10 = "locationForm";
+export type Kind11 = "locationForm";
 /**
  * Answer it with this id
  */
-export type Formid4 = string;
+export type Formid5 = string;
 /**
  * The store's address
  */
@@ -1160,11 +1232,11 @@ export type Address1 = string | null;
 /**
  * The form
  */
-export type Kind11 = "newProductsForm";
+export type Kind12 = "newProductsForm";
 /**
  * Answer it with this id
  */
-export type Formid5 = string;
+export type Formid6 = string;
 /**
  * Prices are in it
  */
@@ -1211,19 +1283,19 @@ export type Products2 = ChatProductDraft[];
 /**
  * The form
  */
-export type Kind12 = "phoneVerificationForm";
-/**
- * Answer it with this id
- */
-export type Formid6 = string;
-/**
- * The form
- */
-export type Kind13 = "photoRequestForm";
+export type Kind13 = "phoneVerificationForm";
 /**
  * Answer it with this id
  */
 export type Formid7 = string;
+/**
+ * The form
+ */
+export type Kind14 = "photoRequestForm";
+/**
+ * Answer it with this id
+ */
+export type Formid8 = string;
 /**
  * How many photos to make, prefilled
  */
@@ -1231,11 +1303,11 @@ export type Count = number;
 /**
  * The form
  */
-export type Kind14 = "deliveryPinForm";
+export type Kind15 = "deliveryPinForm";
 /**
  * Answer it with this id
  */
-export type Formid8 = string;
+export type Formid9 = string;
 /**
  * The form answer this turn sent, when it is one: userText is then its summary
  */
@@ -1250,16 +1322,17 @@ export type Formanswer =
       | HandoverAnswer
       | ReturnDecisionAnswer
       | DeliveryPinAnswer
+      | ProductPhotoAnswer
     )
   | null;
 /**
  * The answer
  */
-export type Kind15 = "location";
+export type Kind16 = "location";
 /**
  * Answer it with this id
  */
-export type Formid9 = string;
+export type Formid10 = string;
 /**
  * Degrees north
  */
@@ -1271,18 +1344,18 @@ export type Longitude1 = number;
 /**
  * The answer
  */
-export type Kind16 = "newProducts";
+export type Kind17 = "newProducts";
 /**
  * Answer it with this id
  */
-export type Formid10 = string;
+export type Formid11 = string;
 /**
  * The products to add
  *
  * @minItems 1
  * @maxItems 50
  */
-export type Products3 = [NewProduct, ...NewProduct[]];
+export type Products3 = [NewProductAnswerRow, ...NewProductAnswerRow[]];
 /**
  * Product name
  */
@@ -1304,21 +1377,25 @@ export type Description3 = string | null;
  */
 export type Isavailable1 = boolean;
 /**
- * The answer
+ * The uploaded photo's download URL; null without one
  */
-export type Kind17 = "phoneVerified";
-/**
- * Answer it with this id
- */
-export type Formid11 = string;
+export type Imageurl = string | null;
 /**
  * The answer
  */
-export type Kind18 = "photoRequest";
+export type Kind18 = "phoneVerified";
 /**
  * Answer it with this id
  */
 export type Formid12 = string;
+/**
+ * The answer
+ */
+export type Kind19 = "photoRequest";
+/**
+ * Answer it with this id
+ */
+export type Formid13 = string;
 /**
  * The download URLs of the uploaded photos
  *
@@ -1347,11 +1424,11 @@ export type Notes = string | null;
 /**
  * The answer
  */
-export type Kind19 = "orderItems";
+export type Kind20 = "orderItems";
 /**
  * Answer it with this id
  */
-export type Formid13 = string;
+export type Formid14 = string;
 /**
  * What to order
  *
@@ -1362,7 +1439,7 @@ export type Items4 = [NewOrderItem, ...NewOrderItem[]];
 /**
  * The Products _id
  */
-export type Productid = string;
+export type Productid1 = string;
 /**
  * Units to order
  */
@@ -1370,11 +1447,11 @@ export type Quantity2 = number;
 /**
  * The answer
  */
-export type Kind20 = "payment";
+export type Kind21 = "payment";
 /**
  * Answer it with this id
  */
-export type Formid14 = string;
+export type Formid15 = string;
 /**
  * How to pay
  */
@@ -1382,11 +1459,11 @@ export type Paymentmethod2 = "card" | "gcash" | "maya" | "grabPay" | "bankTransf
 /**
  * The answer
  */
-export type Kind21 = "handover";
+export type Kind22 = "handover";
 /**
  * Answer it with this id
  */
-export type Formid15 = string;
+export type Formid16 = string;
 /**
  * The orders handed over
  *
@@ -1397,11 +1474,11 @@ export type Orderids = [string, ...string[]];
 /**
  * The answer
  */
-export type Kind22 = "returnDecision";
+export type Kind23 = "returnDecision";
 /**
  * Answer it with this id
  */
-export type Formid16 = string;
+export type Formid17 = string;
 /**
  * The Returns _id
  */
@@ -1417,11 +1494,11 @@ export type Reason2 = string | null;
 /**
  * The answer
  */
-export type Kind23 = "deliveryPin";
+export type Kind24 = "deliveryPin";
 /**
  * Answer it with this id
  */
-export type Formid17 = string;
+export type Formid18 = string;
 /**
  * Degrees north
  */
@@ -1430,6 +1507,22 @@ export type Latitude2 = number;
  * Degrees east
  */
 export type Longitude2 = number;
+/**
+ * The answer
+ */
+export type Kind25 = "productPhoto";
+/**
+ * Answer it with this id
+ */
+export type Formid19 = string;
+/**
+ * The card's Products _id
+ */
+export type Productid2 = string;
+/**
+ * The GeneratedPhotos _id
+ */
+export type Photoid = string;
 /**
  * Tool calls it ran
  */
@@ -1729,16 +1822,38 @@ export interface PolicyCard {
 export interface PhotosCard {
   kind: Kind8;
   photos: Photos;
+  prompt?: Prompt;
 }
 export interface GeneratedPhotoRow {
   _id: Id8;
   url: Url;
 }
 /**
+ * The photos the admin picks one of for a product: its original and
+ * the styled ones made from it. Answered with ProductPhotoAnswer.
+ */
+export interface ProductPhotoChoiceCard {
+  kind: Kind9;
+  formId: Formid4;
+  productId: Productid;
+  productName: Productname;
+  photos: Photos1;
+  prompt: Prompt1;
+  notGenerated: Notgenerated;
+}
+/**
+ * One photo the admin may put on the product.
+ */
+export interface PhotoChoiceRow {
+  _id: Id9;
+  url: Url1;
+  source: Source;
+}
+/**
  * The admin's store a tool read, created or pinned.
  */
 export interface StoreCard {
-  kind: Kind9;
+  kind: Kind10;
   name: Name6;
   slug: Slug;
   currency: Currency7;
@@ -1765,8 +1880,8 @@ export interface StoreLocationResponse {
  * LocationAnswer.
  */
 export interface LocationForm {
-  kind: Kind10;
-  formId: Formid4;
+  kind: Kind11;
+  formId: Formid5;
   /**
    * The pin so far; null when there is none
    */
@@ -1777,8 +1892,8 @@ export interface LocationForm {
  * Asks the admin for new products. Answered with NewProductsAnswer.
  */
 export interface NewProductsForm {
-  kind: Kind11;
-  formId: Formid5;
+  kind: Kind12;
+  formId: Formid6;
   currency: Currency8;
   products: Products2;
 }
@@ -1798,16 +1913,16 @@ export interface ChatProductDraft {
  * stored it.
  */
 export interface PhoneVerificationForm {
-  kind: Kind12;
-  formId: Formid6;
+  kind: Kind13;
+  formId: Formid7;
 }
 /**
  * Asks the admin for photos of one item to turn into product photos.
  * Answered with PhotoRequestAnswer.
  */
 export interface PhotoRequestForm {
-  kind: Kind13;
-  formId: Formid7;
+  kind: Kind14;
+  formId: Formid8;
   count: Count;
 }
 /**
@@ -1816,8 +1931,8 @@ export interface PhotoRequestForm {
  * Answered with DeliveryPinAnswer.
  */
 export interface DeliveryPinForm {
-  kind: Kind14;
-  formId: Formid8;
+  kind: Kind15;
+  formId: Formid9;
   /**
    * The store's pin, where the map opens; null until pinned
    */
@@ -1827,8 +1942,8 @@ export interface DeliveryPinForm {
  * A LocationForm's pin.
  */
 export interface LocationAnswer {
-  kind: Kind15;
-  formId: Formid9;
+  kind: Kind16;
+  formId: Formid10;
   latitude: Latitude1;
   longitude: Longitude1;
 }
@@ -1836,35 +1951,35 @@ export interface LocationAnswer {
  * A NewProductsForm, filled in.
  */
 export interface NewProductsAnswer {
-  kind: Kind16;
-  formId: Formid10;
+  kind: Kind17;
+  formId: Formid11;
   products: Products3;
 }
 /**
- * One product of an addStoreProducts call, as the admin described it.
- * Types only, no limits: the route checks them (_validProduct), so a
- * refusal names the product's position and never quotes the value.
+ * A NewProductsForm row: a product to add, and the photo the admin
+ * uploaded for it, if any.
  */
-export interface NewProduct {
+export interface NewProductAnswerRow {
   name: Name8;
   price: Price5;
   inventory: Inventory3;
   description?: Description3;
   isAvailable?: Isavailable1;
+  imageUrl?: Imageurl;
 }
 /**
  * A PhoneVerificationForm done: the number is verified.
  */
 export interface PhoneVerifiedAnswer {
-  kind: Kind17;
-  formId: Formid11;
+  kind: Kind18;
+  formId: Formid12;
 }
 /**
  * A PhotoRequestForm, filled in: the uploaded photos' URLs.
  */
 export interface PhotoRequestAnswer {
-  kind: Kind18;
-  formId: Formid12;
+  kind: Kind19;
+  formId: Formid13;
   imageUrls: Imageurls;
   count: Count1;
   notes?: Notes;
@@ -1873,8 +1988,8 @@ export interface PhotoRequestAnswer {
  * A ShopProductsCard's picks.
  */
 export interface OrderItemsAnswer {
-  kind: Kind19;
-  formId: Formid13;
+  kind: Kind20;
+  formId: Formid14;
   items: Items4;
 }
 /**
@@ -1883,31 +1998,31 @@ export interface OrderItemsAnswer {
  * the value (NewProduct's reason).
  */
 export interface NewOrderItem {
-  productId: Productid;
+  productId: Productid1;
   quantity: Quantity2;
 }
 /**
  * A CheckoutCard's payment method.
  */
 export interface PaymentAnswer {
-  kind: Kind20;
-  formId: Formid14;
+  kind: Kind21;
+  formId: Formid15;
   paymentMethod: Paymentmethod2;
 }
 /**
  * A StoreOrdersCard's orders handed over.
  */
 export interface HandoverAnswer {
-  kind: Kind21;
-  formId: Formid15;
+  kind: Kind22;
+  formId: Formid16;
   orderIds: Orderids;
 }
 /**
  * A StoreReturnsCard's decision on one requested return.
  */
 export interface ReturnDecisionAnswer {
-  kind: Kind22;
-  formId: Formid16;
+  kind: Kind23;
+  formId: Formid17;
   returnId: Returnid;
   decision: Decision;
   reason?: Reason2;
@@ -1916,10 +2031,19 @@ export interface ReturnDecisionAnswer {
  * A DeliveryPinForm's pin: where the delivery goes.
  */
 export interface DeliveryPinAnswer {
-  kind: Kind23;
-  formId: Formid17;
+  kind: Kind24;
+  formId: Formid18;
   latitude: Latitude2;
   longitude: Longitude2;
+}
+/**
+ * A ProductPhotoChoiceCard's pick: the photo to put on the product.
+ */
+export interface ProductPhotoAnswer {
+  kind: Kind25;
+  formId: Formid19;
+  productId: Productid2;
+  photoId: Photoid;
 }
 /**
  * The tokens a turn's model calls used, summed over its calls.

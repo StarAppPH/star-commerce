@@ -173,7 +173,20 @@ def _policy(result: dict, context: CardContext) -> dict:
 
 def _photos(result: dict, context: CardContext) -> dict:
     return {'kind': 'photos',
-            'photos': [_pick(p, ('_id', 'url')) for p in result['photos']]}
+            'photos': [_pick(p, ('_id', 'url')) for p in result['photos']],
+            'prompt': result.get('prompt')}
+
+
+def _photoChoice(result: dict, context: CardContext) -> dict:
+    """The photos the admin picks one of for the product (answered with
+    ProductPhotoAnswer)."""
+    return {'kind': 'productPhotoChoice', 'formId': newFormId(),
+            'productId': result['productId'],
+            'productName': result['productName'],
+            'photos': [_pick(p, ('_id', 'url', 'source'))
+                       for p in result['photos']],
+            'prompt': result['prompt'],
+            'notGenerated': result['notGenerated']}
 
 
 def _store(result: dict, context: CardContext) -> dict | None:
@@ -214,6 +227,7 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'updateMyStorePolicy': _policy,
     'getStorePolicy': _policy,
     'generateProductPhotos': _photos,
+    'makeProductPhotoChoices': _photoChoice,
     'getUserStore': _store,
     'createUserStore': _store,
     'setUserStoreLocation': _store,

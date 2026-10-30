@@ -1,0 +1,96 @@
+{
+    "$defs": {
+        "PhotoChoiceRow": {
+            "description": "One photo the admin may put on the product.",
+            "properties": {
+                "_id": {
+                    "description": "GeneratedPhotos _id",
+                    "title": "Id",
+                    "type": "string"
+                },
+                "url": {
+                    "description": "Its download URL",
+                    "minLength": 1,
+                    "title": "Url",
+                    "type": "string"
+                },
+                "source": {
+                    "description": "Styled, or the original",
+                    "enum": [
+                        "generated",
+                        "original"
+                    ],
+                    "title": "Source",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "_id",
+                "url",
+                "source"
+            ],
+            "title": "PhotoChoiceRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "What makeProductPhotoChoices sends: the product, its original photo\nfirst, then the styled ones made.",
+    "properties": {
+        "productId": {
+            "description": "The Products _id",
+            "minLength": 1,
+            "title": "Productid",
+            "type": "string"
+        },
+        "productName": {
+            "description": "Product name",
+            "minLength": 1,
+            "title": "Productname",
+            "type": "string"
+        },
+        "photos": {
+            "description": "The original first, then the styled photos",
+            "items": {
+                "$ref": "#/$defs/PhotoChoiceRow"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Photos",
+            "type": "array"
+        },
+        "prompt": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The prompt the styled photos were made with; null when none were made",
+            "title": "Prompt"
+        },
+        "notGenerated": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Why no styled photos were made (no photo style, today's limit reached, generation unavailable); null when they were",
+            "title": "Notgenerated"
+        }
+    },
+    "required": [
+        "productId",
+        "productName",
+        "photos",
+        "prompt",
+        "notGenerated"
+    ],
+    "title": "ProductPhotoChoicesResponse",
+    "type": "object",
+    "additionalProperties": false
+}

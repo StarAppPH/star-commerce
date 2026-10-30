@@ -38,6 +38,19 @@
             },
             "title": "Photos",
             "type": "array"
+        },
+        "prompt": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The prompt they were made with; null on a card saved before prompts were shown",
+            "title": "Prompt"
         }
     },
     "required": [

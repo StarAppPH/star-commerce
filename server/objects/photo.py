@@ -3,6 +3,7 @@
 Package rule (every objects module): no validator may EVER mutate a value it
 receives (see objects/__init__.py)."""
 import datetime
+from typing import Literal
 
 from pydantic import Field
 
@@ -17,6 +18,12 @@ PHOTO_NOTES_MAX_LENGTH = 300
 # The admin's reference photos per call, and the photos one call makes.
 PHOTO_REFERENCES_MAX = 10
 PHOTOS_PER_CALL_MAX = 4
+# The styled photos makeProductPhotoChoices makes next to the original.
+PHOTO_CHOICES_GENERATED = 3
+
+# Where a store photo came from: the image model made it, or it is the
+# admin's own photo, copied as it is (makeProductPhotoChoices).
+PhotoSource = Literal['generated', 'original']
 
 
 class GeneratedPhoto(MongoModel):
@@ -34,7 +41,15 @@ class GeneratedPhoto(MongoModel):
         description="The object paths of the admin's reference photos")
     notes: str | None = Field(None, max_length=PHOTO_NOTES_MAX_LENGTH,
                               description="The admin's notes for this call")
-    model: str = Field(..., description='The image model that made it')
+    model: str | None = Field(
+        ..., description='The image model that made it; null for an '
+        'original')
+    source: PhotoSource = Field(
+        'generated', description='Made by the model, or the original '
+        "(a document saved before originals existed is 'generated')")
+    prompt: str | None = Field(
+        None, description='The prompt the model was given; null for an '
+        'original and for a photo saved before prompts were kept')
     createdAt: datetime.datetime = Field(..., description='When it was saved')
 
 
@@ -44,6 +59,33 @@ class GeneratedPhotoRow(ResponseModel):
 
 
 class GeneratedPhotosResponse(ResponseModel):
-    """What generateProductPhotos sends: the photos it saved."""
+    """What generateProductPhotos sends: the photos it saved and the prompt
+    they were made with."""
     photos: list[GeneratedPhotoRow] = Field(
         ..., description='The photos made, in order')
+    prompt: str = Field(..., min_length=1,
+                        description='The prompt the model was given')
+
+
+class PhotoChoiceRow(ResponseModel):
+    """One photo the admin may put on the product."""
+    id: str = Field(..., alias='_id', description='GeneratedPhotos _id')
+    url: str = Field(..., min_length=1, description='Its download URL')
+    source: PhotoSource = Field(..., description='Styled, or the original')
+
+
+class ProductPhotoChoicesResponse(ResponseModel):
+    """What makeProductPhotoChoices sends: the product, its original photo
+    first, then the styled ones made."""
+    productId: str = Field(..., min_length=1, description='The Products _id')
+    productName: str = Field(..., min_length=1, description='Product name')
+    photos: list[PhotoChoiceRow] = Field(
+        ..., min_length=1, max_length=1 + PHOTO_CHOICES_GENERATED,
+        description='The original first, then the styled photos')
+    prompt: str | None = Field(
+        ..., description='The prompt the styled photos were made with; null '
+        'when none were made')
+    notGenerated: str | None = Field(
+        ..., description='Why no styled photos were made (no photo style, '
+        "today's limit reached, generation unavailable); null when they "
+        'were')
