@@ -126,7 +126,9 @@ may skip any):
   paidOrderCancellationHours, how many hours after payment (and before
   handover) a customer can cancel;
 - delivery: deliveryOptions (a list, {_oneOf(DeliveryOption)}); with
-  delivery, deliveryAreas and offersFreeDelivery, and if so
+  delivery, the areas it delivers to, drawn on a map (in the chat,
+  showDeliveryZonesForm; never asked as text), then deliveryAreas, an
+  optional name for them (e.g. Metro Manila), and offersFreeDelivery, and if so
   freeDeliveryMinimum (the order total from which delivery is free);
   handoverDays, the days from payment until the order is ready for pickup
   or delivered. What a delivery costs is set by the app, never asked:

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 import { MapPinIcon } from 'lucide-react';
+import type { ZoneShape } from './deliveryZones';
 
 export interface MapPoint {
   latitude: number;
@@ -20,6 +21,8 @@ interface MapPickerProps {
   // `target` move zooms, so it counts too).
   onUserMove?: () => void;
   disabled?: boolean;
+  // The store's delivery areas, shaded on the map.
+  zones?: readonly ZoneShape[];
   dataComponent: string;
 }
 
@@ -29,9 +32,10 @@ export const DEFAULT_MAP_START: MapPoint = { latitude: 14.5995, longitude: 120.9
 // The browser key: restricted to the app's websites and the Maps JavaScript
 // API, so it is public by design.
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
+export const MAPS_AVAILABLE = API_KEY !== '';
 let optionsSet = false;
 
-function loadMaps(): Promise<google.maps.MapsLibrary> {
+export function loadMaps(): Promise<google.maps.MapsLibrary> {
   if (!optionsSet) {
     setOptions({ key: API_KEY, v: 'weekly' });
     optionsSet = true;
@@ -39,30 +43,45 @@ function loadMaps(): Promise<google.maps.MapsLibrary> {
   return importLibrary('maps');
 }
 
-function interaction(disabled: boolean): google.maps.MapOptions {
+export function interaction(disabled: boolean): google.maps.MapOptions {
   // greedy: one finger drags the map on a phone, as the pin needs.
   return { gestureHandling: disabled ? 'none' : 'greedy', zoomControl: !disabled, keyboardShortcuts: !disabled };
 }
 
+// The look of a delivery area on a map.
+export const ZONE_STYLE: google.maps.PolygonOptions = {
+  strokeColor: '#2563EB',
+  strokeOpacity: 0.9,
+  strokeWeight: 2,
+  fillColor: '#2563EB',
+  fillOpacity: 0.15,
+};
+
+export function toLatLng(point: MapPoint): google.maps.LatLngLiteral {
+  return { lat: point.latitude, lng: point.longitude };
+}
+
 // A Google map with a pin fixed at its center: the user moves the map until
 // the pin sits on the spot. The Maps JavaScript API loads in the browser only.
-export function MapPicker({ start, startZoom, target, onMove, onUserMove, disabled = false, dataComponent }: MapPickerProps) {
+export function MapPicker({ start, startZoom, target, onMove, onUserMove, disabled = false, zones, dataComponent }: MapPickerProps) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const onMoveRef = useRef(onMove);
   const startRef = useRef({ start, startZoom });
   const disabledRef = useRef(disabled);
   const onUserMoveRef = useRef(onUserMove);
-  const [failed, setFailed] = useState(API_KEY === '');
+  const zonesRef = useRef(zones);
+  const [failed, setFailed] = useState(!MAPS_AVAILABLE);
 
   useEffect(() => { onMoveRef.current = onMove; }, [onMove]);
   useEffect(() => { onUserMoveRef.current = onUserMove; }, [onUserMove]);
 
   useEffect(() => {
-    if (API_KEY === '') return;
+    if (!MAPS_AVAILABLE) return;
     let cancelled = false;
     let listeners: google.maps.MapsEventListener[] = [];
-    loadMaps().then(({ Map }) => {
+    let shaded: google.maps.Polygon[] = [];
+    loadMaps().then(({ Map, Polygon }) => {
       if (cancelled || !container.current) return;
       const { start: point, startZoom: zoom } = startRef.current;
       const created = new Map(container.current, {
@@ -80,6 +99,13 @@ export function MapPicker({ start, startZoom, target, onMove, onUserMove, disabl
           if (center) onMoveRef.current({ latitude: center.lat(), longitude: center.lng() });
         }),
       ];
+      // Shaded only: a tap on an area still moves the map.
+      shaded = (zonesRef.current ?? []).map((zone) => new Polygon({
+        ...ZONE_STYLE,
+        map: created,
+        paths: zone.points.map(toLatLng),
+        clickable: false,
+      }));
       mapRef.current = created;
     }).catch((error: unknown) => {
       console.error('The map could not load', error);
@@ -88,6 +114,7 @@ export function MapPicker({ start, startZoom, target, onMove, onUserMove, disabl
     return () => {
       cancelled = true;
       for (const listener of listeners) listener.remove();
+      for (const polygon of shaded) polygon.setMap(null);
       mapRef.current = null;
     };
   }, []);

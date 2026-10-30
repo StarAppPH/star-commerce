@@ -65,6 +65,50 @@ export type Latitude = number;
  */
 export type Longitude = number;
 /**
+ * Where it delivers, drawn on the map; null or empty: anywhere
+ */
+export type Deliveryzones =
+  | []
+  | [DeliveryZone]
+  | [DeliveryZone, DeliveryZone]
+  | [DeliveryZone, DeliveryZone, DeliveryZone]
+  | [DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone]
+  | [DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone]
+  | [DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone]
+  | [DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone]
+  | [DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone, DeliveryZone]
+  | [
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone
+    ]
+  | [
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone,
+      DeliveryZone
+    ]
+  | null;
+/**
+ * The corners in drawing order; the last joins the first
+ *
+ * @minItems 3
+ * @maxItems 100
+ */
+export type Points = [StoreLocation, StoreLocation, StoreLocation, ...StoreLocation[]];
+/**
  * The look of the store's product photos
  */
 export type Photostyle = string | null;
@@ -110,6 +154,7 @@ export interface Store {
    * Map location; null until the admin pins it
    */
   location?: StoreLocation | null;
+  deliveryZones?: Deliveryzones;
   photoStyle?: Photostyle;
   primaryColor?: Primarycolor;
   secondaryColor?: Secondarycolor;
@@ -122,4 +167,10 @@ export interface Store {
 export interface StoreLocation {
   latitude: Latitude;
   longitude: Longitude;
+}
+/**
+ * One area a store delivers to (deliveryZoneProblem holds its shape).
+ */
+export interface DeliveryZone {
+  points: Points;
 }

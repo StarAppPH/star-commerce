@@ -38,7 +38,8 @@ from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
 from objects.product import PRODUCT_BATCH_MAX, NewProduct
 from objects.returns import (RETURN_REJECT_REASON_MAX_LENGTH,
                              ReturnItemRow, ReturnReason, ReturnStatus)
-from objects.store import (Latitude, Longitude, StoreCurrency,
+from objects.store import (DELIVERY_ZONES_MAX, DeliveryZoneResponse,
+                           Latitude, Longitude, StoreCurrency,
                            StoreLocationResponse)
 
 # The most components one turn shows: past it, the earliest are dropped.
@@ -348,13 +349,32 @@ class DeliveryPinForm(ResponseModel):
     storeLocation: StoreLocationResponse | None = Field(
         ..., description="The store's pin, where the map opens; null until "
         'pinned')
+    # Sent only when the store drew its delivery areas: a pin must fall in
+    # one (a form saved before areas existed has none).
+    deliveryZones: list[DeliveryZoneResponse] | None = Field(
+        None, max_length=DELIVERY_ZONES_MAX, exclude_if=lambda v: v is None,
+        description='The areas the store delivers to; absent: anywhere')
+
+
+class DeliveryZonesForm(ResponseModel):
+    """Asks the admin to draw where the store delivers: areas on a map,
+    each closed. The map saves them (setMyDeliveryZones), then answers with
+    DeliveryZonesAnswer."""
+    kind: Literal['deliveryZonesForm'] = Field(..., description='The form')
+    formId: FormId
+    storeLocation: StoreLocationResponse | None = Field(
+        ..., description="The store's pin, where the map opens; null until "
+        'pinned')
+    deliveryZones: list[DeliveryZoneResponse] = Field(
+        ..., max_length=DELIVERY_ZONES_MAX,
+        description='The areas drawn so far; empty: none')
 
 
 ChatComponent = Annotated[Union[
     ShopProductsCard, StoreProductsCard, StoreOrdersCard, MyOrdersCard,
     CheckoutCard, StoreReturnsCard, MyReturnsCard, PolicyCard, PhotosCard,
     ProductPhotoChoiceCard, StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
-    PhotoRequestForm, DeliveryPinForm,
+    PhotoRequestForm, DeliveryPinForm, DeliveryZonesForm,
 ], Field(discriminator='kind')]
 
 
@@ -458,6 +478,12 @@ class DeliveryPinAnswer(AppModel):
     longitude: Longitude = Field(..., description='Degrees east')
 
 
+class DeliveryZonesAnswer(AppModel):
+    """A DeliveryZonesForm done: the areas are saved."""
+    kind: Literal['deliveryZones'] = Field(..., description='The answer')
+    formId: FormId
+
+
 class ProductPhotoAnswer(AppModel):
     """A ProductPhotoChoiceCard's pick: the photo to put on the product."""
     kind: Literal['productPhoto'] = Field(..., description='The answer')
@@ -471,5 +497,5 @@ class ProductPhotoAnswer(AppModel):
 ChatFormAnswer = (LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer
                   | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer
                   | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer
-                  | ProductPhotoAnswer)
+                  | DeliveryZonesAnswer | ProductPhotoAnswer)
 ChatFormAnswerTagged = Annotated[ChatFormAnswer, Field(discriminator='kind')]

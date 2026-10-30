@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from actions.CustomerActions import CUSTOMERS
 from actions.OrderActions import (NO_STORE_PIN_YET, NOT_OFFERED,
+                                  OUTSIDE_DELIVERY_ZONES,
                                   bookableFulfillments, offeredFulfillments,
                                   storeDelivery)
 from actions.StoreActions import STORES, ownerQuery
@@ -36,7 +37,8 @@ from mongoDb import db
 from objects import (CHAT_MESSAGE_MAX_LENGTH, PHOTOS_PER_CALL_MAX,
                      PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH,
                      PRODUCT_INVENTORY_MAX, PRODUCT_NAME_MAX_LENGTH,
-                     PRODUCT_PRICE_MAX, ChatComponent, ChatFormAnswerTagged)
+                     PRODUCT_PRICE_MAX, ChatComponent, ChatFormAnswerTagged,
+                     insideDeliveryZones)
 from utils import generateRandomString
 
 # ChatActions.CHAT_TURNS (ChatActions imports this module).
@@ -87,6 +89,7 @@ ANSWERS_TO = {
     'handover': 'storeOrders',
     'returnDecision': 'storeReturns',
     'deliveryPin': 'deliveryPinForm',
+    'deliveryZones': 'deliveryZonesForm',
     'productPhoto': 'productPhotoChoice',
 }
 
@@ -165,6 +168,10 @@ class ShowPhoneVerificationArgs(_Args):
 
 class ShowDeliveryPinFormArgs(_Args):
     model_config = ConfigDict(title='showDeliveryPinFormArguments')
+
+
+class ShowDeliveryZonesFormArgs(_Args):
+    model_config = ConfigDict(title='showDeliveryZonesFormArguments')
 
 
 class FormRefused(Exception):
@@ -253,12 +260,29 @@ def _deliveryPinForm(userId: str, storeId: str,
     if store is None:
         raise FormRefused(STORE_NOT_FOUND)
     location = store.get('location')
-    return {
+    form = {
         'kind': 'deliveryPinForm',
         'formId': newFormId(),
-        'storeLocation': ({'latitude': location['latitude'],
-                           'longitude': location['longitude']}
-                          if location else None),
+        'storeLocation': _pin(location),
+    }
+    if delivery['deliveryZones']:
+        form['deliveryZones'] = delivery['deliveryZones']
+    return form
+
+
+def _pin(location: dict | None) -> dict | None:
+    return ({'latitude': location['latitude'],
+             'longitude': location['longitude']} if location else None)
+
+
+def _deliveryZonesForm(userId: str, storeId: str,
+                       args: ShowDeliveryZonesFormArgs) -> dict:
+    store = _ownStore(userId, {'location': 1, 'deliveryZones': 1})
+    return {
+        'kind': 'deliveryZonesForm',
+        'formId': newFormId(),
+        'storeLocation': _pin(store.get('location')),
+        'deliveryZones': store.get('deliveryZones') or [],
     }
 
 
@@ -326,6 +350,17 @@ FORM_TOOLS: dict[str, FormTool] = {
         "the rest of createOrder's `delivery` and call it with fulfillment "
         'delivery and the pin\'s latitude and longitude.',
         ShowDeliveryPinFormArgs, _deliveryPinForm),
+    'showDeliveryZonesForm': FormTool(
+        ('admin', ),
+        'Open a map under your reply where the owner draws the areas the '
+        'store delivers to (up to 10, each closed), or clears them to '
+        'deliver anywhere. Use it in the policy\'s delivery section once the '
+        'owner said they deliver, instead of asking which areas in chat. The '
+        'map saves the areas itself; their next message says how many: '
+        'then ask, optionally, for deliveryAreas, a name for them (e.g. '
+        'Metro Manila). A customer can book a delivery only to a pin '
+        'inside an area.',
+        ShowDeliveryZonesFormArgs, _deliveryZonesForm),
 }
 
 
@@ -527,9 +562,24 @@ def _productPhoto(answer, component, userId) -> tuple[str, dict]:
 
 
 def _deliveryPin(answer, component, userId) -> tuple[str, dict]:
+    # The areas the customer saw; createOrder checks the store's own again.
+    if not insideDeliveryZones(answer.latitude, answer.longitude,
+                               component.get('deliveryZones')):
+        raise ValueError(OUTSIDE_DELIVERY_ZONES)
     return (f'Deliver to my pin at {answer.latitude:.5f}, '
             f'{answer.longitude:.5f}',
             answer.model_dump(exclude={'formId'}))
+
+
+def _deliveryZones(answer, component, userId) -> tuple[str, dict]:
+    # The map saved them (setMyDeliveryZones): what the store has now.
+    store = _ownStore(userId, {'deliveryZones': 1})
+    count = len(store.get('deliveryZones') or [])
+    if count == 0:
+        text = 'Deliver anywhere: no delivery areas drawn.'
+    else:
+        text = f'Saved {count} delivery area{"s" if count > 1 else ""}.'
+    return text, {'kind': 'deliveryZones', 'areas': count}
 
 
 _ANSWER_TURNS = {
@@ -542,6 +592,7 @@ _ANSWER_TURNS = {
     'handover': _handover,
     'returnDecision': _returnDecision,
     'deliveryPin': _deliveryPin,
+    'deliveryZones': _deliveryZones,
     'productPhoto': _productPhoto,
 }
 assert set(_ANSWER_TURNS) == set(ANSWERS_TO)

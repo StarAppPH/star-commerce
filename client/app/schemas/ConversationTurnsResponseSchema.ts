@@ -864,6 +864,144 @@ export type Kind15 = "deliveryPinForm";
  */
 export type Formid9 = string;
 /**
+ * The areas the store delivers to; absent: anywhere
+ */
+export type Deliveryzones =
+  | []
+  | [DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | null;
+/**
+ * The corners in drawing order; the last joins the first
+ *
+ * @minItems 3
+ * @maxItems 100
+ */
+export type Points = [StoreLocationResponse, StoreLocationResponse, StoreLocationResponse, ...StoreLocationResponse[]];
+/**
+ * The form
+ */
+export type Kind16 = "deliveryZonesForm";
+/**
+ * Answer it with this id
+ */
+export type Formid10 = string;
+/**
+ * The areas drawn so far; empty: none
+ *
+ * @maxItems 10
+ */
+export type Deliveryzones1 =
+  | []
+  | [DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ];
+/**
  * The cards and forms shown under the reply
  */
 export type Components = (
@@ -883,6 +1021,7 @@ export type Components = (
   | PhoneVerificationForm
   | PhotoRequestForm
   | DeliveryPinForm
+  | DeliveryZonesForm
 )[];
 /**
  * The form this turn answered
@@ -1258,4 +1397,27 @@ export interface DeliveryPinForm {
    * The store's pin, where the map opens; null until pinned
    */
   storeLocation: StoreLocationResponse | null;
+  deliveryZones?: Deliveryzones;
+}
+/**
+ * A delivery area as a route sends it. Each field restates
+ * DeliveryZone's, which test_route_response_models.py's MIRRORS keeps
+ * in step.
+ */
+export interface DeliveryZoneResponse {
+  points: Points;
+}
+/**
+ * Asks the admin to draw where the store delivers: areas on a map,
+ * each closed. The map saves them (setMyDeliveryZones), then answers with
+ * DeliveryZonesAnswer.
+ */
+export interface DeliveryZonesForm {
+  kind: Kind16;
+  formId: Formid10;
+  /**
+   * The store's pin, where the map opens; null until pinned
+   */
+  storeLocation: StoreLocationResponse | null;
+  deliveryZones: Deliveryzones1;
 }

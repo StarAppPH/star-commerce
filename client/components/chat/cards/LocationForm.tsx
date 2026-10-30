@@ -27,12 +27,15 @@ export function DeliveryPinForm({ component, answered, busy, onAnswer }: Compone
     <PinCard
       dataComponent="deliveryPinForm"
       title="Where should we deliver?"
-      note="Move the map until the pin sits on your door."
+      note={component.deliveryZones
+        ? 'Move the map until the pin sits on your door. The store delivers inside the shaded areas.'
+        : 'Move the map until the pin sits on your door.'}
       start={component.storeLocation}
       startZoom={component.storeLocation ? 14 : 12}
       sendLabel="Deliver here"
       sentText="Pin sent"
       requireMove
+      zones={component.deliveryZones ?? undefined}
       answered={answered}
       busy={busy}
       onSend={(point) => onAnswer({ kind: 'deliveryPin', formId: component.formId, ...point })}

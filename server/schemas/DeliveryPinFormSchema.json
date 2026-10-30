@@ -1,5 +1,26 @@
 {
     "$defs": {
+        "DeliveryZoneResponse": {
+            "description": "A delivery area as a route sends it. Each field restates\nDeliveryZone's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "points": {
+                    "description": "The corners in drawing order; the last joins the first",
+                    "items": {
+                        "$ref": "#/$defs/StoreLocationResponse"
+                    },
+                    "maxItems": 100,
+                    "minItems": 3,
+                    "title": "Points",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "points"
+            ],
+            "title": "DeliveryZoneResponse",
+            "type": "object",
+            "additionalProperties": false
+        },
         "StoreLocationResponse": {
             "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
             "properties": {
@@ -52,6 +73,23 @@
                 }
             ],
             "description": "The store's pin, where the map opens; null until pinned"
+        },
+        "deliveryZones": {
+            "anyOf": [
+                {
+                    "items": {
+                        "$ref": "#/$defs/DeliveryZoneResponse"
+                    },
+                    "maxItems": 10,
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The areas the store delivers to; absent: anywhere",
+            "title": "Deliveryzones"
         }
     },
     "required": [

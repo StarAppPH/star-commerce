@@ -1,0 +1,43 @@
+{
+    "$defs": {
+        "NewDeliveryPoint": {
+            "description": "A corner of a setMyDeliveryZones area. Types only, no limits: the\nroute checks them, never quoting a value (NewOrderDelivery's reason).",
+            "properties": {
+                "latitude": {
+                    "description": "Degrees north",
+                    "title": "Latitude",
+                    "type": "number"
+                },
+                "longitude": {
+                    "description": "Degrees east",
+                    "title": "Longitude",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "latitude",
+                "longitude"
+            ],
+            "title": "NewDeliveryPoint",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A setMyDeliveryZones area: its corners in drawing order.",
+    "properties": {
+        "points": {
+            "description": "The corners in drawing order; the last joins the first",
+            "items": {
+                "$ref": "#/$defs/NewDeliveryPoint"
+            },
+            "title": "Points",
+            "type": "array"
+        }
+    },
+    "required": [
+        "points"
+    ],
+    "title": "NewDeliveryZone",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -118,6 +118,7 @@ export type Components =
       | PhoneVerificationForm
       | PhotoRequestForm
       | DeliveryPinForm
+      | DeliveryZonesForm
     ]
   | [
       (
@@ -137,6 +138,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -155,6 +157,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       )
     ]
   | [
@@ -175,6 +178,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -193,6 +197,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -211,6 +216,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       )
     ]
   | [
@@ -231,6 +237,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -249,6 +256,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -267,6 +275,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -285,6 +294,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       )
     ]
   | [
@@ -305,6 +315,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -323,6 +334,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -341,6 +353,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -359,6 +372,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -377,6 +391,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       )
     ]
   | [
@@ -397,6 +412,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -415,6 +431,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -433,6 +450,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -451,6 +469,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -469,6 +488,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       ),
       (
         | ShopProductsCard
@@ -487,6 +507,7 @@ export type Components =
         | PhoneVerificationForm
         | PhotoRequestForm
         | DeliveryPinForm
+        | DeliveryZonesForm
       )
     ];
 /**
@@ -1313,6 +1334,144 @@ export type Kind15 = "deliveryPinForm";
  */
 export type Formid9 = string;
 /**
+ * The areas the store delivers to; absent: anywhere
+ */
+export type Deliveryzones =
+  | []
+  | [DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | null;
+/**
+ * The corners in drawing order; the last joins the first
+ *
+ * @minItems 3
+ * @maxItems 100
+ */
+export type Points = [StoreLocationResponse, StoreLocationResponse, StoreLocationResponse, ...StoreLocationResponse[]];
+/**
+ * The form
+ */
+export type Kind16 = "deliveryZonesForm";
+/**
+ * Answer it with this id
+ */
+export type Formid10 = string;
+/**
+ * The areas drawn so far; empty: none
+ *
+ * @maxItems 10
+ */
+export type Deliveryzones1 =
+  | []
+  | [DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ];
+/**
  * The form answer this turn sent, when it is one: userText is then its summary
  */
 export type Formanswer =
@@ -1326,17 +1485,18 @@ export type Formanswer =
       | HandoverAnswer
       | ReturnDecisionAnswer
       | DeliveryPinAnswer
+      | DeliveryZonesAnswer
       | ProductPhotoAnswer
     )
   | null;
 /**
  * The answer
  */
-export type Kind16 = "location";
+export type Kind17 = "location";
 /**
  * Answer it with this id
  */
-export type Formid10 = string;
+export type Formid11 = string;
 /**
  * Degrees north
  */
@@ -1348,11 +1508,11 @@ export type Longitude1 = number;
 /**
  * The answer
  */
-export type Kind17 = "newProducts";
+export type Kind18 = "newProducts";
 /**
  * Answer it with this id
  */
-export type Formid11 = string;
+export type Formid12 = string;
 /**
  * The products to add
  *
@@ -1387,19 +1547,19 @@ export type Imageurl = string | null;
 /**
  * The answer
  */
-export type Kind18 = "phoneVerified";
-/**
- * Answer it with this id
- */
-export type Formid12 = string;
-/**
- * The answer
- */
-export type Kind19 = "photoRequest";
+export type Kind19 = "phoneVerified";
 /**
  * Answer it with this id
  */
 export type Formid13 = string;
+/**
+ * The answer
+ */
+export type Kind20 = "photoRequest";
+/**
+ * Answer it with this id
+ */
+export type Formid14 = string;
 /**
  * The download URLs of the uploaded photos
  *
@@ -1428,11 +1588,11 @@ export type Notes = string | null;
 /**
  * The answer
  */
-export type Kind20 = "orderItems";
+export type Kind21 = "orderItems";
 /**
  * Answer it with this id
  */
-export type Formid14 = string;
+export type Formid15 = string;
 /**
  * What to order
  *
@@ -1451,11 +1611,11 @@ export type Quantity2 = number;
 /**
  * The answer
  */
-export type Kind21 = "payment";
+export type Kind22 = "payment";
 /**
  * Answer it with this id
  */
-export type Formid15 = string;
+export type Formid16 = string;
 /**
  * How to pay
  */
@@ -1463,11 +1623,11 @@ export type Paymentmethod2 = "card" | "gcash" | "maya" | "grabPay" | "bankTransf
 /**
  * The answer
  */
-export type Kind22 = "handover";
+export type Kind23 = "handover";
 /**
  * Answer it with this id
  */
-export type Formid16 = string;
+export type Formid17 = string;
 /**
  * The orders handed over
  *
@@ -1478,11 +1638,11 @@ export type Orderids = [string, ...string[]];
 /**
  * The answer
  */
-export type Kind23 = "returnDecision";
+export type Kind24 = "returnDecision";
 /**
  * Answer it with this id
  */
-export type Formid17 = string;
+export type Formid18 = string;
 /**
  * The Returns _id
  */
@@ -1498,11 +1658,11 @@ export type Reason2 = string | null;
 /**
  * The answer
  */
-export type Kind24 = "deliveryPin";
+export type Kind25 = "deliveryPin";
 /**
  * Answer it with this id
  */
-export type Formid18 = string;
+export type Formid19 = string;
 /**
  * Degrees north
  */
@@ -1514,11 +1674,19 @@ export type Longitude2 = number;
 /**
  * The answer
  */
-export type Kind25 = "productPhoto";
+export type Kind26 = "deliveryZones";
 /**
  * Answer it with this id
  */
-export type Formid19 = string;
+export type Formid20 = string;
+/**
+ * The answer
+ */
+export type Kind27 = "productPhoto";
+/**
+ * Answer it with this id
+ */
+export type Formid21 = string;
 /**
  * The card's Products _id
  */
@@ -1942,13 +2110,36 @@ export interface DeliveryPinForm {
    * The store's pin, where the map opens; null until pinned
    */
   storeLocation: StoreLocationResponse | null;
+  deliveryZones?: Deliveryzones;
+}
+/**
+ * A delivery area as a route sends it. Each field restates
+ * DeliveryZone's, which test_route_response_models.py's MIRRORS keeps
+ * in step.
+ */
+export interface DeliveryZoneResponse {
+  points: Points;
+}
+/**
+ * Asks the admin to draw where the store delivers: areas on a map,
+ * each closed. The map saves them (setMyDeliveryZones), then answers with
+ * DeliveryZonesAnswer.
+ */
+export interface DeliveryZonesForm {
+  kind: Kind16;
+  formId: Formid10;
+  /**
+   * The store's pin, where the map opens; null until pinned
+   */
+  storeLocation: StoreLocationResponse | null;
+  deliveryZones: Deliveryzones1;
 }
 /**
  * A LocationForm's pin.
  */
 export interface LocationAnswer {
-  kind: Kind16;
-  formId: Formid10;
+  kind: Kind17;
+  formId: Formid11;
   latitude: Latitude1;
   longitude: Longitude1;
 }
@@ -1956,8 +2147,8 @@ export interface LocationAnswer {
  * A NewProductsForm, filled in.
  */
 export interface NewProductsAnswer {
-  kind: Kind17;
-  formId: Formid11;
+  kind: Kind18;
+  formId: Formid12;
   products: Products3;
 }
 /**
@@ -1976,15 +2167,15 @@ export interface NewProductAnswerRow {
  * A PhoneVerificationForm done: the number is verified.
  */
 export interface PhoneVerifiedAnswer {
-  kind: Kind18;
-  formId: Formid12;
+  kind: Kind19;
+  formId: Formid13;
 }
 /**
  * A PhotoRequestForm, filled in: the uploaded photos' URLs.
  */
 export interface PhotoRequestAnswer {
-  kind: Kind19;
-  formId: Formid13;
+  kind: Kind20;
+  formId: Formid14;
   imageUrls: Imageurls;
   count: Count1;
   notes?: Notes;
@@ -1993,8 +2184,8 @@ export interface PhotoRequestAnswer {
  * A ShopProductsCard's picks.
  */
 export interface OrderItemsAnswer {
-  kind: Kind20;
-  formId: Formid14;
+  kind: Kind21;
+  formId: Formid15;
   items: Items4;
 }
 /**
@@ -2010,24 +2201,24 @@ export interface NewOrderItem {
  * A CheckoutCard's payment method.
  */
 export interface PaymentAnswer {
-  kind: Kind21;
-  formId: Formid15;
+  kind: Kind22;
+  formId: Formid16;
   paymentMethod: Paymentmethod2;
 }
 /**
  * A StoreOrdersCard's orders handed over.
  */
 export interface HandoverAnswer {
-  kind: Kind22;
-  formId: Formid16;
+  kind: Kind23;
+  formId: Formid17;
   orderIds: Orderids;
 }
 /**
  * A StoreReturnsCard's decision on one requested return.
  */
 export interface ReturnDecisionAnswer {
-  kind: Kind23;
-  formId: Formid17;
+  kind: Kind24;
+  formId: Formid18;
   returnId: Returnid;
   decision: Decision;
   reason?: Reason2;
@@ -2036,17 +2227,24 @@ export interface ReturnDecisionAnswer {
  * A DeliveryPinForm's pin: where the delivery goes.
  */
 export interface DeliveryPinAnswer {
-  kind: Kind24;
-  formId: Formid18;
+  kind: Kind25;
+  formId: Formid19;
   latitude: Latitude2;
   longitude: Longitude2;
+}
+/**
+ * A DeliveryZonesForm done: the areas are saved.
+ */
+export interface DeliveryZonesAnswer {
+  kind: Kind26;
+  formId: Formid20;
 }
 /**
  * A ProductPhotoChoiceCard's pick: the photo to put on the product.
  */
 export interface ProductPhotoAnswer {
-  kind: Kind25;
-  formId: Formid19;
+  kind: Kind27;
+  formId: Formid21;
   productId: Productid2;
   photoId: Photoid;
 }

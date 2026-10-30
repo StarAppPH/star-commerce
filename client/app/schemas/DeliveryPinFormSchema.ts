@@ -21,6 +21,74 @@ export type Latitude = number;
  * Degrees east (negative: west)
  */
 export type Longitude = number;
+/**
+ * The areas the store delivers to; absent: anywhere
+ */
+export type Deliveryzones =
+  | []
+  | [DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse, DeliveryZoneResponse]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | [
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse,
+      DeliveryZoneResponse
+    ]
+  | null;
+/**
+ * The corners in drawing order; the last joins the first
+ *
+ * @minItems 3
+ * @maxItems 100
+ */
+export type Points = [StoreLocationResponse, StoreLocationResponse, StoreLocationResponse, ...StoreLocationResponse[]];
 
 /**
  * Asks the shopper to pin where their delivery goes: a map and "use
@@ -34,6 +102,7 @@ export interface DeliveryPinForm {
    * The store's pin, where the map opens; null until pinned
    */
   storeLocation: StoreLocationResponse | null;
+  deliveryZones?: Deliveryzones;
 }
 /**
  * A store's map location as a route sends it. Each field restates
@@ -43,4 +112,12 @@ export interface DeliveryPinForm {
 export interface StoreLocationResponse {
   latitude: Latitude;
   longitude: Longitude;
+}
+/**
+ * A delivery area as a route sends it. Each field restates
+ * DeliveryZone's, which test_route_response_models.py's MIRRORS keeps
+ * in step.
+ */
+export interface DeliveryZoneResponse {
+  points: Points;
 }

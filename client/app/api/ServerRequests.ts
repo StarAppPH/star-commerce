@@ -10,6 +10,8 @@ import type { ConversationTurnsResponse } from '../schemas/ConversationTurnsResp
 import type { CreatedOrderResponse } from '../schemas/CreatedOrderResponseSchema';
 import type { CustomerSessionResponse } from '../schemas/CustomerSessionResponseSchema';
 import type { DeliveryPinAnswer } from '../schemas/DeliveryPinAnswerSchema';
+import type { DeliveryZonesAnswer } from '../schemas/DeliveryZonesAnswerSchema';
+import type { DeliveryZonesResponse } from '../schemas/DeliveryZonesResponseSchema';
 import type { DevUserListResponse } from '../schemas/DevUserListResponseSchema';
 import type { FirebaseUserObject } from '../schemas/FirebaseUserObjectSchema';
 import type { GeneratedPhotosResponse } from '../schemas/GeneratedPhotosResponseSchema';
@@ -20,6 +22,7 @@ import type { MyOrderRow } from '../schemas/MyOrderRowSchema';
 import type { MyReturnListResponse } from '../schemas/MyReturnListResponseSchema';
 import type { MyReturnRow } from '../schemas/MyReturnRowSchema';
 import type { MyStoreResponse } from '../schemas/MyStoreResponseSchema';
+import type { NewDeliveryZone } from '../schemas/NewDeliveryZoneSchema';
 import type { NewOrderDelivery } from '../schemas/NewOrderDeliverySchema';
 import type { NewOrderItem } from '../schemas/NewOrderItemSchema';
 import type { NewProduct } from '../schemas/NewProductSchema';
@@ -297,6 +300,29 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             cache: 'no-store'
         });
         const data: ApiResponse<StoreResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async setMyDeliveryZones(userId: string, zones: NewDeliveryZone[]): Promise<ApiResponse<DeliveryZonesResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/setMyDeliveryZones`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "zones": zones}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<DeliveryZonesResponse> & { msg?: string } = await res.json();
         if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
         
         if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
@@ -883,7 +909,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | ProductPhotoAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendAdminChatMessage`, {
             method: 'POST',
@@ -906,7 +932,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | ProductPhotoAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendStoreChatMessage`, {
             method: 'POST',
@@ -1195,6 +1221,7 @@ export interface RouteResponseModels {
     updateMyStoreDetails: StoreResponse;
     suggestStoreAddress: AddressSuggestionResponse;
     setUserStoreLocation: StoreResponse;
+    setMyDeliveryZones: DeliveryZonesResponse;
     resetMyStore: MyStoreResponse;
     startGuestSession: CustomerSessionResponse;
     verifyCustomerPhone: PhoneVerifiedResponse;
@@ -1247,6 +1274,7 @@ export interface RouteRequestBodies {
     updateMyStoreDetails: { userId: string; name: string | null; description: string | null; contactNumber: string | null; address: string | null; openingHours: string | null };
     suggestStoreAddress: { userId: string };
     setUserStoreLocation: { userId: string; latitude: number; longitude: number };
+    setMyDeliveryZones: { userId: string; zones: NewDeliveryZone[] };
     resetMyStore: { userId: string; confirmName: string };
     startGuestSession: { idToken: string; storeSlug: string };
     verifyCustomerPhone: { userId: string; idToken: string };
@@ -1272,8 +1300,8 @@ export interface RouteRequestBodies {
     getMyStorePolicy: { userId: string };
     getStorePolicy: { userId: string; storeId: string };
     updateMyStorePolicy: { userId: string; acceptsReturns: boolean | null; returnWindowDays: number | null; returnConditions: string | null; nonReturnableItems: string | null; refundMethod: string | null; returnShippingPaidBy: string | null; defectReportDays: number | null; deliveryOptions: string[] | null; deliveryAreas: string | null; offersFreeDelivery: boolean | null; freeDeliveryMinimum: number | null; handoverDays: number | null; acceptedPaymentMethods: string[] | null; paidOrderCancellation: string | null; paidOrderCancellationHours: number | null; sendsMarketingMessages: boolean | null; additionalTerms: string | null; clear: string[] | null };
-    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | ProductPhotoAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
-    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | ProductPhotoAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
+    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
+    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
     getChatThinking: { userId: string; turnKey: string };
     listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
     getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };

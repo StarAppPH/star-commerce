@@ -18,6 +18,7 @@ import time
 import typing
 import unicodedata
 
+from pydantic import BaseModel
 from pymongo.errors import DuplicateKeyError
 
 import geocoding
@@ -25,17 +26,20 @@ import photoStorage
 import voiceModel
 from mongoDb import db
 from mcpTools import mcp_tool
-from objects import (DEFAULT_STORE_CURRENCY, HEX_COLOR_EXAMPLE,
-                     LATITUDE_LIMIT, LONGITUDE_LIMIT, PHONE_NUMBER_PATTERN,
+from objects import (DEFAULT_STORE_CURRENCY, DELIVERY_ZONES_MAX,
+                     HEX_COLOR_EXAMPLE, LATITUDE_LIMIT, LONGITUDE_LIMIT,
+                     PHONE_NUMBER_PATTERN,
                      PHOTO_STYLE_MAX_LENGTH,
                      STORE_ADDRESS_MAX_LENGTH, STORE_DESCRIPTION_MAX_LENGTH,
                      STORE_NAME_MAX_LENGTH, STORE_OPENING_HOURS_MAX_LENGTH,
                      STORE_SLUG_MAX_LENGTH, STORE_OWNER_ONLY_FIELDS,
                      STORE_THEME_FIELDS, STORE_VOICE_FIELD,
                      AddressSuggestionResponse, AdminStoreResponse,
-                     MyStoreResponse, Policy, Store,
+                     DeliveryZonesResponse, MyStoreResponse,
+                     NewDeliveryZone, Policy, Store,
                      StoreCurrency, StoreLocation, StoreResponse,
-                     StoreThemeResponse, hexColor, projectedCopy,
+                     StoreThemeResponse, deliveryZoneProblem, hexColor,
+                     projectedCopy,
                      projection_of)
 from route_config import route_config
 from actions.usageCounters import appDay, copyDailyQuota, usageKey
@@ -68,6 +72,8 @@ VOICE_NOT_AVAILABLE = "That voice isn't available: pick one from listVoices"
 STORE_CHANGED = 'Your store just changed, try again'
 NO_DETAILS_SENT = 'Send a store detail to change'
 NO_PIN_YET = 'Pin the store on the map first'
+DELIVERY_ZONES_NOT_A_LIST = 'zones is a list of areas, each with its points'
+TOO_MANY_DELIVERY_ZONES = f'Draw at most {DELIVERY_ZONES_MAX} delivery areas'
 # What createUserStore writes: the details the admin gives, and the slug
 # that sets the store up.
 STORE_DETAILS = ('name', 'slug', 'currency', 'description', 'contactNumber',
@@ -409,6 +415,48 @@ def _validCoordinate(value: float, label: str, limit: int) -> float:
     return float(value)
 
 
+def _plain(value):
+    """A list param's item as a dict: a model (the MCP tool's) dumped, a
+    JSON object (over HTTP) as is, anything else None."""
+    if isinstance(value, BaseModel):
+        return value.model_dump()
+    return value if isinstance(value, dict) else None
+
+
+def _validDeliveryZone(zone, position: int) -> dict:
+    """One delivery area of setMyDeliveryZones as stored, refused with
+    its position (1 based) and never its values."""
+    zone = _plain(zone)
+    points = zone.get('points') if zone is not None else None
+    if not isinstance(points, list):
+        raise ValueError(f'Area {position}: points is a list of corners')
+    corners = []
+    for point in points:
+        point = _plain(point) or {}
+        corners.append((
+            _validCoordinate(point.get('latitude'),
+                             f'Area {position}: a latitude', LATITUDE_LIMIT),
+            _validCoordinate(point.get('longitude'),
+                             f'Area {position}: a longitude',
+                             LONGITUDE_LIMIT)))
+    problem = deliveryZoneProblem(corners)
+    if problem is not None:
+        raise ValueError(f'Area {position}: {problem}')
+    return {'points': [{'latitude': latitude, 'longitude': longitude}
+                       for latitude, longitude in corners]}
+
+
+def _validDeliveryZones(zones) -> list[dict]:
+    """setMyDeliveryZones' areas as stored: up to DELIVERY_ZONES_MAX
+    closed shapes (deliveryZoneProblem)."""
+    if not isinstance(zones, list):
+        raise ValueError(DELIVERY_ZONES_NOT_A_LIST)
+    if len(zones) > DELIVERY_ZONES_MAX:
+        raise ValueError(TOO_MANY_DELIVERY_ZONES)
+    return [_validDeliveryZone(zone, position)
+            for position, zone in enumerate(zones, start=1)]
+
+
 class StoreActions():
 
     @mcp_tool('admin',
@@ -697,6 +745,25 @@ class StoreActions():
             {'_id': store['_id'], '_version': store['_version']},
             {'location': location.model_dump()}, STORES)
         return projectedCopy(StoreResponse, updated)
+
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Delivery areas saved',
+                  responseModel=DeliveryZonesResponse)
+    def setMyDeliveryZones(self, userId: str,
+                           zones: list[NewDeliveryZone]) -> dict:
+        """Save where the admin's store delivers: the areas drawn on the
+        delivery areas map (showDeliveryZonesForm), each a closed shape of
+        3 to 100 corners whose sides never cross, at most 10. No area: it
+        delivers anywhere. A customer can book a delivery only to a pin
+        inside one. No chat or MCP tool: the map sends it."""
+        requireAdmin(userId)
+        deliveryZones = _validDeliveryZones(zones)
+        store = ownerStore(userId, {'_id': 1, '_version': 1})
+        updated = db.update(
+            {'_id': store['_id'], '_version': store['_version']},
+            {'deliveryZones': deliveryZones}, STORES)
+        return {'deliveryZones': updated['deliveryZones']}
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,

@@ -2890,6 +2890,10 @@ MIRRORS = [
     (ObjectsModule.StoreResponse, ObjectsModule.Store, {'id', 'location'}),
     (ObjectsModule.StoreLocationResponse, ObjectsModule.StoreLocation,
      set()),
+    # points is a list of StoreLocationResponse on the row, of
+    # StoreLocation on the document: mirrored by the entry before this one.
+    (ObjectsModule.DeliveryZoneResponse, ObjectsModule.DeliveryZone,
+     {'points'}),
     (ObjectsModule.AdminStoreResponse, ObjectsModule.Store,
      {'id', 'location'}),
     (ObjectsModule.ShopStoreResponse, ObjectsModule.Store,

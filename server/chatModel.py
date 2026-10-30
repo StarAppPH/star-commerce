@@ -111,8 +111,8 @@ _ADMIN_UI = (
     'only what is missing or what the owner wants to change, read the '
     "section back and save it with updateMyStorePolicy once they say yes. "
     'Use a form only for new products (showNewProductsForm), the store\'s '
-    'map pin (showStoreLocationForm) and photo uploads '
-    '(showPhotoRequestForm). On the cards the owner can tick paid orders to '
+    'map pin (showStoreLocationForm), the areas it delivers to '
+    '(showDeliveryZonesForm) and photo uploads (showPhotoRequestForm). On the cards the owner can tick paid orders to '
     'hand over, approve or reject a return, and pick the photo of a new '
     'product (makeProductPhotoChoices), which also shows the prompt the '
     'photos were made with. Notes, names and reasons '

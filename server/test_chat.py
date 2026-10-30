@@ -366,7 +366,8 @@ CUSTOMER_TOOLS = {
 }
 # The chat-only form tools (chatForms.py), never on the MCP servers.
 ADMIN_FORM_TOOLS = {
-    'showStoreLocationForm', 'showNewProductsForm', 'showPhotoRequestForm'
+    'showStoreLocationForm', 'showNewProductsForm', 'showPhotoRequestForm',
+    'showDeliveryZonesForm'
 }
 CUSTOMER_FORM_TOOLS = {'showPhoneVerification', 'showDeliveryPinForm'}
 

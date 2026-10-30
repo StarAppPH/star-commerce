@@ -53,7 +53,8 @@ from objects import (DELIVERY_ADDRESS_MAX_LENGTH, DELIVERY_NOTES_MAX_LENGTH,
                      CancelReason, CreatedOrderResponse, Fulfillment,
                      MyOrderListResponse, MyOrderRow, NewOrderDelivery,
                      NewOrderItem, Order, OrderStatus, PaymentMethod,
-                     StoreOrderListResponse, StoreOrderRow, projectedCopy)
+                     StoreOrderListResponse, StoreOrderRow, insideDeliveryZones,
+                     projectedCopy)
 from route_config import route_config
 from sharedConstants import DELIVERY_USD_PER_KM
 from utils import appDayBounds, appDayStart, generateRandomString
@@ -97,6 +98,8 @@ NOT_OFFERED = {
 NO_STORE_PIN_YET = ("The store hasn't pinned its location yet, so delivery "
                     "can't be priced: choose pickup, or ask the store")
 DELIVERY_REQUIRED = 'A delivery needs the address and the map pin'
+OUTSIDE_DELIVERY_ZONES = ("The store doesn't deliver to that pin: pin a spot "
+                          'inside its delivery areas, or choose pickup')
 DELIVERY_FOR_PICKUP = 'A pickup order has no delivery address'
 DELIVERY_NOT_AN_OBJECT = 'delivery is an object with address, latitude, longitude and notes'
 DELIVERY_ADDRESS_LABEL = 'The delivery address'
@@ -404,17 +407,20 @@ def cancelExpiredOrders(storeId: str | None = None) -> int:
 def storeDelivery(storeId: str) -> dict:
     """The delivery answers of the store's policy: deliveryOptions,
     deliveryAreas, offersFreeDelivery, freeDeliveryMinimum and handoverDays
-    (each None while the store has not said), and storeLocation, the
-    store's pin (None until pinned) that a delivery is priced from."""
+    (each None while the store has not said), storeLocation, the
+    store's pin (None until pinned) that a delivery is priced from, and
+    deliveryZones, the areas it delivers to (None or empty: anywhere)."""
     fields = ('deliveryOptions', 'deliveryAreas', 'offersFreeDelivery',
               'freeDeliveryMinimum', 'handoverDays')
     policy = db.read({'storeId': storeId}, POLICIES,
                      projection={field: 1 for field in fields},
                      findOne=True) or {}
-    store = db.read({'_id': storeId}, STORES, projection={'location': 1},
+    store = db.read({'_id': storeId}, STORES,
+                    projection={'location': 1, 'deliveryZones': 1},
                     findOne=True) or {}
     return {**{field: policy.get(field) for field in fields},
-            'storeLocation': store.get('location')}
+            'storeLocation': store.get('location'),
+            'deliveryZones': store.get('deliveryZones')}
 
 
 def offeredFulfillments(delivery: dict) -> list[str]:
@@ -488,7 +494,12 @@ def _validFulfillment(fulfillment, delivery, policy: dict
         raise ValueError(NO_STORE_PIN_YET)
     if delivery is None:
         raise ValueError(DELIVERY_REQUIRED)
-    return fulfillment, _validDelivery(delivery)
+    address = _validDelivery(delivery)
+    if not insideDeliveryZones(address['deliveryLatitude'],
+                               address['deliveryLongitude'],
+                               policy['deliveryZones']):
+        raise ValueError(OUTSIDE_DELIVERY_ZONES)
+    return fulfillment, address
 
 
 def _validOrderItem(item: dict,

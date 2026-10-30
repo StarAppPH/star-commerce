@@ -1,0 +1,96 @@
+{
+    "$defs": {
+        "DeliveryZoneResponse": {
+            "description": "A delivery area as a route sends it. Each field restates\nDeliveryZone's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "points": {
+                    "description": "The corners in drawing order; the last joins the first",
+                    "items": {
+                        "$ref": "#/$defs/StoreLocationResponse"
+                    },
+                    "maxItems": 100,
+                    "minItems": 3,
+                    "title": "Points",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "points"
+            ],
+            "title": "DeliveryZoneResponse",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "StoreLocationResponse": {
+            "description": "A store's map location as a route sends it. Each field restates\nStoreLocation's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "properties": {
+                "latitude": {
+                    "description": "Degrees north (negative: south)",
+                    "maximum": 90,
+                    "minimum": -90,
+                    "title": "Latitude",
+                    "type": "number"
+                },
+                "longitude": {
+                    "description": "Degrees east (negative: west)",
+                    "maximum": 180,
+                    "minimum": -180,
+                    "title": "Longitude",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "latitude",
+                "longitude"
+            ],
+            "title": "StoreLocationResponse",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "Asks the admin to draw where the store delivers: areas on a map,\neach closed. The map saves them (setMyDeliveryZones), then answers with\nDeliveryZonesAnswer.",
+    "properties": {
+        "kind": {
+            "const": "deliveryZonesForm",
+            "description": "The form",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "storeLocation": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/StoreLocationResponse"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The store's pin, where the map opens; null until pinned"
+        },
+        "deliveryZones": {
+            "description": "The areas drawn so far; empty: none",
+            "items": {
+                "$ref": "#/$defs/DeliveryZoneResponse"
+            },
+            "maxItems": 10,
+            "title": "Deliveryzones",
+            "type": "array"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "storeLocation",
+        "deliveryZones"
+    ],
+    "title": "DeliveryZonesForm",
+    "type": "object",
+    "additionalProperties": false
+}

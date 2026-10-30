@@ -1,5 +1,26 @@
 {
     "$defs": {
+        "DeliveryZone": {
+            "description": "One area a store delivers to (deliveryZoneProblem holds its shape).",
+            "properties": {
+                "points": {
+                    "description": "The corners in drawing order; the last joins the first",
+                    "items": {
+                        "$ref": "#/$defs/StoreLocation"
+                    },
+                    "maxItems": 100,
+                    "minItems": 3,
+                    "title": "Points",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "points"
+            ],
+            "title": "DeliveryZone",
+            "type": "object",
+            "additionalProperties": false
+        },
         "StoreLocation": {
             "description": "Where a store is on the map, pinned by its admin.",
             "properties": {
@@ -168,6 +189,23 @@
             ],
             "default": null,
             "description": "Map location; null until the admin pins it"
+        },
+        "deliveryZones": {
+            "anyOf": [
+                {
+                    "items": {
+                        "$ref": "#/$defs/DeliveryZone"
+                    },
+                    "maxItems": 10,
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Where it delivers, drawn on the map; null or empty: anywhere",
+            "title": "Deliveryzones"
         },
         "photoStyle": {
             "anyOf": [

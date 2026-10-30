@@ -4,6 +4,7 @@ import { MyOrdersCard, StoreOrdersCard } from './OrderCards';
 import { MyReturnsCard, StoreReturnsCard } from './ReturnCards';
 import { PhotosCard, PolicyCard, StoreCard, StoreProductsCard } from './InfoCards';
 import { DeliveryPinForm, LocationForm } from './LocationForm';
+import { DeliveryZonesForm } from './DeliveryZonesForm';
 import { NewProductsForm } from './NewProductsForm';
 import { PhoneVerificationForm } from './PhoneVerificationForm';
 import { PhotoRequestForm } from './PhotoRequestForm';
@@ -48,6 +49,7 @@ export function ChatComponents({ components, answeredFormIds, busy, onAnswer }: 
           case 'phoneVerificationForm': return <PhoneVerificationForm key={key} component={component} {...shared} />;
           case 'photoRequestForm': return <PhotoRequestForm key={key} component={component} {...shared} />;
           case 'deliveryPinForm': return <DeliveryPinForm key={key} component={component} {...shared} />;
+          case 'deliveryZonesForm': return <DeliveryZonesForm key={key} component={component} {...shared} />;
           default: return null;
         }
       })}
