@@ -1,0 +1,41 @@
+{
+    "description": "A ProductPhotoChoiceCard's pick: the photo to put on the product.",
+    "properties": {
+        "kind": {
+            "const": "productPhoto",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "productId": {
+            "description": "The card's Products _id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Productid",
+            "type": "string"
+        },
+        "photoId": {
+            "description": "The GeneratedPhotos _id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Photoid",
+            "type": "string"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "productId",
+        "photoId"
+    ],
+    "title": "ProductPhotoAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

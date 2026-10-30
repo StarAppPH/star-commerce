@@ -21,6 +21,10 @@ export type Url = string;
  * The photos
  */
 export type Photos = GeneratedPhotoRow[];
+/**
+ * The prompt they were made with; null on a card saved before prompts were shown
+ */
+export type Prompt = string | null;
 
 /**
  * The product photos a tool made.
@@ -28,6 +32,7 @@ export type Photos = GeneratedPhotoRow[];
 export interface PhotosCard {
   kind: Kind;
   photos: Photos;
+  prompt?: Prompt;
 }
 export interface GeneratedPhotoRow {
   _id: Id;

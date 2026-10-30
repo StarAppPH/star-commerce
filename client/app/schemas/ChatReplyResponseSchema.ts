@@ -638,9 +638,60 @@ export type Url = string;
  */
 export type Photos = GeneratedPhotoRow[];
 /**
+ * The prompt they were made with; null on a card saved before prompts were shown
+ */
+export type Prompt = string | null;
+/**
  * The card
  */
-export type Kind9 = "store";
+export type Kind9 = "productPhotoChoice";
+/**
+ * Answer it with this id
+ */
+export type Formid4 = string;
+/**
+ * The Products _id
+ */
+export type Productid = string;
+/**
+ * Product name
+ */
+export type Productname = string;
+/**
+ * The original first, then the styled photos
+ *
+ * @minItems 1
+ * @maxItems 4
+ */
+export type Photos1 =
+  | [PhotoChoiceRow]
+  | [PhotoChoiceRow, PhotoChoiceRow]
+  | [PhotoChoiceRow, PhotoChoiceRow, PhotoChoiceRow]
+  | [PhotoChoiceRow, PhotoChoiceRow, PhotoChoiceRow, PhotoChoiceRow];
+/**
+ * GeneratedPhotos _id
+ */
+export type Id7 = string;
+/**
+ * Its download URL
+ */
+export type Url1 = string;
+/**
+ * Styled, or the original
+ */
+export type Source = "generated" | "original";
+/**
+ * The prompt the styled photos were made with; null when none were
+ */
+export type Prompt1 = string | null;
+/**
+ * Why no styled photos were made; null when they were
+ */
+export type Notgenerated = string | null;
+/**
+ * The card
+ */
+export type Kind10 = "store";
 /**
  * Store name
  */
@@ -697,11 +748,11 @@ export type Longitude = number;
 /**
  * The form
  */
-export type Kind10 = "locationForm";
+export type Kind11 = "locationForm";
 /**
  * Answer it with this id
  */
-export type Formid4 = string;
+export type Formid5 = string;
 /**
  * The store's address
  */
@@ -709,11 +760,11 @@ export type Address1 = string | null;
 /**
  * The form
  */
-export type Kind11 = "newProductsForm";
+export type Kind12 = "newProductsForm";
 /**
  * Answer it with this id
  */
-export type Formid5 = string;
+export type Formid6 = string;
 /**
  * Prices are in it
  */
@@ -760,19 +811,19 @@ export type Products2 = ChatProductDraft[];
 /**
  * The form
  */
-export type Kind12 = "phoneVerificationForm";
-/**
- * Answer it with this id
- */
-export type Formid6 = string;
-/**
- * The form
- */
-export type Kind13 = "photoRequestForm";
+export type Kind13 = "phoneVerificationForm";
 /**
  * Answer it with this id
  */
 export type Formid7 = string;
+/**
+ * The form
+ */
+export type Kind14 = "photoRequestForm";
+/**
+ * Answer it with this id
+ */
+export type Formid8 = string;
 /**
  * How many photos to make, prefilled
  */
@@ -780,11 +831,11 @@ export type Count = number;
 /**
  * The form
  */
-export type Kind14 = "deliveryPinForm";
+export type Kind15 = "deliveryPinForm";
 /**
  * Answer it with this id
  */
-export type Formid8 = string;
+export type Formid9 = string;
 /**
  * The cards and forms to show under the reply
  */
@@ -798,6 +849,7 @@ export type Components = (
   | MyReturnsCard
   | PolicyCard
   | PhotosCard
+  | ProductPhotoChoiceCard
   | StoreCard
   | LocationForm
   | NewProductsForm
@@ -1057,16 +1109,38 @@ export interface PolicyCard {
 export interface PhotosCard {
   kind: Kind8;
   photos: Photos;
+  prompt?: Prompt;
 }
 export interface GeneratedPhotoRow {
   _id: Id6;
   url: Url;
 }
 /**
+ * The photos the admin picks one of for a product: its original and
+ * the styled ones made from it. Answered with ProductPhotoAnswer.
+ */
+export interface ProductPhotoChoiceCard {
+  kind: Kind9;
+  formId: Formid4;
+  productId: Productid;
+  productName: Productname;
+  photos: Photos1;
+  prompt: Prompt1;
+  notGenerated: Notgenerated;
+}
+/**
+ * One photo the admin may put on the product.
+ */
+export interface PhotoChoiceRow {
+  _id: Id7;
+  url: Url1;
+  source: Source;
+}
+/**
  * The admin's store a tool read, created or pinned.
  */
 export interface StoreCard {
-  kind: Kind9;
+  kind: Kind10;
   name: Name4;
   slug: Slug;
   currency: Currency7;
@@ -1093,8 +1167,8 @@ export interface StoreLocationResponse {
  * LocationAnswer.
  */
 export interface LocationForm {
-  kind: Kind10;
-  formId: Formid4;
+  kind: Kind11;
+  formId: Formid5;
   /**
    * The pin so far; null when there is none
    */
@@ -1105,8 +1179,8 @@ export interface LocationForm {
  * Asks the admin for new products. Answered with NewProductsAnswer.
  */
 export interface NewProductsForm {
-  kind: Kind11;
-  formId: Formid5;
+  kind: Kind12;
+  formId: Formid6;
   currency: Currency8;
   products: Products2;
 }
@@ -1126,16 +1200,16 @@ export interface ChatProductDraft {
  * stored it.
  */
 export interface PhoneVerificationForm {
-  kind: Kind12;
-  formId: Formid6;
+  kind: Kind13;
+  formId: Formid7;
 }
 /**
  * Asks the admin for photos of one item to turn into product photos.
  * Answered with PhotoRequestAnswer.
  */
 export interface PhotoRequestForm {
-  kind: Kind13;
-  formId: Formid7;
+  kind: Kind14;
+  formId: Formid8;
   count: Count;
 }
 /**
@@ -1144,8 +1218,8 @@ export interface PhotoRequestForm {
  * Answered with DeliveryPinAnswer.
  */
 export interface DeliveryPinForm {
-  kind: Kind14;
-  formId: Formid8;
+  kind: Kind15;
+  formId: Formid9;
   /**
    * The store's pin, where the map opens; null until pinned
    */

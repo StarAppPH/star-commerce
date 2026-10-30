@@ -1,15 +1,15 @@
 'use client';
 import { useEffect, useId, useRef, useState } from 'react';
 import Image from 'next/image';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { ImagePlusIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { auth, storage } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
 import { useSnackbar } from '@/lib/SnackbarContext';
 import { ChatCard, SentNote } from './ChatCard';
+import { PHOTO_ACCEPT, photoProblem, uploadChatPhoto } from './photoUpload';
 import type { AnswerOf, ComponentProps } from './types';
 
 type ImageUrls = AnswerOf<'photoRequest'>['imageUrls'];
@@ -19,29 +19,14 @@ function imageUrlsOf(urls: string[]): ImageUrls | null {
   return urls.length >= 1 && urls.length <= PHOTOS_MAX ? (urls as ImageUrls) : null;
 }
 
-// The server's limits (objects/photo.py, storage.rules).
+// The server's limits (objects/photo.py).
 const PHOTOS_MAX = 10;
-const PHOTO_BYTES_MAX = 10 * 1024 * 1024;
 const NOTES_MAX = 300;
 const COUNTS = [1, 2, 3, 4].map((count) => ({ value: String(count), label: `${count} ${count === 1 ? 'photo' : 'photos'}` }));
-const HEIC_TYPES = ['image/heic', 'image/heif'];
-const HEIC_EXTENSIONS = ['.heic', '.heif'];
-const ALLOWED_TYPES = ['image/jpeg', 'image/png'];
 
 interface Picked {
   file: File;
   preview: string;
-}
-
-// Why a photo can't be uploaded, or null when it can.
-function photoProblem(file: File): string | null {
-  const name = file.name.toLowerCase();
-  if (HEIC_TYPES.includes(file.type) || HEIC_EXTENSIONS.some((extension) => name.endsWith(extension))) {
-    return `${file.name} is a HEIC photo. Convert it to JPG or PNG before uploading.`;
-  }
-  if (!ALLOWED_TYPES.includes(file.type)) return `${file.name} is not a JPG or PNG photo.`;
-  if (file.size >= PHOTO_BYTES_MAX) return `${file.name} is over 10 MB.`;
-  return null;
 }
 
 // The owner's plain photos of one item, uploaded to their own folder, then
@@ -91,12 +76,7 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
     }
     setUploading(true);
     try {
-      const uploaded = await Promise.all(picked.map(async ({ file }) => {
-        const extension = file.type === 'image/png' ? 'png' : 'jpg';
-        const path = `users/${user.uid}/chat-photos/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
-        const done = await uploadBytes(ref(storage, path), file, { contentType: file.type });
-        return getDownloadURL(done.ref);
-      }));
+      const uploaded = await Promise.all(picked.map(({ file }) => uploadChatPhoto(user, file)));
       const imageUrls = imageUrlsOf(uploaded);
       if (!imageUrls) return;
       onAnswer({
@@ -164,7 +144,7 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
                   id={inputId}
                   data-component="photoRequestFiles"
                   type="file"
-                  accept="image/jpeg,image/png"
+                  accept={PHOTO_ACCEPT}
                   multiple
                   className="sr-only"
                   disabled={locked}

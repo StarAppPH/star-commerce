@@ -11,6 +11,7 @@ are autouse)."""
 
 import json
 import re
+from urllib.parse import quote
 
 import pytest
 
@@ -21,6 +22,7 @@ import chatTools
 import mcpServer
 from actions import ChatActions
 from ApiRequests import ApiRequests
+import photoStorage
 from conftest import (TEST_GEOCODED_ADDRESS, TOKEN, addOrder, assertExactShape, createTestStore,
                       firebaseClaims, guestAt, storeWithProducts,
                       verifiedGuestAt, wipeCollections)
@@ -360,9 +362,9 @@ def test_aRetiredComponentKind_isLeftOutOfTheTurnsPage(wiped, model):
     assert [c['kind'] for c in page['turns'][0]['components']] == ['policy']
     assert chatForms.COMPONENT_KINDS == {
         'shopProducts', 'storeProducts', 'storeOrders', 'myOrders',
-        'checkout', 'storeReturns', 'myReturns', 'policy', 'photos', 'store',
-        'locationForm', 'newProductsForm', 'phoneVerificationForm',
-        'photoRequestForm', 'deliveryPinForm'}
+        'checkout', 'storeReturns', 'myReturns', 'policy', 'photos',
+        'productPhotoChoice', 'store', 'locationForm', 'newProductsForm',
+        'phoneVerificationForm', 'photoRequestForm', 'deliveryPinForm'}
     # The retired form cannot be answered with a kind of today.
     fake = model()
     with pytest.raises(ValueError, match='^' + re.escape(
@@ -806,7 +808,13 @@ def test_cards_fromEveryCardTool_fitTheirModels():
         'getMyStorePolicy': policy,
         'updateMyStorePolicy': policy,
         'getStorePolicy': policy,
-        'generateProductPhotos': {'photos': [{'_id': 'g1', 'url': 'https://x'}]},
+        'generateProductPhotos': {'photos': [{'_id': 'g1', 'url': 'https://x'}],
+                                  'prompt': 'p'},
+        'makeProductPhotoChoices': {
+            'productId': 'p1', 'productName': 'A', 'photos': [
+                {'_id': 'o1', 'url': 'https://x', 'source': 'original'},
+                {'_id': 'g1', 'url': 'https://y', 'source': 'generated'}],
+            'prompt': 'p', 'notGenerated': None},
         'getUserStore': {'store': store},
         'createUserStore': store,
         'setUserStoreLocation': store,
@@ -879,3 +887,129 @@ def test_cards_aLaterRowUpdatesTheCardThatListsIt():
     # A refusal makes no card.
     refused = step('c5', 'completeOrder', {'error': 'Order not found'})
     assert chatCards.build(refused, {}, context) == []
+
+
+# ------------------------- new products with photos ------------------------- #
+
+PHOTO_BUCKET = 'cc-test-bucket.firebasestorage.app'
+
+
+@pytest.fixture
+def photoBucket(monkeypatch):
+    monkeypatch.setenv(photoStorage.BUCKET_VARIABLE, PHOTO_BUCKET)
+    for variable in photoStorage.EMULATOR_VARIABLES:
+        monkeypatch.delenv(variable, raising=False)
+
+
+def uploadUrl(uid: str, name: str = 'mug.jpg') -> str:
+    path = f'users/{uid}/chat-photos/{name}'
+    return (f'https://{photoStorage.DOWNLOAD_HOST}/v0/b/{PHOTO_BUCKET}/o/'
+            f'{quote(path, safe="")}?alt=media&token=t')
+
+
+def openProductsForm(model) -> tuple[dict, dict]:
+    model(calls(('c1', 'showNewProductsForm', '{}')), reply('Fill it in.'))
+    res = adminSays('Add products')
+    [form] = res['components']
+    return res, form
+
+
+def test_aNewProductsAnswer_carriesEachPhoto_toTheModel(wiped, photoBucket,
+                                                         model):
+    createTestStore(ADMIN)
+    res, form = openProductsForm(model)
+    fake = model(reply('Adding them.'))
+    url = uploadUrl(ADMIN)
+
+    adminSays(None, res['conversationId'], {
+        'kind': 'newProducts', 'formId': form['formId'], 'products': [
+            {'name': 'Mug', 'price': 250, 'inventory': 3, 'imageUrl': url},
+            {'name': 'Plate', 'price': 90, 'inventory': 5}]})
+
+    content = lastUserContent(fake)
+    summary = content.split('\n\n' + chatForms.FORM_ANSWER_PREFIX)[0]
+    assert summary == ('Add these products:\n'
+                       '- Mug, 250 PHP, 3 in stock (with a photo)\n'
+                       '- Plate, 90 PHP, 5 in stock')
+    products = formAnswerDetails(content)['products']
+    assert products[0]['imageUrl'] == url
+    assert products[1]['imageUrl'] is None
+    # The model is told to make the photo choices next.
+    tool = chatForms.FORM_TOOLS['showNewProductsForm']
+    assert 'makeProductPhotoChoices' in tool.description
+
+
+def test_aNewProductsAnswer_withAPhotoNotTheirs_isRefused(wiped, photoBucket,
+                                                         model):
+    createTestStore(ADMIN)
+    res, form = openProductsForm(model)
+    fake = model()
+    theirs = uploadUrl('someone-else')
+
+    with pytest.raises(ValueError, match='^The photo of product 2 must be a '
+                       'photo you uploaded$') as error:
+        adminSays(None, res['conversationId'], {
+            'kind': 'newProducts', 'formId': form['formId'], 'products': [
+                {'name': 'Mug', 'price': 250, 'inventory': 3},
+                {'name': 'Plate', 'price': 90, 'inventory': 5,
+                 'imageUrl': theirs}]})
+    assert theirs not in str(error.value)
+    assert fake.requests == []
+
+
+CHOICES = {'productId': 'p-mug', 'productName': 'Mug', 'photos': [
+    {'_id': 'ph-original', 'url': 'https://x/o.png', 'source': 'original'},
+    {'_id': 'ph-styled-1', 'url': 'https://x/1.jpg', 'source': 'generated'},
+    {'_id': 'ph-styled-2', 'url': 'https://x/2.jpg', 'source': 'generated'}],
+    'prompt': 'Create a professional photo', 'notGenerated': None}
+
+
+def test_aPhotoChoiceCard_isAnsweredWithOneOfItsPhotos(wiped, model,
+                                                       monkeypatch):
+    createTestStore(ADMIN)
+    stubTool(monkeypatch, 'admin', 'makeProductPhotoChoices',
+             lambda userId, storeId, args: CHOICES)
+    model(calls(('c1', 'makeProductPhotoChoices',
+                 json.dumps({'productId': 'p-mug', 'imageUrl': 'u'}))),
+          reply('Pick one.'))
+    res = adminSays('Photos for the mug')
+    assertExactShape(ChatReplyResponse, res)
+    [card] = res['components']
+    assert card['kind'] == 'productPhotoChoice' and card['formId']
+    assert {k: card[k] for k in CHOICES} == CHOICES
+
+    model()
+    for productId, photoId in (('p-mug', 'not-on-the-card'),
+                               ('p-mug', 'p-mug'),
+                               ('another-product', 'ph-styled-1')):
+        with pytest.raises(ValueError,
+                           match='^' + chatForms.NOT_ON_THE_CARD + '$'):
+            adminSays(None, res['conversationId'],
+                      {'kind': 'productPhoto', 'formId': card['formId'],
+                       'productId': productId, 'photoId': photoId})
+
+    for photoId, said in (('ph-styled-2', 'Use styled photo 2 for Mug'),
+                          ('ph-original', 'Use the original photo for Mug')):
+        model(calls(('c1', 'makeProductPhotoChoices', '{}')),
+              reply('Pick one.'))
+        again = adminSays('Photos for the mug')
+        [choice] = again['components']
+        fake = model(reply('Done.'))
+        adminSays(None, again['conversationId'],
+                  {'kind': 'productPhoto', 'formId': choice['formId'],
+                   'productId': 'p-mug', 'photoId': photoId})
+        content = lastUserContent(fake)
+        assert content.startswith(said + '\n\n')
+        assert formAnswerDetails(content) == {
+            'kind': 'productPhoto', 'productId': 'p-mug', 'photoId': photoId}
+    # A card is answered once.
+    model(reply('Done.'))
+    adminSays(None, res['conversationId'],
+              {'kind': 'productPhoto', 'formId': card['formId'],
+               'productId': 'p-mug', 'photoId': 'ph-styled-1'})
+    model()
+    with pytest.raises(ValueError,
+                       match='^' + chatForms.FORM_ALREADY_ANSWERED + '$'):
+        adminSays(None, res['conversationId'],
+                  {'kind': 'productPhoto', 'formId': card['formId'],
+                   'productId': 'p-mug', 'photoId': 'ph-original'})

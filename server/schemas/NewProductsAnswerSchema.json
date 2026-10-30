@@ -1,7 +1,7 @@
 {
     "$defs": {
-        "NewProduct": {
-            "description": "One product of an addStoreProducts call, as the admin described it.\nTypes only, no limits: the route checks them (_validProduct), so a\nrefusal names the product's position and never quotes the value.",
+        "NewProductAnswerRow": {
+            "description": "A NewProductsForm row: a product to add, and the photo the admin\nuploaded for it, if any.",
             "properties": {
                 "name": {
                     "description": "Product name",
@@ -36,6 +36,21 @@
                     "description": "Shown to customers",
                     "title": "Isavailable",
                     "type": "boolean"
+                },
+                "imageUrl": {
+                    "anyOf": [
+                        {
+                            "maxLength": 2048,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The uploaded photo's download URL; null without one",
+                    "title": "Imageurl"
                 }
             },
             "required": [
@@ -43,7 +58,7 @@
                 "price",
                 "inventory"
             ],
-            "title": "NewProduct",
+            "title": "NewProductAnswerRow",
             "type": "object",
             "additionalProperties": false
         }
@@ -66,7 +81,7 @@
         "products": {
             "description": "The products to add",
             "items": {
-                "$ref": "#/$defs/NewProduct"
+                "$ref": "#/$defs/NewProductAnswerRow"
             },
             "maxItems": 50,
             "minItems": 1,

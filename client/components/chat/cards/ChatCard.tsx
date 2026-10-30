@@ -1,8 +1,9 @@
 'use client';
 import Image from 'next/image';
 import type { ReactNode } from 'react';
-import { CheckIcon, ImageIcon } from 'lucide-react';
+import { CheckIcon, ChevronDownIcon, ImageIcon } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { NumberField, NumberFieldDecrement, NumberFieldGroup, NumberFieldIncrement, NumberFieldInput } from '@/components/ui/number-field';
 import { cn } from '@/lib/utils';
 
@@ -90,5 +91,25 @@ export function ProductPhoto({ url, name, dataComponent }: ProductPhotoProps) {
         <ImageIcon aria-hidden="true" className="absolute inset-0 m-auto size-4 text-muted-foreground/60" />
       )}
     </div>
+  );
+}
+
+interface PromptUsedProps {
+  prompt: string;
+  dataComponent: string;
+}
+
+// The prompt the image model was given for a card's photos, folded away.
+export function PromptUsed({ prompt, dataComponent }: PromptUsedProps) {
+  return (
+    <Collapsible data-component={dataComponent} className="border-t">
+      <CollapsibleTrigger className="group flex w-full items-center gap-1.5 px-4 py-2.5 text-muted-foreground text-xs hover:text-foreground">
+        <ChevronDownIcon aria-hidden="true" className="size-3.5 transition-transform group-data-panel-open:rotate-180" />
+        Prompt used
+      </CollapsibleTrigger>
+      <CollapsiblePanel>
+        <p className="whitespace-pre-wrap px-4 pb-3 text-muted-foreground text-xs">{prompt}</p>
+      </CollapsiblePanel>
+    </Collapsible>
   );
 }

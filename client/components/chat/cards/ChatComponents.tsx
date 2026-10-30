@@ -7,6 +7,7 @@ import { DeliveryPinForm, LocationForm } from './LocationForm';
 import { NewProductsForm } from './NewProductsForm';
 import { PhoneVerificationForm } from './PhoneVerificationForm';
 import { PhotoRequestForm } from './PhotoRequestForm';
+import { ProductPhotoChoiceCard } from './ProductPhotoChoiceCard';
 import { ShopProductsCard } from './ShopProductsCard';
 import type { ChatComponent, ChatFormAnswer } from './types';
 
@@ -40,6 +41,7 @@ export function ChatComponents({ components, answeredFormIds, busy, onAnswer }: 
           case 'myReturns': return <MyReturnsCard key={key} component={component} {...shared} />;
           case 'policy': return <PolicyCard key={key} component={component} {...shared} />;
           case 'photos': return <PhotosCard key={key} component={component} {...shared} />;
+          case 'productPhotoChoice': return <ProductPhotoChoiceCard key={key} component={component} {...shared} />;
           case 'store': return <StoreCard key={key} component={component} {...shared} />;
           case 'locationForm': return <LocationForm key={key} component={component} {...shared} />;
           case 'newProductsForm': return <NewProductsForm key={key} component={component} {...shared} />;

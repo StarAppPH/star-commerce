@@ -45,9 +45,17 @@ export type Sourcepaths =
  */
 export type Notes = string | null;
 /**
- * The image model that made it
+ * The image model that made it; null for an original
  */
-export type Model = string;
+export type Model = string | null;
+/**
+ * Made by the model, or the original (a document saved before originals existed is 'generated')
+ */
+export type Source = "generated" | "original";
+/**
+ * The prompt the model was given; null for an original and for a photo saved before prompts were kept
+ */
+export type Prompt = string | null;
 /**
  * When it was saved
  */
@@ -68,5 +76,7 @@ export interface GeneratedPhoto {
   sourcePaths: Sourcepaths;
   notes?: Notes;
   model: Model;
+  source?: Source;
+  prompt?: Prompt;
   createdAt: Createdat;
 }

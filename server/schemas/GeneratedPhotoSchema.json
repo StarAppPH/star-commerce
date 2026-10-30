@@ -66,9 +66,39 @@
             "title": "Notes"
         },
         "model": {
-            "description": "The image model that made it",
-            "title": "Model",
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The image model that made it; null for an original",
+            "title": "Model"
+        },
+        "source": {
+            "default": "generated",
+            "description": "Made by the model, or the original (a document saved before originals existed is 'generated')",
+            "enum": [
+                "generated",
+                "original"
+            ],
+            "title": "Source",
             "type": "string"
+        },
+        "prompt": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The prompt the model was given; null for an original and for a photo saved before prompts were kept",
+            "title": "Prompt"
         },
         "createdAt": {
             "description": "When it was saved",

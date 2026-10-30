@@ -1,0 +1,33 @@
+{
+    "description": "One photo the admin may put on the product.",
+    "properties": {
+        "_id": {
+            "description": "GeneratedPhotos _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "url": {
+            "description": "Its download URL",
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+        },
+        "source": {
+            "description": "Styled, or the original",
+            "enum": [
+                "generated",
+                "original"
+            ],
+            "title": "Source",
+            "type": "string"
+        }
+    },
+    "required": [
+        "_id",
+        "url",
+        "source"
+    ],
+    "title": "PhotoChoiceRow",
+    "type": "object",
+    "additionalProperties": false
+}

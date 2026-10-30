@@ -19,7 +19,7 @@ export type Formid = string;
  * @minItems 1
  * @maxItems 50
  */
-export type Products = [NewProduct, ...NewProduct[]];
+export type Products = [NewProductAnswerRow, ...NewProductAnswerRow[]];
 /**
  * Product name
  */
@@ -40,6 +40,10 @@ export type Description = string | null;
  * Shown to customers
  */
 export type Isavailable = boolean;
+/**
+ * The uploaded photo's download URL; null without one
+ */
+export type Imageurl = string | null;
 
 /**
  * A NewProductsForm, filled in.
@@ -50,14 +54,14 @@ export interface NewProductsAnswer {
   products: Products;
 }
 /**
- * One product of an addStoreProducts call, as the admin described it.
- * Types only, no limits: the route checks them (_validProduct), so a
- * refusal names the product's position and never quotes the value.
+ * A NewProductsForm row: a product to add, and the photo the admin
+ * uploaded for it, if any.
  */
-export interface NewProduct {
+export interface NewProductAnswerRow {
   name: Name;
   price: Price;
   inventory: Inventory;
   description?: Description;
   isAvailable?: Isavailable;
+  imageUrl?: Imageurl;
 }
