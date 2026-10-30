@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { LocateFixedIcon, MapPinIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatCard, SentNote } from './ChatCard';
-import { insideZones, type ZoneShape } from './deliveryZones';
+import type { ZoneShape } from './deliveryZones';
 import { DEFAULT_MAP_START, MapPicker, type MapPoint } from './MapPicker';
 import { useWhereIAm } from './useWhereIAm';
 
@@ -21,9 +21,11 @@ interface PinCardProps {
   // Send waits until the pin moved or "Use where I am" found a spot (a
   // delivery's pin must be the customer's, never where the map opened).
   requireMove?: boolean;
-  // Where a pin may go: shaded on the map, and Send waits while the pin is
-  // outside every one (none: anywhere).
+  // Shapes shaded on the map (a delivery's zones).
   zones?: readonly ZoneShape[];
+  // What the pin's spot means, under the map; Send waits while it is not ok
+  // (a delivery pin outside every zone).
+  check?: (point: MapPoint) => { ok: boolean; text: string };
   answered: boolean;
   busy: boolean;
   onSend: (point: MapPoint) => void;
@@ -32,7 +34,7 @@ interface PinCardProps {
 // A map with a pin to move onto a spot, "Use where I am" and a send button:
 // the store's pin and a delivery's.
 export function PinCard({
-  dataComponent, title, note, start, startZoom, sendLabel, sentText, requireMove = false, zones, answered, busy, onSend,
+  dataComponent, title, note, start, startZoom, sendLabel, sentText, requireMove = false, zones, check, answered, busy, onSend,
 }: PinCardProps) {
   const opening = start ?? DEFAULT_MAP_START;
   const [point, setPoint] = useState<MapPoint>(opening);
@@ -43,8 +45,8 @@ export function PinCard({
     setPoint(here);
     setPlaced(true);
   });
-  const outside = !insideZones(point, zones);
-  const canSend = !busy && !locating && (placed || !requireMove) && !outside;
+  const checked = check?.(point) ?? null;
+  const canSend = !busy && !locating && (placed || !requireMove) && checked?.ok !== false;
 
   return (
     <ChatCard
@@ -77,9 +79,13 @@ export function PinCard({
             zones={zones}
           />
         </div>
-        {!answered && outside && placed && (
-          <p data-component={`${dataComponent}Outside`} role="status" className="pt-2 text-destructive-foreground text-sm">
-            The store doesn’t deliver here. Move the pin inside a shaded area, or choose pickup.
+        {!answered && checked && placed && (
+          <p
+            data-component={`${dataComponent}Check`}
+            role="status"
+            className={checked.ok ? 'pt-2 text-muted-foreground text-sm' : 'pt-2 text-destructive-foreground text-sm'}
+          >
+            {checked.text}
           </p>
         )}
       </div>

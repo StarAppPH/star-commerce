@@ -14,7 +14,8 @@ interface OrderDeliveryProps {
 }
 
 // How an order's customer gets it: picked up, or delivered where they pinned
-// (with the fee, which the order's total includes, and the km it was priced on).
+// (with the fee, which the order's total includes, and the zone that priced it,
+// or the km for a delivery priced before zones).
 export function OrderDelivery({ order, currency }: OrderDeliveryProps) {
   if (order.fulfillment === 'pickup') {
     return (
@@ -33,7 +34,8 @@ export function OrderDelivery({ order, currency }: OrderDeliveryProps) {
           <span className="text-muted-foreground">
             {' · '}
             {order.deliveryFee > 0 ? `${formatMoney(order.deliveryFee, currency)} fee` : 'free delivery'}
-            {order.deliveryDistanceKm !== null && ` (${order.deliveryDistanceKm} km)`}
+            {order.deliveryZone !== null && ` (${order.deliveryZone})`}
+            {order.deliveryZone === null && order.deliveryDistanceKm !== null && ` (${order.deliveryDistanceKm} km)`}
           </span>
         </span>
       </span>

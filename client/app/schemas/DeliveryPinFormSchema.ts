@@ -22,6 +22,30 @@ export type Latitude = number;
  */
 export type Longitude = number;
 /**
+ * The zones' fees and totals are in it
+ */
+export type Currency =
+  | (
+      | "PHP"
+      | "USD"
+      | "EUR"
+      | "GBP"
+      | "JPY"
+      | "SGD"
+      | "AUD"
+      | "CAD"
+      | "HKD"
+      | "CNY"
+      | "KRW"
+      | "MYR"
+      | "THB"
+      | "IDR"
+      | "VND"
+      | "INR"
+      | "AED"
+    )
+  | null;
+/**
  * The zones the store delivers to, with their policies
  */
 export type Deliveryzones =
@@ -122,6 +146,7 @@ export interface DeliveryPinForm {
    * The store's pin, where the map opens; null until pinned
    */
   storeLocation: StoreLocationResponse | null;
+  currency?: Currency;
   deliveryZones?: Deliveryzones;
 }
 /**

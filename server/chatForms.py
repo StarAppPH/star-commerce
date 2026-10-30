@@ -258,8 +258,8 @@ def _deliveryPinForm(userId: str, storeId: str,
         raise FormRefused(NOT_OFFERED['delivery'])
     if 'delivery' not in bookableFulfillments(delivery):
         raise FormRefused(NO_DELIVERY_ZONES_YET)
-    store = db.read({'_id': storeId}, STORES, projection={'location': 1},
-                    findOne=True)
+    store = db.read({'_id': storeId}, STORES,
+                    projection={'location': 1, 'currency': 1}, findOne=True)
     if store is None:
         raise FormRefused(STORE_NOT_FOUND)
     location = store.get('location')
@@ -267,6 +267,7 @@ def _deliveryPinForm(userId: str, storeId: str,
         'kind': 'deliveryPinForm',
         'formId': newFormId(),
         'storeLocation': _pin(location),
+        'currency': store['currency'],
         'deliveryZones': delivery['deliveryZones'],
     }
 
@@ -278,10 +279,12 @@ def _pin(location: dict | None) -> dict | None:
 
 def _deliveryZonesForm(userId: str, storeId: str,
                        args: ShowDeliveryZonesFormArgs) -> dict:
-    store = _ownStore(userId, {'location': 1, 'deliveryZones': 1})
+    store = _ownStore(userId, {'location': 1, 'deliveryZones': 1,
+                               'currency': 1})
     return {
         'kind': 'deliveryZonesForm',
         'formId': newFormId(),
+        'currency': store['currency'],
         'storeLocation': _pin(store.get('location')),
         'zones': ruledZones(store.get('deliveryZones')),
     }

@@ -128,6 +128,38 @@
             ],
             "description": "The store's pin, where the map opens; null until pinned"
         },
+        "currency": {
+            "anyOf": [
+                {
+                    "enum": [
+                        "PHP",
+                        "USD",
+                        "EUR",
+                        "GBP",
+                        "JPY",
+                        "SGD",
+                        "AUD",
+                        "CAD",
+                        "HKD",
+                        "CNY",
+                        "KRW",
+                        "MYR",
+                        "THB",
+                        "IDR",
+                        "VND",
+                        "INR",
+                        "AED"
+                    ],
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The zones' fees and totals are in it",
+            "title": "Currency"
+        },
         "deliveryZones": {
             "anyOf": [
                 {

@@ -4,8 +4,8 @@ import { ExternalLinkIcon, ImageIcon, MapPinIcon, PackageSearchIcon, ScrollTextI
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChatCard, ProductPhoto, PromptUsed } from './ChatCard';
-import { type PolicyAnswers, type PolicyQuestion, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
-import { POLICY_VALUE_LABELS, deliveryPerKmText, formatMoney } from './format';
+import { type PolicyAnswers, type PolicyQuestion, missingDeliveryZones, offersDelivery, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
+import { POLICY_VALUE_LABELS, formatMoney, zoneRuleText } from './format';
 import type { ComponentProps } from './types';
 
 // The admin's products a tool listed, added or changed.
@@ -57,9 +57,7 @@ export function policyRows(answers: PolicyAnswers): { question: PolicyQuestion; 
     { question: 'paidOrderCancellationHours', label: 'Hours after payment to cancel', value: answers.paidOrderCancellationHours },
     { question: 'deliveryOptions', label: 'Pickup or delivery', value: answers.deliveryOptions },
     { question: 'deliveryAreas', label: 'Delivery areas', value: answers.deliveryAreas },
-    { question: 'offersFreeDelivery', label: 'Free delivery', value: answers.offersFreeDelivery },
-    { question: 'freeDeliveryMinimum', label: 'Free delivery from', value: answers.freeDeliveryMinimum, money: true },
-    { question: 'handoverDays', label: 'Days until ready or delivered', value: answers.handoverDays },
+    { question: 'handoverDays', label: 'Days until ready for pickup', value: answers.handoverDays },
     { question: 'acceptsReturns', label: 'Accepts returns', value: answers.acceptsReturns },
     { question: 'returnWindowDays', label: 'Return window (days)', value: answers.returnWindowDays },
     { question: 'returnConditions', label: 'Return conditions', value: answers.returnConditions },
@@ -72,13 +70,13 @@ export function policyRows(answers: PolicyAnswers): { question: PolicyQuestion; 
   ];
 }
 
-// The store's policy: every answer, what delivery costs, and how many
-// questions that apply the store has not answered yet.
+// The store's policy: every answer, each delivery zone's own policy, and how
+// many questions that apply the store has not answered yet.
 export function PolicyCard({ component }: ComponentProps<'policy'>) {
   const rows = policyRows(component).filter((row) => policyQuestionApplies(row.question, component));
   const open = unansweredPolicyQuestions(component);
   const money = (amount: number) => formatMoney(amount, component.currency);
-  const delivers = component.deliveryOptions?.includes('delivery') ?? false;
+  const zones = offersDelivery(component) ? component.deliveryZones ?? [] : [];
   const answeredRows = rows.filter((row) => row.value !== null);
   return (
     <ChatCard
@@ -94,10 +92,16 @@ export function PolicyCard({ component }: ComponentProps<'policy'>) {
             <dd>{shown(row.value, money, row.money === true)}</dd>
           </div>
         ))}
-        {delivers && (
+        {zones.map((zone) => (
+          <div key={zone.name} className="contents">
+            <dt className="text-muted-foreground">Delivery to {zone.name}</dt>
+            <dd data-component="policyCardDeliveryZone">{zoneRuleText(zone, component.currency)}</dd>
+          </div>
+        ))}
+        {missingDeliveryZones(component) && (
           <div className="contents">
-            <dt className="text-muted-foreground">Delivery fee</dt>
-            <dd data-component="policyCardDeliveryFee">{deliveryPerKmText(component.deliveryFeePerKm, component.currency)} from the store</dd>
+            <dt className="text-muted-foreground">Delivery zones</dt>
+            <dd data-component="policyCardNoDeliveryZones">None yet: no deliveries until you draw one</dd>
           </div>
         )}
         {answeredRows.length === 0 && <p className="col-span-2 text-muted-foreground">Nothing answered yet.</p>}

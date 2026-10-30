@@ -14,6 +14,27 @@ export type Kind = "deliveryZonesForm";
  */
 export type Formid = string;
 /**
+ * The zones' fees and totals are in it
+ */
+export type Currency =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
  * Degrees north (negative: south)
  */
 export type Latitude = number;
@@ -112,13 +133,15 @@ export type Freedeliveryfrom = number | null;
 export type Points = [StoreLocationResponse, StoreLocationResponse, StoreLocationResponse, ...StoreLocationResponse[]];
 
 /**
- * Asks the admin to draw where the store delivers: areas on a map,
- * each closed. The map saves them (setMyDeliveryZones), then answers with
+ * Asks the admin to draw where the store delivers: zones on a map,
+ * each closed, never overlapping, each with its own delivery policy. The
+ * map saves them (setMyDeliveryZones), then answers with
  * DeliveryZonesAnswer.
  */
 export interface DeliveryZonesForm {
   kind: Kind;
   formId: Formid;
+  currency: Currency;
   /**
    * The store's pin, where the map opens; null until pinned
    */

@@ -934,6 +934,30 @@ export type Kind15 = "deliveryPinForm";
  */
 export type Formid9 = string;
 /**
+ * The zones' fees and totals are in it
+ */
+export type Currency9 =
+  | (
+      | "PHP"
+      | "USD"
+      | "EUR"
+      | "GBP"
+      | "JPY"
+      | "SGD"
+      | "AUD"
+      | "CAD"
+      | "HKD"
+      | "CNY"
+      | "KRW"
+      | "MYR"
+      | "THB"
+      | "IDR"
+      | "VND"
+      | "INR"
+      | "AED"
+    )
+  | null;
+/**
  * The zones the store delivers to, with their policies
  */
 export type Deliveryzones1 =
@@ -1029,6 +1053,27 @@ export type Kind16 = "deliveryZonesForm";
  * Answer it with this id
  */
 export type Formid10 = string;
+/**
+ * The zones' fees and totals are in it
+ */
+export type Currency10 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
 /**
  * The areas drawn so far; empty: none
  *
@@ -1499,6 +1544,7 @@ export interface DeliveryPinForm {
    * The store's pin, where the map opens; null until pinned
    */
   storeLocation: StoreLocationResponse | null;
+  currency?: Currency9;
   deliveryZones?: Deliveryzones1;
 }
 /**
@@ -1513,13 +1559,15 @@ export interface DeliveryZoneResponse {
   points: Points;
 }
 /**
- * Asks the admin to draw where the store delivers: areas on a map,
- * each closed. The map saves them (setMyDeliveryZones), then answers with
+ * Asks the admin to draw where the store delivers: zones on a map,
+ * each closed, never overlapping, each with its own delivery policy. The
+ * map saves them (setMyDeliveryZones), then answers with
  * DeliveryZonesAnswer.
  */
 export interface DeliveryZonesForm {
   kind: Kind16;
   formId: Formid10;
+  currency: Currency10;
   /**
    * The store's pin, where the map opens; null until pinned
    */

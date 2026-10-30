@@ -350,6 +350,9 @@ class DeliveryPinForm(ResponseModel):
     storeLocation: StoreLocationResponse | None = Field(
         ..., description="The store's pin, where the map opens; null until "
         'pinned')
+    # Null on a form saved before zones had policies.
+    currency: StoreCurrency | None = Field(
+        None, description="The zones' fees and totals are in it")
     # A pin must fall in one. A form saved before zones existed has none
     # (null), and takes no pin.
     deliveryZones: list[DeliveryZoneResponse] | None = Field(
@@ -358,11 +361,14 @@ class DeliveryPinForm(ResponseModel):
 
 
 class DeliveryZonesForm(ResponseModel):
-    """Asks the admin to draw where the store delivers: areas on a map,
-    each closed. The map saves them (setMyDeliveryZones), then answers with
+    """Asks the admin to draw where the store delivers: zones on a map,
+    each closed, never overlapping, each with its own delivery policy. The
+    map saves them (setMyDeliveryZones), then answers with
     DeliveryZonesAnswer."""
     kind: Literal['deliveryZonesForm'] = Field(..., description='The form')
     formId: FormId
+    currency: StoreCurrency = Field(..., description="The zones' fees and "
+                                    'totals are in it')
     storeLocation: StoreLocationResponse | None = Field(
         ..., description="The store's pin, where the map opens; null until "
         'pinned')

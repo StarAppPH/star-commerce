@@ -1,8 +1,9 @@
 import type { MapPoint } from './MapPicker';
 
-// A store's delivery areas (server objects/store.py): up to 10 closed shapes
-// of 3 to 100 corners in drawing order, the last joining the first. The
-// server checks them again; these only spare the user a refused save.
+// A store's delivery zones (server objects/store.py): up to 10 closed shapes
+// of 3 to 100 corners in drawing order, the last joining the first, never
+// overlapping (a shared border is fine). The server checks them again; these
+// only spare the user a refused save.
 export const DELIVERY_ZONES_MAX = 10;
 export const DELIVERY_ZONE_CORNERS_MIN = 3;
 export const DELIVERY_ZONE_CORNERS_MAX = 100;
@@ -58,6 +59,49 @@ export function zoneProblem(corners: readonly MapPoint[]): string | null {
   return area === 0 ? 'its corners lie in one line' : null;
 }
 
+function pair(point: MapPoint): Pair {
+  return [point.latitude, point.longitude];
+}
+
+function sides(corners: readonly MapPoint[]): [Pair, Pair][] {
+  return corners.map((corner, i) => [pair(corner), pair(corners[(i + 1) % corners.length])]);
+}
+
+// Whether two segments cross through each other: touching at a corner or
+// running along each other (a shared border) is no crossing.
+function segmentsCross(p1: Pair, p2: Pair, q1: Pair, q2: Pair): boolean {
+  const o = [orientation(p1, p2, q1), orientation(p1, p2, q2), orientation(q1, q2, p1), orientation(q1, q2, p2)];
+  return !o.includes(0) && o[0] !== o[1] && o[2] !== o[3];
+}
+
+function onBorder(point: MapPoint, corners: readonly MapPoint[]): boolean {
+  const p = pair(point);
+  return sides(corners).some(([a, b]) => orientation(a, b, p) === 0 && onSegment(a, b, p));
+}
+
+// Whether the point lies inside the shape, its border excluded.
+export function strictlyInside(point: MapPoint, corners: readonly MapPoint[]): boolean {
+  return !onBorder(point, corners) && insideZone(point, corners);
+}
+
+// Whether the line from `from` to `to` cuts through the shape's sides.
+export function lineCrossesZone(from: MapPoint, to: MapPoint, corners: readonly MapPoint[]): boolean {
+  return sides(corners).some(([a, b]) => segmentsCross(pair(from), pair(to), a, b));
+}
+
+// Whether two zone shapes share any ground (the server's zonesOverlap).
+export function zonesOverlap(first: readonly MapPoint[], second: readonly MapPoint[]): boolean {
+  const key = (corners: readonly MapPoint[]) => new Set(corners.map((c) => `${c.latitude},${c.longitude}`));
+  const a = key(first);
+  const b = key(second);
+  if (a.size === b.size && [...a].every((corner) => b.has(corner))) return true;
+  if (sides(first).some(([p1, p2]) => sides(second).some(([q1, q2]) => segmentsCross(p1, p2, q1, q2)))) return true;
+  return [[first, second], [second, first]].some(([one, other]) => {
+    const probes = [...one, ...sides(one).map(([p, q]) => ({ latitude: (p[0] + q[0]) / 2, longitude: (p[1] + q[1]) / 2 }))];
+    return probes.some((probe) => strictlyInside(probe, other));
+  });
+}
+
 function insideZone(point: MapPoint, corners: readonly MapPoint[]): boolean {
   let inside = false;
   for (let i = 0; i < corners.length; i += 1) {
@@ -71,8 +115,8 @@ function insideZone(point: MapPoint, corners: readonly MapPoint[]): boolean {
   return inside;
 }
 
-// Whether a store with these areas delivers to the point: anywhere without one.
-export function insideZones(point: MapPoint, zones: readonly ZoneShape[] | null | undefined): boolean {
-  if (!zones || zones.length === 0) return true;
-  return zones.some((zone) => insideZone(point, zone.points));
+// The zone a pin falls in, its border included: the first one listed, as the
+// server picks (deliveryZoneAt). Null outside every zone.
+export function zoneAt<Z extends ZoneShape>(point: MapPoint, zones: readonly Z[]): Z | null {
+  return zones.find((zone) => onBorder(point, zone.points) || insideZone(point, zone.points)) ?? null;
 }

@@ -102,7 +102,7 @@
             "additionalProperties": false
         }
     },
-    "description": "Asks the admin to draw where the store delivers: areas on a map,\neach closed. The map saves them (setMyDeliveryZones), then answers with\nDeliveryZonesAnswer.",
+    "description": "Asks the admin to draw where the store delivers: zones on a map,\neach closed, never overlapping, each with its own delivery policy. The\nmap saves them (setMyDeliveryZones), then answers with\nDeliveryZonesAnswer.",
     "properties": {
         "kind": {
             "const": "deliveryZonesForm",
@@ -115,6 +115,30 @@
             "maxLength": 64,
             "minLength": 1,
             "title": "Formid",
+            "type": "string"
+        },
+        "currency": {
+            "description": "The zones' fees and totals are in it",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
             "type": "string"
         },
         "storeLocation": {
@@ -141,6 +165,7 @@
     "required": [
         "kind",
         "formId",
+        "currency",
         "storeLocation",
         "zones"
     ],
