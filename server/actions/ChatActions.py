@@ -1126,6 +1126,18 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
             'components': components, 'turnSeq': seq}
 
 
+def _withSpeech(audience: str, userId: str, storeId: str, speak,
+                turn: dict) -> dict:
+    """The saved `turn` as a chat route sends it: with `speech`
+    (VoiceActions.replySpeech) when `speak` is true, else null. Asked once
+    the turn is saved, so speech never fails the reply."""
+    # Imported here: VoiceActions imports this module.
+    from actions.VoiceActions import replySpeech
+    return {**turn, 'speech': replySpeech(audience, userId, storeId,
+                                          turn['reply'])
+            if speak is True else None}
+
+
 def _validBeforeSeq(beforeSeq) -> dict:
     if beforeSeq is None:
         return {}
@@ -1183,7 +1195,8 @@ class ChatActions():
                              conversationId: str | None = None,
                              form: ChatFormAnswer | None = None,
                              attachments: list[str] | None = None,
-                             turnKey: str | None = None) -> dict:
+                             turnKey: str | None = None,
+                             speak: bool | None = None) -> dict:
         """Send the admin's message, or a form's answer (`form`, in its
         conversation), to the store assistant at the store the admin owns,
         and return its reply with the cards and forms to show under it. No
@@ -1193,11 +1206,13 @@ class ChatActions():
         or PDFs (one PDF at most) the admin uploaded under
         users/<uid>/chat/ (the message may then be empty; never with a
         form). `turnKey`, a random id of the client's, lets getChatThinking
-        tell what the assistant is doing while it answers."""
+        tell what the assistant is doing while it answers. `speak` adds
+        `speech`, how the browser streams the reply spoken."""
         store = requireAnyOwnerStore(userId, {'_id': 1, 'slug': 1})
         toolset = 'admin' if isSetUp(store) else chatForms.SETUP_TOOLSET
-        return _chatTurn('admin', toolset, userId, store['_id'], message,
-                         conversationId, form, attachments, turnKey)
+        return _withSpeech('admin', userId, store['_id'], speak, _chatTurn(
+            'admin', toolset, userId, store['_id'], message,
+            conversationId, form, attachments, turnKey))
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,
@@ -1210,7 +1225,8 @@ class ChatActions():
                              conversationId: str | None = None,
                              form: ChatFormAnswer | None = None,
                              attachments: list[str] | None = None,
-                             turnKey: str | None = None) -> dict:
+                             turnKey: str | None = None,
+                             speak: bool | None = None) -> dict:
         """Send the customer's message, or a form's answer (`form`, in its
         conversation), to the shopping assistant of the store being
         visited, and return its reply with the cards and forms to show
@@ -1221,11 +1237,13 @@ class ChatActions():
         form). Capped per customer and per store each day, messages and
         files alike. `turnKey`, a random id of the client's, lets
         getChatThinking tell what the assistant is doing while it
-        answers."""
+        answers. `speak` adds `speech`, how the browser streams the reply
+        spoken."""
         customerAtStore(userId, storeId)
         setUpStore(storeId, {'_id': 1})
-        return _chatTurn('customer', 'customer', userId, storeId, message,
-                         conversationId, form, attachments, turnKey)
+        return _withSpeech('customer', userId, storeId, speak, _chatTurn(
+            'customer', 'customer', userId, storeId, message,
+            conversationId, form, attachments, turnKey))
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,

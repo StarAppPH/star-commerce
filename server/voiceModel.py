@@ -67,6 +67,12 @@ META_KEY_VARIABLE = chatModel.API_KEY_VARIABLE
 # ElevenLabs' text to speech and voices.
 TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech/{voiceId}'
 VOICES_URL = 'https://api.elevenlabs.io/v2/voices'
+# A single-use token the browser streams one reply's speech with, straight
+# from ElevenLabs (wss://api.elevenlabs.io/v1/text-to-speech/<voiceId>/
+# stream-input): our key never leaves the server.
+SPEECH_TOKEN_URL = ('https://api.elevenlabs.io/v1/single-use-token/'
+                    'tts_websocket')
+SPEECH_TOKEN_MAX_LENGTH = 2048
 TTS_MODEL = 'eleven_flash_v2_5'
 TTS_OUTPUT_FORMAT = 'mp3_44100_64'
 TTS_CONTENT_TYPE = 'audio/mpeg'
@@ -108,6 +114,8 @@ SPOKEN_REPLY_MAX_CHARS = 2500
 STT_DEADLINE_SECONDS = STT_ATTEMPT_SECONDS = 15
 TTS_DEADLINE_SECONDS = TTS_ATTEMPT_SECONDS = 15
 VOICES_DEADLINE_SECONDS = 15
+SPEECH_TOKEN_DEADLINE_SECONDS = SPEECH_TOKEN_ATTEMPT_SECONDS = 5
+SPEECH_TOKEN_RESPONSE_MAX_BYTES = 16 * 1024
 VOICES_ATTEMPT_SECONDS = 10
 # The largest response body read: past it, the call failed.
 STT_RESPONSE_MAX_BYTES = 256 * 1024
@@ -517,6 +525,32 @@ def speak(text: str, voiceId: str | None, deadline: float) -> bytes:
         return _speakWith(key, default, text, deadline)
     except _Refused:
         raise unavailable() from None
+
+
+def speechToken() -> str:
+    """A single-use ElevenLabs token for one text-to-speech stream (it
+    expires after 15 minutes), made with our key. Any failure is
+    unavailable(); the token is never logged."""
+    key = _key(ELEVENLABS_KEY_VARIABLE)
+
+    def request(timeout: float):
+        return _send('POST', SPEECH_TOKEN_URL, timeout,
+                     SPEECH_TOKEN_RESPONSE_MAX_BYTES,
+                     headers={'xi-api-key': key})
+
+    try:
+        _, body = _call(request,
+                        time.monotonic() + SPEECH_TOKEN_DEADLINE_SECONDS,
+                        SPEECH_TOKEN_ATTEMPT_SECONDS, 'voiceTokenError')
+    except _Refused:
+        raise unavailable() from None
+    token = _json(body, 'voiceTokenError').get('token')
+    if (not isinstance(token, str) or not token
+            or len(token) > SPEECH_TOKEN_MAX_LENGTH or not token.isascii()
+            or not token.isprintable() or ' ' in token):
+        logging.warning({'event': 'voiceTokenError', 'errorClass': 'BadBody'})
+        raise unavailable()
+    return token
 
 
 # ── Voices ──────────────────────────────────

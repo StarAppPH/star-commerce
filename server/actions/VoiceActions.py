@@ -61,7 +61,8 @@ from actions.OrderActions import customerAtStore
 from actions.StoreActions import _validText, requireOwnerStore, setUpStore
 # ALL_STORES and usageKey are imported for the tests, which read them here.
 from actions.usageCounters import (ALL_STORES, appDay, envCap,
-                                   giveBackQuotas, takeDailyQuotas, usageKey)
+                                   giveBackQuotas, takeDailyQuotas,
+                                   takeQuotas, usageKey)
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import (VOICE_PAGE_TOKEN_MAX_LENGTH, VOICE_SEARCH_MAX_LENGTH,
@@ -113,6 +114,11 @@ VOICE_CAP_REACHED = ("You've reached today's voice limit: type your message "
                      'instead')
 VOICE_TURNED_OFF = 'Voice is turned off right now: type your message instead'
 NOTHING_TO_SAY = 'That reply has nothing to say aloud'
+# The speech tokens (replySpeech) one user, and one store's users, get a
+# minute: past it, the reply is spoken by the browser's own voice.
+SPEECH_TOKENS_PER_MINUTE_USER = 6
+SPEECH_TOKENS_PER_MINUTE_STORE = 60
+SPEECH_TOKENS_BUSY = 'Voice is busy right now: wait a moment'
 SEARCH_LABEL = 'The search'
 PAGE_TOKEN_LABEL = 'The pageToken'
 
@@ -272,6 +278,55 @@ def _thinkingSpoken(userId: str, storeId: str, text: str) -> str | None:
                     {'event': 'thinkingSpeakFailed',
                      'errorClass': type(error).__name__})
         return None
+
+
+def _takeSpeechTokenQuota(userId: str, storeId: str) -> list[str]:
+    """Count one speech token this minute (UTC) against the user's and the
+    store's per-minute caps (VoiceUsage counters the TTL index deletes two
+    minutes on); SPEECH_TOKENS_BUSY past either. Returns the keys."""
+    now = _now()
+    minute = now.strftime('%Y-%m-%dT%H:%M')
+    return takeQuotas(VOICE_USAGE, [
+        (f'speechTokenUser:{userId}:{minute}',
+         SPEECH_TOKENS_PER_MINUTE_USER, SPEECH_TOKENS_BUSY),
+        (f'speechTokenStore:{storeId}:{minute}',
+         SPEECH_TOKENS_PER_MINUTE_STORE, SPEECH_TOKENS_BUSY),
+    ], now + datetime.timedelta(minutes=2))
+
+
+def replySpeech(audience: str, userId: str, storeId: str,
+                reply: str) -> dict | None:
+    """How the browser streams `reply` spoken, straight from ElevenLabs
+    (ChatSpeech): a single-use token (voiceModel.speechToken), the store's
+    voice and the spoken text. The token is the only gate, so it is given
+    only for a reply just saved, counted against the per-minute token caps
+    and the daily character caps (the text's length: what the browser then
+    sends is not ours to count). None when it is not: nothing to say, a cap
+    reached (info), ElevenLabs failing (a warning); the counters are given
+    back on a failure. Never the token in a log."""
+    text = voiceModel.spokenText(reply)
+    if not text:
+        return None
+    try:
+        store = db.read({'_id': storeId}, 'Stores',
+                        projection={'voiceId': 1}, findOne=True)
+        voiceId = chatThinking.speakingVoice(
+            None if store is None else store.get('voiceId'))
+        minuteKeys = _takeSpeechTokenQuota(userId, storeId)
+        try:
+            token = _metered(TTS, audience, userId, storeId, len(text),
+                             voiceModel.speechToken)
+        except BaseException:
+            giveBackQuotas(VOICE_USAGE, minuteKeys)
+            raise
+    except Exception as error:
+        logging.log(logging.INFO if isinstance(error, ValueError)
+                    else logging.WARNING,
+                    {'event': 'voiceTokenSkipped',
+                     'errorClass': type(error).__name__})
+        return None
+    return {'token': token, 'voiceId': voiceId,
+            'modelId': voiceModel.TTS_MODEL, 'text': text}
 
 
 def _speakingStore(audience: str, userId: str, storeId: str) -> dict:

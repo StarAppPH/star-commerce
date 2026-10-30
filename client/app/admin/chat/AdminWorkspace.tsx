@@ -54,7 +54,7 @@ export function AdminWorkspaceProvider({ userId, children }: { userId: string; c
   const list = useConversationList(fetchPage, storeKnown);
 
   const transport = useMemo<ChatTransport>(() => ({
-    send: (message, conversationId, form, turnKey) => adminRequest(() => server.sendAdminChatMessage(userId, message, conversationId, form, null, turnKey)),
+    send: (message, conversationId, form, turnKey, speak) => adminRequest(() => server.sendAdminChatMessage(userId, message, conversationId, form, null, turnKey, speak)),
     loadTurns: (conversationId, beforeSeq, limit) => adminRequest(() => server.getConversationTurns(userId, conversationId, beforeSeq, limit)),
     thinking: (turnKey) => adminRequest(() => server.getChatThinking(userId, turnKey)),
     speakThinking: (turnKey) => adminRequest(() => server.speakChatThinking(userId, turnKey)),
