@@ -512,6 +512,33 @@ def _validOrderItems(items: list) -> list[tuple[str, int]]:
     return validBatch(items, NewOrderItem, 'Item', _validOrderItem)
 
 
+def _belowZoneMinimum(zone: dict, itemsTotal: float, currency: str) -> None:
+    """Refuse a delivery whose items come to less than its zone's
+    minimumOrder."""
+    minimum = zone.get('minimumOrder')
+    if minimum is not None and itemsTotal < minimum:
+        raise ValueError(BELOW_ZONE_MINIMUM.format(
+            zone=zone['name'], minimum=minimum, currency=currency))
+
+
+def _checkZoneMinimum(wanted: list[tuple[str, int]], storeId: str,
+                      zone: dict | None, currency: str) -> None:
+    """The zone's minimum order, checked on today's prices before anything
+    is reserved: without a transaction (a local mongod that is no replica
+    set) a refusal after reserving would leave the units held for good.
+    _reserveAndCreate checks it again on the prices it reserves at."""
+    if zone is None or zone.get('minimumOrder') is None:
+        return
+    prices = {product['_id']: product['price'] for product in db.read(
+        {'_id': {'$in': [productId for productId, _ in wanted]},
+         'storeId': storeId}, PRODUCTS, projection={'price': 1})}
+    if len(prices) < len(wanted):
+        return  # an unknown item: the reservation refuses it by position
+    _belowZoneMinimum(zone, orderTotal(
+        [{'price': prices[productId], 'quantity': quantity}
+         for productId, quantity in wanted]), currency)
+
+
 def _reserveAndCreate(wanted: list[tuple[str, int]], storeId: str,
                       customer: dict, currency: str, fulfillment: str,
                       delivery: dict | None, zone: dict | None) -> dict:
@@ -570,10 +597,7 @@ def _reserveAndCreate(wanted: list[tuple[str, int]], storeId: str,
         itemsTotal = orderTotal(items)
         fee = 0
         if zone is not None:
-            minimum = zone.get('minimumOrder')
-            if minimum is not None and itemsTotal < minimum:
-                raise ValueError(BELOW_ZONE_MINIMUM.format(
-                    zone=zone['name'], minimum=minimum, currency=currency))
+            _belowZoneMinimum(zone, itemsTotal, currency)
             fee = deliveryFeeFor(zone, itemsTotal)
         order = Order(
             _id=orderId,
@@ -742,6 +766,7 @@ class OrderActions():
         policy = storeDelivery(storeId)
         fulfillment, address, zone = _validFulfillment(fulfillment,
                                                        delivery, policy)
+        _checkZoneMinimum(wanted, storeId, zone, currency)
         # Units an expired order still holds are free for this one.
         cancelExpiredOrders(storeId)
         created = _reserveAndCreate(wanted, storeId, customer, currency,

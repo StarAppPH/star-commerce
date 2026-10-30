@@ -34,8 +34,7 @@ export function OrderDelivery({ order, currency }: OrderDeliveryProps) {
           <span className="text-muted-foreground">
             {' · '}
             {order.deliveryFee > 0 ? `${formatMoney(order.deliveryFee, currency)} fee` : 'free delivery'}
-            {order.deliveryZone !== null && ` (${order.deliveryZone})`}
-            {order.deliveryZone === null && order.deliveryDistanceKm !== null && ` (${order.deliveryDistanceKm} km)`}
+            {order.deliveryZone ? ` (${order.deliveryZone})` : order.deliveryDistanceKm !== null && ` (${order.deliveryDistanceKm} km)`}
           </span>
         </span>
       </span>

@@ -60,6 +60,7 @@ _STORE_PRODUCT = ('_id', 'name', 'price', 'inventory', 'reservedQuantity',
                   'isAvailable', 'soldCount', 'photoUrl')
 _ORDER_ITEM = ('name', 'price', 'quantity')
 _ORDER_DELIVERY = ('fulfillment', 'deliveryFee', 'deliveryDistanceKm',
+                   'deliveryZone',
                    'deliveryAddress',
                    'deliveryLatitude', 'deliveryLongitude', 'deliveryNotes')
 _STORE_ORDER = ('_id', 'status', 'total', 'currency', 'contactNumber',

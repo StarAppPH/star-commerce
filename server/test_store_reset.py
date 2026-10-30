@@ -43,8 +43,7 @@ from conftest import (BRAND_COLORS, STORE_DETAILS, TOKEN, addOrder,
                       guestClaims, wipeCollections)
 from mongoDb import db
 from objects import (ChatAttachment, ChatTurn, Conversation, Customer,
-                     ExchangeRates, GeneratedPhoto, MyStoreResponse, Policy,
-                     Return)
+                     GeneratedPhoto, MyStoreResponse, Policy, Return)
 from utils import generateRandomString
 
 storeModule = importlib.import_module('actions.StoreActions')
@@ -82,7 +81,7 @@ DELETED_COLLECTIONS = {'ChatTurns', 'Conversations', 'Products', 'Orders',
                        'OrderLocks', 'Returns', 'Policies', 'GeneratedPhotos'}
 STORE_DATA = ['Products', 'Orders', 'OrderLocks', 'Returns', 'Policies',
               'GeneratedPhotos', 'Conversations', 'ChatTurns']
-KEPT = ['Users', 'Customers', 'Bootstrap', 'ExchangeRates']
+KEPT = ['Users', 'Customers', 'Bootstrap']
 COLLECTIONS = (['Stores'] + STORE_DATA + KEPT + USAGE_COLLECTIONS)
 
 api = ApiRequests()
@@ -238,7 +237,7 @@ def seedStoreData(store: dict, adminId: str, customerId: str) -> None:
 
 def seedWorld() -> SimpleNamespace:
     """Two admins with set-up stores, each with data, two customers, every
-    kind of counter, the exchange rates and the superAdmin claim."""
+    kind of counter and the superAdmin claim."""
     storeA = createTestStore(ADMIN_A, 'Bakery A')
     storeB = createTestStore(ADMIN_B, 'Cafe B')
     for store in (storeA, storeB):
@@ -247,9 +246,6 @@ def seedWorld() -> SimpleNamespace:
     seedCustomer(OTHER_CUSTOMER)
     seedStoreData(storeA, ADMIN_A, CUSTOMER)
     seedStoreData(storeB, ADMIN_B, OTHER_CUSTOMER)
-    rates = ExchangeRates(_id='USD', rates={'PHP': 58.0}, fetchedAt=BEFORE,
-                          _version=0)
-    db.create(rates.model_dump(by_alias=True), 'ExchangeRates')
     assert AuthHandler._claimSuperAdmin(ADMIN_A)
     for index, (collection, kind) in enumerate(STORE_KINDS):
         for owner in (storeA['_id'], storeB['_id'], CUSTOMER, 'all'):
