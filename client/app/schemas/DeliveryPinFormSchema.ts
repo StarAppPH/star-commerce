@@ -22,7 +22,7 @@ export type Latitude = number;
  */
 export type Longitude = number;
 /**
- * The areas the store delivers to; absent: anywhere
+ * The zones the store delivers to, with their policies
  */
 export type Deliveryzones =
   | []
@@ -83,6 +83,26 @@ export type Deliveryzones =
     ]
   | null;
 /**
+ * What the zone is called, e.g. Makati
+ */
+export type Name = string;
+/**
+ * What a delivery into the zone costs, in the store's currency; 0: free
+ */
+export type Deliveryfee = number;
+/**
+ * Days from payment until a delivery into the zone arrives
+ */
+export type Deliverydays = number;
+/**
+ * The smallest items total the zone takes, in the store's currency; null: no minimum
+ */
+export type Minimumorder = number | null;
+/**
+ * The items total from which delivery into the zone is free, in the store's currency; null: never free
+ */
+export type Freedeliveryfrom = number | null;
+/**
  * The corners in drawing order; the last joins the first
  *
  * @minItems 3
@@ -114,10 +134,13 @@ export interface StoreLocationResponse {
   longitude: Longitude;
 }
 /**
- * A delivery area as a route sends it. Each field restates
- * DeliveryZone's, which test_route_response_models.py's MIRRORS keeps
- * in step.
+ * A zone as a route sends it: its policy and its shape.
  */
 export interface DeliveryZoneResponse {
+  name: Name;
+  deliveryFee: Deliveryfee;
+  deliveryDays: Deliverydays;
+  minimumOrder: Minimumorder;
+  freeDeliveryFrom: Freedeliveryfrom;
   points: Points;
 }

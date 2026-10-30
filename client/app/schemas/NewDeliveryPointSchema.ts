@@ -15,7 +15,7 @@ export type Latitude = number;
 export type Longitude = number;
 
 /**
- * A corner of a setMyDeliveryZones area. Types only, no limits: the
+ * A corner of a setMyDeliveryZones zone. Types only, no limits: the
  * route checks them, never quoting a value (NewOrderDelivery's reason).
  */
 export interface NewDeliveryPoint {

@@ -1,5 +1,71 @@
 {
-    "description": "A store's policy as a route sends it: every answer, null while the\nstore has not said. Each answer has Policy's own type alias, which\ntest_route_response_models.py's MIRRORS keeps in step.",
+    "$defs": {
+        "DeliveryZoneRule": {
+            "description": "A zone's delivery policy as a route sends it, without its shape.\nEach field restates DeliveryZone's, which test_route_response_models.py's\nMIRRORS keeps in step.",
+            "properties": {
+                "name": {
+                    "description": "What the zone is called, e.g. Makati",
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "deliveryFee": {
+                    "description": "What a delivery into the zone costs, in the store's currency; 0: free",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Deliveryfee",
+                    "type": "number"
+                },
+                "deliveryDays": {
+                    "description": "Days from payment until a delivery into the zone arrives",
+                    "maximum": 365,
+                    "minimum": 0,
+                    "title": "Deliverydays",
+                    "type": "integer"
+                },
+                "minimumOrder": {
+                    "anyOf": [
+                        {
+                            "maximum": 10000000,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The smallest items total the zone takes, in the store's currency; null: no minimum",
+                    "title": "Minimumorder"
+                },
+                "freeDeliveryFrom": {
+                    "anyOf": [
+                        {
+                            "maximum": 10000000,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The items total from which delivery into the zone is free, in the store's currency; null: never free",
+                    "title": "Freedeliveryfrom"
+                }
+            },
+            "required": [
+                "name",
+                "deliveryFee",
+                "deliveryDays",
+                "minimumOrder",
+                "freeDeliveryFrom"
+            ],
+            "title": "DeliveryZoneRule",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A store's policy as a route sends it: every answer, null while the\nstore has not said. Each answer has Policy's own type alias, which\ntest_route_response_models.py's MIRRORS keeps in step. Beside them,\ndeliveryZones: the zones the store delivers to, each with its own\ndelivery policy (its shape is not sent).",
     "properties": {
         "acceptsReturns": {
             "anyOf": [
@@ -136,32 +202,6 @@
             "description": "Where the store delivers",
             "title": "Deliveryareas"
         },
-        "offersFreeDelivery": {
-            "anyOf": [
-                {
-                    "type": "boolean"
-                },
-                {
-                    "type": "null"
-                }
-            ],
-            "description": "Whether delivery is free from an order total (freeDeliveryMinimum)",
-            "title": "Offersfreedelivery"
-        },
-        "freeDeliveryMinimum": {
-            "anyOf": [
-                {
-                    "maximum": 10000000,
-                    "minimum": 0,
-                    "type": "number"
-                },
-                {
-                    "type": "null"
-                }
-            ],
-            "description": "The order total from which delivery is free, in the store's currency",
-            "title": "Freedeliveryminimum"
-        },
         "handoverDays": {
             "anyOf": [
                 {
@@ -173,7 +213,7 @@
                     "type": "null"
                 }
             ],
-            "description": "Days from payment until the order is ready for pickup or delivered",
+            "description": "Days from payment until a pickup order is ready (a delivery takes its zone's deliveryDays)",
             "title": "Handoverdays"
         },
         "acceptedPaymentMethods": {
@@ -256,18 +296,14 @@
             "description": "Any other terms, as the admin gave them",
             "title": "Additionalterms"
         },
-        "deliveryFeePerKm": {
-            "anyOf": [
-                {
-                    "minimum": 0,
-                    "type": "number"
-                },
-                {
-                    "type": "null"
-                }
-            ],
-            "description": "What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read",
-            "title": "Deliveryfeeperkm"
+        "deliveryZones": {
+            "description": "The zones the store delivers to and their policies; empty: it takes no delivery order",
+            "items": {
+                "$ref": "#/$defs/DeliveryZoneRule"
+            },
+            "maxItems": 10,
+            "title": "Deliveryzones",
+            "type": "array"
         },
         "updatedAt": {
             "description": "When it last changed",
@@ -286,15 +322,13 @@
         "defectReportDays",
         "deliveryOptions",
         "deliveryAreas",
-        "offersFreeDelivery",
-        "freeDeliveryMinimum",
         "handoverDays",
         "acceptedPaymentMethods",
         "paidOrderCancellation",
         "paidOrderCancellationHours",
         "sendsMarketingMessages",
         "additionalTerms",
-        "deliveryFeePerKm",
+        "deliveryZones",
         "updatedAt"
     ],
     "title": "StorePolicyResponse",

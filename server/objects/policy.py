@@ -10,7 +10,7 @@ from typing import Annotated, Literal
 
 from objects.base import MongoModel, StoredDocumentKeys, ResponseModel
 from objects.order import Fulfillment, PaymentMethod
-from objects.product import PRODUCT_PRICE_MAX
+from objects.store import DELIVERY_ZONES_MAX, DeliveryZoneRule
 
 
 # ──────────────────────────────────────────────
@@ -30,12 +30,14 @@ ReturnShippingPayer = Literal['customer', 'store']
 PaidOrderCancellation = Literal['notAllowed', 'beforeHandover', 'withinHours']
 # The answers of a Policy, by name (updateMyStorePolicy's clear). Pinned
 # to Policy's fields below (POLICY_ANSWER_FIELDS).
+# Answers a policy no longer has: each delivery zone holds its own fee and
+# free delivery total (objects/store.py). A stored policy may still carry
+# them: they are read past (extra='ignore') and dropped on its next save.
+RETIRED_POLICY_FIELDS = ('offersFreeDelivery', 'freeDeliveryMinimum')
 PolicyField = Literal['acceptsReturns', 'returnWindowDays', 'returnConditions',
                       'nonReturnableItems', 'refundMethod',
                       'returnShippingPaidBy', 'defectReportDays',
-                      'deliveryOptions', 'deliveryAreas',
-                      'offersFreeDelivery', 'freeDeliveryMinimum',
-                      'handoverDays',
+                      'deliveryOptions', 'deliveryAreas', 'handoverDays',
                       'acceptedPaymentMethods', 'paidOrderCancellation',
                       'paidOrderCancellationHours',
                       'sendsMarketingMessages', 'additionalTerms']
@@ -75,23 +77,10 @@ DeliveryOptions = Annotated[list[DeliveryOption] | None, Field(
 DeliveryAreas = Annotated[str | None, Field(
     min_length=1, max_length=POLICY_TEXT_MAX_LENGTH,
     description='Where the store delivers')]
-OffersFreeDelivery = Annotated[bool | None, Field(
-    description='Whether delivery is free from an order total '
-    '(freeDeliveryMinimum)')]
-FreeDeliveryMinimum = Annotated[float | None, Field(
-    ge=0, le=PRODUCT_PRICE_MAX,
-    description="The order total from which delivery is free, in the "
-    "store's currency")]
-# Not an answer: what DELIVERY_USD_PER_KM comes to in the store's currency
-# (actions/deliveryPricing.py), sent beside the answers.
-DeliveryFeePerKm = Annotated[float | None, Field(
-    ge=0, description="What delivery costs per km from the store, in the "
-    "store's currency at today's rate; null without delivery, or while the "
-    'rate cannot be read')]
 HandoverDays = Annotated[int | None, Field(
     ge=0, le=POLICY_DAYS_MAX,
-    description='Days from payment until the order is ready for pickup or '
-    'delivered')]
+    description='Days from payment until a pickup order is ready (a '
+    "delivery takes its zone's deliveryDays)")]
 # Payment
 AcceptedPaymentMethods = Annotated[list[PaymentMethod] | None, Field(
     min_length=1, description='The ways a customer can pay')]
@@ -109,13 +98,11 @@ AdditionalTerms = Annotated[str | None, Field(
     description='Any other terms, as the admin gave them')]
 
 # The answers that only apply with returns accepted, with delivery among
-# the deliveryOptions, with free delivery offered, and with paid orders
+# the deliveryOptions, and with paid orders
 # cancellable within hours (Policy.normalized clears them otherwise).
 POLICY_RETURN_ANSWERS = ('returnWindowDays', 'returnConditions',
                          'refundMethod', 'returnShippingPaidBy')
-POLICY_DELIVERY_ANSWERS = ('deliveryAreas', 'offersFreeDelivery',
-                           'freeDeliveryMinimum')
-POLICY_FREE_DELIVERY_ANSWERS = ('freeDeliveryMinimum', )
+POLICY_DELIVERY_ANSWERS = ('deliveryAreas', )
 POLICY_CANCELLATION_HOURS_ANSWERS = ('paidOrderCancellationHours', )
 
 
@@ -139,8 +126,6 @@ class Policy(MongoModel):
     defectReportDays: DefectReportDays = None
     deliveryOptions: DeliveryOptions = None
     deliveryAreas: DeliveryAreas = None
-    offersFreeDelivery: OffersFreeDelivery = None
-    freeDeliveryMinimum: FreeDeliveryMinimum = None
     handoverDays: HandoverDays = None
     acceptedPaymentMethods: AcceptedPaymentMethods = None
     paidOrderCancellation: PaidOrderCancellationAnswer = None
@@ -160,14 +145,12 @@ class Policy(MongoModel):
     def normalized(self) -> 'Policy':
         """A copy with the answers that no longer apply cleared: no returns
         clears POLICY_RETURN_ANSWERS, no delivery POLICY_DELIVERY_ANSWERS,
-        no free delivery POLICY_FREE_DELIVERY_ANSWERS, and a paid order
+        and a paid order
         cancellation other than withinHours (or none)
         POLICY_CANCELLATION_HOURS_ANSWERS."""
         cleared = {}
         if self.acceptsReturns is False:
             cleared.update(dict.fromkeys(POLICY_RETURN_ANSWERS))
-        if self.offersFreeDelivery is False:
-            cleared.update(dict.fromkeys(POLICY_FREE_DELIVERY_ANSWERS))
         if (self.deliveryOptions is not None
                 and 'delivery' not in self.deliveryOptions):
             cleared.update(dict.fromkeys(POLICY_DELIVERY_ANSWERS))
@@ -181,9 +164,6 @@ class Policy(MongoModel):
         if self.acceptsReturns and self.returnWindowDays is None:
             return ('Returns are accepted: ask how many days after handover '
                     'a customer can return an item (returnWindowDays)')
-        if self.offersFreeDelivery and self.freeDeliveryMinimum is None:
-            return ('Free delivery is offered: ask from which order total '
-                    '(freeDeliveryMinimum)')
         if (self.paidOrderCancellation == 'withinHours'
                 and self.paidOrderCancellationHours is None):
             return ('Paid orders can be cancelled within hours: ask how many '
@@ -213,7 +193,9 @@ class PolicyView(StoredDocumentKeys, Policy):
 class StorePolicyResponse(ResponseModel):
     """A store's policy as a route sends it: every answer, null while the
     store has not said. Each answer has Policy's own type alias, which
-    test_route_response_models.py's MIRRORS keeps in step."""
+    test_route_response_models.py's MIRRORS keeps in step. Beside them,
+    deliveryZones: the zones the store delivers to, each with its own
+    delivery policy (its shape is not sent)."""
     acceptsReturns: AcceptsReturns = Field(...)
     returnWindowDays: ReturnWindowDays = Field(...)
     returnConditions: ReturnConditions = Field(...)
@@ -223,14 +205,15 @@ class StorePolicyResponse(ResponseModel):
     defectReportDays: DefectReportDays = Field(...)
     deliveryOptions: DeliveryOptions = Field(...)
     deliveryAreas: DeliveryAreas = Field(...)
-    offersFreeDelivery: OffersFreeDelivery = Field(...)
-    freeDeliveryMinimum: FreeDeliveryMinimum = Field(...)
     handoverDays: HandoverDays = Field(...)
     acceptedPaymentMethods: AcceptedPaymentMethods = Field(...)
     paidOrderCancellation: PaidOrderCancellationAnswer = Field(...)
     paidOrderCancellationHours: PaidOrderCancellationHours = Field(...)
     sendsMarketingMessages: SendsMarketingMessages = Field(...)
     additionalTerms: AdditionalTerms = Field(...)
-    deliveryFeePerKm: DeliveryFeePerKm = Field(...)
+    deliveryZones: list[DeliveryZoneRule] = Field(
+        ..., max_length=DELIVERY_ZONES_MAX,
+        description='The zones the store delivers to and their policies; '
+        'empty: it takes no delivery order')
     updatedAt: datetime.datetime = Field(...,
                                          description='When it last changed')

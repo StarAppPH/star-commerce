@@ -67,15 +67,7 @@ export type Deliveryoptions = ["pickup" | "delivery", ...("pickup" | "delivery")
  */
 export type Deliveryareas = string | null;
 /**
- * Whether delivery is free from an order total (freeDeliveryMinimum)
- */
-export type Offersfreedelivery = boolean | null;
-/**
- * The order total from which delivery is free, in the store's currency
- */
-export type Freedeliveryminimum = number | null;
-/**
- * Days from payment until the order is ready for pickup or delivered
+ * Days from payment until a pickup order is ready (a delivery takes its zone's deliveryDays)
  */
 export type Handoverdays = number | null;
 /**
@@ -104,9 +96,79 @@ export type Sendsmarketingmessages = boolean | null;
  */
 export type Additionalterms = string | null;
 /**
- * What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read
+ * The store's delivery zones and their policies
  */
-export type Deliveryfeeperkm = number | null;
+export type Deliveryzones =
+  | []
+  | [DeliveryZoneRule]
+  | [DeliveryZoneRule, DeliveryZoneRule]
+  | [DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule]
+  | [DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule]
+  | [DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule]
+  | [DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule]
+  | [
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule
+    ]
+  | [
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule
+    ]
+  | [
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule
+    ]
+  | [
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule
+    ]
+  | null;
+/**
+ * What the zone is called, e.g. Makati
+ */
+export type Name = string;
+/**
+ * What a delivery into the zone costs, in the store's currency; 0: free
+ */
+export type Deliveryfee = number;
+/**
+ * Days from payment until a delivery into the zone arrives
+ */
+export type Deliverydays = number;
+/**
+ * The smallest items total the zone takes, in the store's currency; null: no minimum
+ */
+export type Minimumorder = number | null;
+/**
+ * The items total from which delivery into the zone is free, in the store's currency; null: never free
+ */
+export type Freedeliveryfrom = number | null;
 
 /**
  * The store's policy a tool read or saved: every answer, null while
@@ -124,13 +186,23 @@ export interface PolicyCard {
   defectReportDays: Defectreportdays;
   deliveryOptions: Deliveryoptions;
   deliveryAreas: Deliveryareas;
-  offersFreeDelivery: Offersfreedelivery;
-  freeDeliveryMinimum: Freedeliveryminimum;
   handoverDays: Handoverdays;
   acceptedPaymentMethods: Acceptedpaymentmethods;
   paidOrderCancellation: Paidordercancellation;
   paidOrderCancellationHours: Paidordercancellationhours;
   sendsMarketingMessages: Sendsmarketingmessages;
   additionalTerms: Additionalterms;
-  deliveryFeePerKm: Deliveryfeeperkm;
+  deliveryZones?: Deliveryzones;
+}
+/**
+ * A zone's delivery policy as a route sends it, without its shape.
+ * Each field restates DeliveryZone's, which test_route_response_models.py's
+ * MIRRORS keeps in step.
+ */
+export interface DeliveryZoneRule {
+  name: Name;
+  deliveryFee: Deliveryfee;
+  deliveryDays: Deliverydays;
+  minimumOrder: Minimumorder;
+  freeDeliveryFrom: Freedeliveryfrom;
 }

@@ -9,7 +9,8 @@ from typing import Literal
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
                           ResponseModel)
-from objects.store import (LATITUDE_LIMIT, LONGITUDE_LIMIT,
+from objects.store import (DELIVERY_ZONE_NAME_MAX_LENGTH, LATITUDE_LIMIT,
+                           LONGITUDE_LIMIT,
                            PHONE_NUMBER_PATTERN, StoreCurrency)
 from objects.product import (PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
                              Product)
@@ -138,7 +139,12 @@ class Order(MongoModel):
     deliveryDistanceKm: float | None = Field(
         None, ge=0, le=DELIVERY_DISTANCE_MAX_KM,
         description="Km from the store's pin to the delivery pin, in a "
-        'straight line: what the fee was priced on')
+        'straight line: what the fee was priced on, for a delivery priced '
+        'per km before delivery zones; null since')
+    deliveryZone: str | None = Field(
+        None, min_length=1, max_length=DELIVERY_ZONE_NAME_MAX_LENGTH,
+        description='The delivery zone whose policy priced it; null for a '
+        'pickup, or a delivery from before delivery zones')
     deliveryAddress: str | None = Field(
         None, min_length=1, max_length=DELIVERY_ADDRESS_MAX_LENGTH,
         description='Where it is delivered, as the customer typed it')
@@ -181,7 +187,12 @@ class OrderDeliveryRow(ResponseModel):
     deliveryDistanceKm: float | None = Field(
         ..., ge=0, le=DELIVERY_DISTANCE_MAX_KM,
         description="Km from the store's pin to the delivery pin, in a "
-        'straight line: what the fee was priced on')
+        'straight line: what the fee was priced on, for a delivery priced '
+        'per km before delivery zones; null since')
+    deliveryZone: str | None = Field(
+        ..., min_length=1, max_length=DELIVERY_ZONE_NAME_MAX_LENGTH,
+        description='The delivery zone whose policy priced it; null for a '
+        'pickup, or a delivery from before delivery zones')
     deliveryAddress: str | None = Field(
         ..., min_length=1, max_length=DELIVERY_ADDRESS_MAX_LENGTH,
         description='Where it is delivered, as the customer typed it')

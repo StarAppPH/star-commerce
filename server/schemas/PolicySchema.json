@@ -167,34 +167,6 @@
             "description": "Where the store delivers",
             "title": "Deliveryareas"
         },
-        "offersFreeDelivery": {
-            "anyOf": [
-                {
-                    "type": "boolean"
-                },
-                {
-                    "type": "null"
-                }
-            ],
-            "default": null,
-            "description": "Whether delivery is free from an order total (freeDeliveryMinimum)",
-            "title": "Offersfreedelivery"
-        },
-        "freeDeliveryMinimum": {
-            "anyOf": [
-                {
-                    "maximum": 10000000,
-                    "minimum": 0,
-                    "type": "number"
-                },
-                {
-                    "type": "null"
-                }
-            ],
-            "default": null,
-            "description": "The order total from which delivery is free, in the store's currency",
-            "title": "Freedeliveryminimum"
-        },
         "handoverDays": {
             "anyOf": [
                 {
@@ -207,7 +179,7 @@
                 }
             ],
             "default": null,
-            "description": "Days from payment until the order is ready for pickup or delivered",
+            "description": "Days from payment until a pickup order is ready (a delivery takes its zone's deliveryDays)",
             "title": "Handoverdays"
         },
         "acceptedPaymentMethods": {

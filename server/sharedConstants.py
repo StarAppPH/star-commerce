@@ -50,11 +50,6 @@ VAT_RATE = 0.12
 # public: it is in every page that uses Firebase.
 FIREBASE_PROJECT_ID = 'star-commerce-6797'
 
-# What a delivery costs per km, in US dollars, in a straight line from the
-# store's pin to the customer's (actions/deliveryPricing.py converts it to
-# the store's currency at the day's rate).
-DELIVERY_USD_PER_KM = 0.15
-
 # The end of store reset (resetMyStore, the admin's "Reset my store"): from
 # this instant on (UTC+8) the route refuses and the client hides the button,
 # in every environment. The server is what enforces it.

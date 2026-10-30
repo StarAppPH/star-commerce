@@ -27,8 +27,15 @@
             "additionalProperties": false
         }
     },
-    "description": "One area a store delivers to (deliveryZoneProblem holds its shape).",
+    "description": "One zone a store delivers to, with its own delivery policy\n(deliveryZoneProblem holds its shape, zonesOverlap keeps zones apart).",
     "properties": {
+        "name": {
+            "description": "What the zone is called, e.g. Makati",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
         "points": {
             "description": "The corners in drawing order; the last joins the first",
             "items": {
@@ -38,10 +45,57 @@
             "minItems": 3,
             "title": "Points",
             "type": "array"
+        },
+        "deliveryFee": {
+            "description": "What a delivery into the zone costs, in the store's currency; 0: free",
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Deliveryfee",
+            "type": "number"
+        },
+        "deliveryDays": {
+            "description": "Days from payment until a delivery into the zone arrives",
+            "maximum": 365,
+            "minimum": 0,
+            "title": "Deliverydays",
+            "type": "integer"
+        },
+        "minimumOrder": {
+            "anyOf": [
+                {
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The smallest items total the zone takes, in the store's currency; null: no minimum",
+            "title": "Minimumorder"
+        },
+        "freeDeliveryFrom": {
+            "anyOf": [
+                {
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The items total from which delivery into the zone is free, in the store's currency; null: never free",
+            "title": "Freedeliveryfrom"
         }
     },
     "required": [
-        "points"
+        "name",
+        "points",
+        "deliveryFee",
+        "deliveryDays"
     ],
     "title": "DeliveryZone",
     "type": "object",

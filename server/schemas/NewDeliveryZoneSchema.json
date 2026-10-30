@@ -1,7 +1,7 @@
 {
     "$defs": {
         "NewDeliveryPoint": {
-            "description": "A corner of a setMyDeliveryZones area. Types only, no limits: the\nroute checks them, never quoting a value (NewOrderDelivery's reason).",
+            "description": "A corner of a setMyDeliveryZones zone. Types only, no limits: the\nroute checks them, never quoting a value (NewOrderDelivery's reason).",
             "properties": {
                 "latitude": {
                     "description": "Degrees north",
@@ -23,8 +23,13 @@
             "additionalProperties": false
         }
     },
-    "description": "A setMyDeliveryZones area: its corners in drawing order.",
+    "description": "A setMyDeliveryZones zone: its corners in drawing order and its\ndelivery policy. Types only, no limits (NewDeliveryPoint's reason).",
     "properties": {
+        "name": {
+            "description": "What the zone is called",
+            "title": "Name",
+            "type": "string"
+        },
         "points": {
             "description": "The corners in drawing order; the last joins the first",
             "items": {
@@ -32,10 +37,49 @@
             },
             "title": "Points",
             "type": "array"
+        },
+        "deliveryFee": {
+            "description": "The fee, in the store's currency; 0: free",
+            "title": "Deliveryfee",
+            "type": "number"
+        },
+        "deliveryDays": {
+            "description": "Days from payment until it arrives",
+            "title": "Deliverydays",
+            "type": "integer"
+        },
+        "minimumOrder": {
+            "anyOf": [
+                {
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The smallest items total; null: none",
+            "title": "Minimumorder"
+        },
+        "freeDeliveryFrom": {
+            "anyOf": [
+                {
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The items total from which delivery is free; null: never",
+            "title": "Freedeliveryfrom"
         }
     },
     "required": [
-        "points"
+        "name",
+        "points",
+        "deliveryFee",
+        "deliveryDays"
     ],
     "title": "NewDeliveryZone",
     "type": "object",

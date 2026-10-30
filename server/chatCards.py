@@ -167,7 +167,7 @@ def _myReturn(result: dict, context: CardContext) -> dict:
 
 def _policy(result: dict, context: CardContext) -> dict:
     return {'kind': 'policy', 'currency': context.currency(),
-            'deliveryFeePerKm': result.get('deliveryFeePerKm'),
+            'deliveryZones': result.get('deliveryZones'),
             **{field: result.get(field) for field in POLICY_ANSWER_FIELDS}}
 
 

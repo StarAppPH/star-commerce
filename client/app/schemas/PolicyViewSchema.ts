@@ -54,15 +54,7 @@ export type Deliveryoptions = ["pickup" | "delivery", ...("pickup" | "delivery")
  */
 export type Deliveryareas = string | null;
 /**
- * Whether delivery is free from an order total (freeDeliveryMinimum)
- */
-export type Offersfreedelivery = boolean | null;
-/**
- * The order total from which delivery is free, in the store's currency
- */
-export type Freedeliveryminimum = number | null;
-/**
- * Days from payment until the order is ready for pickup or delivered
+ * Days from payment until a pickup order is ready (a delivery takes its zone's deliveryDays)
  */
 export type Handoverdays = number | null;
 /**
@@ -115,8 +107,6 @@ export interface PolicyView {
   defectReportDays?: Defectreportdays;
   deliveryOptions?: Deliveryoptions;
   deliveryAreas?: Deliveryareas;
-  offersFreeDelivery?: Offersfreedelivery;
-  freeDeliveryMinimum?: Freedeliveryminimum;
   handoverDays?: Handoverdays;
   acceptedPaymentMethods?: Acceptedpaymentmethods;
   paidOrderCancellation?: Paidordercancellation;
