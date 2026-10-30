@@ -303,6 +303,83 @@ def createUserStore():
 
 
 
+@app.route('/updateMyStoreDetails', methods=['POST'])
+@jwt_required()
+def updateMyStoreDetails():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    name = data.get('name')
+    description = data.get('description')
+    contactNumber = data.get('contactNumber')
+    address = data.get('address')
+    openingHours = data.get('openingHours')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(name, (dict, list)):
+            raise ValueError('Invalid name')
+        if isinstance(description, (dict, list)):
+            raise ValueError('Invalid description')
+        if isinstance(contactNumber, (dict, list)):
+            raise ValueError('Invalid contactNumber')
+        if isinstance(address, (dict, list)):
+            raise ValueError('Invalid address')
+        if isinstance(openingHours, (dict, list)):
+            raise ValueError('Invalid openingHours')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().updateMyStoreDetails(userId, name, description, contactNumber, address, openingHours)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'updateMyStoreDetails', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'address', 'openingHours')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'updateMyStoreDetails', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'address', 'openingHours')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'updateMyStoreDetails', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'name', 'description', 'contactNumber', 'address', 'openingHours'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Store details saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/suggestStoreAddress', methods=['POST'])
+@jwt_required()
+def suggestStoreAddress():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().suggestStoreAddress(userId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'suggestStoreAddress', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId',)), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'suggestStoreAddress', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId',)), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'suggestStoreAddress', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId',))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Address suggested", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 @app.route('/setUserStoreLocation', methods=['POST'])
 @jwt_required()
 def setUserStoreLocation():

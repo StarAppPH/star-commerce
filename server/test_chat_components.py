@@ -21,7 +21,7 @@ import chatTools
 import mcpServer
 from actions import ChatActions
 from ApiRequests import ApiRequests
-from conftest import (TOKEN, addOrder, assertExactShape, createTestStore,
+from conftest import (TEST_GEOCODED_ADDRESS, TOKEN, addOrder, assertExactShape, createTestStore,
                       firebaseClaims, guestAt, storeWithProducts,
                       verifiedGuestAt, wipeCollections)
 from mongoDb import db
@@ -665,6 +665,51 @@ def test_aPolicySectionAskedInChat_isSavedByTheModel(wiped, model):
         'gcash', 'card']
 
 
+def test_aStorePin_isSaved_andItsAddressSavedOnlyOnAYes(wiped, model,
+                                                         _fakeGeocoding):
+    """The owner's pin from the map is saved by the model; Google's address
+    for it is offered, and saved only once the owner says yes."""
+    created = createTestStore(ADMIN)
+    model(calls(('c1', 'showStoreLocationForm', '{}')), reply('Pin it.'))
+    first = adminSays('I want to change my store location')
+    cid = first['conversationId']
+    pin = {'kind': 'location', 'formId': first['components'][0]['formId'],
+           'latitude': 10.34344, 'longitude': 123.91151}
+    fake = model(calls(('c2', 'setUserStoreLocation', json.dumps(
+                     {'latitude': 10.34344, 'longitude': 123.91151})),
+                       ('c3', 'suggestStoreAddress', '{}')),
+                 reply('Saved. Use the address from your pin?'))
+
+    pinned = adminSays(None, cid, pin)
+
+    [card] = pinned['components']
+    assert card['kind'] == 'store'
+    assert card['location'] == {'latitude': 10.34344,
+                                'longitude': 123.91151}
+    [suggestion] = [m for m in fake.requests[1]['messages']
+                    if m['role'] == 'tool' and m['tool_call_id'] == 'c3']
+    assert json.loads(suggestion['content']) == {
+        'suggestedAddress': TEST_GEOCODED_ADDRESS,
+        'address': created['address']}
+    [google] = _fakeGeocoding.calls
+    assert google['params']['latlng'] == '10.3434400,123.9115100'
+    stored = db.read({}, 'Stores', findOne=True)
+    assert stored['address'] == created['address']  # not before a yes
+
+    model(calls(('c4', 'updateMyStoreDetails', json.dumps(
+              {'address': TEST_GEOCODED_ADDRESS}))),
+          reply('Your address is updated.'))
+    res = adminSays('Yes', cid)
+
+    [card] = res['components']
+    assert card['kind'] == 'store'
+    assert card['address'] == TEST_GEOCODED_ADDRESS
+    assert card['location'] == {'latitude': 10.34344,
+                                'longitude': 123.91151}
+    assert api.getUserStore(ADMIN)['store']['address'] == (
+        TEST_GEOCODED_ADDRESS)
+
+
 def test_aReturnAskedInChat_isRequestedByTheModel(wiped, firebase, model):
     """The customer names the items, the reason and a note in chat; the
     model confirms, then calls requestReturn with the order's item
@@ -765,6 +810,7 @@ def test_cards_fromEveryCardTool_fitTheirModels():
         'getUserStore': {'store': store},
         'createUserStore': store,
         'setUserStoreLocation': store,
+        'updateMyStoreDetails': store,
     }
     assert set(results) == set(chatCards.CARDS)
     for name, result in results.items():

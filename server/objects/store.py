@@ -244,6 +244,17 @@ class StoreThemeResponse(ResponseModel):
         description='Second brand color, #RRGGBB')
 
 
+class AddressSuggestionResponse(ResponseModel):
+    """What suggestStoreAddress sends: the street address Google gives for
+    the store's pin, and the address the store has now."""
+    suggestedAddress: str | None = Field(
+        ..., min_length=1, max_length=STORE_ADDRESS_MAX_LENGTH,
+        description="The pin's street address; null when there is none")
+    address: str | None = Field(None, min_length=1,
+                                max_length=STORE_ADDRESS_MAX_LENGTH,
+                                description='Street address, as the admin typed it')
+
+
 class CustomerSessionResponse(ResponseModel):
     """What startGuestSession sends: its _id becomes the JWT identity."""
     id: str = Field(..., alias='_id', description='Customers _id')

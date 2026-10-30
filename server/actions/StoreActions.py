@@ -20,6 +20,7 @@ import unicodedata
 
 from pymongo.errors import DuplicateKeyError
 
+import geocoding
 import photoStorage
 import voiceModel
 from mongoDb import db
@@ -30,7 +31,8 @@ from objects import (DEFAULT_STORE_CURRENCY, LATITUDE_LIMIT, LONGITUDE_LIMIT,
                      STORE_NAME_MAX_LENGTH, STORE_OPENING_HOURS_MAX_LENGTH,
                      STORE_SLUG_MAX_LENGTH, STORE_OWNER_ONLY_FIELDS,
                      STORE_THEME_FIELDS, STORE_VOICE_FIELD,
-                     AdminStoreResponse, MyStoreResponse, Policy, Store,
+                     AddressSuggestionResponse, AdminStoreResponse,
+                     MyStoreResponse, Policy, Store,
                      StoreCurrency, StoreLocation, StoreResponse,
                      StoreThemeResponse, hexColor, projectedCopy,
                      projection_of)
@@ -63,6 +65,8 @@ PHOTO_STYLE_LABEL = 'The photo style'
 NO_THEME_SENT = 'Send a photo style, a brand color or a voice to change'
 VOICE_NOT_AVAILABLE = "That voice isn't available: pick one from listVoices"
 STORE_CHANGED = 'Your store just changed, try again'
+NO_DETAILS_SENT = 'Send a store detail to change'
+NO_PIN_YET = 'Pin the store on the map first'
 # What createUserStore writes: the details the admin gives, and the slug
 # that sets the store up.
 STORE_DETAILS = ('name', 'slug', 'currency', 'description', 'contactNumber',
@@ -556,13 +560,92 @@ class StoreActions():
         raise ValueError(
             'Could not pick a link name for this store, try another name')
 
+    @mcp_tool('admin')
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Store details saved',
+                  responseModel=StoreResponse)
+    def updateMyStoreDetails(self,
+                             userId: str,
+                             name: str | None = None,
+                             description: str | None = None,
+                             contactNumber: str | None = None,
+                             address: str | None = None,
+                             openingHours: str | None = None) -> dict:
+        """Change the details of the admin's store: its name, description,
+        contact number (international format, e.g. +639171234567), address
+        or opening hours. The store's link and currency never change. Send
+        only the fields the owner wants changed: a field left out keeps its
+        value, and an empty openingHours ("") clears the hours. Never invent
+        or guess a value: use only what the owner said (or an address
+        suggestStoreAddress gave and the owner accepted), and confirm the
+        change with the owner before calling. If this tool refuses a detail,
+        relay its message to the owner and ask again."""
+        requireAdmin(userId)
+        # The generated HTTP handler passes a missing body key as None, so
+        # None is "unchanged".
+        changes = {}
+        if name is not None:
+            changes['name'] = _validText(name, 'A store name',
+                                         STORE_NAME_MAX_LENGTH)
+        if description is not None:
+            changes['description'] = _validText(
+                description, 'A description', STORE_DESCRIPTION_MAX_LENGTH)
+        if contactNumber is not None:
+            changes['contactNumber'] = _validContactNumber(contactNumber)
+        if address is not None:
+            changes['address'] = _validText(address, 'An address',
+                                            STORE_ADDRESS_MAX_LENGTH)
+        if openingHours is not None:
+            changes['openingHours'] = _validText(
+                openingHours, 'The opening hours text',
+                STORE_OPENING_HOURS_MAX_LENGTH, required=False)
+        if not changes:
+            raise ValueError(NO_DETAILS_SENT)
+        store = ownerStore(userId, {'_id': 1, '_version': 1})
+        updated = db.findOneAndUpdate(
+            {'_id': store['_id'], '_version': store['_version']},
+            {'$set': changes, '$inc': {'_version': 1}},
+            STORES,
+            upsert=False)
+        if updated is None:
+            raise ValueError(STORE_CHANGED)
+        return projectedCopy(StoreResponse, updated)
+
+    @mcp_tool('admin')
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Address suggested',
+                  responseModel=AddressSuggestionResponse)
+    def suggestStoreAddress(self, userId: str) -> dict:
+        """The street address Google Maps gives for the store's map pin,
+        and the store's address now. Call it right after
+        setUserStoreLocation saved a pin. When suggestedAddress is not null
+        and differs from address, ask the owner whether to use it as the
+        store's address, and save it with updateMyStoreDetails only once
+        they say yes; never change the address on your own. When it is
+        null, say nothing about it."""
+        requireAdmin(userId)
+        store = ownerStore(userId, {'address': 1, 'location': 1})
+        location = store.get('location')
+        if not isinstance(location, dict):
+            raise ValueError(NO_PIN_YET)
+        return {'suggestedAddress': geocoding.reverseGeocode(
+                    location['latitude'], location['longitude']),
+                'address': store.get('address')}
+
+    @mcp_tool('admin')
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Store location saved',
                   responseModel=StoreResponse)
     def setUserStoreLocation(self, userId: str, latitude: float,
                              longitude: float) -> dict:
-        """Pin the admin's store on the map (the map component sends it)."""
+        """Pin the admin's store on the map, or move its pin: the latitude
+        and longitude of the pin the owner sent from showStoreLocationForm,
+        never coordinates you guessed or the owner typed. A store that
+        delivers prices each delivery from this pin. Then call
+        suggestStoreAddress."""
         requireAdmin(userId)
         location = StoreLocation(
             latitude=_validCoordinate(latitude, 'The latitude',
