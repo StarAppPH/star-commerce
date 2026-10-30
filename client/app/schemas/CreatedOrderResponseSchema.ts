@@ -107,6 +107,10 @@ export type Paymentprovider = "demo" | null;
  */
 export type Manualpaymentreference = string | null;
 /**
+ * When the customer sent the photo of its receipt
+ */
+export type Paymentreceiptat = string | null;
+/**
  * When it was paid
  */
 export type Paidat = string | null;
@@ -165,6 +169,10 @@ export type Banks = BankAccountRow[] | null;
  */
 export type Bankname = string;
 /**
+ * The name the account is under, as the bank has it
+ */
+export type Accountname = string;
+/**
  * The account or mobile number a customer pays to
  */
 export type Accountnumber1 = string;
@@ -204,6 +212,7 @@ export interface MyOrderRow {
   paymentMethod: Paymentmethod;
   paymentProvider?: Paymentprovider;
   manualPaymentReference?: Manualpaymentreference;
+  paymentReceiptAt?: Paymentreceiptat;
   paidAt: Paidat;
   expiresAt: Expiresat;
   completedAt: Completedat;
@@ -248,5 +257,6 @@ export interface EwalletAccountRow {
  */
 export interface BankAccountRow {
   bankName: Bankname;
+  accountName: Accountname;
   accountNumber: Accountnumber1;
 }

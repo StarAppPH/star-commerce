@@ -974,6 +974,80 @@ def addPaymentReference():
 
 
 
+@app.route('/addPaymentReceipt', methods=['POST'])
+@jwt_required()
+def addPaymentReceipt():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    orderId = data.get('orderId')
+    receiptUrl = data.get('receiptUrl')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(orderId, (dict, list)):
+            raise ValueError('Invalid orderId')
+        if isinstance(receiptUrl, (dict, list)):
+            raise ValueError('Invalid receiptUrl')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().addPaymentReceipt(userId, storeId, orderId, receiptUrl)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'addPaymentReceipt', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'receiptUrl')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'addPaymentReceipt', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'receiptUrl')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'addPaymentReceipt', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'receiptUrl'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Receipt sent to the store", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/getPaymentReceipt', methods=['POST'])
+@jwt_required()
+def getPaymentReceipt():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    orderId = data.get('orderId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(orderId, (dict, list)):
+            raise ValueError('Invalid orderId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().getPaymentReceipt(userId, orderId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'getPaymentReceipt', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'getPaymentReceipt', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'getPaymentReceipt', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Receipt fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 @app.route('/confirmOrderPayment', methods=['POST'])
 @jwt_required()
 def confirmOrderPayment():

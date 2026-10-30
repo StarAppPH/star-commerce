@@ -65,10 +65,11 @@ _ORDER_DELIVERY = ('fulfillment', 'deliveryFee', 'deliveryDistanceKm',
                    'deliveryLatitude', 'deliveryLongitude', 'deliveryNotes')
 _STORE_ORDER = ('_id', 'status', 'total', 'currency', 'contactNumber',
                 'createdAt', 'paymentMethod', 'paidAt', 'completedAt',
-                'cancelReason', 'manualPaymentReference', *_ORDER_DELIVERY)
+                'cancelReason', 'manualPaymentReference', 'paymentReceiptAt',
+                *_ORDER_DELIVERY)
 _MY_ORDER = ('_id', 'status', 'total', 'currency', 'createdAt', 'expiresAt',
              'paymentMethod', 'paidAt', 'completedAt', 'cancelReason',
-             'refundedAt', *_ORDER_DELIVERY)
+             'refundedAt', 'paymentReceiptAt', *_ORDER_DELIVERY)
 _STORE_RETURN = ('_id', 'orderId', 'status', 'reason', 'note',
                  'refundAmount', 'currency', 'createdAt', 'contactNumber',
                  'rejectReason', 'restocked')

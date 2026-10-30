@@ -115,6 +115,10 @@ export type Cancelreason = ("expired" | "byStore" | "byCustomer") | null;
  * When its payment was refunded
  */
 export type Refundedat = string | null;
+/**
+ * When the shopper sent the photo of its receipt
+ */
+export type Paymentreceiptat = string | null;
 
 /**
  * An order on a shopper's order card.
@@ -140,6 +144,7 @@ export interface ChatMyOrderRow {
   completedAt: Completedat;
   cancelReason: Cancelreason;
   refundedAt: Refundedat;
+  paymentReceiptAt?: Paymentreceiptat;
 }
 /**
  * One item of an order as a route sends it: OrderItem without its

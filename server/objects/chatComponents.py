@@ -131,6 +131,9 @@ class ChatStoreOrderRow(OrderDeliveryRow):
         None, max_length=MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
         description='The reference the customer gave for a payment made by '
         'hand')
+    paymentReceiptAt: datetime.datetime | None = Field(
+        None, description='When the customer sent the photo of its receipt '
+        '(getPaymentReceipt shows it)')
 
 
 class StoreOrdersCard(ResponseModel):
@@ -163,6 +166,9 @@ class ChatMyOrderRow(OrderDeliveryRow):
                                               description='Why it was cancelled')
     refundedAt: datetime.datetime | None = Field(
         ..., description='When its payment was refunded')
+    # Null on a card saved before payment receipts.
+    paymentReceiptAt: datetime.datetime | None = Field(
+        None, description='When the shopper sent the photo of its receipt')
 
 
 class MyOrdersCard(ResponseModel):

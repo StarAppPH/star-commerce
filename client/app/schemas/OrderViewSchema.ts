@@ -103,6 +103,14 @@ export type Paymentreference = string | null;
  */
 export type Manualpaymentreference = string | null;
 /**
+ * Where the photo of its receipt is kept (photoStorage.receiptPath), for a payment made by hand
+ */
+export type Paymentreceiptpath = string | null;
+/**
+ * When the customer sent the photo of its receipt
+ */
+export type Paymentreceiptat = string | null;
+/**
  * When it was paid
  */
 export type Paidat = string | null;
@@ -178,6 +186,8 @@ export interface OrderView {
   paymentProvider?: Paymentprovider;
   paymentReference?: Paymentreference;
   manualPaymentReference?: Manualpaymentreference;
+  paymentReceiptPath?: Paymentreceiptpath;
+  paymentReceiptAt?: Paymentreceiptat;
   paidAt?: Paidat;
   cancelledAt?: Cancelledat;
   cancelReason?: Cancelreason;

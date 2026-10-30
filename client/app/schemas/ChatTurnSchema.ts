@@ -772,6 +772,10 @@ export type Cancelreason = ("expired" | "byStore" | "byCustomer") | null;
  */
 export type Manualpaymentreference = string | null;
 /**
+ * When the customer sent the photo of its receipt (getPaymentReceipt shows it)
+ */
+export type Paymentreceiptat = string | null;
+/**
  * The orders
  *
  * @maxItems 50
@@ -880,6 +884,10 @@ export type Cancelreason1 = ("expired" | "byStore" | "byCustomer") | null;
  */
 export type Refundedat = string | null;
 /**
+ * When the shopper sent the photo of its receipt
+ */
+export type Paymentreceiptat1 = string | null;
+/**
  * The orders
  *
  * @maxItems 50
@@ -925,6 +933,10 @@ export type Banks = BankAccountRow[] | null;
  * The bank, e.g. BDO
  */
 export type Bankname = string;
+/**
+ * The name the account is under, as the bank has it
+ */
+export type Accountname = string;
 /**
  * The account or mobile number a customer pays to
  */
@@ -2265,6 +2277,7 @@ export interface ChatStoreOrderRow {
   completedAt: Completedat;
   cancelReason: Cancelreason;
   manualPaymentReference?: Manualpaymentreference;
+  paymentReceiptAt?: Paymentreceiptat;
 }
 /**
  * One item of an order as a route sends it: OrderItem without its
@@ -2307,6 +2320,7 @@ export interface ChatMyOrderRow {
   completedAt: Completedat1;
   cancelReason: Cancelreason1;
   refundedAt: Refundedat;
+  paymentReceiptAt?: Paymentreceiptat1;
 }
 /**
  * The order a shopper just placed, unpaid. Answered with PaymentAnswer:
@@ -2349,6 +2363,7 @@ export interface EwalletAccountRow {
  */
 export interface BankAccountRow {
   bankName: Bankname;
+  accountName: Accountname;
   accountNumber: Accountnumber1;
 }
 /**

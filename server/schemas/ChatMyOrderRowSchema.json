@@ -281,6 +281,20 @@
             ],
             "description": "When its payment was refunded",
             "title": "Refundedat"
+        },
+        "paymentReceiptAt": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "When the shopper sent the photo of its receipt",
+            "title": "Paymentreceiptat"
         }
     },
     "required": [

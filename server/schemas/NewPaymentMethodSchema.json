@@ -8,6 +8,11 @@
                     "title": "Bankname",
                     "type": "string"
                 },
+                "accountName": {
+                    "description": "The name the account is under, as the bank has it",
+                    "title": "Accountname",
+                    "type": "string"
+                },
                 "accountNumber": {
                     "description": "The account number a customer transfers to",
                     "title": "Accountnumber",
@@ -16,6 +21,7 @@
             },
             "required": [
                 "bankName",
+                "accountName",
                 "accountNumber"
             ],
             "title": "NewBankAccount",

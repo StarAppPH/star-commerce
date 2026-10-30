@@ -124,6 +124,10 @@ export type Cancelreason = ("expired" | "byStore" | "byCustomer") | null;
  */
 export type Refundedat = string | null;
 /**
+ * When the shopper sent the photo of its receipt
+ */
+export type Paymentreceiptat = string | null;
+/**
  * The ways the shopper can pay it (never none)
  */
 export type Paymentoptions = PaymentOption[] | null;
@@ -155,6 +159,10 @@ export type Banks = BankAccountRow[] | null;
  * The bank, e.g. BDO
  */
 export type Bankname = string;
+/**
+ * The name the account is under, as the bank has it
+ */
+export type Accountname = string;
 /**
  * The account or mobile number a customer pays to
  */
@@ -207,6 +215,7 @@ export interface ChatMyOrderRow {
   completedAt: Completedat;
   cancelReason: Cancelreason;
   refundedAt: Refundedat;
+  paymentReceiptAt?: Paymentreceiptat;
 }
 /**
  * One item of an order as a route sends it: OrderItem without its
@@ -245,5 +254,6 @@ export interface EwalletAccountRow {
  */
 export interface BankAccountRow {
   bankName: Bankname;
+  accountName: Accountname;
   accountNumber: Accountnumber1;
 }

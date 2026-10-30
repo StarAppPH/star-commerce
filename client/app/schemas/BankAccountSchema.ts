@@ -10,6 +10,10 @@
  */
 export type Bankname = string;
 /**
+ * The name the account is under, as the bank has it
+ */
+export type Accountname = string;
+/**
  * The account or mobile number a customer pays to
  */
 export type Accountnumber = string;
@@ -19,5 +23,6 @@ export type Accountnumber = string;
  */
 export interface BankAccount {
   bankName: Bankname;
+  accountName: Accountname;
   accountNumber: Accountnumber;
 }

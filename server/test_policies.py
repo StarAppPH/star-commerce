@@ -1155,7 +1155,8 @@ def test_authorizedPaymentMethods_keepsEachMethodsDetails_stripped(clean):
             {'ewalletName': ' GCash ', 'accountNumber': ' 09171234567 '},
             {'ewalletName': 'Maya', 'accountNumber': '09181234567'}]},
         {'method': 'bankTransfer', 'banks': [
-            {'bankName': 'BDO', 'accountNumber': '001234567890'}]},
+            {'bankName': 'BDO', 'accountName': 'Bakery A Inc.',
+             'accountNumber': '001234567890'}]},
         {'method': 'check', 'checkPayees': ['  Bakery A Inc. ']},
         {'method': 'crypto', 'provider': 'demo'}])
 
@@ -1164,7 +1165,8 @@ def test_authorizedPaymentMethods_keepsEachMethodsDetails_stripped(clean):
             {'ewalletName': 'GCash', 'accountNumber': '09171234567'},
             {'ewalletName': 'Maya', 'accountNumber': '09181234567'}]},
         {**CASH, 'method': 'bankTransfer', 'banks': [
-            {'bankName': 'BDO', 'accountNumber': '001234567890'}]},
+            {'bankName': 'BDO', 'accountName': 'Bakery A Inc.',
+             'accountNumber': '001234567890'}]},
         {**CASH, 'method': 'check', 'checkPayees': ['Bakery A Inc.']},
         {**CASH, 'method': 'crypto', 'provider': 'demo'}]
     assert saved['authorizedPaymentMethods'] == want
@@ -1185,18 +1187,23 @@ def test_authorizedPaymentMethods_keepsEachMethodsDetails_stripped(clean):
      'accounts customers pay to (eWallets: ewalletName and accountNumber), '
      'a provider, or both'),
     ([{'method': 'bankTransfer'}], 'Payment method 1: bankTransfer needs the '
-     'bank accounts customers transfer to (banks: bankName and '
+     'bank accounts customers transfer to (banks: bankName, accountName and '
      'accountNumber)'),
     ([{'method': 'check', 'checkPayees': []}], 'Payment method 1: '
      'checkPayees is a list of 1 to 10'),
     ([{'method': 'check', 'checkPayees': ['ZZSENTINEL\x00']}],
      'Payment method 1: check payee 1 cannot contain control characters'),
     ([{'method': 'cash', 'banks': [
-        {'bankName': 'BDO', 'accountNumber': '1'}]}],
+        {'bankName': 'BDO', 'accountName': 'Bakery A Inc.',
+         'accountNumber': '1'}]}],
      'Payment method 1: cash takes no banks'),
     ([{'method': 'bankTransfer', 'banks': [
-        {'bankName': 'BDO', 'accountNumber': 'ZZSENTINEL' * 5}]}],
+        {'bankName': 'BDO', 'accountName': 'Bakery A Inc.',
+         'accountNumber': 'ZZSENTINEL' * 5}]}],
      'Payment method 1: bank 1: accountNumber is 1 to 40 characters'),
+    ([{'method': 'bankTransfer', 'banks': [
+        {'bankName': 'BDO', 'accountNumber': '1'}]}],
+     'Payment method 1: bank 1: accountName must be text'),
     ([{'method': 'eWallet', 'eWallets': [{'ewalletName': 'GCash'}]}],
      'Payment method 1: e-wallet 1: accountNumber must be text'),
     (['ZZSENTINEL'], 'Payment method 1: send it as an object'),
@@ -1237,13 +1244,15 @@ def test_e2e_theAdminSetsThePaymentMethods_overMcp(clean):
         'authorizedPaymentMethods': [
             {'method': 'cash'},
             {'method': 'bankTransfer', 'banks': [
-                {'bankName': 'BPI', 'accountNumber': '1234'}]}],
+                {'bankName': 'BPI', 'accountName': 'Bakery A Inc.',
+                 'accountNumber': '1234'}]}],
     }, audience='admin')
 
     assert not saved.is_error, _text(saved)
     assert _policyDoc(store['_id'])['authorizedPaymentMethods'] == [
         CASH, {**CASH, 'method': 'bankTransfer', 'banks': [
-            {'bankName': 'BPI', 'accountNumber': '1234'}]}]
+            {'bankName': 'BPI', 'accountName': 'Bakery A Inc.',
+             'accountNumber': '1234'}]}]
     refused = callTool(_auth(ADMIN), 'updateMyStorePolicy', {
         'authorizedPaymentMethods': [{'method': 'ZZSENTINEL'}]},
         audience='admin')

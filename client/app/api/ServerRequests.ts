@@ -34,6 +34,7 @@ import type { NewReturnItem } from '../schemas/NewReturnItemSchema';
 import type { NoContentResponse } from '../schemas/NoContentResponseSchema';
 import type { OrderItemsAnswer } from '../schemas/OrderItemsAnswerSchema';
 import type { PaymentAnswer } from '../schemas/PaymentAnswerSchema';
+import type { PaymentReceiptResponse } from '../schemas/PaymentReceiptResponseSchema';
 import type { PhoneVerifiedAnswer } from '../schemas/PhoneVerifiedAnswerSchema';
 import type { PhoneVerifiedResponse } from '../schemas/PhoneVerifiedResponseSchema';
 import type { PhotoColorsResponse } from '../schemas/PhotoColorsResponseSchema';
@@ -626,6 +627,52 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             cache: 'no-store'
         });
         const data: ApiResponse<MyOrderRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async addPaymentReceipt(userId: string, storeId: string, orderId: string, receiptUrl: string): Promise<ApiResponse<MyOrderRow>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/addPaymentReceipt`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "orderId": orderId, "receiptUrl": receiptUrl}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<MyOrderRow> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async getPaymentReceipt(userId: string, orderId: string): Promise<ApiResponse<PaymentReceiptResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/getPaymentReceipt`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "orderId": orderId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<PaymentReceiptResponse> & { msg?: string } = await res.json();
         if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
         
         if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
@@ -1331,6 +1378,8 @@ export interface RouteResponseModels {
     createOrder: CreatedOrderResponse;
     payOrder: MyOrderRow;
     addPaymentReference: MyOrderRow;
+    addPaymentReceipt: MyOrderRow;
+    getPaymentReceipt: PaymentReceiptResponse;
     confirmOrderPayment: StoreOrderRow;
     completeOrder: StoreOrderRow;
     cancelStoreOrder: StoreOrderRow;
@@ -1388,6 +1437,8 @@ export interface RouteRequestBodies {
     createOrder: { userId: string; storeId: string; items: NewOrderItem[]; fulfillment: 'pickup' | 'delivery' | null; delivery: NewOrderDelivery | null };
     payOrder: { userId: string; storeId: string; orderId: string; paymentMethod: string; paymentProvider: string | null };
     addPaymentReference: { userId: string; storeId: string; orderId: string; reference: string };
+    addPaymentReceipt: { userId: string; storeId: string; orderId: string; receiptUrl: string };
+    getPaymentReceipt: { userId: string; orderId: string };
     confirmOrderPayment: { userId: string; orderId: string };
     completeOrder: { userId: string; orderId: string };
     cancelStoreOrder: { userId: string; orderId: string };

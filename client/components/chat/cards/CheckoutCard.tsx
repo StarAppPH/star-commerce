@@ -16,7 +16,7 @@ import type { ComponentProps } from './types';
 // What paying by hand with `option` takes: the store's accounts, or where.
 function manualDetails(option: PaymentOption): string[] {
   if (option.eWallets) return option.eWallets.map((account) => `${account.ewalletName}: ${account.accountNumber}`);
-  if (option.banks) return option.banks.map((account) => `${account.bankName}: ${account.accountNumber}`);
+  if (option.banks) return option.banks.map((account) => `${account.bankName}: ${account.accountNumber} (${account.accountName})`);
   if (option.checkPayees) return option.checkPayees.map((payee) => `Pay to the order of ${payee}, at the handover`);
   return ['Paid at the handover'];
 }
@@ -101,6 +101,9 @@ export function CheckoutCard({ component, answered, busy, onAnswer }: ComponentP
         {!answered && chosen && chosen.provider === null && (
           <ul data-component="checkoutPayTo" className="flex flex-col gap-1 rounded-lg bg-muted px-3 py-2.5 text-sm">
             {manualDetails(chosen).map((line) => <li key={line}>{line}</li>)}
+            {chosen.method !== 'cash' && (
+              <li className="text-muted-foreground text-xs">Once you’ve paid, send a photo of the receipt from your order.</li>
+            )}
           </ul>
         )}
         {!answered && !chosen && (

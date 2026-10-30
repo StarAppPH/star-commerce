@@ -111,6 +111,10 @@ export type Paymentprovider = "demo" | null;
  */
 export type Manualpaymentreference = string | null;
 /**
+ * When the customer sent the photo of its receipt
+ */
+export type Paymentreceiptat = string | null;
+/**
  * When it was paid
  */
 export type Paidat = string | null;
@@ -174,6 +178,7 @@ export interface StoreOrderRow {
   paymentMethod: Paymentmethod;
   paymentProvider?: Paymentprovider;
   manualPaymentReference?: Manualpaymentreference;
+  paymentReceiptAt?: Paymentreceiptat;
   paidAt: Paidat;
   expiresAt: Expiresat;
   completedAt: Completedat;

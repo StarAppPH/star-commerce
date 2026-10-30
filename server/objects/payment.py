@@ -45,6 +45,8 @@ CheckPayee = Annotated[str, Field(
 EwalletName = Annotated[AccountName, Field(
     description='The e-wallet, e.g. GCash')]
 BankName = Annotated[AccountName, Field(description='The bank, e.g. BDO')]
+AccountHolder = Annotated[AccountName, Field(
+    description='The name the account is under, as the bank has it')]
 MethodProvider = Annotated[PaymentProvider | None, Field(
     description='The payment provider that takes it; null: paid by hand to '
     'the store only')]
@@ -60,6 +62,7 @@ class EwalletAccount(AppModel):
 class BankAccount(AppModel):
     """One of the store's bank accounts a customer transfers to by hand."""
     bankName: BankName
+    accountName: AccountHolder
     accountNumber: AccountNumber
 
 
@@ -88,7 +91,7 @@ def methodProblem(method: str, provider, eWallets, banks,
                 'both')
     if method == 'bankTransfer' and not banks:
         return ('bankTransfer needs the bank accounts customers transfer to '
-                '(banks: bankName and accountNumber)')
+                '(banks: bankName, accountName and accountNumber)')
     if method == 'check' and not checkPayees:
         return ('check needs the account names a check is made out to '
                 '(checkPayees)')
@@ -133,6 +136,8 @@ class NewBankAccount(AppModel):
     """A bank account of an updateMyStorePolicy call. Types only, no
     limits: the route checks them, never quoting a value."""
     bankName: str = Field(..., description='The bank, e.g. BDO')
+    accountName: str = Field(..., description='The name the account is '
+                             'under, as the bank has it')
     accountNumber: str = Field(..., description='The account number a '
                                'customer transfers to')
 
@@ -165,6 +170,7 @@ class EwalletAccountRow(ResponseModel):
 class BankAccountRow(ResponseModel):
     """BankAccount as a route sends it (MIRRORS keeps it in step)."""
     bankName: BankName
+    accountName: AccountHolder
     accountNumber: AccountNumber
 
 

@@ -1,0 +1,16 @@
+{
+    "description": "The photo of the receipt a customer sent for a payment made by hand,\nfor the store's admin.",
+    "properties": {
+        "image": {
+            "description": "The photo, a JPEG data URL",
+            "title": "Image",
+            "type": "string"
+        }
+    },
+    "required": [
+        "image"
+    ],
+    "title": "PaymentReceiptResponse",
+    "type": "object",
+    "additionalProperties": false
+}

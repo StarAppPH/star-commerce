@@ -134,6 +134,12 @@ class Order(MongoModel):
         None, min_length=1, max_length=MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
         description='The reference the customer gave for a payment made by '
         "hand, e.g. a bank transfer's")
+    # Never sent: the store's admin reads it through getPaymentReceipt.
+    paymentReceiptPath: str | None = Field(
+        None, min_length=1, description='Where the photo of its receipt is '
+        'kept (photoStorage.receiptPath), for a payment made by hand')
+    paymentReceiptAt: datetime.datetime | None = Field(
+        None, description='When the customer sent the photo of its receipt')
     paidAt: datetime.datetime | None = Field(None,
                                              description='When it was paid')
     cancelledAt: datetime.datetime | None = Field(
@@ -250,6 +256,8 @@ class StoreOrderRow(OrderDeliveryRow):
         None, min_length=1, max_length=MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
         description='The reference the customer gave for a payment made by '
         "hand, e.g. a bank transfer's")
+    paymentReceiptAt: datetime.datetime | None = Field(
+        None, description='When the customer sent the photo of its receipt')
     paidAt: datetime.datetime | None = Field(...,
                                              description='When it was paid')
     expiresAt: datetime.datetime = Field(
@@ -294,6 +302,8 @@ class MyOrderRow(OrderDeliveryRow):
         None, min_length=1, max_length=MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
         description='The reference the customer gave for a payment made by '
         "hand, e.g. a bank transfer's")
+    paymentReceiptAt: datetime.datetime | None = Field(
+        None, description='When the customer sent the photo of its receipt')
     paidAt: datetime.datetime | None = Field(...,
                                              description='When it was paid')
     expiresAt: datetime.datetime = Field(
@@ -323,3 +333,9 @@ class CreatedOrderResponse(ResponseModel):
     order: MyOrderRow = Field(..., description='The order just placed')
     paymentOptions: list[PaymentOption] = Field(
         ..., min_length=1, description='The ways the customer can pay it')
+
+
+class PaymentReceiptResponse(ResponseModel):
+    """The photo of the receipt a customer sent for a payment made by hand,
+    for the store's admin."""
+    image: str = Field(..., description='The photo, a JPEG data URL')

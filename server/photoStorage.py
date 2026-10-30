@@ -28,6 +28,12 @@ bucket. Every other environment ignores both.
   .webp for such an original), which
   storage.rules lets anyone get (never list) and only the server (admin
   credentials) write, and returns its download URL.
+- receiptImage(), saveReceipt(), readReceipt(), deleteReceipt(): a payment
+  receipt a customer uploaded to their own folder, re-encoded as a JPEG
+  (no metadata, at most RECEIPT_MAX_SIDE pixels a side) and kept under
+  stores/<storeId>/receipts/, which storage.rules lets no client read: only
+  the server does, for the store's admin (PaymentActions.getPaymentReceipt).
+  It has no download token, so no URL serves it.
 - deletePrefix(): deletes every file of one folder, a store's
   (storeFolder) or a user's (userFolder, but never its chat/ subfolder);
   deleteOwnChatFiles() deletes named files of a user's chat/ subfolder:
@@ -587,6 +593,89 @@ def saveFoundPhoto(uid: str, photoId: str, data: bytes,
     path = foundPhotoPath(uid, photoId)
     _upload(path, data, STORE_PHOTO_CONTENT_TYPE, deadline)
     return path
+
+
+# A payment receipt as the store keeps it: a JPEG at most this many pixels
+# a side, plenty to read a reference number.
+RECEIPT_MAX_SIDE = 1600
+RECEIPT_JPEG_QUALITY = 85
+RECEIPT_FOLDER = 'receipts'
+
+
+def receiptImage(data: bytes, label: str) -> bytes:
+    """A receipt photo (a checked JPEG, PNG or WebP) as the store keeps
+    it: a JPEG with no metadata (a phone's EXIF location is dropped), its
+    transparency on white, scaled to at most RECEIPT_MAX_SIDE a side. One
+    that cannot be read is NOT_A_REAL_PHOTO, one over
+    MODEL_IMAGE_MAX_PIXELS MODEL_IMAGE_TOO_LARGE (after the label)."""
+    from PIL import Image, ImageOps
+    try:
+        with Image.open(io.BytesIO(data)) as opened:
+            if opened.width * opened.height > MODEL_IMAGE_MAX_PIXELS:
+                raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}')
+            image = ImageOps.exif_transpose(opened)
+            image = image.convert('RGBA')
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}') from None
+    except (OSError, SyntaxError):
+        raise ValueError(f'{label} {NOT_A_REAL_PHOTO}') from None
+    flat = Image.new('RGB', image.size, 'white')
+    flat.paste(image, mask=image.getchannel('A'))
+    flat.thumbnail((RECEIPT_MAX_SIDE, RECEIPT_MAX_SIDE))
+    out = io.BytesIO()
+    flat.save(out, 'JPEG', quality=RECEIPT_JPEG_QUALITY)
+    return out.getvalue()
+
+
+def receiptPath(storeId: str, receiptId: str) -> str:
+    """Where a payment receipt of the store is kept (a JPEG)."""
+    return f'{storeFolder(storeId)}{RECEIPT_FOLDER}/{receiptId}.jpg'
+
+
+def saveReceipt(storeId: str, receiptId: str, data: bytes,
+                deadline: float) -> str:
+    """Write the JPEG `data` to receiptPath(storeId, receiptId), a fresh
+    path, with no download token, before `deadline`; returns the path."""
+    from google.api_core.exceptions import PreconditionFailed
+    path = receiptPath(storeId, receiptId)
+    try:
+        _bucket().blob(path).upload_from_string(
+            data, content_type=STORE_PHOTO_CONTENT_TYPE,
+            if_generation_match=0, **_limits(deadline))
+    except PreconditionFailed:
+        pass  # a retry found the first attempt's upload: saved
+    except _storageErrors() as error:
+        raise _storageFailure(error) from None
+    return path
+
+
+def readReceipt(path: str, deadline: float) -> bytes | None:
+    """The bytes of the receipt at `path` (receiptPath), None when it is
+    gone (a store reset deleted it). A Storage failure is a 503."""
+    from google.api_core.exceptions import NotFound
+    if not path.startswith(f'{STORE_FOLDER}/') or (
+            f'/{RECEIPT_FOLDER}/' not in path):
+        raise ValueError('Not a receipt path')
+    try:
+        blob = _bucket().get_blob(path, **_limits(deadline))
+        if blob is None:
+            return None
+        return blob.download_as_bytes(end=MAX_IMAGE_BYTES,
+                                      **_limits(deadline))
+    except NotFound:
+        return None
+    except _storageErrors() as error:
+        raise _storageFailure(error) from None
+
+
+def deleteReceipt(path: str, deadline: float) -> None:
+    """Delete the receipt at `path`, best effort: a failure is logged by
+    class and left (an orphan file no client can read)."""
+    try:
+        _deleteBlob(_bucket().blob(path), deadline)
+    except Exception as error:  # noqa: BLE001 - best effort
+        logging.warning({'function': 'deleteReceipt',
+                         'error': type(error).__name__})
 
 
 def storeFolder(storeId: str) -> str:

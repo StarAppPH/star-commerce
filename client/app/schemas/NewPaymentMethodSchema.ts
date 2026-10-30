@@ -34,6 +34,10 @@ export type Banks = NewBankAccount[] | null;
  */
 export type Bankname = string;
 /**
+ * The name the account is under, as the bank has it
+ */
+export type Accountname = string;
+/**
  * The account number a customer transfers to
  */
 export type Accountnumber1 = string;
@@ -68,5 +72,6 @@ export interface NewEwalletAccount {
  */
 export interface NewBankAccount {
   bankName: Bankname;
+  accountName: Accountname;
   accountNumber: Accountnumber1;
 }

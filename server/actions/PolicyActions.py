@@ -115,17 +115,19 @@ def _accounts(value, label: str) -> list | None:
     return value
 
 
-def _validAccounts(value, model, nameField: str, label: str) -> list | None:
-    """The e-wallet or bank accounts of a payment method ({nameField,
-    accountNumber} each), stripped; a refusal names the account's
-    position, never its value."""
+def _validAccounts(value, model, nameFields: tuple[str, ...],
+                   label: str) -> list | None:
+    """The e-wallet or bank accounts of a payment method (`nameFields` and
+    accountNumber each), stripped; a refusal names the account's position,
+    never its value."""
     if _accounts(value, label) is None:
         return None
 
     def account(item, earlier):
         return {
-            nameField: _validText(item.get(nameField), nameField,
-                                  PAYMENT_ACCOUNT_NAME_MAX_LENGTH),
+            **{field: _validText(item.get(field), field,
+                                 PAYMENT_ACCOUNT_NAME_MAX_LENGTH)
+               for field in nameFields},
             'accountNumber': _validText(item.get('accountNumber'),
                                         'accountNumber',
                                         PAYMENT_ACCOUNT_NUMBER_MAX_LENGTH),
@@ -149,9 +151,9 @@ def _validPaymentMethod(item: dict, earlier: list[dict]) -> dict:
                                      PaymentProvider)):
         raise ValueError(INVALID_PROVIDER)
     eWallets = _validAccounts(item.get('eWallets'), NewEwalletAccount,
-                              'ewalletName', 'E-wallet')
-    banks = _validAccounts(item.get('banks'), NewBankAccount, 'bankName',
-                           'Bank')
+                              ('ewalletName',), 'E-wallet')
+    banks = _validAccounts(item.get('banks'), NewBankAccount,
+                           ('bankName', 'accountName'), 'Bank')
     checkPayees = _accounts(item.get('checkPayees'), 'checkPayees')
     if checkPayees is not None:
         checkPayees = [
@@ -209,8 +211,9 @@ may skip any):
   `provider` ({_oneOf(PaymentProvider)}: they are paid online); eWallet
   either the store's own accounts customers pay to by hand, `eWallets` (a
   list of ewalletName, e.g. GCash, and accountNumber), or a `provider` to
-  pay online, or both; bankTransfer the store's `banks` (a list of bankName
-  and accountNumber); check `checkPayees`, the account names a check is
+  pay online, or both; bankTransfer the store's `banks` (a list of
+  bankName, accountName, the name the account is under, and
+  accountNumber); check `checkPayees`, the account names a check is
   made out to. A payment made by hand waits for the admin to confirm it
   (confirmOrderPayment). The list replaces the stored one: send every
   method the store takes, with its details. Then

@@ -218,6 +218,20 @@
                     "description": "The reference the customer gave for a payment made by hand, e.g. a bank transfer's",
                     "title": "Manualpaymentreference"
                 },
+                "paymentReceiptAt": {
+                    "anyOf": [
+                        {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "When the customer sent the photo of its receipt",
+                    "title": "Paymentreceiptat"
+                },
                 "paidAt": {
                     "anyOf": [
                         {

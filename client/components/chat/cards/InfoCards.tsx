@@ -56,7 +56,7 @@ function paymentMethodText(method: AuthorizedPaymentMethodRow): string {
   const ways: string[] = [];
   if (method.provider !== null) ways.push(`online through ${PAYMENT_PROVIDER_LABELS[method.provider] ?? method.provider}`);
   if (method.eWallets) ways.push(method.eWallets.map((account) => `${account.ewalletName} ${account.accountNumber}`).join(', '));
-  if (method.banks) ways.push(method.banks.map((account) => `${account.bankName} ${account.accountNumber}`).join(', '));
+  if (method.banks) ways.push(method.banks.map((account) => `${account.bankName} ${account.accountNumber} (${account.accountName})`).join(', '));
   if (method.checkPayees) ways.push(`payable to ${method.checkPayees.join(' or ')}`);
   const label = PAYMENT_METHOD_LABELS[method.method] ?? method.method;
   return ways.length > 0 ? `${label} (${ways.join('; ')})` : label;

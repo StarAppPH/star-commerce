@@ -16,7 +16,10 @@ rules_version = '2';
 // (server/photoStorage.py) are under stores/<storeId>/photos/: anyone may
 // get one by its path (customers see them) but nobody may list the folder
 // (a store's drafts stay unlisted), and only the server writes there (its
-// admin credentials bypass these rules).
+// admin credentials bypass these rules). The payment receipts customers send
+// are copied by the server to stores/<storeId>/receipts/, which no block
+// matches: no client reads them, and the store's admin sees one only through
+// the server (getPaymentReceipt).
 //
 // To open another path, add a match block, e.g. product images anyone may
 // read and any signed-in user may upload:

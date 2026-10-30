@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ChatCard, SentNote } from './ChatCard';
 import { OrderDelivery } from './OrderDelivery';
+import { SendReceiptButton, ViewReceiptButton } from './PaymentReceipt';
 import {
   CANCEL_REASON_LABELS, ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, formatMoney, formatWhen, itemsText, nonEmpty,
   orderRef,
@@ -85,6 +86,7 @@ export function StoreOrdersCard({ component, answered, busy, onAnswer }: Compone
                     ? `pays by ${(PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod).toLowerCase()}: confirm once it arrives`
                     : null,
                   order.manualPaymentReference ? `reference ${order.manualPaymentReference}` : null,
+                  order.paymentReceiptAt ? `receipt sent ${formatWhen(order.paymentReceiptAt)}` : null,
                   order.paidAt && order.paymentMethod
                     ? `paid by ${PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod} ${formatWhen(order.paidAt)}`
                     : null,
@@ -95,6 +97,7 @@ export function StoreOrdersCard({ component, answered, busy, onAnswer }: Compone
               <a className="text-muted-foreground text-xs underline-offset-2 hover:underline" href={`tel:${order.contactNumber}`}>
                 {order.contactNumber}
               </a>
+              {order.paymentReceiptAt && <ViewReceiptButton orderId={order._id} />}
             </div>
           </li>
         ))}
@@ -134,8 +137,12 @@ export function MyOrdersCard({ component }: ComponentProps<'myOrders'>) {
                 order.completedAt ? `handed over ${formatWhen(order.completedAt)}` : null,
                 order.cancelReason ? CANCEL_REASON_LABELS[order.cancelReason] ?? order.cancelReason : null,
                 order.refundedAt ? `refunded ${formatWhen(order.refundedAt)}` : null,
+                order.paymentReceiptAt ? `receipt sent ${formatWhen(order.paymentReceiptAt)}` : null,
               ].filter(Boolean).join(' · ')}
             </span>
+            {order.status === 'awaitingPayment' && order.paymentMethod !== 'cash' && (
+              <SendReceiptButton orderId={order._id} sent={Boolean(order.paymentReceiptAt)} />
+            )}
           </li>
         ))}
       </ul>

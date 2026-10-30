@@ -285,7 +285,8 @@ def test_createOrder_answersTheOrderAndTheStoresPaymentOptions(
     assert res['paymentOptions'][3]['eWallets'] == [
         {'ewalletName': 'GCash', 'accountNumber': '09171234567'}]
     assert res['paymentOptions'][4]['banks'] == [
-        {'bankName': 'BDO', 'accountNumber': '001234567890'}]
+        {'bankName': 'BDO', 'accountName': 'Bakery A Inc.',
+         'accountNumber': '001234567890'}]
     assert res['paymentOptions'][5]['checkPayees'] == ['Bakery A Inc.']
     assert len(PAYMENT_METHODS) == 6
     assert res['order']['status'] == 'pending'
@@ -513,7 +514,8 @@ def test_createOrder_aStoreThatHasNotSaidHowToPay_takesNoOrder(
 def test_createOrder_offersOnlyTheStoresOwnMethods(clean, firebase, clock):
     store = takePayments(createTestStore(ADMIN), [
         {'method': 'bankTransfer', 'provider': None, 'eWallets': None,
-         'banks': [{'bankName': 'BPI', 'accountNumber': '1234'}],
+         'banks': [{'bankName': 'BPI', 'accountName': 'Bakery A Inc.',
+                    'accountNumber': '1234'}],
          'checkPayees': None}])
     pandesal = addProduct(store['_id'], 'Pandesal', 5)
     customerId = verifiedGuestAt(firebase, store, GUEST)
@@ -522,7 +524,8 @@ def test_createOrder_offersOnlyTheStoresOwnMethods(clean, firebase, clock):
 
     assert res['paymentOptions'] == [
         {'method': 'bankTransfer', 'provider': None, 'eWallets': None,
-         'banks': [{'bankName': 'BPI', 'accountNumber': '1234'}],
+         'banks': [{'bankName': 'BPI', 'accountName': 'Bakery A Inc.',
+                    'accountNumber': '1234'}],
          'checkPayees': None}]
     with pytest.raises(ValueError, match=exactly(OPTION_NOT_OFFERED)):
         api.payOrder(customerId, store['_id'], res['order']['_id'], 'card',

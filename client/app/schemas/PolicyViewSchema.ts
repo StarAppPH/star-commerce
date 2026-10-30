@@ -183,6 +183,10 @@ export type Banks =
  */
 export type Bankname = string;
 /**
+ * The name the account is under, as the bank has it
+ */
+export type Accountname = string;
+/**
  * The account or mobile number a customer pays to
  */
 export type Accountnumber1 = string;
@@ -272,5 +276,6 @@ export interface EwalletAccount {
  */
 export interface BankAccount {
   bankName: Bankname;
+  accountName: Accountname;
   accountNumber: Accountnumber1;
 }

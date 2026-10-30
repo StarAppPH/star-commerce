@@ -207,6 +207,34 @@
             "description": "The reference the customer gave for a payment made by hand, e.g. a bank transfer's",
             "title": "Manualpaymentreference"
         },
+        "paymentReceiptPath": {
+            "anyOf": [
+                {
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Where the photo of its receipt is kept (photoStorage.receiptPath), for a payment made by hand",
+            "title": "Paymentreceiptpath"
+        },
+        "paymentReceiptAt": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "When the customer sent the photo of its receipt",
+            "title": "Paymentreceiptat"
+        },
         "paidAt": {
             "anyOf": [
                 {

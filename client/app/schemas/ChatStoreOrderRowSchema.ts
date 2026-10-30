@@ -115,6 +115,10 @@ export type Cancelreason = ("expired" | "byStore" | "byCustomer") | null;
  * The reference the customer gave for a payment made by hand
  */
 export type Manualpaymentreference = string | null;
+/**
+ * When the customer sent the photo of its receipt (getPaymentReceipt shows it)
+ */
+export type Paymentreceiptat = string | null;
 
 /**
  * An order on the admin's order card.
@@ -140,6 +144,7 @@ export interface ChatStoreOrderRow {
   completedAt: Completedat;
   cancelReason: Cancelreason;
   manualPaymentReference?: Manualpaymentreference;
+  paymentReceiptAt?: Paymentreceiptat;
 }
 /**
  * One item of an order as a route sends it: OrderItem without its
