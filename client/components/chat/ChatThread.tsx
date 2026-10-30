@@ -56,7 +56,8 @@ export function ChatThread({ chat, variant, placeholder, dataComponent, onVoice,
           variant={variant}
           placeholder={placeholder}
           disabled={chat.sending || chat.loading}
-          onSend={chat.ask}
+          onSend={chat.sendMessage}
+          onUpload={chat.upload}
           onVoice={onVoice}
           autoFocus
         />

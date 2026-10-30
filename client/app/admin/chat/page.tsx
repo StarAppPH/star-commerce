@@ -101,7 +101,8 @@ function AdminNewChat({ setup }: { setup: boolean }) {
           hero
           autoFocus
           placeholder={setup ? 'Tell me about your store' : 'Ask about orders, or tell me what to change in your store'}
-          onSend={chat.ask}
+          onSend={chat.sendMessage}
+          onUpload={chat.upload}
           onVoice={openVoice}
         />
 

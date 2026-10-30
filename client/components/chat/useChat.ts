@@ -6,6 +6,7 @@ import type { ChatThinkingResponse } from '@/app/schemas/ChatThinkingResponseSch
 import type { SpokenThinkingResponse } from '@/app/schemas/SpokenThinkingResponseSchema';
 import type { ConversationTurnsResponse } from '@/app/schemas/ConversationTurnsResponseSchema';
 import type { ChatComponent, ChatFormAnswer } from './cards/types';
+import type { TurnFile, UploadedFiles } from './attachments';
 
 // The most turns one page of history loads (getConversationTurns takes 1-50).
 export const TURNS_PAGE = 20;
@@ -21,6 +22,8 @@ export interface ChatTurnView {
   seq: number | null;
   // The message, or a form answer's summary (the server's, once saved).
   userText: string;
+  // The files sent with it.
+  files: TurnFile[];
   reply: string | null;
   components: ChatComponent[];
   // The form this turn answered.
@@ -30,6 +33,7 @@ export interface ChatTurnView {
   error: string | null;
   // What a failed turn sends again.
   form: ChatFormAnswer | null;
+  uploaded: UploadedFiles | null;
   // What the assistant is doing while it answers (the running tool's
   // thinking text); null before its first tool.
   thinkingText: string | null;
@@ -41,9 +45,11 @@ export type OnThinking = (text: string, spoken: () => Promise<string | null>) =>
 
 // How a chat reaches the server: the admin's routes or a shopper's.
 // `turnKey` names a turn being sent, so thinking and speakThinking can ask
-// what it is doing.
+// what it is doing. `upload` puts files in the user's own chat folder, for
+// `attachments` (their download URLs).
 export interface ChatTransport {
-  send: (message: string | null, conversationId: string | null, form: ChatFormAnswer | null, turnKey: string) => Promise<ApiResponse<ChatReplyResponse>>;
+  send: (message: string | null, conversationId: string | null, form: ChatFormAnswer | null, attachments: string[] | null, turnKey: string) => Promise<ApiResponse<ChatReplyResponse>>;
+  upload: (files: File[]) => Promise<UploadedFiles>;
   loadTurns: (conversationId: string, beforeSeq: number | null, limit: number) => Promise<ApiResponse<ConversationTurnsResponse>>;
   thinking: (turnKey: string) => Promise<ApiResponse<ChatThinkingResponse>>;
   speakThinking: (turnKey: string) => Promise<ApiResponse<SpokenThinkingResponse>>;
@@ -130,6 +136,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
         key: `seq-${row.seq}`,
         seq: row.seq,
         userText: row.userText,
+        files: (row.attachments ?? []).map((file) => ({ name: file.name, contentType: file.contentType })),
         reply: row.replyText,
         components: row.components,
         answeredFormId: row.answeredFormId,
@@ -137,6 +144,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
         status: 'done' as const,
         error: null,
         form: null,
+        uploaded: null,
         thinkingText: null,
       }))
       .reverse();
@@ -178,16 +186,19 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     return next;
   }, []);
 
-  // Sends one turn (a message, or a form's answer) and resolves to the
-  // assistant's reply (null when it failed: the turn then shows the error
-  // and a way to try again). While it waits, the turn shows what the
-  // assistant is doing, also passed to onThinking.
-  const send = useCallback(async (message: string | null, form: ChatFormAnswer | null, onThinking?: OnThinking): Promise<string | null> => {
+  // Sends one turn (a message with the files `uploaded`, or a form's
+  // answer) and resolves to the assistant's reply (null when it failed: the
+  // turn then shows the error and a way to try again). While it waits, the
+  // turn shows what the assistant is doing, also passed to onThinking.
+  const send = useCallback(async (
+    message: string | null, form: ChatFormAnswer | null, onThinking?: OnThinking, uploaded: UploadedFiles | null = null,
+  ): Promise<string | null> => {
     const key = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const pending: ChatTurnView = {
       key,
       seq: null,
       userText: form ? answerLabel(form) : message ?? '',
+      files: uploaded?.files ?? [],
       reply: null,
       components: [],
       answeredFormId: form?.formId ?? null,
@@ -195,6 +206,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
       status: 'sending',
       error: null,
       form,
+      uploaded,
       thinkingText: null,
     };
     const withPending = [...turnsRef.current, pending];
@@ -212,7 +224,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     });
     let res: ApiResponse<ChatReplyResponse>;
     try {
-      res = await transport.send(message, idRef.current, form, turnKey);
+      res = await transport.send(message, idRef.current, form, uploaded?.urls ?? null, turnKey);
     } finally {
       stopPolling();
     }
@@ -229,6 +241,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
       components: res.data.components,
       status: 'done',
       form: null,
+      uploaded: null,
       thinkingText: null,
       createdAt: new Date().toISOString(),
     }));
@@ -244,6 +257,15 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     return send(message, null, onThinking);
   }, [send]);
 
+  // A message from the composer: its text, the files uploaded for it, or
+  // both.
+  const sendMessage = useCallback(async (text: string, uploaded: UploadedFiles | null): Promise<string | null> => {
+    const message = text.trim();
+    const files = uploaded && uploaded.urls.length > 0 ? uploaded : null;
+    if (!message && !files) return null;
+    return send(message || null, null, undefined, files);
+  }, [send]);
+
   const answer = useCallback((form: ChatFormAnswer) => send(null, form), [send]);
 
   const retry = useCallback(async (key: string) => {
@@ -252,7 +274,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     const rest = turnsRef.current.filter((turn) => turn.key !== key);
     turnsRef.current = rest;
     setTurns(rest);
-    await send(failed.form ? null : failed.userText, failed.form);
+    await send(failed.form ? null : failed.userText || null, failed.form, undefined, failed.uploaded);
   }, [send]);
 
   const sending = turns.some((turn) => turn.status === 'sending');
@@ -261,5 +283,5 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     [turns],
   );
 
-  return { turns, loading, loadError, hasEarlier, loadingEarlier, sending, answeredFormIds, ask, answer, retry, reload, loadEarlier };
+  return { turns, loading, loadError, hasEarlier, loadingEarlier, sending, answeredFormIds, ask, sendMessage, upload: transport.upload, answer, retry, reload, loadEarlier };
 }

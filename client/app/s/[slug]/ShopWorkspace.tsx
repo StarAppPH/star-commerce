@@ -2,7 +2,9 @@
 import React, { createContext, useCallback, useContext, useMemo } from 'react';
 import { useGuestSession, type GuestSession } from '@/lib/GuestSessionContext';
 import { useServer } from '@/lib/ServerContext';
+import { guestAuth, guestStorage } from '@/lib/guestFirebase';
 import type { ChatTransport } from '@/components/chat/useChat';
+import { uploadChatFiles } from '@/components/chat/attachments';
 import { CONVERSATIONS_PAGE, useConversationList, type ConversationList } from '@/components/chat/useConversationList';
 
 interface ShopWorkspaceValue extends ConversationList {
@@ -29,9 +31,16 @@ export function ShopWorkspaceProvider({ session, children }: { session: GuestSes
   const list = useConversationList(fetchPage, true);
 
   const transport = useMemo<ChatTransport>(() => ({
-    send: (message, conversationId, form, turnKey) => guestRequest((current) => server.sendStoreChatMessage(
-      current.customerId, current.store.id, message, conversationId, form, null, turnKey,
+    send: (message, conversationId, form, attachments, turnKey) => guestRequest((current) => server.sendStoreChatMessage(
+      current.customerId, current.store.id, message, conversationId, form, attachments, turnKey,
     )),
+    // The shopper's anonymous account is their customer id: the server takes
+    // files from users/<customerId>/ only.
+    upload: (files) => {
+      const user = guestAuth.currentUser;
+      if (!user) return Promise.reject(new Error('No guest session'));
+      return uploadChatFiles(guestStorage, user.uid, files);
+    },
     loadTurns: (conversationId, beforeSeq, limit) => guestRequest((current) => server.getConversationTurns(
       current.customerId, conversationId, beforeSeq, limit,
     )),

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
-import { RotateCwIcon } from 'lucide-react';
+import { FileTextIcon, ImageIcon, RotateCwIcon } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -9,6 +9,7 @@ import { formatStoreTime } from '@/lib/storeTime';
 import { AssistantText } from './AssistantText';
 import { ChatComponents } from './cards/ChatComponents';
 import type { ChatFormAnswer } from './cards/types';
+import type { TurnFile } from './attachments';
 import type { ChatTurnView } from './useChat';
 
 interface ChatMessagesProps {
@@ -55,16 +56,21 @@ export function ChatMessages({
       )}
       {turns.map((turn) => (
         <div key={turn.key} className="flex flex-col gap-4">
-          <div
-            className={cn(
-              'max-w-[85%] self-end whitespace-pre-wrap break-words px-3.5 py-2.5 text-[15px] leading-[22px] sm:text-base',
-              variant === 'admin'
-                ? 'rounded-2xl bg-muted'
-                : 'rounded-[18px] rounded-br-md bg-primary text-primary-foreground',
+          <div className="flex flex-col gap-2">
+            {turn.files.length > 0 && <TurnFiles files={turn.files} />}
+            {turn.userText !== '' && (
+              <div
+                className={cn(
+                  'max-w-[85%] self-end whitespace-pre-wrap break-words px-3.5 py-2.5 text-[15px] leading-[22px] sm:text-base',
+                  variant === 'admin'
+                    ? 'rounded-2xl bg-muted'
+                    : 'rounded-[18px] rounded-br-md bg-primary text-primary-foreground',
+                )}
+                title={turn.createdAt ? formatStoreTime(turn.createdAt) : undefined}
+              >
+                {turn.userText}
+              </div>
             )}
-            title={turn.createdAt ? formatStoreTime(turn.createdAt) : undefined}
-          >
-            {turn.userText}
           </div>
           {turn.status === 'sending' && (
             <div data-component="chatThinking" className="flex items-center gap-2 text-muted-foreground text-sm" aria-live="polite">
@@ -100,6 +106,23 @@ export function ChatMessages({
         </div>
       ))}
       <div ref={endRef} />
+    </div>
+  );
+}
+
+// The files a turn's message carried, by name.
+function TurnFiles({ files }: { files: TurnFile[] }) {
+  return (
+    <div data-component="chatTurnFiles" className="flex max-w-[85%] flex-wrap justify-end gap-2 self-end">
+      {files.map((file, index) => {
+        const Icon = file.contentType === 'application/pdf' ? FileTextIcon : ImageIcon;
+        return (
+          <div key={`${file.name}-${index}`} className="flex max-w-56 items-center gap-2 rounded-xl border bg-card px-3 py-2 text-sm">
+            <Icon className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{file.name}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
