@@ -28,7 +28,7 @@ import sys
 import textwrap
 from typing import NamedTuple
 
-from mcpTools import INJECTED_PARAMS, MCP_AUDIENCES
+from mcpTools import INJECTED_PARAMS, MCP_AUDIENCES, MIN_THINKING_TEXTS
 
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_PATH = os.path.join(SERVER_DIR, 'mcpServer.py')
@@ -65,6 +65,7 @@ class ToolSpec(NamedTuple):
     injected: tuple  # the INJECTED_PARAMS the route takes, in order
     returns: str  # the route's responseModel: the tool's output schema
     imports: tuple  # (module, name) the annotations and returns need
+    thinkingText: tuple  # what the chat shows while it runs (mcpTools)
 
 
 def mcpRoutes(apiRequestsClass) -> dict:
@@ -141,6 +142,9 @@ def toolSpec(name: str, func) -> ToolSpec:
     responseModel = getattr(func, 'responseModel', None)
     if not isinstance(responseModel, type):
         _refuse(name, 'needs a responseModel: it is the output schema')
+    thinkingText = getattr(func, 'mcpThinkingText', ())
+    if len(thinkingText) < MIN_THINKING_TEXTS:
+        _refuse(name, f'needs at least {MIN_THINKING_TEXTS} thinkingText')
     original = inspect.unwrap(func)
     description = inspect.getdoc(original)
     if not description or not description.strip():
@@ -176,7 +180,7 @@ def toolSpec(name: str, func) -> ToolSpec:
     imports.append((responseModel.__module__, responseModel.__name__))
     return ToolSpec(name, audiences, description, tuple(params),
                     tuple(injected), responseModel.__name__,
-                    tuple(sorted(set(imports))))
+                    tuple(sorted(set(imports))), tuple(thinkingText))
 
 
 def toolSpecs(apiRequestsClass) -> list:

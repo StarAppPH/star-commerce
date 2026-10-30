@@ -53,6 +53,7 @@ import time
 from typing import Callable, TypeVar
 
 import chatModel
+import chatThinking
 import voiceModel
 from actions import ChatActions as chatActions
 from actions.callSlots import slot
@@ -64,8 +65,8 @@ from actions.usageCounters import (ALL_STORES, appDay, envCap,
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import (VOICE_PAGE_TOKEN_MAX_LENGTH, VOICE_SEARCH_MAX_LENGTH,
-                     SpokenReplyResponse, VoiceListResponse,
-                     VoiceReplyResponse)
+                     SpokenReplyResponse, SpokenThinkingResponse,
+                     VoiceListResponse, VoiceReplyResponse)
 from route_config import route_config
 from utils import wholeNumber
 
@@ -207,12 +208,14 @@ def _spokenOrNone(audience: str, userId: str, store: dict, turn: dict,
 
 
 def _voiceTurn(audience: str, userId: str, store: dict, audio,
-               conversationId) -> dict:
+               conversationId, turnKey=None) -> dict:
     """One voice message of `userId` at `store`: transcribed, answered as a
     chat turn of the conversation `conversationId` (None: a new one), and
-    the reply spoken. Refused (503) while CHAT_TURNS_AT_ONCE turns run."""
+    the reply spoken. `turnKey` names the turn to getChatThinking and
+    speakChatThinking. Refused (503) while CHAT_TURNS_AT_ONCE turns run."""
     started = time.monotonic()
     requestDeadline = started + VOICE_REQUEST_SECONDS
+    turnKey = chatThinking.validTurnKey(turnKey)
     wav, seconds = voiceModel.validWav(audio)
     with slot(chatActions._turnSlots, chatModel.unavailable):
         chatActions.refuseTurnBeforeItStarts(audience, userId, store['_id'],
@@ -223,7 +226,8 @@ def _voiceTurn(audience: str, userId: str, store: dict, audio,
         # (requireOwnerStore), so never the setup toolset. No form answer.
         turn = chatActions._slottedTurn(audience, audience, userId,
                                         store['_id'], transcript,
-                                        conversationId, None)
+                                        conversationId, None,
+                                        turnKey=turnKey)
         spoken = _spokenOrNone(audience, userId, store, turn,
                                requestDeadline)
     # Never the recording, the transcript, the reply or the key.
@@ -241,6 +245,33 @@ def _voiceTurn(audience: str, userId: str, store: dict, audio,
             'reply': turn['reply'],
             'audio': spoken,
             'audioFormat': AUDIO_FORMAT}
+
+
+def _thinkingSpoken(userId: str, storeId: str, text: str) -> str | None:
+    """The thinking text `text` spoken in the store's voice: its clip
+    (chatThinking.cachedSpeech), else spoken once and kept, its characters
+    metered against the store's and all stores' caps only (a clip serves
+    every turn after, so it is no one customer's). None when it is not: a
+    cap reached (info), speech failing (a warning)."""
+    try:
+        store = db.read({'_id': storeId}, 'Stores',
+                        projection={'voiceId': 1}, findOne=True)
+        voice = chatThinking.speakingVoice(
+            None if store is None else store.get('voiceId'))
+        audio = chatThinking.cachedSpeech(voice, text)
+        if audio is not None:
+            return audio
+        deadline = time.monotonic() + voiceModel.TTS_DEADLINE_SECONDS
+        with slot(_speakSlots, voiceModel.unavailable):
+            return _metered(
+                TTS, 'admin', userId, storeId, len(text),
+                lambda: chatThinking.speakAndSave(voice, text, deadline))
+    except Exception as error:
+        logging.log(logging.INFO if isinstance(error, ValueError)
+                    else logging.WARNING,
+                    {'event': 'thinkingSpeakFailed',
+                     'errorClass': type(error).__name__})
+        return None
 
 
 def _speakingStore(audience: str, userId: str, storeId: str) -> dict:
@@ -266,14 +297,16 @@ class VoiceActions():
     def sendAdminVoiceMessage(self,
                               userId: str,
                               audio: str,
-                              conversationId: str | None = None) -> dict:
+                              conversationId: str | None = None,
+                              turnKey: str | None = None) -> dict:
         """Send the admin's recorded message (base64 WAV: mono, 16-bit PCM,
         16 or 24 kHz, 0.3 to 60 seconds) to the store assistant, at the
         store the admin owns, and return what it heard, its reply, and the
         reply spoken (base64 MP3; null when speaking failed). No
         conversationId starts a new conversation."""
         store = requireOwnerStore(userId, {'_id': 1, 'voiceId': 1})
-        return _voiceTurn('admin', userId, store, audio, conversationId)
+        return _voiceTurn('admin', userId, store, audio, conversationId,
+                          turnKey)
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,
@@ -283,7 +316,8 @@ class VoiceActions():
                               userId: str,
                               storeId: str,
                               audio: str,
-                              conversationId: str | None = None) -> dict:
+                              conversationId: str | None = None,
+                              turnKey: str | None = None) -> dict:
         """Send the customer's recorded message (base64 WAV: mono, 16-bit
         PCM, 16 or 24 kHz, 0.3 to 60 seconds) to the shopping assistant of
         the store being visited, and return what it heard, its reply, and
@@ -291,7 +325,8 @@ class VoiceActions():
         speaking failed). Capped per customer and per store each day."""
         customerAtStore(userId, storeId)
         store = setUpStore(storeId, {'_id': 1, 'voiceId': 1})
-        return _voiceTurn('customer', userId, store, audio, conversationId)
+        return _voiceTurn('customer', userId, store, audio, conversationId,
+                          turnKey)
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,
@@ -331,7 +366,27 @@ class VoiceActions():
         })
         return {'audio': audio, 'audioFormat': AUDIO_FORMAT}
 
-    @mcp_tool('admin')
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Thinking spoken',
+                  responseModel=SpokenThinkingResponse)
+    def speakChatThinking(self, userId: str, turnKey: str) -> dict:
+        """Speak what the assistant is doing in the caller's own chat turn
+        `turnKey` (getChatThinking's text), in its store's voice (base64
+        MP3; null when it is doing nothing to say). Each text is
+        spoken by ElevenLabs once per voice and reused after
+        (chatThinking.cachedSpeech); that first time counts against the
+        store's and all stores' daily voice caps."""
+        thinking = chatThinking.current(userId, turnKey)
+        if thinking is None:
+            return {'audio': None}
+        return {'audio': _thinkingSpoken(userId, thinking['storeId'],
+                                         thinking['thinkingText'])}
+
+    @mcp_tool('admin',
+              thinkingText=['Finding voices',
+                            'Browsing the voices',
+                            'Looking up voices'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Voices fetched',

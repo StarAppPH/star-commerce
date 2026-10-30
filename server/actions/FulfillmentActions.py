@@ -93,7 +93,10 @@ def _refund(order: dict, projection: dict) -> dict:
 
 class FulfillmentActions():
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Completing the order',
+                            'Marking the order complete',
+                            'Wrapping up the order'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Order completed',
@@ -117,7 +120,10 @@ class FulfillmentActions():
             raise ValueError(_refusal(scope, ('paid',)))
         return orderRow(StoreOrderRow, completed)
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Cancelling the order',
+                            'Calling off the order',
+                            'Stopping the order'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Order cancelled',
@@ -147,7 +153,10 @@ class FulfillmentActions():
             cancelled = _refund(cancelled, projection)
         return orderRow(StoreOrderRow, cancelled)
 
-    @mcp_tool('customer')
+    @mcp_tool('customer',
+              thinkingText=['Cancelling your order',
+                            'Calling off your order',
+                            'Stopping your order'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Order cancelled',

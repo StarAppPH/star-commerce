@@ -16,6 +16,8 @@ Per tool, chatTools.py holds:
     mcpRuntime.callRoute. userId always comes from the chat route's JWT;
     storeId is passed only to a route that takes one, from the
     conversation, never from the model;
+  - THINKING_TEXTS, each route tool's thinking texts (mcpTools), which
+    chatThinking.py picks from while the tool runs;
   - TOOLS, each toolset's tool list as Meta's chat API takes it, sorted by
     name: byte-stable, so Meta's prompt cache matches. A toolset's list is
     its route tools and its form tools (chatForms.py: chat-only, never on
@@ -121,6 +123,10 @@ def render(specs: list) -> str:
         '',
         'DESCRIPTIONS = {',
         *[f'    {spec.name!r}: {spec.description!r},' for spec in specs],
+        '}',
+        '',
+        'THINKING_TEXTS = {',
+        *[f'    {spec.name!r}: {spec.thinkingText!r},' for spec in specs],
         '}',
     ]
     source = '\n'.join(parts) + '\n'

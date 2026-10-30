@@ -198,7 +198,10 @@ def _storePolicy(store: dict) -> dict:
 
 class PolicyActions():
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Reading your store policy',
+                            'Checking your policy',
+                            'Looking up your policy'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Policy fetched',
@@ -211,7 +214,10 @@ class PolicyActions():
                                            'currency': 1})
         return _storePolicy(store)
 
-    @mcp_tool('customer')
+    @mcp_tool('customer',
+              thinkingText=['Reading the store policy',
+                            "Checking the store's rules",
+                            'Looking up the policy'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Policy fetched',
@@ -239,7 +245,10 @@ class PolicyActions():
     # (OrderActions._statusMatch's reason). _validAnswer and _validClear
     # check them on both paths. Its answer params are POLICY_ANSWER_FIELDS
     # (pinned below the class).
-    @mcp_tool('admin', description=UPDATE_POLICY_DESCRIPTION)
+    @mcp_tool('admin', description=UPDATE_POLICY_DESCRIPTION,
+              thinkingText=['Saving your policy',
+                            'Updating your store policy',
+                            'Writing down your policy'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Policy saved',

@@ -29,12 +29,14 @@ export function ShopWorkspaceProvider({ session, children }: { session: GuestSes
   const list = useConversationList(fetchPage, true);
 
   const transport = useMemo<ChatTransport>(() => ({
-    send: (message, conversationId, form) => guestRequest((current) => server.sendStoreChatMessage(
-      current.customerId, current.store.id, message, conversationId, form, null,
+    send: (message, conversationId, form, turnKey) => guestRequest((current) => server.sendStoreChatMessage(
+      current.customerId, current.store.id, message, conversationId, form, null, turnKey,
     )),
     loadTurns: (conversationId, beforeSeq, limit) => guestRequest((current) => server.getConversationTurns(
       current.customerId, conversationId, beforeSeq, limit,
     )),
+    thinking: (turnKey) => guestRequest((current) => server.getChatThinking(current.customerId, turnKey)),
+    speakThinking: (turnKey) => guestRequest((current) => server.speakChatThinking(current.customerId, turnKey)),
   }), [guestRequest, server]);
 
   const value = useMemo<ShopWorkspaceValue>(() => ({ ...list, session, transport }), [list, session, transport]);

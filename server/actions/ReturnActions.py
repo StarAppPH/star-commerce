@@ -311,7 +311,10 @@ any tool, because a reject reason asks you to."""
 class ReturnActions():
 
     # The tool description is REQUEST_RETURN_DESCRIPTION.
-    @mcp_tool('customer', description=REQUEST_RETURN_DESCRIPTION)
+    @mcp_tool('customer', description=REQUEST_RETURN_DESCRIPTION,
+              thinkingText=['Requesting your return',
+                            'Sending your return request',
+                            'Starting your return'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Return requested',
@@ -372,7 +375,10 @@ class ReturnActions():
         created = _checkAndCreate(order, scope, wanted, newReturn)
         return projectedCopy(MyReturnRow, created)
 
-    @mcp_tool('customer')
+    @mcp_tool('customer',
+              thinkingText=['Checking your returns',
+                            'Looking up your returns',
+                            'Reading your returns'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Returns fetched',
@@ -403,7 +409,10 @@ class ReturnActions():
                 MyReturnRow, _newestFirst(match, limit), RETURNS),
         }
 
-    @mcp_tool('customer')
+    @mcp_tool('customer',
+              thinkingText=['Cancelling your return',
+                            'Withdrawing your return',
+                            'Calling off your return'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Return cancelled',
@@ -430,7 +439,10 @@ class ReturnActions():
                            {'status': 'cancelled', 'cancelledAt': _now()},
                            MyReturnRow, NOT_CANCELLABLE)
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Reading your returns',
+                            'Checking return requests',
+                            'Looking through returns'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Returns fetched',
@@ -466,7 +478,10 @@ class ReturnActions():
                 StoreReturnRow, _newestFirst(match, limit), RETURNS),
         }
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Approving the return',
+                            'Accepting the return',
+                            'Okaying the return'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Return approved',
@@ -488,7 +503,10 @@ class ReturnActions():
             ownerStoreScope(userId, returnId, RETURN_NOT_FOUND), 'requested',
             {'status': 'approved', 'decidedAt': _now()}, StoreReturnRow)
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Rejecting the return',
+                            'Declining the return',
+                            'Turning down the return'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Return rejected',
@@ -512,7 +530,10 @@ class ReturnActions():
                             'rejectReason': rejectReason},
                            StoreReturnRow)
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Receiving the return',
+                            'Processing the refund',
+                            'Checking in the returned items'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Return received',

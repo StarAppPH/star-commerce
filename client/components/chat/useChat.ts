@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ApiResponse } from '@/app/api/ApiResponse';
 import type { ChatReplyResponse } from '@/app/schemas/ChatReplyResponseSchema';
+import type { ChatThinkingResponse } from '@/app/schemas/ChatThinkingResponseSchema';
+import type { SpokenThinkingResponse } from '@/app/schemas/SpokenThinkingResponseSchema';
 import type { ConversationTurnsResponse } from '@/app/schemas/ConversationTurnsResponseSchema';
 import type { ChatComponent, ChatFormAnswer } from './cards/types';
 
@@ -9,6 +11,8 @@ import type { ChatComponent, ChatFormAnswer } from './cards/types';
 export const TURNS_PAGE = 20;
 // The longest message the chat routes take (server CHAT_MESSAGE_MAX_LENGTH).
 export const MESSAGE_MAX_LENGTH = 2000;
+// How often a turn being answered asks what the assistant is doing.
+const THINKING_POLL_MS = 1000;
 
 export type ChatTurnStatus = 'sending' | 'done' | 'failed';
 
@@ -26,12 +30,52 @@ export interface ChatTurnView {
   error: string | null;
   // What a failed turn sends again.
   form: ChatFormAnswer | null;
+  // What the assistant is doing while it answers (the running tool's
+  // thinking text); null before its first tool.
+  thinkingText: string | null;
 }
 
+// Called with each new thinking text of a turn being answered, and a way to
+// fetch that text spoken (base64 MP3, null when it cannot be).
+export type OnThinking = (text: string, spoken: () => Promise<string | null>) => void;
+
 // How a chat reaches the server: the admin's routes or a shopper's.
+// `turnKey` names a turn being sent, so thinking and speakThinking can ask
+// what it is doing.
 export interface ChatTransport {
-  send: (message: string | null, conversationId: string | null, form: ChatFormAnswer | null) => Promise<ApiResponse<ChatReplyResponse>>;
+  send: (message: string | null, conversationId: string | null, form: ChatFormAnswer | null, turnKey: string) => Promise<ApiResponse<ChatReplyResponse>>;
   loadTurns: (conversationId: string, beforeSeq: number | null, limit: number) => Promise<ApiResponse<ConversationTurnsResponse>>;
+  thinking: (turnKey: string) => Promise<ApiResponse<ChatThinkingResponse>>;
+  speakThinking: (turnKey: string) => Promise<ApiResponse<SpokenThinkingResponse>>;
+}
+
+// A random key for one turn (the server takes 16 to 64 letters and digits).
+function newTurnKey(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// Asks every THINKING_POLL_MS what the turn `turnKey` is doing, calling
+// onText with each new text, until the returned stop is called.
+function pollThinking(transport: ChatTransport, turnKey: string, onText: (text: string) => void): () => void {
+  let stopped = false;
+  let last: string | null = null;
+  let timer = 0;
+  const poll = async () => {
+    const res = await transport.thinking(turnKey);
+    if (stopped) return;
+    if (res.status === 200 && res.data.thinkingText !== null && res.data.thinkingText !== last) {
+      last = res.data.thinkingText;
+      onText(last);
+    }
+    timer = window.setTimeout(poll, THINKING_POLL_MS);
+  };
+  timer = window.setTimeout(poll, THINKING_POLL_MS);
+  return () => {
+    stopped = true;
+    window.clearTimeout(timer);
+  };
 }
 
 interface UseChatOptions {
@@ -93,6 +137,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
         status: 'done' as const,
         error: null,
         form: null,
+        thinkingText: null,
       }))
       .reverse();
     setHasEarlier(res.data.turns.length === TURNS_PAGE);
@@ -135,8 +180,9 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
 
   // Sends one turn (a message, or a form's answer) and resolves to the
   // assistant's reply (null when it failed: the turn then shows the error
-  // and a way to try again).
-  const send = useCallback(async (message: string | null, form: ChatFormAnswer | null): Promise<string | null> => {
+  // and a way to try again). While it waits, the turn shows what the
+  // assistant is doing, also passed to onThinking.
+  const send = useCallback(async (message: string | null, form: ChatFormAnswer | null, onThinking?: OnThinking): Promise<string | null> => {
     const key = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const pending: ChatTurnView = {
       key,
@@ -149,15 +195,29 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
       status: 'sending',
       error: null,
       form,
+      thinkingText: null,
     };
     const withPending = [...turnsRef.current, pending];
     turnsRef.current = withPending;
     setTurns(withPending);
 
     const isNew = idRef.current === null;
-    const res = await transport.send(message, idRef.current, form);
+    const turnKey = newTurnKey();
+    const stopPolling = pollThinking(transport, turnKey, (text) => {
+      replaceTurn(key, (turn) => (turn.status === 'sending' ? { ...turn, thinkingText: text } : turn));
+      onThinking?.(text, async () => {
+        const spoken = await transport.speakThinking(turnKey);
+        return spoken.status === 200 ? spoken.data.audio : null;
+      });
+    });
+    let res: ApiResponse<ChatReplyResponse>;
+    try {
+      res = await transport.send(message, idRef.current, form, turnKey);
+    } finally {
+      stopPolling();
+    }
     if (res.status !== 200) {
-      replaceTurn(key, (turn) => ({ ...turn, status: 'failed', answeredFormId: null, error: res.message }));
+      replaceTurn(key, (turn) => ({ ...turn, status: 'failed', answeredFormId: null, error: res.message, thinkingText: null }));
       return null;
     }
     idRef.current = res.data.conversationId;
@@ -169,6 +229,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
       components: res.data.components,
       status: 'done',
       form: null,
+      thinkingText: null,
       createdAt: new Date().toISOString(),
     }));
     const saved = done.find((turn) => turn.key === key);
@@ -177,10 +238,10 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     return res.data.reply;
   }, [transport, onStarted, onSaved, replaceTurn]);
 
-  const ask = useCallback(async (text: string): Promise<string | null> => {
+  const ask = useCallback(async (text: string, onThinking?: OnThinking): Promise<string | null> => {
     const message = text.trim();
     if (!message) return null;
-    return send(message, null);
+    return send(message, null, onThinking);
   }, [send]);
 
   const answer = useCallback((form: ChatFormAnswer) => send(null, form), [send]);

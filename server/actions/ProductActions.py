@@ -206,7 +206,10 @@ def validBatch(items: list, model, label: str, validate) -> list:
 
 class ProductActions():
 
-    @mcp_tool('customer')
+    @mcp_tool('customer',
+              thinkingText=['Browsing the shelves',
+                            'Looking through the products',
+                            'Checking what is in stock'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Products fetched',
@@ -236,7 +239,10 @@ class ProductActions():
             'products': db.aggregateResponses(ProductRow, pipeline, PRODUCTS),
         }
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Adding your product',
+                            'Saving the new product',
+                            'Putting the product in your store'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Product added',
@@ -274,7 +280,10 @@ class ProductActions():
             raise ValueError(NAME_TAKEN) from None
         return projectedCopy(AdminProductRow, created)
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Adding your products',
+                            'Saving the new products',
+                            'Stocking your store'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Products added',
@@ -344,7 +353,10 @@ class ProductActions():
             ],
         }
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Updating the product',
+                            'Saving your changes',
+                            'Editing the product'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Product updated',
@@ -410,7 +422,10 @@ class ProductActions():
             raise ValueError(NAME_TAKEN) from None
         return projectedCopy(AdminProductRow, updated)
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Reading your products',
+                            'Checking your inventory',
+                            'Looking through your products'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Products fetched',

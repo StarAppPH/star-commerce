@@ -3,6 +3,7 @@ import type { ApiResponse } from "./ApiResponse";
 import type { AdminProductListResponse } from '../schemas/AdminProductListResponseSchema';
 import type { AdminProductRow } from '../schemas/AdminProductRowSchema';
 import type { ChatReplyResponse } from '../schemas/ChatReplyResponseSchema';
+import type { ChatThinkingResponse } from '../schemas/ChatThinkingResponseSchema';
 import type { ConversationListResponse } from '../schemas/ConversationListResponseSchema';
 import type { ConversationTurnsResponse } from '../schemas/ConversationTurnsResponseSchema';
 import type { CreatedOrderResponse } from '../schemas/CreatedOrderResponseSchema';
@@ -33,6 +34,7 @@ import type { ProductListResponse } from '../schemas/ProductListResponseSchema';
 import type { ReturnDecisionAnswer } from '../schemas/ReturnDecisionAnswerSchema';
 import type { RoleListResponse } from '../schemas/RoleListResponseSchema';
 import type { SpokenReplyResponse } from '../schemas/SpokenReplyResponseSchema';
+import type { SpokenThinkingResponse } from '../schemas/SpokenThinkingResponseSchema';
 import type { StoreOrderListResponse } from '../schemas/StoreOrderListResponseSchema';
 import type { StoreOrderRow } from '../schemas/StoreOrderRowSchema';
 import type { StorePolicyResponse } from '../schemas/StorePolicyResponseSchema';
@@ -809,7 +811,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | null, attachments: string[] | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | null, attachments: string[] | null, turnKey: string | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendAdminChatMessage`, {
             method: 'POST',
@@ -817,7 +819,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "message": message, "conversationId": conversationId, "form": form, "attachments": attachments}),
+            body: JSON.stringify({"userId": userId, "message": message, "conversationId": conversationId, "form": form, "attachments": attachments, "turnKey": turnKey}),
             cache: 'no-store'
         });
         const data: ApiResponse<ChatReplyResponse> & { msg?: string } = await res.json();
@@ -832,7 +834,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | null, attachments: string[] | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | null, attachments: string[] | null, turnKey: string | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendStoreChatMessage`, {
             method: 'POST',
@@ -840,10 +842,33 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "storeId": storeId, "message": message, "conversationId": conversationId, "form": form, "attachments": attachments}),
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "message": message, "conversationId": conversationId, "form": form, "attachments": attachments, "turnKey": turnKey}),
             cache: 'no-store'
         });
         const data: ApiResponse<ChatReplyResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async getChatThinking(userId: string, turnKey: string): Promise<ApiResponse<ChatThinkingResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/getChatThinking`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "turnKey": turnKey}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<ChatThinkingResponse> & { msg?: string } = await res.json();
         if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
         
         if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
@@ -901,7 +926,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendAdminVoiceMessage(userId: string, audio: string, conversationId: string | null): Promise<ApiResponse<VoiceReplyResponse>> {
+    async sendAdminVoiceMessage(userId: string, audio: string, conversationId: string | null, turnKey: string | null): Promise<ApiResponse<VoiceReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendAdminVoiceMessage`, {
             method: 'POST',
@@ -909,7 +934,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "audio": audio, "conversationId": conversationId}),
+            body: JSON.stringify({"userId": userId, "audio": audio, "conversationId": conversationId, "turnKey": turnKey}),
             cache: 'no-store'
         });
         const data: ApiResponse<VoiceReplyResponse> & { msg?: string } = await res.json();
@@ -924,7 +949,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async sendStoreVoiceMessage(userId: string, storeId: string, audio: string, conversationId: string | null): Promise<ApiResponse<VoiceReplyResponse>> {
+    async sendStoreVoiceMessage(userId: string, storeId: string, audio: string, conversationId: string | null, turnKey: string | null): Promise<ApiResponse<VoiceReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendStoreVoiceMessage`, {
             method: 'POST',
@@ -932,7 +957,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "storeId": storeId, "audio": audio, "conversationId": conversationId}),
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "audio": audio, "conversationId": conversationId, "turnKey": turnKey}),
             cache: 'no-store'
         });
         const data: ApiResponse<VoiceReplyResponse> & { msg?: string } = await res.json();
@@ -959,6 +984,29 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             cache: 'no-store'
         });
         const data: ApiResponse<SpokenReplyResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async speakChatThinking(userId: string, turnKey: string): Promise<ApiResponse<SpokenThinkingResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/speakChatThinking`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "turnKey": turnKey}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<SpokenThinkingResponse> & { msg?: string } = await res.json();
         if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
         
         if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
@@ -1076,11 +1124,13 @@ export interface RouteResponseModels {
     updateMyStorePolicy: StorePolicyResponse;
     sendAdminChatMessage: ChatReplyResponse;
     sendStoreChatMessage: ChatReplyResponse;
+    getChatThinking: ChatThinkingResponse;
     listMyConversations: ConversationListResponse;
     getConversationTurns: ConversationTurnsResponse;
     sendAdminVoiceMessage: VoiceReplyResponse;
     sendStoreVoiceMessage: VoiceReplyResponse;
     speakChatTurn: SpokenReplyResponse;
+    speakChatThinking: SpokenThinkingResponse;
     listVoices: VoiceListResponse;
     generateProductPhotos: GeneratedPhotosResponse;
     setProductPhoto: AdminProductRow;
@@ -1120,13 +1170,15 @@ export interface RouteRequestBodies {
     getMyStorePolicy: { userId: string };
     getStorePolicy: { userId: string; storeId: string };
     updateMyStorePolicy: { userId: string; acceptsReturns: boolean | null; returnWindowDays: number | null; returnConditions: string | null; nonReturnableItems: string | null; refundMethod: string | null; returnShippingPaidBy: string | null; defectReportDays: number | null; deliveryOptions: string[] | null; deliveryAreas: string | null; offersFreeDelivery: boolean | null; freeDeliveryMinimum: number | null; handoverDays: number | null; acceptedPaymentMethods: string[] | null; paidOrderCancellation: string | null; sendsMarketingMessages: boolean | null; additionalTerms: string | null; clear: string[] | null };
-    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | null; attachments: string[] | null };
-    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | null; attachments: string[] | null };
+    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | null; attachments: string[] | null; turnKey: string | null };
+    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | null; attachments: string[] | null; turnKey: string | null };
+    getChatThinking: { userId: string; turnKey: string };
     listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
     getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };
-    sendAdminVoiceMessage: { userId: string; audio: string; conversationId: string | null };
-    sendStoreVoiceMessage: { userId: string; storeId: string; audio: string; conversationId: string | null };
+    sendAdminVoiceMessage: { userId: string; audio: string; conversationId: string | null; turnKey: string | null };
+    sendStoreVoiceMessage: { userId: string; storeId: string; audio: string; conversationId: string | null; turnKey: string | null };
     speakChatTurn: { userId: string; conversationId: string; turnSeq: number };
+    speakChatThinking: { userId: string; turnKey: string };
     listVoices: { userId: string; search: string | null; pageToken: string | null };
     generateProductPhotos: { userId: string; imageUrls: string[]; count: number; notes: string | null };
     setProductPhoto: { userId: string; productId: string; photoId: string | null };

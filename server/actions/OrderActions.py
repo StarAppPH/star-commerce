@@ -632,7 +632,10 @@ instructions."""
 
 class OrderActions():
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Reading your orders',
+                            'Checking your orders',
+                            'Looking through your orders'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Orders fetched',
@@ -676,7 +679,10 @@ class OrderActions():
         }
         return _listOrders(StoreOrderRow, match, limit)
 
-    @mcp_tool('customer')
+    @mcp_tool('customer',
+              thinkingText=['Checking your orders',
+                            'Looking up your orders',
+                            'Reading your orders'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Orders fetched',
@@ -713,7 +719,10 @@ class OrderActions():
         return _listOrders(MyOrderRow, match, limit)
 
     # The tool description is CREATE_ORDER_DESCRIPTION.
-    @mcp_tool('customer', description=CREATE_ORDER_DESCRIPTION)
+    @mcp_tool('customer', description=CREATE_ORDER_DESCRIPTION,
+              thinkingText=['Placing your order',
+                            'Preparing your order',
+                            'Writing up your order'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Order placed',
