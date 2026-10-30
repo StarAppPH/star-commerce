@@ -809,6 +809,22 @@ export type Components = (
  * The seq of the turn just saved
  */
 export type Turnseq = number;
+/**
+ * ElevenLabs' single-use token for one text-to-speech stream
+ */
+export type Token = string;
+/**
+ * The voice to speak in
+ */
+export type Voiceid = string;
+/**
+ * The ElevenLabs model
+ */
+export type Modelid = string;
+/**
+ * The reply as it is spoken (no markdown)
+ */
+export type Text = string;
 
 /**
  * What a chat route sends: the assistant's reply to the message, with
@@ -820,6 +836,10 @@ export interface ChatReplyResponse {
   reply: Reply;
   components: Components;
   turnSeq: Turnseq;
+  /**
+   * How to stream the reply spoken, when the message asked for it (speak); null otherwise, or when it cannot be spoken (a voice cap reached, ElevenLabs unavailable)
+   */
+  speech: ChatSpeech | null;
 }
 /**
  * The products a shopper asked about. Answered with OrderItemsAnswer:
@@ -1130,4 +1150,15 @@ export interface DeliveryPinForm {
    * The store's pin, where the map opens; null until pinned
    */
   storeLocation: StoreLocationResponse | null;
+}
+/**
+ * What the browser streams a reply's speech with, straight from
+ * ElevenLabs (VoiceActions.replySpeech): a single-use token (15 minutes),
+ * the voice and model, and the text to speak.
+ */
+export interface ChatSpeech {
+  token: Token;
+  voiceId: Voiceid;
+  modelId: Modelid;
+  text: Text;
 }

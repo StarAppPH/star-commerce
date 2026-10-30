@@ -36,7 +36,8 @@ export function useShellChat({ transport, conversationId, threadHref }: UseShell
 
   const onSaved = useCallback((turn: ChatTurnView) => shell.turnSaved(turn.components), [shell]);
   const chat = useChat({ transport, conversationId, initialTurns, onStarted, onSaved });
-  const { ask } = chat;
+  // Voice mode talks: its replies come with their speech.
+  const { talk: ask } = chat;
 
   useEffect(() => {
     shell.bindAsk(ask);

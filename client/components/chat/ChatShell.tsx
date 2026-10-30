@@ -2,9 +2,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { VoiceMode } from '@/components/voice/VoiceMode';
 import type { ChatComponent } from './cards/types';
-import type { ChatTurnView, OnThinking } from './useChat';
+import type { ChatTurnView, OnThinking, VoiceAnswer } from './useChat';
 
-type Ask = (text: string, onThinking?: OnThinking) => Promise<string | null>;
+type Ask = (text: string, onThinking?: OnThinking) => Promise<VoiceAnswer | null>;
 
 interface VoiceOptions {
   title: string;

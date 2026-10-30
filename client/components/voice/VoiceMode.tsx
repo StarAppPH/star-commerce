@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { cn } from '@/lib/utils';
 import { AssistantText } from '@/components/chat/AssistantText';
-import type { OnThinking } from '@/components/chat/useChat';
+import type { OnThinking, VoiceAnswer } from '@/components/chat/useChat';
+import { streamSpeech, type SpeechStream } from './elevenLabsStream';
 import {
   speak,
   speakableText,
@@ -20,8 +21,9 @@ interface VoiceModeProps {
   open: boolean;
   onClose: () => void;
   // Sends the spoken words as a chat message; resolves to the reply.
-  // onThinking hears what the assistant is doing while it answers.
-  ask: (text: string, onThinking?: OnThinking) => Promise<string | null>;
+  // onThinking hears what the assistant is doing while it answers. The
+  // reply comes with its speech (ElevenLabs), else the browser speaks it.
+  ask: (text: string, onThinking?: OnThinking) => Promise<VoiceAnswer | null>;
   title: string;
   subtitle: string;
   // The glow's two colors: the store's tones for shoppers, teal and blue
@@ -68,6 +70,10 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
   // whether one is being fetched: one at a time, never over the reply.
   const thinkingAudio = useRef<HTMLAudioElement | null>(null);
   const fetchingThinking = useRef(false);
+  // The reply streaming from ElevenLabs, and a count of what was stopped:
+  // a reply whose stream ends after a stop is not spoken again.
+  const replyStream = useRef<SpeechStream | null>(null);
+  const stops = useRef(0);
   const lang = typeof navigator === 'undefined' ? 'en-US' : navigator.language || 'en-US';
 
   useEffect(() => { speakRef.current = speakReplies; }, [speakReplies]);
@@ -77,6 +83,16 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     thinkingAudio.current?.pause();
     thinkingAudio.current = null;
   }, []);
+
+  // Everything voice mode is saying: the reply (streaming or the
+  // browser's) and a thinking text.
+  const stopVoice = useCallback(() => {
+    stops.current += 1;
+    replyStream.current?.stop();
+    replyStream.current = null;
+    stopSpeaking();
+    stopThinkingAudio();
+  }, [stopThinkingAudio]);
 
   // Shows each thinking text and says it, unless one is already playing or
   // being fetched, or the answer came first.
@@ -115,9 +131,20 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
       setState('idle');
       return;
     }
-    setReply(answer);
+    setReply(answer.reply);
     setState('answering');
-    if (speakRef.current) await speak(speakableText(answer), lang);
+    const stopsBefore = stops.current;
+    let spokenAloud = false;
+    if (speakRef.current && answer.speech) {
+      const stream = streamSpeech(answer.speech);
+      replyStream.current = stream;
+      spokenAloud = await stream.done;
+      if (replyStream.current === stream) replyStream.current = null;
+    }
+    // No speech, or the stream failed before a word: the browser's voice.
+    if (!spokenAloud && speakRef.current && stops.current === stopsBefore) {
+      await speak(speakableText(answer.reply), lang);
+    }
     setState((current) => (current === 'answering' ? 'idle' : current));
   }, [ask, lang, onThinking, stopThinkingAudio]);
 
@@ -127,7 +154,7 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
       setState('unsupported');
       return;
     }
-    stopSpeaking();
+    stopVoice();
     let finalText = '';
     const instance = new Recognition();
     instance.lang = lang;
@@ -165,20 +192,19 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     setInterim('');
     setState('listening');
     instance.start();
-  }, [finish, lang]);
+  }, [finish, lang, stopVoice]);
 
   const close = useCallback(() => {
     recognition.current?.abort();
     recognition.current = null;
-    stopSpeaking();
-    stopThinkingAudio();
+    stopVoice();
     setState('idle');
     setHeard('');
     setInterim('');
     setQuestion('');
     setReply(null);
     onClose();
-  }, [onClose, stopThinkingAudio]);
+  }, [onClose, stopVoice]);
 
   // Opening starts listening once; later changes to the callbacks (a new
   // chat id, say) must not restart it mid-answer.
@@ -205,7 +231,7 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
   const tapOrb = () => {
     if (state === 'listening') recognition.current?.stop();
     else if (state === 'answering') {
-      stopSpeaking();
+      stopVoice();
       listen();
     } else if (state === 'idle') listen();
   };
@@ -340,10 +366,7 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
           size="icon-xl"
           className="rounded-full"
           onClick={() => {
-            if (speakReplies) {
-              stopSpeaking();
-              stopThinkingAudio();
-            }
+            if (speakReplies) stopVoice();
             setSpeakReplies((value) => !value);
           }}
           aria-pressed={speakReplies}

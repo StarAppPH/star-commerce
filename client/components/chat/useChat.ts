@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ApiResponse } from '@/app/api/ApiResponse';
 import type { ChatReplyResponse } from '@/app/schemas/ChatReplyResponseSchema';
+import type { ChatSpeech } from '@/app/schemas/ChatSpeechSchema';
 import type { ChatThinkingResponse } from '@/app/schemas/ChatThinkingResponseSchema';
 import type { SpokenThinkingResponse } from '@/app/schemas/SpokenThinkingResponseSchema';
 import type { ConversationTurnsResponse } from '@/app/schemas/ConversationTurnsResponseSchema';
@@ -39,11 +40,18 @@ export interface ChatTurnView {
 // fetch that text spoken (base64 MP3, null when it cannot be).
 export type OnThinking = (text: string, spoken: () => Promise<string | null>) => void;
 
+// A spoken message's reply, with how to stream it spoken (null: the
+// browser's own voice speaks it).
+export interface VoiceAnswer {
+  reply: string;
+  speech: ChatSpeech | null;
+}
+
 // How a chat reaches the server: the admin's routes or a shopper's.
 // `turnKey` names a turn being sent, so thinking and speakThinking can ask
-// what it is doing.
+// what it is doing; `speak` asks for the reply's speech (voice mode).
 export interface ChatTransport {
-  send: (message: string | null, conversationId: string | null, form: ChatFormAnswer | null, turnKey: string) => Promise<ApiResponse<ChatReplyResponse>>;
+  send: (message: string | null, conversationId: string | null, form: ChatFormAnswer | null, turnKey: string, speak: boolean) => Promise<ApiResponse<ChatReplyResponse>>;
   loadTurns: (conversationId: string, beforeSeq: number | null, limit: number) => Promise<ApiResponse<ConversationTurnsResponse>>;
   thinking: (turnKey: string) => Promise<ApiResponse<ChatThinkingResponse>>;
   speakThinking: (turnKey: string) => Promise<ApiResponse<SpokenThinkingResponse>>;
@@ -179,10 +187,15 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
   }, []);
 
   // Sends one turn (a message, or a form's answer) and resolves to the
-  // assistant's reply (null when it failed: the turn then shows the error
-  // and a way to try again). While it waits, the turn shows what the
-  // assistant is doing, also passed to onThinking.
-  const send = useCallback(async (message: string | null, form: ChatFormAnswer | null, onThinking?: OnThinking): Promise<string | null> => {
+  // saved reply (null when it failed: the turn then shows the error and a
+  // way to try again). While it waits, the turn shows what the assistant
+  // is doing, also passed to onThinking. `speak` asks for its speech.
+  const send = useCallback(async (
+    message: string | null,
+    form: ChatFormAnswer | null,
+    onThinking?: OnThinking,
+    speak = false,
+  ): Promise<ChatReplyResponse | null> => {
     const key = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const pending: ChatTurnView = {
       key,
@@ -212,7 +225,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     });
     let res: ApiResponse<ChatReplyResponse>;
     try {
-      res = await transport.send(message, idRef.current, form, turnKey);
+      res = await transport.send(message, idRef.current, form, turnKey, speak);
     } finally {
       stopPolling();
     }
@@ -235,16 +248,24 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     const saved = done.find((turn) => turn.key === key);
     if (saved) onSaved?.(saved);
     if (isNew) onStarted?.(res.data.conversationId, done);
-    return res.data.reply;
+    return res.data;
   }, [transport, onStarted, onSaved, replaceTurn]);
 
-  const ask = useCallback(async (text: string, onThinking?: OnThinking): Promise<string | null> => {
+  const ask = useCallback(async (text: string): Promise<string | null> => {
     const message = text.trim();
     if (!message) return null;
-    return send(message, null, onThinking);
+    return (await send(message, null))?.reply ?? null;
   }, [send]);
 
-  const answer = useCallback((form: ChatFormAnswer) => send(null, form), [send]);
+  // A spoken message (voice mode): its reply and how to stream it spoken.
+  const talk = useCallback(async (text: string, onThinking?: OnThinking): Promise<VoiceAnswer | null> => {
+    const message = text.trim();
+    if (!message) return null;
+    const saved = await send(message, null, onThinking, true);
+    return saved ? { reply: saved.reply, speech: saved.speech } : null;
+  }, [send]);
+
+  const answer = useCallback(async (form: ChatFormAnswer) => (await send(null, form))?.reply ?? null, [send]);
 
   const retry = useCallback(async (key: string) => {
     const failed = turnsRef.current.find((turn) => turn.key === key);
@@ -261,5 +282,5 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     [turns],
   );
 
-  return { turns, loading, loadError, hasEarlier, loadingEarlier, sending, answeredFormIds, ask, answer, retry, reload, loadEarlier };
+  return { turns, loading, loadError, hasEarlier, loadingEarlier, sending, answeredFormIds, ask, talk, answer, retry, reload, loadEarlier };
 }
