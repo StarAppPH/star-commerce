@@ -1,4 +1,161 @@
 {
+    "$defs": {
+        "AuthorizedPaymentMethod": {
+            "description": "A way the store takes payment, with what a customer needs to pay\nthat way: cash nothing; card and crypto their provider; eWallet the\nstore's own accounts, a provider, or both; bankTransfer the store's\nbank accounts; check the names a check is made out to.",
+            "properties": {
+                "method": {
+                    "description": "The way to pay",
+                    "enum": [
+                        "cash",
+                        "card",
+                        "eWallet",
+                        "bankTransfer",
+                        "check",
+                        "crypto"
+                    ],
+                    "title": "Method",
+                    "type": "string"
+                },
+                "provider": {
+                    "anyOf": [
+                        {
+                            "const": "demo",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The payment provider that takes it; null: paid by hand to the store only",
+                    "title": "Provider"
+                },
+                "eWallets": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "$ref": "#/$defs/EwalletAccount"
+                            },
+                            "maxItems": 10,
+                            "minItems": 1,
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "eWallet: the store's own accounts, paid to by hand",
+                    "title": "Ewallets"
+                },
+                "banks": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "$ref": "#/$defs/BankAccount"
+                            },
+                            "maxItems": 10,
+                            "minItems": 1,
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "bankTransfer: the store's bank accounts",
+                    "title": "Banks"
+                },
+                "checkPayees": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "description": "The account name a check is made out to",
+                                "maxLength": 100,
+                                "minLength": 1,
+                                "type": "string"
+                            },
+                            "maxItems": 10,
+                            "minItems": 1,
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "check: the account names a check is made out to",
+                    "title": "Checkpayees"
+                }
+            },
+            "required": [
+                "method"
+            ],
+            "title": "AuthorizedPaymentMethod",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "BankAccount": {
+            "description": "One of the store's bank accounts a customer transfers to by hand.",
+            "properties": {
+                "bankName": {
+                    "description": "The bank, e.g. BDO",
+                    "maxLength": 60,
+                    "minLength": 1,
+                    "title": "Bankname",
+                    "type": "string"
+                },
+                "accountName": {
+                    "description": "The name the account is under, as the bank has it",
+                    "maxLength": 60,
+                    "minLength": 1,
+                    "title": "Accountname",
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "description": "The account or mobile number a customer pays to",
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "title": "Accountnumber",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "bankName",
+                "accountName",
+                "accountNumber"
+            ],
+            "title": "BankAccount",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "EwalletAccount": {
+            "description": "One of the store's own e-wallet accounts a customer pays to by\nhand.",
+            "properties": {
+                "ewalletName": {
+                    "description": "The e-wallet, e.g. GCash",
+                    "maxLength": 60,
+                    "minLength": 1,
+                    "title": "Ewalletname",
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "description": "The account or mobile number a customer pays to",
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "title": "Accountnumber",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "ewalletName",
+                "accountNumber"
+            ],
+            "title": "EwalletAccount",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
     "description": "A Policies document as stored.",
     "properties": {
         "_id": {
@@ -176,19 +333,13 @@
             "description": "Days from payment until a pickup order is ready (a delivery takes its zone's deliveryDays)",
             "title": "Handoverdays"
         },
-        "acceptedPaymentMethods": {
+        "authorizedPaymentMethods": {
             "anyOf": [
                 {
                     "items": {
-                        "enum": [
-                            "card",
-                            "gcash",
-                            "maya",
-                            "grabPay",
-                            "bankTransfer"
-                        ],
-                        "type": "string"
+                        "$ref": "#/$defs/AuthorizedPaymentMethod"
                     },
+                    "maxItems": 6,
                     "minItems": 1,
                     "type": "array"
                 },
@@ -197,8 +348,8 @@
                 }
             ],
             "default": null,
-            "description": "The ways a customer can pay",
-            "title": "Acceptedpaymentmethods"
+            "description": "The ways a customer can pay, each with what paying that way needs",
+            "title": "Authorizedpaymentmethods"
         },
         "paidOrderCancellation": {
             "anyOf": [

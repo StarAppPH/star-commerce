@@ -60,7 +60,7 @@ from actions.OrderActions import (INVALID_PERIOD, INVALID_STATUS,
 from actions.ProductActions import PRODUCT_LIST_DEFAULT_LIMIT
 from conftest import (RAW_EMAIL, RAW_UID, STORE_DETAILS, TOKEN, TOKEN_UID,
                       addOrder, addProduct, createTestStore, createTestUser, guestAt,
-                      verifiedGuestAt,
+                      takePayments, verifiedGuestAt,
                       modelKeys, wipeCollections)
 from flask_jwt_extended import create_access_token, decode_token
 from mongoDb import db
@@ -1004,7 +1004,7 @@ def test_http_createOrder_itemsAsAnObjectIsA400_andADictItemWorks(
     client = flaskApp.test_client()
     wipeCollections(ORDER_COLLECTIONS)
     try:
-        store = createTestStore(ADMIN)
+        store = takePayments(createTestStore(ADMIN))
         pandesal = addProduct(store['_id'], 'Rrh Pandesal', 5)
         customerId = verifiedGuestAt(firebase, store, 'rrh-guest-checkout')
         headers = _bearer(_token(flaskApp, customerId))
@@ -1022,17 +1022,21 @@ def test_http_createOrder_itemsAsAnObjectIsA400_andADictItemWorks(
         data = _success_body(post([{'productId': pandesal['_id'],
                                     'quantity': 2}]), 'createOrder')['data']
         assert data['order']['status'] == 'pending'
-        assert data['paymentMethods'][0] == 'card'
+        assert data['paymentOptions'][1] == {
+            'method': 'card', 'provider': 'demo', 'eWallets': None,
+            'banks': None, 'checkPayees': None}
 
-        def pay(method):
+        def pay(method, provider='demo'):
             return client.post('/payOrder',
                                json={'userId': customerId,
                                      'storeId': store['_id'],
                                      'orderId': data['order']['_id'],
-                                     'paymentMethod': method},
+                                     'paymentMethod': method,
+                                     'paymentProvider': provider},
                                headers=headers)
 
         assert _failure_body(pay(['card']), STATUS_BAD_REQUEST)
+        assert _failure_body(pay('card', ['demo']), STATUS_BAD_REQUEST)
         assert _success_body(pay('card'), 'payOrder')['data'][
             'status'] == 'paid'
     finally:

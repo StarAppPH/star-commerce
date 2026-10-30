@@ -209,7 +209,7 @@ export type Id2 = string;
 /**
  * Where the order is
  */
-export type Status = "pending" | "paid" | "completed" | "cancelled";
+export type Status = "pending" | "awaitingPayment" | "paid" | "completed" | "cancelled";
 /**
  * Product name when ordered
  */
@@ -260,9 +260,10 @@ export type Contactnumber = string;
  */
 export type Createdat = string;
 /**
- * How it was paid
+ * How it is or was paid
  */
-export type Paymentmethod = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+export type Paymentmethod =
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
 /**
  * When it was paid
  */
@@ -275,6 +276,14 @@ export type Completedat = string | null;
  * Why it was cancelled
  */
 export type Cancelreason = ("expired" | "byStore" | "byCustomer") | null;
+/**
+ * The reference the customer gave for a payment made by hand
+ */
+export type Manualpaymentreference = string | null;
+/**
+ * When the customer sent the photo of its receipt (getPaymentReceipt shows it)
+ */
+export type Paymentreceiptat = string | null;
 /**
  * The orders
  *
@@ -324,7 +333,7 @@ export type Id3 = string;
 /**
  * Where the order is
  */
-export type Status1 = "pending" | "paid" | "completed" | "cancelled";
+export type Status1 = "pending" | "awaitingPayment" | "paid" | "completed" | "cancelled";
 /**
  * What was ordered
  */
@@ -363,9 +372,10 @@ export type Createdat1 = string;
  */
 export type Expiresat = string;
 /**
- * How it was paid
+ * How it is or was paid
  */
-export type Paymentmethod1 = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+export type Paymentmethod1 =
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
 /**
  * When it was paid
  */
@@ -383,6 +393,10 @@ export type Cancelreason1 = ("expired" | "byStore" | "byCustomer") | null;
  */
 export type Refundedat = string | null;
 /**
+ * When the shopper sent the photo of its receipt
+ */
+export type Paymentreceiptat1 = string | null;
+/**
  * The orders
  *
  * @maxItems 50
@@ -399,7 +413,52 @@ export type Formid2 = string;
 /**
  * The ways the shopper can pay it (never none)
  */
-export type Paymentmethods = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[];
+export type Paymentoptions = PaymentOption[] | null;
+/**
+ * The way to pay
+ */
+export type Method = "cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto";
+/**
+ * The payment provider that takes it; null: paid by hand to the store, which then confirms it
+ */
+export type Provider = "demo" | null;
+/**
+ * A manual eWallet: the store's accounts to pay to
+ */
+export type Ewallets = EwalletAccountRow[] | null;
+/**
+ * The e-wallet, e.g. GCash
+ */
+export type Ewalletname = string;
+/**
+ * The account or mobile number a customer pays to
+ */
+export type Accountnumber = string;
+/**
+ * bankTransfer: the store's accounts to transfer to
+ */
+export type Banks = BankAccountRow[] | null;
+/**
+ * The bank, e.g. BDO
+ */
+export type Bankname = string;
+/**
+ * The name the account is under, as the bank has it
+ */
+export type Accountname = string;
+/**
+ * The account or mobile number a customer pays to
+ */
+export type Accountnumber1 = string;
+/**
+ * check: the names a check is made out to
+ */
+export type Checkpayees = string[] | null;
+/**
+ * The ways the shopper could pay it, on a card saved before payment options
+ */
+export type Paymentmethods =
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
 /**
  * The card
  */
@@ -620,14 +679,155 @@ export type Deliveryareas = string | null;
  */
 export type Handoverdays = number | null;
 /**
- * The ways a customer can pay
+ * The ways a customer can pay, each with what paying that way needs
  */
-export type Acceptedpaymentmethods =
+export type Authorizedpaymentmethods =
+  | [AuthorizedPaymentMethodRow]
+  | [AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow]
+  | [AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow]
+  | [AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow]
   | [
-      "card" | "gcash" | "maya" | "grabPay" | "bankTransfer",
-      ...("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[]
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow
+    ]
+  | [
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow
     ]
   | null;
+/**
+ * The way to pay
+ */
+export type Method1 = "cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto";
+/**
+ * The payment provider that takes it; null: paid by hand to the store only
+ */
+export type Provider1 = "demo" | null;
+/**
+ * eWallet: the store's own accounts, paid to by hand
+ */
+export type Ewallets1 =
+  | [EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | null;
+/**
+ * bankTransfer: the store's bank accounts
+ */
+export type Banks1 =
+  | [BankAccountRow]
+  | [BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow
+    ]
+  | [
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow
+    ]
+  | [
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow
+    ]
+  | null;
+/**
+ * check: the account names a check is made out to
+ */
+export type Checkpayees1 =
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string]
+  | null;
+/**
+ * The ways a customer could pay, on a card saved before each method had its details
+ */
+export type Acceptedpaymentmethods =
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
 /**
  * Whether a customer can cancel a paid order
  */
@@ -1326,6 +1526,8 @@ export interface ChatStoreOrderRow {
   paidAt: Paidat;
   completedAt: Completedat;
   cancelReason: Cancelreason;
+  manualPaymentReference?: Manualpaymentreference;
+  paymentReceiptAt?: Paymentreceiptat;
 }
 /**
  * One item of an order as a route sends it: OrderItem without its
@@ -1368,6 +1570,7 @@ export interface ChatMyOrderRow {
   completedAt: Completedat1;
   cancelReason: Cancelreason1;
   refundedAt: Refundedat;
+  paymentReceiptAt?: Paymentreceiptat1;
 }
 /**
  * The order a shopper just placed, unpaid. Answered with PaymentAnswer:
@@ -1380,7 +1583,38 @@ export interface CheckoutCard {
    * The order to pay
    */
   order: ChatMyOrderRow;
-  paymentMethods: Paymentmethods;
+  paymentOptions?: Paymentoptions;
+  paymentMethods?: Paymentmethods;
+}
+/**
+ * One way a customer can pay an order at checkout, as payOrder takes
+ * it (paymentMethod and paymentProvider). With a provider it is paid
+ * there and then; without one it is paid by hand to the store, to the
+ * accounts listed (none for cash), and the store confirms it.
+ */
+export interface PaymentOption {
+  method: Method;
+  provider: Provider;
+  eWallets: Ewallets;
+  banks: Banks;
+  checkPayees: Checkpayees;
+}
+/**
+ * EwalletAccount as a route sends it. Each field restates
+ * EwalletAccount's, which test_route_response_models.py's MIRRORS keeps
+ * in step.
+ */
+export interface EwalletAccountRow {
+  ewalletName: Ewalletname;
+  accountNumber: Accountnumber;
+}
+/**
+ * BankAccount as a route sends it (MIRRORS keeps it in step).
+ */
+export interface BankAccountRow {
+  bankName: Bankname;
+  accountName: Accountname;
+  accountNumber: Accountnumber1;
 }
 /**
  * The store's returns a tool listed or decided. With requested returns
@@ -1456,11 +1690,23 @@ export interface PolicyCard {
   deliveryOptions: Deliveryoptions;
   deliveryAreas: Deliveryareas;
   handoverDays: Handoverdays;
-  acceptedPaymentMethods: Acceptedpaymentmethods;
+  authorizedPaymentMethods?: Authorizedpaymentmethods;
+  acceptedPaymentMethods?: Acceptedpaymentmethods;
   paidOrderCancellation: Paidordercancellation;
   paidOrderCancellationHours: Paidordercancellationhours;
   additionalTerms: Additionalterms;
   deliveryZones?: Deliveryzones;
+}
+/**
+ * AuthorizedPaymentMethod as a route sends it (MIRRORS keeps it in
+ * step): every detail, null where the method takes none.
+ */
+export interface AuthorizedPaymentMethodRow {
+  method: Method1;
+  provider: Provider1;
+  eWallets: Ewallets1;
+  banks: Banks1;
+  checkPayees: Checkpayees1;
 }
 /**
  * A zone's delivery policy as a route sends it, without its shape.

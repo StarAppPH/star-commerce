@@ -1,0 +1,22 @@
+{
+    "description": "An e-wallet account of an updateMyStorePolicy call. Types only, no\nlimits: the route checks them, never quoting a value.",
+    "properties": {
+        "ewalletName": {
+            "description": "The e-wallet, e.g. GCash",
+            "title": "Ewalletname",
+            "type": "string"
+        },
+        "accountNumber": {
+            "description": "The account or mobile number a customer pays to",
+            "title": "Accountnumber",
+            "type": "string"
+        }
+    },
+    "required": [
+        "ewalletName",
+        "accountNumber"
+    ],
+    "title": "NewEwalletAccount",
+    "type": "object",
+    "additionalProperties": false
+}

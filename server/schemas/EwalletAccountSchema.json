@@ -1,0 +1,26 @@
+{
+    "description": "One of the store's own e-wallet accounts a customer pays to by\nhand.",
+    "properties": {
+        "ewalletName": {
+            "description": "The e-wallet, e.g. GCash",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Ewalletname",
+            "type": "string"
+        },
+        "accountNumber": {
+            "description": "The account or mobile number a customer pays to",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Accountnumber",
+            "type": "string"
+        }
+    },
+    "required": [
+        "ewalletName",
+        "accountNumber"
+    ],
+    "title": "EwalletAccount",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -9,7 +9,9 @@ from pydantic import Field, field_validator
 from typing import Annotated, Literal
 
 from objects.base import MongoModel, StoredDocumentKeys, ResponseModel
-from objects.order import Fulfillment, PaymentMethod
+from objects.order import Fulfillment
+from objects.payment import (AuthorizedPaymentMethod,
+                             AuthorizedPaymentMethodRow, PaymentMethod)
 from objects.store import DELIVERY_ZONES_MAX, DeliveryZoneRule
 
 
@@ -31,14 +33,17 @@ PaidOrderCancellation = Literal['notAllowed', 'beforeHandover', 'withinHours']
 # The answers of a Policy, by name (updateMyStorePolicy's clear). Pinned
 # to Policy's fields below (POLICY_ANSWER_FIELDS).
 # Answers a policy no longer has: each delivery zone holds its own fee and
-# free delivery total (objects/store.py). A stored policy may still carry
-# them: they are read past (extra='ignore') and dropped on its next save.
-RETIRED_POLICY_FIELDS = ('offersFreeDelivery', 'freeDeliveryMinimum')
+# free delivery total (objects/store.py), and authorizedPaymentMethods, with
+# each method's details, replaced the bare list acceptedPaymentMethods. A
+# stored policy may still carry them: they are read past (extra='ignore') and
+# dropped on its next save.
+RETIRED_POLICY_FIELDS = ('offersFreeDelivery', 'freeDeliveryMinimum',
+                         'acceptedPaymentMethods')
 PolicyField = Literal['acceptsReturns', 'returnWindowDays', 'returnConditions',
                       'nonReturnableItems', 'refundMethod',
                       'returnShippingPaidBy', 'defectReportDays',
                       'deliveryOptions', 'deliveryAreas', 'handoverDays',
-                      'acceptedPaymentMethods', 'paidOrderCancellation',
+                      'authorizedPaymentMethods', 'paidOrderCancellation',
                       'paidOrderCancellationHours', 'additionalTerms']
 POLICY_TEXT_MAX_LENGTH = 300
 POLICY_TERMS_MAX_LENGTH = 1000
@@ -81,8 +86,17 @@ HandoverDays = Annotated[int | None, Field(
     description='Days from payment until a pickup order is ready (a '
     "delivery takes its zone's deliveryDays)")]
 # Payment
-AcceptedPaymentMethods = Annotated[list[PaymentMethod] | None, Field(
-    min_length=1, description='The ways a customer can pay')]
+PAYMENT_METHODS_COUNT = len(typing.get_args(PaymentMethod))
+AuthorizedPaymentMethods = Annotated[
+    list[AuthorizedPaymentMethod] | None, Field(
+        min_length=1, max_length=PAYMENT_METHODS_COUNT,
+        description='The ways a customer can pay, each with what paying '
+        'that way needs')]
+AuthorizedPaymentMethodRows = Annotated[
+    list[AuthorizedPaymentMethodRow] | None, Field(
+        min_length=1, max_length=PAYMENT_METHODS_COUNT,
+        description='The ways a customer can pay, each with what paying '
+        'that way needs')]
 PaidOrderCancellationAnswer = Annotated[PaidOrderCancellation | None, Field(
     description='Whether a customer can cancel a paid order')]
 PaidOrderCancellationHours = Annotated[int | None, Field(
@@ -124,7 +138,7 @@ class Policy(MongoModel):
     deliveryOptions: DeliveryOptions = None
     deliveryAreas: DeliveryAreas = None
     handoverDays: HandoverDays = None
-    acceptedPaymentMethods: AcceptedPaymentMethods = None
+    authorizedPaymentMethods: AuthorizedPaymentMethods = None
     paidOrderCancellation: PaidOrderCancellationAnswer = None
     paidOrderCancellationHours: PaidOrderCancellationHours = None
     additionalTerms: AdditionalTerms = None
@@ -164,8 +178,10 @@ class Policy(MongoModel):
                 and self.paidOrderCancellationHours is None):
             return ('Paid orders can be cancelled within hours: ask how many '
                     'hours after payment (paidOrderCancellationHours)')
-        for field in ('deliveryOptions', 'acceptedPaymentMethods'):
+        for field in ('deliveryOptions', 'authorizedPaymentMethods'):
             values = getattr(self, field)
+            if field == 'authorizedPaymentMethods' and values is not None:
+                values = [method.method for method in values]
             if values is not None and len(set(values)) != len(values):
                 return (f'{field} lists an option twice: ask again which '
                         'options apply, and send each once')
@@ -202,7 +218,7 @@ class StorePolicyResponse(ResponseModel):
     deliveryOptions: DeliveryOptions = Field(...)
     deliveryAreas: DeliveryAreas = Field(...)
     handoverDays: HandoverDays = Field(...)
-    acceptedPaymentMethods: AcceptedPaymentMethods = Field(...)
+    authorizedPaymentMethods: AuthorizedPaymentMethodRows = Field(...)
     paidOrderCancellation: PaidOrderCancellationAnswer = Field(...)
     paidOrderCancellationHours: PaidOrderCancellationHours = Field(...)
     additionalTerms: AdditionalTerms = Field(...)

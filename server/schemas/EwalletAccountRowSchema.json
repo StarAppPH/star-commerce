@@ -1,0 +1,26 @@
+{
+    "description": "EwalletAccount as a route sends it. Each field restates\nEwalletAccount's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+    "properties": {
+        "ewalletName": {
+            "description": "The e-wallet, e.g. GCash",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Ewalletname",
+            "type": "string"
+        },
+        "accountNumber": {
+            "description": "The account or mobile number a customer pays to",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Accountnumber",
+            "type": "string"
+        }
+    },
+    "required": [
+        "ewalletName",
+        "accountNumber"
+    ],
+    "title": "EwalletAccountRow",
+    "type": "object",
+    "additionalProperties": false
+}

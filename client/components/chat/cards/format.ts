@@ -44,16 +44,34 @@ export function minutesLeft(until: string, now: number): number {
   return end ? Math.max(0, Math.ceil((end.getTime() - now) / 60000)) : 0;
 }
 
+// The payment methods, and the e-wallets an order paid before e-wallets were
+// one method was paid with.
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: 'Cash',
   card: 'Card',
+  eWallet: 'E-wallet',
+  bankTransfer: 'Bank transfer',
+  check: 'Check',
+  crypto: 'Crypto',
   gcash: 'GCash',
   maya: 'Maya',
   grabPay: 'GrabPay',
-  bankTransfer: 'Bank transfer',
 };
 
+export const PAYMENT_PROVIDER_LABELS: Record<string, string> = {
+  demo: 'Demo payments',
+};
+
+// How an order is or was paid: its method, and "to the store" when it was
+// paid by hand rather than through a provider.
+export function paymentText(method: string, provider: string | null): string {
+  const label = PAYMENT_METHOD_LABELS[method] ?? method;
+  return provider === null ? `${label} to the store` : label;
+}
+
 export const ORDER_STATUS_LABELS: Record<string, string> = {
-  pending: 'Awaiting payment',
+  pending: 'Choosing how to pay',
+  awaitingPayment: 'Awaiting payment',
   paid: 'Paid',
   completed: 'Handed over',
   cancelled: 'Cancelled',

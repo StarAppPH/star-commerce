@@ -14,6 +14,7 @@ from objects.store import (DELIVERY_ZONE_NAME_MAX_LENGTH, LATITUDE_LIMIT,
                            PHONE_NUMBER_PATTERN, StoreCurrency)
 from objects.product import (PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
                              Product)
+from objects.payment import OrderPaymentMethod, PaymentOption, PaymentProvider
 
 
 # ──────────────────────────────────────────────
@@ -22,20 +23,27 @@ from objects.product import (PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
 
 # Where an order is:
 #   pending: placed, its units held in each product's reservedInventory,
-#     awaiting payment;
-#   paid: the customer paid;
+#     awaiting the customer's choice of how to pay (ORDER_PAYMENT_MINUTES);
+#   awaitingPayment: the customer chose a way paid by hand to the store
+#     (cash, a check, a bank transfer, the store's own e-wallet account):
+#     its units stay held, with no deadline, until the store's admin
+#     confirms the payment (paid) or someone cancels it;
+#   paid: the customer paid (through the payment provider, or by hand and
+#     confirmed by the store);
 #   completed: handed over, its units counted in each product's soldCount;
 #   cancelled: its units went back to inventory, and a paid one was
 #     refunded.
-# Every move out of pending or paid takes the order's reservation off its
-# products, so reservedInventory only holds orders still open.
-OrderStatus = Literal['pending', 'paid', 'completed', 'cancelled']
+# Every move out of pending, awaitingPayment or paid takes the order's
+# reservation off its products, so reservedInventory only holds orders still
+# open.
+OrderStatus = Literal['pending', 'awaitingPayment', 'paid', 'completed',
+                      'cancelled']
 # Why an order was cancelled: unpaid by its expiresAt, by the store's
 # admin, or by the customer while it was unpaid.
 CancelReason = Literal['expired', 'byStore', 'byCustomer']
-# How a customer pays at checkout. No cash on delivery: it cannot be paid
-# at checkout.
-PaymentMethod = Literal['card', 'gcash', 'maya', 'grabPay', 'bankTransfer']
+# The reference a customer gives for a payment made by hand (a bank
+# transfer's, an e-wallet's).
+MANUAL_PAYMENT_REFERENCE_MAX_LENGTH = 100
 # The start of every reference the demo payment provider (payments.py)
 # hands out, for a payment and for a refund.
 PAYMENT_REFERENCE_PREFIX = 'DEMO-'
@@ -44,7 +52,8 @@ REFUND_REFERENCE_PREFIX = 'DEMO-R-'
 ORDER_ITEMS_MAX = 50
 # How long a customer has to pay a placed order before it is cancelled.
 ORDER_PAYMENT_MINUTES = 30
-# The most unpaid (pending, unexpired) orders a customer holds at a store.
+# The most unpaid orders (pending and unexpired, or awaitingPayment) a
+# customer holds at a store.
 MAX_PENDING_ORDERS_PER_STORE = 3
 # How a customer gets an order: picked up at the store, or delivered to the
 # address and pin they gave. The store's policy (deliveryOptions) says which
@@ -112,11 +121,25 @@ class Order(MongoModel):
     # Stored, not derived from createdAt: a later change of
     # ORDER_PAYMENT_MINUTES never moves a placed order's deadline.
     expiresAt: datetime.datetime = Field(
-        ..., description='Unpaid by then, it is cancelled (UTC)')
-    paymentMethod: PaymentMethod | None = Field(
-        None, description='How the customer paid')
+        ..., description='Still pending (no way to pay chosen) by then, it is '
+        'cancelled (UTC)')
+    paymentMethod: OrderPaymentMethod | None = Field(
+        None, description='How the customer pays or paid')
+    paymentProvider: PaymentProvider | None = Field(
+        None, description='The payment provider it was paid through; null: '
+        'paid by hand to the store (or not chosen yet)')
     paymentReference: str | None = Field(
         None, description="The payment provider's id of the payment")
+    manualPaymentReference: str | None = Field(
+        None, min_length=1, max_length=MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
+        description='The reference the customer gave for a payment made by '
+        "hand, e.g. a bank transfer's")
+    # Never sent: the store's admin reads it through getPaymentReceipt.
+    paymentReceiptPath: str | None = Field(
+        None, min_length=1, description='Where the photo of its receipt is '
+        'kept (photoStorage.receiptPath), for a payment made by hand')
+    paymentReceiptAt: datetime.datetime | None = Field(
+        None, description='When the customer sent the photo of its receipt')
     paidAt: datetime.datetime | None = Field(None,
                                              description='When it was paid')
     cancelledAt: datetime.datetime | None = Field(
@@ -222,12 +245,24 @@ class StoreOrderRow(OrderDeliveryRow):
     contactNumber: str = Field(..., pattern=PHONE_NUMBER_PATTERN,
                                description="The customer's verified number")
     createdAt: datetime.datetime = Field(..., description='When it was placed')
-    paymentMethod: PaymentMethod | None = Field(
-        ..., description='How the customer paid')
+    paymentMethod: OrderPaymentMethod | None = Field(
+        ..., description='How the customer pays or paid')
+    # Defaults, not required: an order stored before payments made by hand
+    # has neither.
+    paymentProvider: PaymentProvider | None = Field(
+        None, description='The payment provider it was paid through; null: '
+        'paid by hand to the store (or not chosen yet)')
+    manualPaymentReference: str | None = Field(
+        None, min_length=1, max_length=MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
+        description='The reference the customer gave for a payment made by '
+        "hand, e.g. a bank transfer's")
+    paymentReceiptAt: datetime.datetime | None = Field(
+        None, description='When the customer sent the photo of its receipt')
     paidAt: datetime.datetime | None = Field(...,
                                              description='When it was paid')
     expiresAt: datetime.datetime = Field(
-        ..., description='Unpaid by then, it is cancelled (UTC)')
+        ..., description='Still pending (no way to pay chosen) by then, it is '
+        'cancelled (UTC)')
     completedAt: datetime.datetime | None = Field(
         ..., description='When it was handed over')
     cancelledAt: datetime.datetime | None = Field(
@@ -256,12 +291,24 @@ class MyOrderRow(OrderDeliveryRow):
     currency: StoreCurrency = Field(
         ..., description="ISO 4217 code of the store's currency when ordered")
     createdAt: datetime.datetime = Field(..., description='When it was placed')
-    paymentMethod: PaymentMethod | None = Field(
-        ..., description='How the customer paid')
+    paymentMethod: OrderPaymentMethod | None = Field(
+        ..., description='How the customer pays or paid')
+    # Defaults, not required: an order stored before payments made by hand
+    # has neither.
+    paymentProvider: PaymentProvider | None = Field(
+        None, description='The payment provider it was paid through; null: '
+        'paid by hand to the store (or not chosen yet)')
+    manualPaymentReference: str | None = Field(
+        None, min_length=1, max_length=MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
+        description='The reference the customer gave for a payment made by '
+        "hand, e.g. a bank transfer's")
+    paymentReceiptAt: datetime.datetime | None = Field(
+        None, description='When the customer sent the photo of its receipt')
     paidAt: datetime.datetime | None = Field(...,
                                              description='When it was paid')
     expiresAt: datetime.datetime = Field(
-        ..., description='Unpaid by then, it is cancelled (UTC)')
+        ..., description='Still pending (no way to pay chosen) by then, it is '
+        'cancelled (UTC)')
     completedAt: datetime.datetime | None = Field(
         ..., description='When it was handed over')
     cancelledAt: datetime.datetime | None = Field(
@@ -284,5 +331,11 @@ class MyOrderListResponse(ResponseModel):
 
 class CreatedOrderResponse(ResponseModel):
     order: MyOrderRow = Field(..., description='The order just placed')
-    paymentMethods: list[PaymentMethod] = Field(
-        ..., description='The ways the customer can pay it')
+    paymentOptions: list[PaymentOption] = Field(
+        ..., min_length=1, description='The ways the customer can pay it')
+
+
+class PaymentReceiptResponse(ResponseModel):
+    """The photo of the receipt a customer sent for a payment made by hand,
+    for the store's admin."""
+    image: str = Field(..., description='The photo, a JPEG data URL')

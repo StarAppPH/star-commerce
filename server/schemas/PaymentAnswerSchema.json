@@ -17,14 +17,29 @@
         "paymentMethod": {
             "description": "How to pay",
             "enum": [
+                "cash",
                 "card",
-                "gcash",
-                "maya",
-                "grabPay",
-                "bankTransfer"
+                "eWallet",
+                "bankTransfer",
+                "check",
+                "crypto"
             ],
             "title": "Paymentmethod",
             "type": "string"
+        },
+        "paymentProvider": {
+            "anyOf": [
+                {
+                    "const": "demo",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The provider of the option picked; null: paid by hand to the store",
+            "title": "Paymentprovider"
         }
     },
     "required": [

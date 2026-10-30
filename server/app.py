@@ -901,6 +901,7 @@ def payOrder():
     storeId = data.get('storeId')
     orderId = data.get('orderId')
     paymentMethod = data.get('paymentMethod')
+    paymentProvider = data.get('paymentProvider')
     current_user = get_jwt_identity()
     try:
         if isinstance(userId, (dict, list)):
@@ -911,22 +912,172 @@ def payOrder():
             raise ValueError('Invalid orderId')
         if isinstance(paymentMethod, (dict, list)):
             raise ValueError('Invalid paymentMethod')
+        if isinstance(paymentProvider, (dict, list)):
+            raise ValueError('Invalid paymentProvider')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().payOrder(userId, storeId, orderId, paymentMethod)
+        res = ApiRequests().payOrder(userId, storeId, orderId, paymentMethod, paymentProvider)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'payOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'paymentMethod')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'payOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'paymentMethod', 'paymentProvider')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'payOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'paymentMethod')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'payOrder', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'paymentMethod', 'paymentProvider')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'payOrder', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'paymentMethod'))})
+    logging.info({'function': 'payOrder', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'paymentMethod', 'paymentProvider'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Order paid", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/addPaymentReference', methods=['POST'])
+@jwt_required()
+def addPaymentReference():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    orderId = data.get('orderId')
+    reference = data.get('reference')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(orderId, (dict, list)):
+            raise ValueError('Invalid orderId')
+        if isinstance(reference, (dict, list)):
+            raise ValueError('Invalid reference')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().addPaymentReference(userId, storeId, orderId, reference)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'addPaymentReference', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'reference')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'addPaymentReference', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'reference')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'addPaymentReference', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'reference'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Payment reference saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/addPaymentReceipt', methods=['POST'])
+@jwt_required()
+def addPaymentReceipt():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    orderId = data.get('orderId')
+    receiptUrl = data.get('receiptUrl')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(orderId, (dict, list)):
+            raise ValueError('Invalid orderId')
+        if isinstance(receiptUrl, (dict, list)):
+            raise ValueError('Invalid receiptUrl')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().addPaymentReceipt(userId, storeId, orderId, receiptUrl)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'addPaymentReceipt', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'receiptUrl')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'addPaymentReceipt', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'receiptUrl')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'addPaymentReceipt', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'orderId', 'receiptUrl'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Receipt sent to the store", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/getPaymentReceipt', methods=['POST'])
+@jwt_required()
+def getPaymentReceipt():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    orderId = data.get('orderId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(orderId, (dict, list)):
+            raise ValueError('Invalid orderId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().getPaymentReceipt(userId, orderId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'getPaymentReceipt', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'getPaymentReceipt', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'getPaymentReceipt', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Receipt fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/confirmOrderPayment', methods=['POST'])
+@jwt_required()
+def confirmOrderPayment():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    orderId = data.get('orderId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(orderId, (dict, list)):
+            raise ValueError('Invalid orderId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().confirmOrderPayment(userId, orderId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'confirmOrderPayment', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'confirmOrderPayment', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'confirmOrderPayment', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'orderId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Payment confirmed", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
     return jsonify(response.model_dump(exclude_unset=True)), response.status
 
 
@@ -1383,7 +1534,7 @@ def updateMyStorePolicy():
     deliveryOptions = data.get('deliveryOptions')
     deliveryAreas = data.get('deliveryAreas')
     handoverDays = data.get('handoverDays')
-    acceptedPaymentMethods = data.get('acceptedPaymentMethods')
+    authorizedPaymentMethods = data.get('authorizedPaymentMethods')
     paidOrderCancellation = data.get('paidOrderCancellation')
     paidOrderCancellationHours = data.get('paidOrderCancellationHours')
     additionalTerms = data.get('additionalTerms')
@@ -1418,23 +1569,23 @@ def updateMyStorePolicy():
             raise ValueError('Invalid additionalTerms')
         if deliveryOptions is not None and not isinstance(deliveryOptions, list):
             raise ValueError('Invalid deliveryOptions')
-        if acceptedPaymentMethods is not None and not isinstance(acceptedPaymentMethods, list):
-            raise ValueError('Invalid acceptedPaymentMethods')
+        if authorizedPaymentMethods is not None and not isinstance(authorizedPaymentMethods, list):
+            raise ValueError('Invalid authorizedPaymentMethods')
         if clear is not None and not isinstance(clear, list):
             raise ValueError('Invalid clear')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().updateMyStorePolicy(userId, acceptsReturns, returnWindowDays, returnConditions, nonReturnableItems, refundMethod, returnShippingPaidBy, defectReportDays, deliveryOptions, deliveryAreas, handoverDays, acceptedPaymentMethods, paidOrderCancellation, paidOrderCancellationHours, additionalTerms, clear)
+        res = ApiRequests().updateMyStorePolicy(userId, acceptsReturns, returnWindowDays, returnConditions, nonReturnableItems, refundMethod, returnShippingPaidBy, defectReportDays, deliveryOptions, deliveryAreas, handoverDays, authorizedPaymentMethods, paidOrderCancellation, paidOrderCancellationHours, additionalTerms, clear)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'authorizedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'authorizedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'updateMyStorePolicy', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'additionalTerms', 'clear'))})
+    logging.info({'function': 'updateMyStorePolicy', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'authorizedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'additionalTerms', 'clear'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Policy saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
