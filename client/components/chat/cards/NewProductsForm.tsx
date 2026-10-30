@@ -4,7 +4,8 @@ import Image from 'next/image';
 import { ImagePlusIcon, PackagePlusIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { auth } from '@/lib/firebase';
+import { getDownloadURL, ref } from 'firebase/storage';
+import { auth, storage } from '@/lib/firebase';
 import { useSnackbar } from '@/lib/SnackbarContext';
 import { ChatCard, SentNote } from './ChatCard';
 import { nonEmpty } from './format';
@@ -16,10 +17,12 @@ const NAME_MAX = 80;
 const DESCRIPTION_MAX = 500;
 const ROWS_MAX = 50;
 
-interface Photo {
-  file: File;
-  preview: string;
-}
+// A photo the owner picks here, uploaded when the form is sent, or one they
+// attached in the chat that the assistant put on the row (its Storage path,
+// shown and sent by its download URL).
+type Photo =
+  | { kind: 'file'; file: File; preview: string }
+  | { kind: 'attached'; path: string; url: string | null };
 
 interface Row {
   key: number;
@@ -27,8 +30,8 @@ interface Row {
   price: string;
   inventory: string;
   description: string;
-  // Its photo, uploaded when the form is sent; the assistant then offers it
-  // and styled versions of it to pick from.
+  // Its photo; the assistant then offers it and styled versions of it to
+  // pick from.
   photo: Photo | null;
 }
 
@@ -41,7 +44,7 @@ function validRow(row: Row): boolean {
     && row.inventory.trim() !== '' && Number.isInteger(inventory) && inventory >= 0;
 }
 
-// New products, one row each, prefilled with what the owner told the
+// New products, one row each, prefilled with what the owner told or sent the
 // assistant, each with an optional photo.
 export function NewProductsForm({ component, answered, busy, onAnswer }: ComponentProps<'newProductsForm'>) {
   const { showSnackbar } = useSnackbar();
@@ -54,17 +57,36 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
       price: draft?.price != null ? String(draft.price) : '',
       inventory: draft?.inventory != null ? String(draft.inventory) : '',
       description: draft?.description ?? '',
-      photo: null,
+      photo: component.photos?.[index] ? { kind: 'attached', path: component.photos[index], url: null } : null,
     }));
   });
   const [nextKey, setNextKey] = useState(rows.length);
   const locked = answered || busy || uploading;
-  const ready = rows.length > 0 && rows.every(validRow);
+  const ready = rows.length > 0 && rows.every(validRow)
+    && rows.every((row) => row.photo?.kind !== 'attached' || row.photo.url !== null);
   const rowsRef = useRef<Row[]>([]);
 
   // The previews still shown are let go when the form goes.
   useEffect(() => { rowsRef.current = rows; }, [rows]);
-  useEffect(() => () => { rowsRef.current.forEach((row) => { if (row.photo) URL.revokeObjectURL(row.photo.preview); }); }, []);
+  useEffect(() => () => { rowsRef.current.forEach((row) => { if (row.photo?.kind === 'file') URL.revokeObjectURL(row.photo.preview); }); }, []);
+
+  // Each attached photo's download URL; a row whose file is gone (or not
+  // the owner's) shows "Add photo" instead.
+  useEffect(() => {
+    let cancelled = false;
+    rowsRef.current.forEach((row) => {
+      const photo = row.photo;
+      if (photo?.kind !== 'attached' || photo.url !== null) return;
+      getDownloadURL(ref(storage, photo.path))
+        .then((url) => ({ kind: 'attached' as const, path: photo.path, url }))
+        .catch(() => null)
+        .then((resolved) => {
+          if (cancelled) return;
+          setRows((current) => current.map((r) => (r.key === row.key && r.photo === photo ? { ...r, photo: resolved } : r)));
+        });
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const update = (key: number, field: TextField, value: string) => {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, [field]: value } : row)));
@@ -80,14 +102,14 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
     }
     setRows((current) => current.map((row) => {
       if (row.key !== key) return row;
-      if (row.photo) URL.revokeObjectURL(row.photo.preview);
-      return { ...row, photo: file ? { file, preview: URL.createObjectURL(file) } : null };
+      if (row.photo?.kind === 'file') URL.revokeObjectURL(row.photo.preview);
+      return { ...row, photo: file ? { kind: 'file', file, preview: URL.createObjectURL(file) } : null };
     }));
   };
 
   const removeRow = (key: number) => {
     setRows((current) => current.filter((row) => {
-      if (row.key === key && row.photo) URL.revokeObjectURL(row.photo.preview);
+      if (row.key === key && row.photo?.kind === 'file') URL.revokeObjectURL(row.photo.preview);
       return row.key !== key;
     }));
   };
@@ -99,13 +121,16 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
 
   const send = async () => {
     const user = auth.currentUser;
-    if (rows.some((row) => row.photo) && !user) {
+    if (rows.some((row) => row.photo?.kind === 'file') && !user) {
       showSnackbar('Sign in again to upload photos.', 'error');
       return;
     }
     setUploading(true);
     try {
-      const imageUrls = await Promise.all(rows.map((row) => (row.photo && user ? uploadChatPhoto(user, row.photo.file) : null)));
+      const imageUrls = await Promise.all(rows.map((row) => {
+        if (row.photo?.kind === 'attached') return row.photo.url;
+        return row.photo && user ? uploadChatPhoto(user, row.photo.file) : null;
+      }));
       const products = nonEmpty(rows.map((row, index) => ({
         name: row.name.trim(),
         price: Number(row.price),
@@ -221,19 +246,23 @@ interface RowPhotoProps {
 function RowPhoto({ photo, index, disabled, onPick, onRemove }: RowPhotoProps) {
   const inputId = useId();
   if (photo) {
+    const src = photo.kind === 'file' ? photo.preview : photo.url;
     return (
       <div data-component="newProductsPhoto" className="relative col-span-2 size-20 overflow-hidden rounded-lg bg-muted sm:col-span-1 sm:row-span-2">
-        <Image
-          src={photo.preview}
-          alt={`Product ${index + 1} photo`}
-          fill
-          sizes="80px"
-          // A preview of a file not uploaded yet (a blob: URL in this
-          // browser): no server can fetch it to optimize.
-          // eslint-disable-next-line no-restricted-syntax
-          unoptimized
-          className="object-cover"
-        />
+        {src && (
+          <Image
+            src={src}
+            alt={`Product ${index + 1} photo`}
+            fill
+            sizes="80px"
+            // A preview of a file not uploaded yet (a blob: URL in this
+            // browser) no server can fetch to optimize; an attached photo is
+            // the owner's, never cached by the optimizer.
+            // eslint-disable-next-line no-restricted-syntax
+            unoptimized
+            className="object-cover"
+          />
+        )}
         <Button
           data-component="newProductsPhotoRemove"
           variant="secondary"

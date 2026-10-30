@@ -321,6 +321,12 @@ class NewProductsForm(ResponseModel):
     currency: StoreCurrency = Field(..., description='Prices are in it')
     products: list[ChatProductDraft] = Field(
         ..., max_length=PRODUCT_BATCH_MAX, description='Prefilled rows')
+    # Beside the rows, not on them: a form saved before photos were
+    # prefilled has none.
+    photos: list[str | None] = Field(
+        default_factory=list, max_length=PRODUCT_BATCH_MAX,
+        description="Each prefilled row's photo (by position): the Storage "
+                    "path of an image the owner attached; null without one")
 
 
 class PhoneVerificationForm(ResponseModel):

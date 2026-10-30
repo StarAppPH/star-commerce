@@ -1372,6 +1372,12 @@ export type Description2 = string | null;
  */
 export type Products2 = ChatProductDraft[];
 /**
+ * Each prefilled row's photo (by position): the Storage path of an image the owner attached; null without one
+ *
+ * @maxItems 50
+ */
+export type Photos2 = (string | null)[];
+/**
  * The form
  */
 export type Kind13 = "phoneVerificationForm";
@@ -2211,6 +2217,7 @@ export interface NewProductsForm {
   formId: Formid6;
   currency: Currency8;
   products: Products2;
+  photos?: Photos2;
 }
 /**
  * A product the admin mentioned, prefilled on the new products
