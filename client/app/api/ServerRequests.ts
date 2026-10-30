@@ -1,5 +1,6 @@
 import Server from "./Server";
 import type { ApiResponse } from "./ApiResponse";
+import type { AddressSuggestionResponse } from '../schemas/AddressSuggestionResponseSchema';
 import type { AdminProductListResponse } from '../schemas/AdminProductListResponseSchema';
 import type { AdminProductRow } from '../schemas/AdminProductRowSchema';
 import type { ChatReplyResponse } from '../schemas/ChatReplyResponseSchema';
@@ -223,6 +224,52 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             cache: 'no-store'
         });
         const data: ApiResponse<StoreResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async updateMyStoreDetails(userId: string, name: string | null, description: string | null, contactNumber: string | null, address: string | null, openingHours: string | null): Promise<ApiResponse<StoreResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/updateMyStoreDetails`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "name": name, "description": description, "contactNumber": contactNumber, "address": address, "openingHours": openingHours}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StoreResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async suggestStoreAddress(userId: string): Promise<ApiResponse<AddressSuggestionResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/suggestStoreAddress`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<AddressSuggestionResponse> & { msg?: string } = await res.json();
         if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
         
         if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
@@ -1049,6 +1096,8 @@ export interface RouteResponseModels {
     getUserStore: MyStoreResponse;
     updateMyStoreTheme: StoreThemeResponse;
     createUserStore: StoreResponse;
+    updateMyStoreDetails: StoreResponse;
+    suggestStoreAddress: AddressSuggestionResponse;
     setUserStoreLocation: StoreResponse;
     startGuestSession: CustomerSessionResponse;
     verifyCustomerPhone: PhoneVerifiedResponse;
@@ -1095,6 +1144,8 @@ export interface RouteRequestBodies {
     getUserStore: { userId: string };
     updateMyStoreTheme: { userId: string; photoStyle: string | null; primaryColor: string | null; secondaryColor: string | null; voiceId: string | null };
     createUserStore: { userId: string; name: string; description: string; contactNumber: string; address: string; currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED'; openingHours: string | null };
+    updateMyStoreDetails: { userId: string; name: string | null; description: string | null; contactNumber: string | null; address: string | null; openingHours: string | null };
+    suggestStoreAddress: { userId: string };
     setUserStoreLocation: { userId: string; latitude: number; longitude: number };
     startGuestSession: { idToken: string; storeSlug: string };
     verifyCustomerPhone: { userId: string; idToken: string };

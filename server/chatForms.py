@@ -283,7 +283,8 @@ FORM_TOOLS: dict[str, FormTool] = {
         ('admin', ),
         'Open a map under your reply where the owner pins the store. The '
         'pin they send comes as their next message: then call '
-        'setUserStoreLocation with its latitude and longitude.',
+        'setUserStoreLocation with its latitude and longitude, then '
+        'suggestStoreAddress.',
         ShowStoreLocationFormArgs, _locationForm),
     'showNewProductsForm': FormTool(
         ('admin', ),

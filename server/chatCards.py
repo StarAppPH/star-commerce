@@ -217,6 +217,7 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'getUserStore': _store,
     'createUserStore': _store,
     'setUserStoreLocation': _store,
+    'updateMyStoreDetails': _store,
 }
 
 # A card listing rows of one kind, and the key that lists them: a later

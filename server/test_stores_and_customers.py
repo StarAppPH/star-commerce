@@ -6,15 +6,17 @@ import datetime
 import re
 
 import pytest
+import requests
 from pymongo.errors import DuplicateKeyError
 
 from actions.StoreActions import SLUG_ATTEMPTS, _isOwnerCollision, storeSlug
 from ApiRequests import ApiRequests
-from conftest import (STORE_DETAILS, TOKEN, assertExactShape, createTestStore,
+from conftest import (STORE_DETAILS, TEST_GEOCODED_ADDRESS, TOKEN,
+                      FakeGeocodingSession, assertExactShape, createTestStore,
                       createTestUser, guestAt, guestClaims,
                       wipeCollections)
 from mongoDb import db
-from objects import (CustomerSessionResponse, CustomerView, MyStoreResponse,
+from objects import (AddressSuggestionResponse, CustomerSessionResponse, CustomerView, MyStoreResponse,
                      PhoneVerifiedResponse, Store, StoreResponse, StoreView)
 
 COLLECTIONS = ['Users', 'Bootstrap', 'Stores', 'Customers']
@@ -461,6 +463,159 @@ def test_setUserStoreLocation_onlyTouchesTheCallersStore(clean):
     other = db.read({'ownerUserId': OTHER_ADMIN}, 'Stores', findOne=True)
     assert other['location'] is None
     assert other['_version'] == 0
+
+
+# ----------------------------- store details ----------------------------- #
+
+
+def test_updateMyStoreDetails_changesOnlyWhatIsSent(clean):
+    created = createTestStore(ADMIN)
+    api.setUserStoreLocation(ADMIN, 10, 20)
+
+    res = api.updateMyStoreDetails(ADMIN, address='  5 Mango Ave, Cebu City ',
+                                   openingHours='9 to 5')
+
+    assertExactShape(StoreResponse, res)
+    assert res['address'] == '5 Mango Ave, Cebu City'
+    assert res['openingHours'] == '9 to 5'
+    unchanged = ('_id', 'name', 'slug', 'currency', 'description',
+                 'contactNumber')
+    assert {k: res[k] for k in unchanged} == {k: created[k]
+                                              for k in unchanged}
+    assert res['location'] == {'latitude': 10.0, 'longitude': 20.0}
+    [stored] = db.read({}, 'Stores')
+    StoreView.model_validate(stored)
+    assert stored['_version'] == 2
+    assert api.getUserStore(ADMIN) == {'store': res}
+
+    renamed = api.updateMyStoreDetails(ADMIN, name='Bakery Z',
+                                       contactNumber='+639181234567',
+                                       description='Bread', openingHours='')
+
+    assert renamed['name'] == 'Bakery Z'
+    assert renamed['slug'] == created['slug']  # the link stays
+    assert renamed['contactNumber'] == '+639181234567'
+    assert renamed['description'] == 'Bread'
+    assert renamed['openingHours'] is None
+    assert renamed['address'] == '5 Mango Ave, Cebu City'
+
+
+def test_updateMyStoreDetails_refusesABadOrMissingDetail(clean):
+    createTestStore(ADMIN)
+
+    refusals = [
+        ({}, '^Send a store detail to change$'),
+        ({'address': '  '}, '^An address is 1 to 200 characters$'),
+        ({'name': ''}, '^A store name is 1 to 60 characters$'),
+        ({'address': 'x' * 201}, '^An address is 1 to 200 characters$'),
+        ({'contactNumber': '0917 123 4567'}, '^The contact number must be in international format'),
+        ({'description': 'a\x00b'},
+         '^A description cannot contain control characters$'),
+    ]
+    for details, message in refusals:
+        with pytest.raises(ValueError, match=message):
+            api.updateMyStoreDetails(ADMIN, **details)
+    assert db.read({}, 'Stores')[0]['_version'] == 0
+
+
+def test_updateMyStoreDetails_refusesACustomerAndAnAdminWithoutAStore(
+        clean, firebase):
+    store = createTestStore(ADMIN)
+    customerId = guestAt(firebase, store, GUEST)
+    createTestUser(OTHER_ADMIN)
+
+    with pytest.raises(PermissionError,
+                       match='^Only a store admin can do this$'):
+        api.updateMyStoreDetails(customerId, address='Somewhere')
+    with pytest.raises(ValueError, match='^Create your store first$'):
+        api.updateMyStoreDetails(OTHER_ADMIN, address='Somewhere')
+    assert db.read({}, 'Stores')[0]['address'] == STORE_DETAILS['address']
+
+
+def test_updateMyStoreDetails_onlyTouchesTheCallersStore(clean):
+    createTestStore(ADMIN)
+    createTestStore(OTHER_ADMIN, 'Bakery B')
+
+    api.updateMyStoreDetails(ADMIN, address='5 Mango Ave')
+
+    other = db.read({'ownerUserId': OTHER_ADMIN}, 'Stores', findOne=True)
+    assert other['address'] == STORE_DETAILS['address']
+    assert other['_version'] == 0
+
+
+# ----------------------------- address from the pin ----------------------------- #
+
+
+def test_suggestStoreAddress_isGooglesAddressForThePin(clean,
+                                                       _fakeGeocoding):
+    createTestStore(ADMIN)
+    api.setUserStoreLocation(ADMIN, 10.34344, 123.91151)
+
+    res = api.suggestStoreAddress(ADMIN)
+
+    assertExactShape(AddressSuggestionResponse, res)
+    # The plus code Google lists first is skipped.
+    assert res == {'suggestedAddress': TEST_GEOCODED_ADDRESS,
+                   'address': STORE_DETAILS['address']}
+    [call] = _fakeGeocoding.calls
+    assert call['url'] == 'https://maps.googleapis.com/maps/api/geocode/json'
+    assert call['params'] == {'latlng': '10.3434400,123.9115100',
+                              'language': 'en', 'key': 'test-maps-key'}
+    assert call['allow_redirects'] is False
+    # Only a suggestion: nothing is saved.
+    assert db.read({}, 'Stores')[0]['address'] == STORE_DETAILS['address']
+    assert db.read({}, 'Stores')[0]['_version'] == 1
+
+
+def test_suggestStoreAddress_needsAPin(clean, _fakeGeocoding):
+    createTestStore(ADMIN)
+
+    with pytest.raises(ValueError, match='^Pin the store on the map first$'):
+        api.suggestStoreAddress(ADMIN)
+    assert _fakeGeocoding.calls == []
+
+
+@pytest.mark.parametrize('status, body, error', [
+    (200, b'{"status": "ZERO_RESULTS", "results": []}', None),
+    (200, b'{"status": "REQUEST_DENIED", "error_message": "bad key"}', None),
+    (200, b'{"status": "OK", "results": [{"formatted_address": "8VXC+XX",'
+          b' "types": ["plus_code"]}]}', None),
+    (200, b'{"status": "OK", "results": [{"formatted_address": "'
+          + b'x' * 201 + b'", "types": ["street_address"]}]}', None),
+    (200, b'not json', None),
+    (500, b'{}', None),
+    (200, b'', requests.ConnectionError('down')),
+    (200, b'', requests.Timeout('slow')),
+])
+def test_suggestStoreAddress_isNull_whenGoogleGivesNoAddress(
+        clean, monkeypatch, status, body, error):
+    import geocoding
+    session = FakeGeocodingSession(status, body, error)
+    monkeypatch.setattr(geocoding, 'httpSession', lambda: session)
+    createTestStore(ADMIN)
+    api.setUserStoreLocation(ADMIN, 10, 20)
+
+    assert api.suggestStoreAddress(ADMIN)['suggestedAddress'] is None
+    assert len(session.calls) == 1
+
+
+def test_suggestStoreAddress_isNull_withoutAKey(clean, monkeypatch,
+                                                _fakeGeocoding):
+    monkeypatch.delenv('GOOGLE_MAPS_API_KEY')
+    createTestStore(ADMIN)
+    api.setUserStoreLocation(ADMIN, 10, 20)
+
+    assert api.suggestStoreAddress(ADMIN)['suggestedAddress'] is None
+    assert _fakeGeocoding.calls == []
+
+
+def test_suggestStoreAddress_refusesACustomer(clean, firebase):
+    store = createTestStore(ADMIN)
+    customerId = guestAt(firebase, store, GUEST)
+
+    with pytest.raises(PermissionError,
+                       match='^Only a store admin can do this$'):
+        api.suggestStoreAddress(customerId)
 
 
 def test_startGuestSession_sendsTheStoresPublicDetails(clean, firebase):

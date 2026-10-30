@@ -368,6 +368,48 @@ def _fakeExchangeRates(monkeypatch):
     yield session
 
 
+# --- Geocoding ---------------------------------------------------------------
+# Every test's geocoding.httpSession() is a FakeGeocodingSession, answering as
+# Google's Geocoding API would, and GOOGLE_MAPS_API_KEY is a test key: no test
+# reaches Google, even with a real key in server/.env.
+
+TEST_GEOCODED_ADDRESS = '123 Test Street, Cebu City, 6000 Cebu, Philippines'
+
+
+class FakeGeocodingSession:
+    """geocoding's Session: answers every GET with `status` and `body`
+    (default: one street address, TEST_GEOCODED_ADDRESS, after a plus code),
+    or raises `error`; records each call's params."""
+
+    def __init__(self, status: int = 200, body=None,
+                 error: Exception | None = None):
+        import json
+        self.status = status
+        self.body = (json.dumps({'status': 'OK', 'results': [
+            {'formatted_address': '8VXC+XX Cebu City',
+             'types': ['plus_code']},
+            {'formatted_address': TEST_GEOCODED_ADDRESS,
+             'types': ['street_address']},
+        ]}).encode() if body is None else body)
+        self.error = error
+        self.calls = []
+
+    def get(self, url, **kwargs):
+        self.calls.append({'url': url, **kwargs})
+        if self.error is not None:
+            raise self.error
+        return FakeRatesResponse(self.status, self.body)
+
+
+@pytest.fixture(autouse=True)
+def _fakeGeocoding(monkeypatch):
+    import geocoding
+    session = FakeGeocodingSession()
+    monkeypatch.setenv(geocoding.KEY_VARIABLE, 'test-maps-key')
+    monkeypatch.setattr(geocoding, 'httpSession', lambda: session)
+    yield session
+
+
 def lastPublishedPayload(functionName):
     """The message the last publish of `functionName` (a publisher route or
     a module-level publisher) sent in this test."""

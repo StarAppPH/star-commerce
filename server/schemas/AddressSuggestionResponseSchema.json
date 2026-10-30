@@ -1,0 +1,40 @@
+{
+    "description": "What suggestStoreAddress sends: the street address Google gives for\nthe store's pin, and the address the store has now.",
+    "properties": {
+        "suggestedAddress": {
+            "anyOf": [
+                {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The pin's street address; null when there is none",
+            "title": "Suggestedaddress"
+        },
+        "address": {
+            "anyOf": [
+                {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Street address, as the admin typed it",
+            "title": "Address"
+        }
+    },
+    "required": [
+        "suggestedAddress"
+    ],
+    "title": "AddressSuggestionResponse",
+    "type": "object",
+    "additionalProperties": false
+}
