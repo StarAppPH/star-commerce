@@ -31,7 +31,8 @@ from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
                             DeliveryFeePerKm, DeliveryOptions, FreeDeliveryMinimum,
                             OffersFreeDelivery,
                             HandoverDays, NonReturnableItems,
-                            PaidOrderCancellationAnswer, RefundMethodAnswer,
+                            PaidOrderCancellationAnswer,
+                            PaidOrderCancellationHours, RefundMethodAnswer,
                             ReturnConditions, ReturnShippingPaidBy,
                             ReturnWindowDays, SendsMarketingMessages)
 from objects.product import PRODUCT_BATCH_MAX, NewProduct
@@ -244,6 +245,7 @@ class PolicyCard(ResponseModel):
     handoverDays: HandoverDays
     acceptedPaymentMethods: AcceptedPaymentMethods
     paidOrderCancellation: PaidOrderCancellationAnswer
+    paidOrderCancellationHours: PaidOrderCancellationHours
     sendsMarketingMessages: SendsMarketingMessages
     additionalTerms: AdditionalTerms
     deliveryFeePerKm: DeliveryFeePerKm

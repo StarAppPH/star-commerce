@@ -23,10 +23,11 @@ DeliveryOption = Fulfillment
 RefundMethod = Literal['originalPayment', 'storeCredit', 'exchange']
 # Who pays the shipping of a returned item.
 ReturnShippingPayer = Literal['customer', 'store']
-# Whether a customer can cancel a paid order: never, or until it is handed
-# over. (A customer cancelling an unpaid order is a rule the app enforces,
-# so it is no policy field.)
-PaidOrderCancellation = Literal['notAllowed', 'beforeHandover']
+# Whether a customer can cancel a paid order: never, until it is handed
+# over, or until it is handed over and within paidOrderCancellationHours of
+# its payment. (A customer cancelling an unpaid order is a rule the app
+# enforces, so it is no policy field.)
+PaidOrderCancellation = Literal['notAllowed', 'beforeHandover', 'withinHours']
 # The answers of a Policy, by name (updateMyStorePolicy's clear). Pinned
 # to Policy's fields below (POLICY_ANSWER_FIELDS).
 PolicyField = Literal['acceptsReturns', 'returnWindowDays', 'returnConditions',
@@ -36,10 +37,13 @@ PolicyField = Literal['acceptsReturns', 'returnWindowDays', 'returnConditions',
                       'offersFreeDelivery', 'freeDeliveryMinimum',
                       'handoverDays',
                       'acceptedPaymentMethods', 'paidOrderCancellation',
+                      'paidOrderCancellationHours',
                       'sendsMarketingMessages', 'additionalTerms']
 POLICY_TEXT_MAX_LENGTH = 300
 POLICY_TERMS_MAX_LENGTH = 1000
 POLICY_DAYS_MAX = 365
+# A week: paidOrderCancellationHours' longest window.
+POLICY_CANCELLATION_HOURS_MAX = 168
 
 # Each answer's type, limits and description, declared once: Policy stores
 # it (default None, "not said yet") and StorePolicyResponse sends it
@@ -93,6 +97,10 @@ AcceptedPaymentMethods = Annotated[list[PaymentMethod] | None, Field(
     min_length=1, description='The ways a customer can pay')]
 PaidOrderCancellationAnswer = Annotated[PaidOrderCancellation | None, Field(
     description='Whether a customer can cancel a paid order')]
+PaidOrderCancellationHours = Annotated[int | None, Field(
+    ge=1, le=POLICY_CANCELLATION_HOURS_MAX,
+    description='Hours after payment a customer can cancel a paid order '
+    '(before handover), with paidOrderCancellation withinHours')]
 # The rest
 SendsMarketingMessages = Annotated[bool | None, Field(
     description='Whether the store messages customers about offers')]
@@ -101,13 +109,14 @@ AdditionalTerms = Annotated[str | None, Field(
     description='Any other terms, as the admin gave them')]
 
 # The answers that only apply with returns accepted, with delivery among
-# the deliveryOptions, and with free delivery offered (Policy.normalized
-# clears them otherwise).
+# the deliveryOptions, with free delivery offered, and with paid orders
+# cancellable within hours (Policy.normalized clears them otherwise).
 POLICY_RETURN_ANSWERS = ('returnWindowDays', 'returnConditions',
                          'refundMethod', 'returnShippingPaidBy')
 POLICY_DELIVERY_ANSWERS = ('deliveryAreas', 'offersFreeDelivery',
                            'freeDeliveryMinimum')
 POLICY_FREE_DELIVERY_ANSWERS = ('freeDeliveryMinimum', )
+POLICY_CANCELLATION_HOURS_ANSWERS = ('paidOrderCancellationHours', )
 
 
 class Policy(MongoModel):
@@ -135,6 +144,7 @@ class Policy(MongoModel):
     handoverDays: HandoverDays = None
     acceptedPaymentMethods: AcceptedPaymentMethods = None
     paidOrderCancellation: PaidOrderCancellationAnswer = None
+    paidOrderCancellationHours: PaidOrderCancellationHours = None
     sendsMarketingMessages: SendsMarketingMessages = None
     additionalTerms: AdditionalTerms = None
     createdAt: datetime.datetime = Field(..., description='When it was created')
@@ -150,7 +160,9 @@ class Policy(MongoModel):
     def normalized(self) -> 'Policy':
         """A copy with the answers that no longer apply cleared: no returns
         clears POLICY_RETURN_ANSWERS, no delivery POLICY_DELIVERY_ANSWERS,
-        no free delivery POLICY_FREE_DELIVERY_ANSWERS."""
+        no free delivery POLICY_FREE_DELIVERY_ANSWERS, and a paid order
+        cancellation other than withinHours (or none)
+        POLICY_CANCELLATION_HOURS_ANSWERS."""
         cleared = {}
         if self.acceptsReturns is False:
             cleared.update(dict.fromkeys(POLICY_RETURN_ANSWERS))
@@ -159,6 +171,8 @@ class Policy(MongoModel):
         if (self.deliveryOptions is not None
                 and 'delivery' not in self.deliveryOptions):
             cleared.update(dict.fromkeys(POLICY_DELIVERY_ANSWERS))
+        if self.paidOrderCancellation != 'withinHours':
+            cleared.update(dict.fromkeys(POLICY_CANCELLATION_HOURS_ANSWERS))
         return self.model_copy(update=cleared)
 
     def problems(self) -> str | None:
@@ -170,6 +184,10 @@ class Policy(MongoModel):
         if self.offersFreeDelivery and self.freeDeliveryMinimum is None:
             return ('Free delivery is offered: ask from which order total '
                     '(freeDeliveryMinimum)')
+        if (self.paidOrderCancellation == 'withinHours'
+                and self.paidOrderCancellationHours is None):
+            return ('Paid orders can be cancelled within hours: ask how many '
+                    'hours after payment (paidOrderCancellationHours)')
         for field in ('deliveryOptions', 'acceptedPaymentMethods'):
             values = getattr(self, field)
             if values is not None and len(set(values)) != len(values):
@@ -210,6 +228,7 @@ class StorePolicyResponse(ResponseModel):
     handoverDays: HandoverDays = Field(...)
     acceptedPaymentMethods: AcceptedPaymentMethods = Field(...)
     paidOrderCancellation: PaidOrderCancellationAnswer = Field(...)
+    paidOrderCancellationHours: PaidOrderCancellationHours = Field(...)
     sendsMarketingMessages: SendsMarketingMessages = Field(...)
     additionalTerms: AdditionalTerms = Field(...)
     deliveryFeePerKm: DeliveryFeePerKm = Field(...)

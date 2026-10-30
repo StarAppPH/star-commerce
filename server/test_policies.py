@@ -609,6 +609,51 @@ def test_noFreeDelivery_dropsTheMinimum_andYesNeedsOne(clean):
     assert _policyDoc(storeId)['freeDeliveryMinimum'] == 500
 
 
+def test_paidCancellationWithinHours_needsTheHours_andOtherAnswersDropThem(
+        clean):
+    store = _setUpStore()
+    storeId = store['_id']
+
+    # withinHours without hours asks for them.
+    assert _refusal(api.updateMyStorePolicy, ADMIN,
+                    paidOrderCancellation='withinHours') == (
+        'Paid orders can be cancelled within hours: ask how many hours '
+        'after payment (paidOrderCancellationHours)')
+    # Hours without withinHours are refused by name.
+    assert _refusal(api.updateMyStorePolicy, ADMIN,
+                    paidOrderCancellationHours=24) == (
+        'paidOrderCancellationHours applies only with paidOrderCancellation '
+        'withinHours: ask again')
+    # Out of 1 to 168 whole hours, refused.
+    for hours in (0, 169, 1.5, '24', True):
+        assert _refusal(api.updateMyStorePolicy, ADMIN,
+                        paidOrderCancellation='withinHours',
+                        paidOrderCancellationHours=hours) == (
+            'paidOrderCancellationHours is '
+            f"{ANSWER_RULES['paidOrderCancellationHours']}")
+    assert _answers(_policyDoc(storeId)) == NONE_ANSWERS
+
+    res = api.updateMyStorePolicy(ADMIN, paidOrderCancellation='withinHours',
+                                  paidOrderCancellationHours=24)
+    assert (res['paidOrderCancellation'],
+            res['paidOrderCancellationHours']) == ('withinHours', 24)
+    assert _answers(_policyDoc(storeId)) == _expected(
+        paidOrderCancellation='withinHours', paidOrderCancellationHours=24)
+    # The hours change alone; the edges are accepted.
+    for hours in (1, 168):
+        api.updateMyStorePolicy(ADMIN, paidOrderCancellationHours=hours)
+        assert _policyDoc(storeId)['paidOrderCancellationHours'] == hours
+
+    # Another answer, or none, drops the hours.
+    res = api.updateMyStorePolicy(ADMIN,
+                                  paidOrderCancellation='beforeHandover')
+    assert res['paidOrderCancellationHours'] is None
+    api.updateMyStorePolicy(ADMIN, paidOrderCancellation='withinHours',
+                            paidOrderCancellationHours=48)
+    api.updateMyStorePolicy(ADMIN, clear=['paidOrderCancellation'])
+    assert _answers(_policyDoc(storeId)) == NONE_ANSWERS
+
+
 def test_thePolicy_sendsWhatAKmOfDeliveryCosts(clean, firebase):
     store = _setUpStore()
 

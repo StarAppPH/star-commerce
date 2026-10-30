@@ -23,7 +23,8 @@ from actions.StoreActions import (POLICIES, _validText, emptyPolicy,
 from actions.deliveryPricing import shownFeePerKm
 from mcpTools import mcp_tool
 from mongoDb import db
-from objects import (POLICY_ANSWER_FIELDS, POLICY_DELIVERY_ANSWERS,
+from objects import (POLICY_ANSWER_FIELDS, POLICY_CANCELLATION_HOURS_ANSWERS,
+                     POLICY_DELIVERY_ANSWERS,
                      POLICY_FREE_DELIVERY_ANSWERS, POLICY_RETURN_ANSWERS,
                      DeliveryOption,
                      PaidOrderCancellation, PaymentMethod, Policy,
@@ -46,6 +47,11 @@ NOT_APPLICABLE = {
                     'applies only with delivery among the deliveryOptions '
                     'and offersFreeDelivery true'),
 }
+# The same for the hours of a paid order cancellation (withinHours).
+HOURS_NOT_APPLICABLE = dict.fromkeys(
+    POLICY_CANCELLATION_HOURS_ANSWERS,
+    'applies only with paidOrderCancellation withinHours')
+_DROPPED = {**NOT_APPLICABLE, **HOURS_NOT_APPLICABLE}
 
 
 def _oneOf(literal) -> str:
@@ -116,7 +122,9 @@ Ask the admin one section at a time, one question per message (the admin
 may skip any):
 - payment: acceptedPaymentMethods (a list, {_oneOf(PaymentMethod)}) and
   paidOrderCancellation, whether a customer can cancel a paid order
-  ({_oneOf(PaidOrderCancellation)});
+  ({_oneOf(PaidOrderCancellation)}); with withinHours,
+  paidOrderCancellationHours, how many hours after payment (and before
+  handover) a customer can cancel;
 - delivery: deliveryOptions (a list, {_oneOf(DeliveryOption)}); with
   delivery, deliveryAreas and offersFreeDelivery, and if so
   freeDeliveryMinimum (the order total from which delivery is free);
@@ -138,9 +146,11 @@ the handover (pickup or delivery); handoverDays counts from payment. Amounts
 are in the store's currency. Setting acceptsReturns to false drops the
 return window, conditions, refund method and who pays return shipping;
 leaving delivery out of deliveryOptions drops the delivery areas and free
-delivery; setting offersFreeDelivery to false drops the minimum. The time a
-customer has to pay an order, and a customer cancelling an unpaid order, are
-set by the app, not by a policy: never ask about them.
+delivery; setting offersFreeDelivery to false drops the minimum; a
+paidOrderCancellation other than withinHours drops its hours. A customer
+cancels a paid order themselves (refunded) when paidOrderCancellation allows
+it. The time a customer has to pay an order, and a customer cancelling an
+unpaid order, are set by the app, not by a policy: never ask about them.
 If this tool refuses, relay its message to the admin and ask that question
 again."""
 
@@ -269,6 +279,7 @@ class PolicyActions():
                             handoverDays: int | None = None,
                             acceptedPaymentMethods: list[str] | None = None,
                             paidOrderCancellation: str | None = None,
+                            paidOrderCancellationHours: int | None = None,
                             sendsMarketingMessages: bool | None = None,
                             additionalTerms: str | None = None,
                             clear: list[str] | None = None) -> dict:
@@ -306,7 +317,7 @@ class PolicyActions():
         for field in sent:
             if getattr(policy, field) is None:
                 raise ValueError(
-                    f'{field} {NOT_APPLICABLE[field]}: ask again')
+                    f'{field} {_DROPPED[field]}: ask again')
         problem = policy.problems()
         if problem is not None:
             raise ValueError(problem)

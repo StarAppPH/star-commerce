@@ -54,6 +54,7 @@ export function policyRows(answers: PolicyAnswers): { question: PolicyQuestion; 
   return [
     { question: 'acceptedPaymentMethods', label: 'Payment methods', value: answers.acceptedPaymentMethods },
     { question: 'paidOrderCancellation', label: 'Cancelling a paid order', value: answers.paidOrderCancellation },
+    { question: 'paidOrderCancellationHours', label: 'Hours after payment to cancel', value: answers.paidOrderCancellationHours },
     { question: 'deliveryOptions', label: 'Pickup or delivery', value: answers.deliveryOptions },
     { question: 'deliveryAreas', label: 'Delivery areas', value: answers.deliveryAreas },
     { question: 'offersFreeDelivery', label: 'Free delivery', value: answers.offersFreeDelivery },

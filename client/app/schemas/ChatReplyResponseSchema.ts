@@ -608,7 +608,11 @@ export type Acceptedpaymentmethods =
 /**
  * Whether a customer can cancel a paid order
  */
-export type Paidordercancellation = ("notAllowed" | "beforeHandover") | null;
+export type Paidordercancellation = ("notAllowed" | "beforeHandover" | "withinHours") | null;
+/**
+ * Hours after payment a customer can cancel a paid order (before handover), with paidOrderCancellation withinHours
+ */
+export type Paidordercancellationhours = number | null;
 /**
  * Whether the store messages customers about offers
  */
@@ -1099,6 +1103,7 @@ export interface PolicyCard {
   handoverDays: Handoverdays;
   acceptedPaymentMethods: Acceptedpaymentmethods;
   paidOrderCancellation: Paidordercancellation;
+  paidOrderCancellationHours: Paidordercancellationhours;
   sendsMarketingMessages: Sendsmarketingmessages;
   additionalTerms: Additionalterms;
   deliveryFeePerKm: Deliveryfeeperkm;

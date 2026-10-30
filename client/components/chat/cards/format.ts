@@ -78,6 +78,7 @@ export const POLICY_VALUE_LABELS: Record<string, string> = {
   store: 'The store',
   notAllowed: 'Not allowed',
   beforeHandover: 'Before handover',
+  withinHours: 'Within some hours of payment, before handover',
   ...PAYMENT_METHOD_LABELS,
 };
 

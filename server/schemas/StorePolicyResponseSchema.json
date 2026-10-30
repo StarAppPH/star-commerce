@@ -204,7 +204,8 @@
                 {
                     "enum": [
                         "notAllowed",
-                        "beforeHandover"
+                        "beforeHandover",
+                        "withinHours"
                     ],
                     "type": "string"
                 },
@@ -214,6 +215,20 @@
             ],
             "description": "Whether a customer can cancel a paid order",
             "title": "Paidordercancellation"
+        },
+        "paidOrderCancellationHours": {
+            "anyOf": [
+                {
+                    "maximum": 168,
+                    "minimum": 1,
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Hours after payment a customer can cancel a paid order (before handover), with paidOrderCancellation withinHours",
+            "title": "Paidordercancellationhours"
         },
         "sendsMarketingMessages": {
             "anyOf": [
@@ -276,6 +291,7 @@
         "handoverDays",
         "acceptedPaymentMethods",
         "paidOrderCancellation",
+        "paidOrderCancellationHours",
         "sendsMarketingMessages",
         "additionalTerms",
         "deliveryFeePerKm",

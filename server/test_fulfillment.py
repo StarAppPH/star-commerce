@@ -465,6 +465,117 @@ def test_cancelMyOrder_afterCancelling_theCustomerCanPlaceAnotherOrder(
         _place(customerId, store, (pandesal, 1))
 
 
+def _paidCancellation(rule: str, hours: int | None = None) -> None:
+    """The store's paidOrderCancellation answer (and its hours)."""
+    api.updateMyStorePolicy(ADMIN, paidOrderCancellation=rule,
+                            paidOrderCancellationHours=hours)
+
+
+def _paidAt(store: dict, customerId: str, lines: list,
+            paidAt: datetime.datetime) -> str:
+    """A paid order, paid at `paidAt`."""
+    return _heldOrder(store, customerId, lines, paidAt - WINDOW, 'paid',
+                      paymentMethod='card', paymentReference='DEMO-seed',
+                      paidAt=paidAt)
+
+
+@pytest.mark.parametrize('rule, hours', [('beforeHandover', None),
+                                         ('withinHours', 24)])
+def test_cancelMyOrder_aPaidOrder_theStoreLets_isCancelledAndRefunded(
+        clean, firebase, clock, refunds, rule, hours):
+    store, customerId, products = _shop(firebase)
+    _paidCancellation(rule, hours)
+    pandesal = products['Pandesal']
+    orderId = _paidAt(store, customerId, [(pandesal, 2)],
+                      T0 - datetime.timedelta(hours=1))
+    reserved, placed = _product(pandesal['_id']), _order(orderId)
+
+    res = api.cancelMyOrder(customerId, store['_id'], orderId)
+
+    assertExactShape(MyOrderRow, res)
+    assert (res['status'], res['cancelReason'], res['cancelledAt'],
+            res['refundedAt']) == ('cancelled', 'byCustomer', T0, T0)
+    stored = _order(orderId)
+    assert stored['refundReference'].startswith(REFUND_REFERENCE_PREFIX)
+    assert stored['_version'] == placed['_version'] + 2
+    assert refunds.calls == [(orderId, 'DEMO-seed', stored['refundReference'],
+                              placed['total'], placed['currency'])]
+    after = _product(pandesal['_id'])
+    assert (after['inventory'], after['reservedInventory']) == (
+        reserved['inventory'] + 2, [])
+
+
+@pytest.mark.parametrize('paidBefore, cancels', [
+    (datetime.timedelta(hours=24) - MS, True),
+    (datetime.timedelta(hours=24), False)])
+def test_cancelMyOrder_withinHours_endsTheHoursAfterPayment(
+        clean, firebase, clock, refunds, paidBefore, cancels):
+    store, customerId, products = _shop(firebase)
+    _paidCancellation('withinHours', 24)
+    orderId = _paidAt(store, customerId, [(products['Pandesal'], 1)],
+                      T0 - paidBefore)
+
+    if cancels:
+        res = api.cancelMyOrder(customerId, store['_id'], orderId)
+        assert (res['status'], res['refundedAt']) == ('cancelled', T0)
+    else:
+        check = _unchanged(store, orderId)
+        with pytest.raises(ValueError, match=exactly(
+                'This store lets a paid order be cancelled only within 24 '
+                'hours of payment: ask the store to cancel it')):
+            api.cancelMyOrder(customerId, store['_id'], orderId)
+        check()
+        assert refunds.calls == []
+
+
+@pytest.mark.parametrize('rule, hours', [(None, None), ('notAllowed', None)])
+def test_cancelMyOrder_aPaidOrder_theStoreDoesNotLet_isRefused(
+        clean, firebase, clock, refunds, rule, hours):
+    store, customerId, products = _shop(firebase)
+    if rule is not None:
+        _paidCancellation(rule, hours)
+    orderId = _paidAt(store, customerId, [(products['Pandesal'], 1)], T0)
+    check = _unchanged(store, orderId)
+
+    with pytest.raises(ValueError, match=exactly(NOT_MOVABLE['paid'])):
+        api.cancelMyOrder(customerId, store['_id'], orderId)
+
+    check()
+    assert refunds.calls == []
+
+
+@pytest.mark.parametrize('rule, hours', [('beforeHandover', None),
+                                         ('withinHours', 24)])
+@pytest.mark.parametrize('status', ['completed', 'cancelled'])
+def test_cancelMyOrder_aHandedOverOrCancelledOrder_isRefused_whateverThePolicy(
+        clean, firebase, clock, refunds, rule, hours, status):
+    store, customerId, products = _shop(firebase)
+    _paidCancellation(rule, hours)
+    orderId = _orderIn(status, store, customerId,
+                       [(products['Pandesal'], 1)])
+    check = _unchanged(store, orderId)
+
+    with pytest.raises(ValueError, match=exactly(NOT_MOVABLE[status])):
+        api.cancelMyOrder(customerId, store['_id'], orderId)
+
+    check()
+    assert refunds.calls == []
+
+
+def test_cancelMyOrderAgainstCompleteOrder_aHandoverThatWins_isNotCancelled(
+        clean, firebase, clock, refunds, monkeypatch):
+    store, customerId, products = _shop(firebase)
+    _paidCancellation('beforeHandover')
+    orderId = _paidAt(store, customerId, [(products['Pandesal'], 1)], T0)
+    _beforeTheMove(monkeypatch, lambda: api.completeOrder(ADMIN, orderId))
+
+    with pytest.raises(ValueError, match=exactly(NOT_MOVABLE['completed'])):
+        api.cancelMyOrder(customerId, store['_id'], orderId)
+
+    assert _order(orderId)['status'] == 'completed'
+    assert refunds.calls == []
+
+
 # ----------------------------- shared refusals ----------------------------- #
 
 
