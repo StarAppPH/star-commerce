@@ -56,7 +56,7 @@ export function AdminWorkspaceProvider({ userId, children }: { userId: string; c
   const list = useConversationList(fetchPage, storeKnown);
 
   const transport = useMemo<ChatTransport>(() => ({
-    send: (message, conversationId, form, attachments, turnKey) => adminRequest(() => server.sendAdminChatMessage(userId, message, conversationId, form, attachments, turnKey)),
+    send: (message, conversationId, form, attachments, turnKey, speak) => adminRequest(() => server.sendAdminChatMessage(userId, message, conversationId, form, attachments, turnKey, speak)),
     upload: (files) => {
       const user = auth.currentUser;
       if (!user) return Promise.reject(new Error('Signed out'));
