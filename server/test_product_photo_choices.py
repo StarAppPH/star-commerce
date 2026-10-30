@@ -70,7 +70,7 @@ def test_photoChoices_keepTheOriginal_andMake3StyledWithTheirPrompt(
     assert res['notGenerated'] is None
     [call] = fakes.images.calls
     assert call['n'] == PHOTO_CHOICES_GENERATED
-    assert call['image'] == [('reference0.png', PNG, 'image/png')]
+    assert call['image'] == [(PNG, 'image/png')]
     assert res['prompt'] == call['prompt']
     assert 'Style: white marble' in res['prompt']
     assert 'primary #112233' in res['prompt']
@@ -94,6 +94,18 @@ def test_photoChoices_keepTheOriginal_andMake3StyledWithTheirPrompt(
     for photo in (res['photos'][0], res['photos'][2]):
         row = api.setProductPhoto(ADMIN, product['_id'], photo['_id'])
         assert row['photoUrl'] == photo['url']
+
+
+def test_photoChoices_thePromptNamesTheProduct(fakes, photoProducts):
+    _, product, url = productWithPhoto(fakes)
+    fakes.images.returned = PHOTO_CHOICES_GENERATED
+
+    res = api.makeProductPhotoChoices(ADMIN, product['_id'], url)
+
+    [call] = fakes.images.calls
+    assert call['prompt'].split('\n')[:2] == [PhotoActions.PHOTO_INSTRUCTION,
+                                              'Product: Mug']
+    assert res['prompt'] == call['prompt']
 
 
 def test_photoChoices_withoutAPhotoStyle_offerTheOriginalOnly(fakes,

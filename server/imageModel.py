@@ -3,12 +3,14 @@
 
 editImages() sends the admin's reference photos and a prompt to
 POST /v1/images/edits through chatModel's client (MODEL_API_KEY, the SDK
-retrying nothing) and returns the images as bytes. The photos go as
-image[0], image[1], ... (imageFields): Meta refuses the image[] the SDK's
-images.edit names a list with, so the request is the client's own
-post(). It retries as
-chatModel.callModel does: once, only a connection error, a timeout, a 429
-or a 5xx, within the call's deadline, never after a Retry-After sleep.
+retrying nothing) and returns the images as bytes. The photos go in a JSON
+body's `images`, each a data URL (imageInputs): Meta silently ignores
+multipart image files under any field name (image, image[], image[0]) and
+makes a photo from the prompt alone, so never send them through
+images.edit or as multipart; the request is the client's own post(). It
+retries as chatModel.callModel does: once, only a connection error, a
+timeout, a 429 or a 5xx, within the call's deadline, never after a
+Retry-After sleep.
 
 Meta refusing the request on content safety (a 400
 content_policy_violation) is a ValueError the admin can act on
@@ -62,11 +64,12 @@ def _client():
         raise unavailable() from None
 
 
-def imageFields(images: list[tuple[str, bytes, str]]
-                ) -> list[tuple[str, tuple[str, bytes, str]]]:
-    """The multipart file fields of the reference `images`, as Meta takes
-    them: image[0], image[1], ... in order."""
-    return [(f'image[{i}]', image) for i, image in enumerate(images)]
+def imageInputs(images: list[tuple[str, bytes, str]]) -> list[dict]:
+    """The body's `images` for the reference `images`, as Meta takes them:
+    each a data URL of its bytes and content type, in order."""
+    return [{'image_url': f'data:{contentType};base64,'
+                          f'{base64.b64encode(data).decode()}'}
+            for _, data, contentType in images]
 
 
 def editImages(images: list[tuple[str, bytes, str]], prompt: str, n: int,
@@ -86,11 +89,9 @@ def editImages(images: list[tuple[str, bytes, str]], prompt: str, n: int,
                   'n': n,
                   'size': IMAGE_SIZE,
                   'output_format': IMAGE_OUTPUT_FORMAT,
-                  'response_format': 'b64_json'},
-            files=imageFields(images),
-            # The SDK sets the boundary of this multipart body.
-            options={'headers': {'Content-Type': 'multipart/form-data'},
-                     'timeout': timeout})
+                  'response_format': 'b64_json',
+                  'images': imageInputs(images)},
+            options={'timeout': timeout})
 
     response = chatModel.callModel(request, deadline, IMAGE_TIMEOUT_SECONDS,
                                    failure=unavailable, refusal=_declined,

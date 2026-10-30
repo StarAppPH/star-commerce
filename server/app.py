@@ -1858,6 +1858,7 @@ def generateProductPhotos():
     imageUrls = data.get('imageUrls')
     count = data.get('count')
     notes = data.get('notes')
+    productName = data.get('productName')
     current_user = get_jwt_identity()
     try:
         if isinstance(userId, (dict, list)):
@@ -1866,21 +1867,23 @@ def generateProductPhotos():
             raise ValueError('Invalid count')
         if isinstance(notes, (dict, list)):
             raise ValueError('Invalid notes')
+        if isinstance(productName, (dict, list)):
+            raise ValueError('Invalid productName')
         if not isinstance(imageUrls, list):
             raise ValueError('Invalid imageUrls')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().generateProductPhotos(userId, imageUrls, count, notes)
+        res = ApiRequests().generateProductPhotos(userId, imageUrls, count, notes, productName)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'generateProductPhotos', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrls', 'count', 'notes')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'generateProductPhotos', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrls', 'count', 'notes', 'productName')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'generateProductPhotos', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrls', 'count', 'notes')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'generateProductPhotos', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrls', 'count', 'notes', 'productName')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'generateProductPhotos', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrls', 'count', 'notes'))})
+    logging.info({'function': 'generateProductPhotos', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrls', 'count', 'notes', 'productName'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Photos created", status=200, current_user=current_user, data=res, jwtToken=jwtToken)

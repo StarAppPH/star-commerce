@@ -9,6 +9,7 @@ import asyncio
 import base64
 import datetime
 import importlib
+import json
 import logging
 import time
 from types import SimpleNamespace
@@ -30,7 +31,8 @@ from ApiRequests import ApiRequests
 from conftest import (assertExactShape, createTestStore, createTestUser,
                       modelKeys, wipeCollections, withoutBrandColors)
 from mongoDb import db
-from objects import (PHOTO_NOTES_MAX_LENGTH, AdminStoreResponse,
+from objects import (PHOTO_NOTES_MAX_LENGTH, PRODUCT_NAME_MAX_LENGTH,
+                     AdminStoreResponse,
                      GeneratedPhotosResponse, MyStoreResponse, StoreResponse,
                      StoreThemeResponse)
 from objects.store import PHOTO_STYLE_MAX_LENGTH, STORE_THEME_FIELDS
@@ -110,16 +112,27 @@ class FakeImages:
                                      for _ in range(self.returned)])
 
 
+def dataUrlImage(dataUrl: str) -> tuple[bytes, str]:
+    """A body `images` entry's data URL as the photo it carries: its bytes
+    and content type."""
+    header, encoded = dataUrl.split(',', 1)
+    assert header.startswith('data:') and header.endswith(';base64')
+    return (base64.b64decode(encoded, validate=True),
+            header[len('data:'):-len(';base64')])
+
+
 def modelClient(images):
     """chatModel.client() for imageModel: its post('/images/edits', ...)
-    goes to images.edit as one call's fields (the body's, `image` the
-    photos in field order, `files` the multipart fields as sent,
-    `timeout`)."""
+    goes to images.edit as one call's fields (the JSON body's, `image` the
+    photos of its `images` in order, each its bytes and content type, and
+    `timeout`). Nothing goes as multipart."""
 
-    def post(path, *, cast_to, body, files, options):
+    def post(path, *, cast_to, body, options):
         assert path == '/images/edits'
-        return images.edit(**body, image=[file for _, file in files],
-                           files=files, timeout=options['timeout'])
+        return images.edit(
+            **body, image=[dataUrlImage(entry['image_url'])
+                           for entry in body['images']],
+            timeout=options['timeout'])
 
     return SimpleNamespace(post=post)
 
@@ -180,7 +193,7 @@ def test_generateProductPhotos_savesEachPhotoReturned(fakes, monkeypatch):
     assert len(res['photos']) == 2
     [call] = fakes.images.calls
     assert call['model'] == imageModel.IMAGE_MODEL and call['n'] == 3
-    assert call['image'] == [('reference0.jpg', JPEG, 'image/jpeg')]
+    assert call['image'] == [(JPEG, 'image/jpeg')]
     assert 'Style: white marble, morning light' in call['prompt']
     assert 'primary #112233' in call['prompt']
     assert 'Notes: from above' in call['prompt']
@@ -1010,9 +1023,10 @@ def edit(deadline=None):
                                  deadline or time.monotonic() + 60)
 
 
-def test_editImages_sendsThePhotosAsIndexedImageFields(monkeypatch):
-    """The real SDK's request: Meta refuses a list sent as image[] (what
-    images.edit sends), so each photo is image[0], image[1], ... in order."""
+def test_editImages_sendsThePhotosAsDataUrls_inAJsonBody(monkeypatch):
+    """The real SDK's request: Meta ignores multipart image files (under any
+    field name), so the photos go in a JSON body's `images`, each a data
+    URL of its bytes and content type, in order."""
     sent = []
 
     def answer(request):
@@ -1034,18 +1048,19 @@ def test_editImages_sendsThePhotosAsIndexedImageFields(monkeypatch):
 
     [request] = sent
     assert str(request.url) == MODEL_URL
-    assert request.headers['content-type'].startswith(
-        'multipart/form-data; boundary=')
-    body = request.read()
-    first = body.index(b'name="image[0]"; filename="reference0.jpg"')
-    second = body.index(b'name="image[1]"; filename="reference1.png"')
-    assert first < body.index(JPEG) < second < body.index(PNG)
-    assert b'name="image[]"' not in body
-    for name, value in (('model', imageModel.IMAGE_MODEL), ('n', '2'),
-                        ('size', imageModel.IMAGE_SIZE),
-                        ('output_format', imageModel.IMAGE_OUTPUT_FORMAT),
-                        ('response_format', 'b64_json')):
-        assert f'name="{name}"\r\n\r\n{value}\r\n'.encode() in body
+    assert request.headers['content-type'] == 'application/json'
+    raw = request.read()
+    assert b'multipart' not in raw and b'image[' not in raw
+    assert json.loads(raw) == {
+        'model': imageModel.IMAGE_MODEL, 'prompt': 'prompt', 'n': 2,
+        'size': imageModel.IMAGE_SIZE,
+        'output_format': imageModel.IMAGE_OUTPUT_FORMAT,
+        'response_format': 'b64_json',
+        'images': [
+            {'image_url': 'data:image/jpeg;base64,'
+                          + base64.b64encode(JPEG).decode()},
+            {'image_url': 'data:image/png;base64,'
+                          + base64.b64encode(PNG).decode()}]}
 
 
 @pytest.mark.parametrize('first', [
@@ -1290,6 +1305,53 @@ def test_photoPrompt_hasTheColorsLineOnlyWhenAColorIsSet(colors, expected,
         assert text not in prompt
 
 
+def test_photoPrompt_namesTheProduct_onlyWhenItsNameIsKnown():
+    store = {'photoStyle': 'calm'}
+
+    named = PhotoActions.photoPrompt(store, None, 'Blue Mug').split('\n')
+    unnamed = PhotoActions.photoPrompt(store, None)
+
+    assert named[:3] == [PhotoActions.PHOTO_INSTRUCTION, 'Product: Blue Mug',
+                         'Style: calm']
+    assert 'Product:' not in unnamed
+
+
+def test_photoInstruction_asksForTheProductOnly_withoutWhatSitsBesideIt():
+    instruction = PhotoActions.PHOTO_INSTRUCTION
+
+    assert 'Show only the product' in instruction
+    assert 'items placed beside it for scale' in instruction
+
+
+def test_generate_productName_isInThePrompt_strippedAndBlankIsNone(fakes):
+    _, url = themedStoreWithPhoto(fakes)
+
+    api.generateProductPhotos(ADMIN, [url], productName='  Blue Mug ')
+    for blank in ('', '   '):
+        api.generateProductPhotos(ADMIN, [url], productName=blank)
+    api.generateProductPhotos(ADMIN, [url])
+
+    named, *unnamed = [call['prompt'] for call in fakes.images.calls]
+    assert 'Product: Blue Mug\n' in named
+    assert len(unnamed) == 3
+    assert all('Product:' not in prompt for prompt in unnamed)
+
+
+def test_generate_productName_overLengthOrNotText_isRefused_beforeAnyQuota(
+        fakes):
+    _, url = themedStoreWithPhoto(fakes)
+
+    for productName in ('n' * (PRODUCT_NAME_MAX_LENGTH + 1), 5, ['x'],
+                        'Mug\x00'):
+        with pytest.raises(ValueError) as error:
+            api.generateProductPhotos(ADMIN, [url], productName=productName)
+        assert str(error.value).startswith(PhotoActions.PRODUCT_NAME_LABEL)
+    assert usageCounts() == [] and fakes.images.calls == []
+    api.generateProductPhotos(ADMIN, [url],
+                              productName='n' * PRODUCT_NAME_MAX_LENGTH)
+    assert len(fakes.images.calls) == 1
+
+
 def test_generate_withNoColors_thePromptHasNoColorsLine(fakes):
     store, url = themedStoreWithPhoto(fakes)
     withoutBrandColors(store)
@@ -1307,7 +1369,7 @@ def test_mcp_generateProductPhotos_hasNoUserIdInItsSchema():
     byName = asyncio.run(schemas())
 
     assert set(byName['generateProductPhotos']['properties']) == {
-        'imageUrls', 'count', 'notes'}
+        'imageUrls', 'count', 'notes', 'productName'}
     assert 'userId' not in byName['updateMyStoreTheme']['properties']
 
 

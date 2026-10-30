@@ -60,6 +60,7 @@ from mongoDb import db
 from services.__request import ServiceUnavailable
 from objects import (PHOTO_CHOICES_GENERATED, PHOTO_NOTES_MAX_LENGTH,
                      PHOTO_REFERENCES_MAX, PHOTOS_PER_CALL_MAX,
+                     PRODUCT_NAME_MAX_LENGTH,
                      AdminProductRow, GeneratedPhoto, GeneratedPhotosResponse,
                      ProductPhotoChoicesResponse, projectedCopy,
                      projection_of)
@@ -103,6 +104,7 @@ IMAGE_URLS_TWICE = 'imageUrls lists the same photo twice'
 IMAGE_URL_MISSING = 'Send the imageUrl of the photo you uploaded'
 PHOTO_COUNT = f'count is a whole number from 1 to {PHOTOS_PER_CALL_MAX}'
 NOTES_LABEL = 'The notes'
+PRODUCT_NAME_LABEL = "The product's name"
 PHOTO_NOT_FOUND = 'Photo not found'
 # Why makeProductPhotoChoices offers the original only (with a cap's own
 # message, or the model's refusal).
@@ -122,8 +124,10 @@ CAPS_ORIGINAL_ONLY = {
 PHOTO_INSTRUCTION = (
     'Create a professional e-commerce product photo of the item shown in '
     'the reference photos. Keep the product exactly as it is: its shape, '
-    'colors, labels and printed text. Add no text, logos, watermarks or '
-    'people unless the style asks for them.')
+    'colors, labels and printed text. Show only the product: leave out '
+    'anything else in the reference photos, such as items placed beside it '
+    'for scale. Add no text, logos, watermarks or people unless the style '
+    'asks for them.')
 
 
 def _now() -> datetime.datetime:
@@ -165,11 +169,16 @@ def brandColorsLine(primaryColor: str | None,
             'the background and props, never on the product itself.')
 
 
-def photoPrompt(store: dict, notes: str | None) -> str:
-    """The prompt of a photo call: the fixed instruction, the store's
-    style, its brand colors (when set) and the admin's notes (when
+def photoPrompt(store: dict, notes: str | None,
+                productName: str | None = None) -> str:
+    """The prompt of a photo call: the fixed instruction, the product's
+    name (when known, so the model knows which item is the product), the
+    store's style, its brand colors (when set) and the admin's notes (when
     sent)."""
-    lines = [PHOTO_INSTRUCTION, f'Style: {store["photoStyle"]}']
+    lines = [PHOTO_INSTRUCTION]
+    if productName is not None:
+        lines.append(f'Product: {productName}')
+    lines.append(f'Style: {store["photoStyle"]}')
     colors = brandColorsLine(store.get('primaryColor'),
                              store.get('secondaryColor'))
     if colors is not None:
@@ -299,7 +308,8 @@ class PhotoActions():
                               userId: str,
                               imageUrls: list[str],
                               count: int = 1,
-                              notes: str | None = None) -> dict:
+                              notes: str | None = None,
+                              productName: str | None = None) -> dict:
         """Turn the admin's plain photos of one item into polished product
         photos in the store's look (its photo style and brand colors, set
         with updateMyStoreTheme: a store with no photo style is refused).
@@ -309,8 +319,10 @@ class PhotoActions():
         1); a store makes at most 100 a day, and the app has a daily limit
         across all stores too. notes is optional extra
         direction from the admin for these photos (up to 300 characters),
-        e.g. "show it from above". Confirm the count with the admin before
-        calling. Returns each photo's _id and url, and the prompt the model
+        e.g. "show it from above". productName is optional: the product's
+        name (up to 80 characters), when the photos are for one of the
+        store's products, so the model knows which item to photograph.
+        Confirm the count with the admin before calling. Returns each photo's _id and url, and the prompt the model
         was given: to show one in the shop, put it on its product with
         setProductPhoto. If this tool refuses, relay its message to the
         admin."""
@@ -324,7 +336,9 @@ class PhotoActions():
         count = _validCount(count)
         notes = _validText(notes, NOTES_LABEL, PHOTO_NOTES_MAX_LENGTH,
                            required=False)
-        prompt = photoPrompt(store, notes)
+        productName = _validText(productName, PRODUCT_NAME_LABEL,
+                                 PRODUCT_NAME_MAX_LENGTH, required=False)
+        prompt = photoPrompt(store, notes, productName)
         started = time.monotonic()
         with slot(_photoSlots, imageModel.unavailable):
             images = _makeImages(userId, store, paths, count, prompt,
@@ -400,7 +414,7 @@ class PhotoActions():
             if not store.get('photoStyle'):
                 notGenerated = NO_STYLE_ORIGINAL_ONLY
             else:
-                prompt = photoPrompt(store, None)
+                prompt = photoPrompt(store, None, product['name'])
                 generated = []
                 try:
                     images = _makeImages(userId, store, paths,
