@@ -82,26 +82,72 @@ class StoreLocationResponse(ResponseModel):
                                  description='Degrees east (negative: west)')
 
 
-# Where a store delivers: up to DELIVERY_ZONES_MAX areas the admin draws on
+# Where a store delivers: up to DELIVERY_ZONES_MAX zones the admin draws on
 # the map, each a closed shape of corners in drawing order (the last joins
-# the first). None or no area: anywhere.
+# the first) with its own delivery policy: a name, a flat fee, the days a
+# delivery takes, and optionally a minimum order and an order total from
+# which delivery is free. Zones never overlap (zonesOverlap); they may share
+# a border. A store with no zone takes no delivery order.
 DELIVERY_ZONES_MAX = 10
 DELIVERY_ZONE_CORNERS_MIN = 3
 DELIVERY_ZONE_CORNERS_MAX = 100
+DELIVERY_ZONE_NAME_MAX_LENGTH = 40
+DELIVERY_ZONE_DAYS_MAX = 365
+# PRODUCT_PRICE_MAX's value (objects/product.py imports this module, so it
+# pins the two equal).
+DELIVERY_ZONE_AMOUNT_MAX = 10_000_000
+
+DeliveryZoneName = Annotated[str, Field(
+    min_length=1, max_length=DELIVERY_ZONE_NAME_MAX_LENGTH,
+    description='What the zone is called, e.g. Makati')]
+DeliveryZoneFee = Annotated[float, Field(
+    ge=0, le=DELIVERY_ZONE_AMOUNT_MAX,
+    description="What a delivery into the zone costs, in the store's "
+    'currency; 0: free')]
+DeliveryZoneDays = Annotated[int, Field(
+    ge=0, le=DELIVERY_ZONE_DAYS_MAX,
+    description='Days from payment until a delivery into the zone arrives')]
+DeliveryZoneMinimumOrder = Annotated[float | None, Field(
+    ge=0, le=DELIVERY_ZONE_AMOUNT_MAX,
+    description="The smallest items total the zone takes, in the store's "
+    'currency; null: no minimum')]
+DeliveryZoneFreeFrom = Annotated[float | None, Field(
+    ge=0, le=DELIVERY_ZONE_AMOUNT_MAX,
+    description="The items total from which delivery into the zone is free, "
+    "in the store's currency; null: never free")]
+DeliveryZoneCorners = Annotated[list[StoreLocation], Field(
+    min_length=DELIVERY_ZONE_CORNERS_MIN,
+    max_length=DELIVERY_ZONE_CORNERS_MAX,
+    description='The corners in drawing order; the last joins the first')]
+# The policy fields of a zone, beside its points.
+DELIVERY_ZONE_RULES = ('name', 'deliveryFee', 'deliveryDays', 'minimumOrder',
+                       'freeDeliveryFrom')
 
 
 class DeliveryZone(AppModel):
-    """One area a store delivers to (deliveryZoneProblem holds its shape)."""
-    points: list[StoreLocation] = Field(
-        ..., min_length=DELIVERY_ZONE_CORNERS_MIN,
-        max_length=DELIVERY_ZONE_CORNERS_MAX,
-        description='The corners in drawing order; the last joins the first')
+    """One zone a store delivers to, with its own delivery policy
+    (deliveryZoneProblem holds its shape, zonesOverlap keeps zones apart)."""
+    name: DeliveryZoneName
+    points: DeliveryZoneCorners
+    deliveryFee: DeliveryZoneFee
+    deliveryDays: DeliveryZoneDays
+    minimumOrder: DeliveryZoneMinimumOrder = None
+    freeDeliveryFrom: DeliveryZoneFreeFrom = None
 
 
-class DeliveryZoneResponse(ResponseModel):
-    """A delivery area as a route sends it. Each field restates
-    DeliveryZone's, which test_route_response_models.py's MIRRORS keeps
-    in step."""
+class DeliveryZoneRule(ResponseModel):
+    """A zone's delivery policy as a route sends it, without its shape.
+    Each field restates DeliveryZone's, which test_route_response_models.py's
+    MIRRORS keeps in step."""
+    name: DeliveryZoneName
+    deliveryFee: DeliveryZoneFee
+    deliveryDays: DeliveryZoneDays
+    minimumOrder: DeliveryZoneMinimumOrder = Field(...)
+    freeDeliveryFrom: DeliveryZoneFreeFrom = Field(...)
+
+
+class DeliveryZoneResponse(DeliveryZoneRule):
+    """A zone as a route sends it: its policy and its shape."""
     points: list[StoreLocationResponse] = Field(
         ..., min_length=DELIVERY_ZONE_CORNERS_MIN,
         max_length=DELIVERY_ZONE_CORNERS_MAX,
@@ -109,35 +155,47 @@ class DeliveryZoneResponse(ResponseModel):
 
 
 class DeliveryZonesResponse(ResponseModel):
-    """What setMyDeliveryZones sends: the store's delivery areas as saved."""
+    """What setMyDeliveryZones sends: the store's delivery zones as saved."""
     deliveryZones: list[DeliveryZoneResponse] = Field(
         ..., max_length=DELIVERY_ZONES_MAX,
-        description='Where the store delivers; empty: anywhere')
+        description='Where the store delivers; empty: it takes no delivery')
 
 
 class NewDeliveryPoint(AppModel):
-    """A corner of a setMyDeliveryZones area. Types only, no limits: the
+    """A corner of a setMyDeliveryZones zone. Types only, no limits: the
     route checks them, never quoting a value (NewOrderDelivery's reason)."""
     latitude: float = Field(..., description='Degrees north')
     longitude: float = Field(..., description='Degrees east')
 
 
 class NewDeliveryZone(AppModel):
-    """A setMyDeliveryZones area: its corners in drawing order."""
+    """A setMyDeliveryZones zone: its corners in drawing order and its
+    delivery policy. Types only, no limits (NewDeliveryPoint's reason)."""
+    name: str = Field(..., description='What the zone is called')
     points: list[NewDeliveryPoint] = Field(
         ..., description='The corners in drawing order; the last joins the '
         'first')
+    deliveryFee: float = Field(..., description="The fee, in the store's "
+                               'currency; 0: free')
+    deliveryDays: int = Field(..., description='Days from payment until it '
+                              'arrives')
+    minimumOrder: float | None = Field(None, description='The smallest '
+                                       'items total; null: none')
+    freeDeliveryFrom: float | None = Field(
+        None, description='The items total from which delivery is free; '
+        'null: never')
 
 
-def _orientation(a: tuple[float, float], b: tuple[float, float],
-                 c: tuple[float, float]) -> int:
+Corner = tuple[float, float]
+
+
+def _orientation(a: Corner, b: Corner, c: Corner) -> int:
     """Which way a, b, c turn: 1 left, -1 right, 0 in a line."""
     cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
     return (cross > 0) - (cross < 0)
 
 
-def _onSegment(a: tuple[float, float], b: tuple[float, float],
-               c: tuple[float, float]) -> bool:
+def _onSegment(a: Corner, b: Corner, c: Corner) -> bool:
     """Whether c, in line with a and b, lies between them."""
     return (min(a[0], b[0]) <= c[0] <= max(a[0], b[0])
             and min(a[1], b[1]) <= c[1] <= max(a[1], b[1]))
@@ -155,10 +213,23 @@ def _segmentsMeet(p1, p2, q1, q2) -> bool:
             or (o4 == 0 and _onSegment(q1, q2, p2)))
 
 
-def deliveryZoneProblem(corners: list[tuple[float, float]]) -> str | None:
-    """What is wrong with a delivery area's shape, the admin's to fix; None
+def _segmentsCross(p1, p2, q1, q2) -> bool:
+    """Whether the segments cross through each other: touching at a corner
+    or running along each other (a shared border) is no crossing."""
+    o1, o2 = _orientation(p1, p2, q1), _orientation(p1, p2, q2)
+    o3, o4 = _orientation(q1, q2, p1), _orientation(q1, q2, p2)
+    return 0 not in (o1, o2, o3, o4) and o1 != o2 and o3 != o4
+
+
+def _sides(corners: list[Corner]) -> list[tuple[Corner, Corner]]:
+    count = len(corners)
+    return [(corners[i], corners[(i + 1) % count]) for i in range(count)]
+
+
+def deliveryZoneProblem(corners: list[Corner]) -> str | None:
+    """What is wrong with a delivery zone's shape, the admin's to fix; None
     when it is a closed shape whose sides never cross. `corners` are
-    (latitude, longitude) pairs in drawing order, flat on the map (an area
+    (latitude, longitude) pairs in drawing order, flat on the map (a zone
     is a town or a city, never across the 180th meridian)."""
     if not DELIVERY_ZONE_CORNERS_MIN <= len(corners) <= \
             DELIVERY_ZONE_CORNERS_MAX:
@@ -167,7 +238,7 @@ def deliveryZoneProblem(corners: list[tuple[float, float]]) -> str | None:
     if len(set(corners)) != len(corners):
         return 'a corner is placed twice'
     count = len(corners)
-    sides = [(corners[i], corners[(i + 1) % count]) for i in range(count)]
+    sides = _sides(corners)
     for i in range(count):
         for j in range(i + 1, count):
             # Neighbouring sides share a corner, which is no crossing.
@@ -181,32 +252,80 @@ def deliveryZoneProblem(corners: list[tuple[float, float]]) -> str | None:
     return None
 
 
-def _insideZone(latitude: float, longitude: float,
-                points: list[dict]) -> bool:
-    """Whether the point is inside the closed shape `points` (each with
-    latitude and longitude): a ray to the east crosses its sides an odd
-    number of times."""
+def _onBorder(point: Corner, corners: list[Corner]) -> bool:
+    return any(_orientation(a, b, point) == 0 and _onSegment(a, b, point)
+               for a, b in _sides(corners))
+
+
+def _rayInside(point: Corner, corners: list[Corner]) -> bool:
+    """Whether a ray from the point to the east crosses the shape's sides
+    an odd number of times (a point on a side may go either way)."""
     inside = False
-    count = len(points)
-    for i in range(count):
-        a, b = points[i], points[(i + 1) % count]
-        if (a['latitude'] > latitude) != (b['latitude'] > latitude):
-            crossing = (a['longitude'] + (latitude - a['latitude'])
-                        * (b['longitude'] - a['longitude'])
-                        / (b['latitude'] - a['latitude']))
+    latitude, longitude = point
+    for a, b in _sides(corners):
+        if (a[0] > latitude) != (b[0] > latitude):
+            crossing = a[1] + (latitude - a[0]) * (b[1] - a[1]) / (b[0] - a[0])
             if longitude < crossing:
                 inside = not inside
     return inside
 
 
-def insideDeliveryZones(latitude: float, longitude: float,
-                        zones: list[dict] | None) -> bool:
-    """Whether a store with the delivery areas `zones` (as stored: each
-    with its points) delivers to the point: anywhere without one."""
-    if not zones:
+def _strictlyInside(point: Corner, corners: list[Corner]) -> bool:
+    return not _onBorder(point, corners) and _rayInside(point, corners)
+
+
+def _holds(point: Corner, corners: list[Corner]) -> bool:
+    """Whether the shape holds the point, its border included."""
+    return _onBorder(point, corners) or _rayInside(point, corners)
+
+
+def zonesOverlap(first: list[Corner], second: list[Corner]) -> bool:
+    """Whether two valid zone shapes share any ground: their sides cross,
+    or a corner or the middle of a side of one lies inside the other. Two
+    zones that only share a border (or a corner) do not overlap."""
+    if set(first) == set(second):
         return True
-    return any(_insideZone(latitude, longitude, zone['points'])
-               for zone in zones)
+    for p1, p2 in _sides(first):
+        for q1, q2 in _sides(second):
+            if _segmentsCross(p1, p2, q1, q2):
+                return True
+    for one, other in ((first, second), (second, first)):
+        probes = [*one, *(((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+                          for a, b in _sides(one))]
+        if any(_strictlyInside(probe, other) for probe in probes):
+            return True
+    return False
+
+
+def zoneCorners(zone: dict) -> list[Corner]:
+    """A stored zone's corners as (latitude, longitude) pairs."""
+    return [(p['latitude'], p['longitude']) for p in zone['points']]
+
+
+def ruledZones(zones: list[dict] | None) -> list[dict]:
+    """The stored zones that carry a delivery policy: one drawn before zones
+    had policies (shape only) takes no delivery until it is drawn again."""
+    return [zone for zone in zones or []
+            if all(rule in zone for rule in DELIVERY_ZONE_RULES)]
+
+
+def deliveryZoneAt(latitude: float, longitude: float,
+                   zones: list[dict] | None) -> dict | None:
+    """The zone (as stored) a pin falls in, its border included: the first
+    one listed, so a pin on a shared border has one policy. None outside
+    every zone."""
+    point = (latitude, longitude)
+    return next((zone for zone in ruledZones(zones)
+                 if _holds(point, zoneCorners(zone))), None)
+
+
+def deliveryFeeFor(zone: dict, itemsTotal: float) -> float:
+    """What a delivery of items worth `itemsTotal` into `zone` costs: its
+    fee, nothing from its freeDeliveryFrom on."""
+    freeFrom = zone.get('freeDeliveryFrom')
+    if freeFrom is not None and itemsTotal >= freeFrom:
+        return 0
+    return zone['deliveryFee']
 
 
 class Store(MongoModel):
@@ -243,8 +362,8 @@ class Store(MongoModel):
         None, description='Map location; null until the admin pins it')
     deliveryZones: list[DeliveryZone] | None = Field(
         None, max_length=DELIVERY_ZONES_MAX,
-        description='Where it delivers, drawn on the map; null or empty: '
-        'anywhere')
+        description='Where it delivers, drawn on the map, each zone with its '
+        'own delivery policy; null or empty: no delivery')
     photoStyle: str | None = Field(
         None, min_length=1, max_length=PHOTO_STYLE_MAX_LENGTH,
         description="The look of the store's product photos")
