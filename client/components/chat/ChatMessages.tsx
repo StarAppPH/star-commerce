@@ -67,9 +67,9 @@ export function ChatMessages({
             {turn.userText}
           </div>
           {turn.status === 'sending' && (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm" aria-live="polite">
+            <div data-component="chatThinking" className="flex items-center gap-2 text-muted-foreground text-sm" aria-live="polite">
               <Spinner className="size-4" />
-              Thinking
+              {turn.thinkingText ?? 'Thinking'}
             </div>
           )}
           {turn.status === 'done' && turn.reply !== null && <AssistantText text={turn.reply} />}

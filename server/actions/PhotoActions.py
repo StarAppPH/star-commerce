@@ -229,7 +229,10 @@ def _saveImages(userId: str, store: dict, paths: list[str],
 
 class PhotoActions():
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Making your product photos',
+                            'Styling your photos',
+                            'Creating new photos'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Photos created',
@@ -278,7 +281,10 @@ class PhotoActions():
         })
         return {'photos': photos}
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Setting the product photo',
+                            'Updating the product photo',
+                            'Putting the photo on the product'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Product photo set',

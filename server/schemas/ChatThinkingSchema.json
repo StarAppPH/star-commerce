@@ -1,0 +1,53 @@
+{
+    "description": "A ChatThinking document: the thinking text of the tool a turn is\nrunning. Its _id is \"<userId>:<turnKey>\", so a caller only ever reads\ntheir own; deleted when the turn ends, and by a TTL index on expireAt\notherwise.",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "userId": {
+            "description": "The Users _id of the caller",
+            "title": "Userid",
+            "type": "string"
+        },
+        "storeId": {
+            "description": "The Stores _id the turn is at",
+            "title": "Storeid",
+            "type": "string"
+        },
+        "thinkingText": {
+            "description": "What the assistant is doing",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Thinkingtext",
+            "type": "string"
+        },
+        "expireAt": {
+            "description": "When it is deleted",
+            "format": "date-time",
+            "title": "Expireat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "userId",
+        "storeId",
+        "thinkingText",
+        "expireAt"
+    ],
+    "title": "ChatThinking",
+    "type": "object",
+    "additionalProperties": false
+}

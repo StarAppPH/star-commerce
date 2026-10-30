@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { cn } from '@/lib/utils';
 import { AssistantText } from '@/components/chat/AssistantText';
+import type { OnThinking } from '@/components/chat/useChat';
 import {
   speak,
   speakableText,
@@ -19,7 +20,8 @@ interface VoiceModeProps {
   open: boolean;
   onClose: () => void;
   // Sends the spoken words as a chat message; resolves to the reply.
-  ask: (text: string) => Promise<string | null>;
+  // onThinking hears what the assistant is doing while it answers.
+  ask: (text: string, onThinking?: OnThinking) => Promise<string | null>;
   title: string;
   subtitle: string;
   // The glow's two colors: the store's tones for shoppers, teal and blue
@@ -58,11 +60,41 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
   const [question, setQuestion] = useState('');
   const [reply, setReply] = useState<string | null>(null);
   const [speakReplies, setSpeakReplies] = useState(true);
+  const [thinkingText, setThinkingText] = useState<string | null>(null);
   const recognition = useRef<SpeechRecognitionLike | null>(null);
   const speakRef = useRef(speakReplies);
+  const stateRef = useRef<VoiceState>(state);
+  // The thinking text playing (ElevenLabs, in the store's voice), and
+  // whether one is being fetched: one at a time, never over the reply.
+  const thinkingAudio = useRef<HTMLAudioElement | null>(null);
+  const fetchingThinking = useRef(false);
   const lang = typeof navigator === 'undefined' ? 'en-US' : navigator.language || 'en-US';
 
   useEffect(() => { speakRef.current = speakReplies; }, [speakReplies]);
+  useEffect(() => { stateRef.current = state; }, [state]);
+
+  const stopThinkingAudio = useCallback(() => {
+    thinkingAudio.current?.pause();
+    thinkingAudio.current = null;
+  }, []);
+
+  // Shows each thinking text and says it, unless one is already playing or
+  // being fetched, or the answer came first.
+  const onThinking = useCallback<OnThinking>(async (text, spoken) => {
+    setThinkingText(text);
+    if (!speakRef.current || thinkingAudio.current || fetchingThinking.current) return;
+    fetchingThinking.current = true;
+    const audio = await spoken();
+    fetchingThinking.current = false;
+    if (!audio || !speakRef.current || stateRef.current !== 'thinking' || thinkingAudio.current) return;
+    const element = new Audio(`data:audio/mpeg;base64,${audio}`);
+    const done = () => {
+      if (thinkingAudio.current === element) thinkingAudio.current = null;
+    };
+    element.onended = done;
+    thinkingAudio.current = element;
+    element.play().catch(done);
+  }, []);
 
   const finish = useCallback(async (text: string) => {
     const spoken = text.trim();
@@ -72,8 +104,12 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     }
     setQuestion(spoken);
     setReply(null);
+    setThinkingText(null);
     setState('thinking');
-    const answer = await ask(spoken);
+    stateRef.current = 'thinking';
+    const answer = await ask(spoken, onThinking);
+    stateRef.current = 'answering';
+    stopThinkingAudio();
     if (answer === null) {
       setReply('That didn’t go through. Tap the orb to try again.');
       setState('idle');
@@ -83,7 +119,7 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     setState('answering');
     if (speakRef.current) await speak(speakableText(answer), lang);
     setState((current) => (current === 'answering' ? 'idle' : current));
-  }, [ask, lang]);
+  }, [ask, lang, onThinking, stopThinkingAudio]);
 
   const listen = useCallback(() => {
     const Recognition = speechRecognitionConstructor();
@@ -135,13 +171,14 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     recognition.current?.abort();
     recognition.current = null;
     stopSpeaking();
+    stopThinkingAudio();
     setState('idle');
     setHeard('');
     setInterim('');
     setQuestion('');
     setReply(null);
     onClose();
-  }, [onClose]);
+  }, [onClose, stopThinkingAudio]);
 
   // Opening starts listening once; later changes to the callbacks (a new
   // chat id, say) must not restart it mid-answer.
@@ -289,7 +326,12 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
               ))}
             </button>
           </div>
-          <span className={cn('text-muted-foreground text-sm', state === 'listening' && 'text-foreground')}>{STATUS[state]}</span>
+          <span
+            data-component={`${variant}VoiceStatus`}
+            className={cn('text-muted-foreground text-sm', state === 'listening' && 'text-foreground')}
+          >
+            {state === 'thinking' && thinkingText ? thinkingText : STATUS[state]}
+          </span>
         </div>
 
         <Button
@@ -298,7 +340,10 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
           size="icon-xl"
           className="rounded-full"
           onClick={() => {
-            if (speakReplies) stopSpeaking();
+            if (speakReplies) {
+              stopSpeaking();
+              stopThinkingAudio();
+            }
             setSpeakReplies((value) => !value);
           }}
           aria-pressed={speakReplies}

@@ -265,6 +265,8 @@ from objects.voice import (VoiceAudioFormat, VOICE_NAME_MAX_LENGTH,
                            VOICE_PAGE_TOKEN_MAX_LENGTH, VoiceUsage,
                            VoiceReplyResponse, SpokenReplyResponse, VoiceRow,
                            VoiceListResponse)
+from objects.thinking import (TURN_KEY_PATTERN, ChatThinking, ThinkingSpeech,
+                              ChatThinkingResponse, SpokenThinkingResponse)
 
 
 # AppCreator (_classes_from_module) generates TS schemas only for classes

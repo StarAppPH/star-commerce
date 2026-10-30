@@ -43,6 +43,8 @@ from conftest import (STORE_DETAILS, addOrder, addProduct, createTestStore,
 COLLECTIONS = [
     'Users', 'Bootstrap', 'Stores', 'Customers', 'Products', 'Orders'
 ]
+# A test tool's thinking texts (mcpTools needs at least three).
+THINKING = ['Working on it', 'Doing the thing', 'Almost there']
 ADMIN = 'mc-admin'
 OTHER_ADMIN = 'mc-other-admin'
 GUEST = 'mc-guest-uid'
@@ -149,7 +151,7 @@ def _route(jwtRequired=True, createAccessToken=False, serviceOnly=False,
         func.createAccessToken = createAccessToken
         func.serviceOnly = serviceOnly
         func.responseModel = responseModel
-        return mcp_tool(*audiences)(func)
+        return mcp_tool(*audiences, thinkingText=THINKING)(func)
 
     return decorator
 
@@ -271,7 +273,7 @@ def test_toolSpec_refusesARouteThatBreaksARule(name, func, problem):
 ])
 def test_mcpTool_refusesBadAudiences(audiences, problem):
     with pytest.raises(ValueError, match=problem):
-        mcp_tool(*audiences)
+        mcp_tool(*audiences, thinkingText=THINKING)
 
 
 # ----------------------------- bearer token ----------------------------- #

@@ -2,9 +2,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { VoiceMode } from '@/components/voice/VoiceMode';
 import type { ChatComponent } from './cards/types';
-import type { ChatTurnView } from './useChat';
+import type { ChatTurnView, OnThinking } from './useChat';
 
-type Ask = (text: string) => Promise<string | null>;
+type Ask = (text: string, onThinking?: OnThinking) => Promise<string | null>;
 
 interface VoiceOptions {
   title: string;
@@ -54,7 +54,7 @@ export function ChatShellProvider({ voice, onTurnSaved, children }: ChatShellPro
   useEffect(() => { savedRef.current = onTurnSaved; }, [onTurnSaved]);
   const [voiceOpen, setVoiceOpen] = useState(false);
 
-  const ask = useCallback<Ask>((text) => (askRef.current ? askRef.current(text) : Promise.resolve(null)), []);
+  const ask = useCallback<Ask>((text, onThinking) => (askRef.current ? askRef.current(text, onThinking) : Promise.resolve(null)), []);
   const closeVoice = useCallback(() => setVoiceOpen(false), []);
 
   const value = useMemo<ChatShellValue>(() => ({

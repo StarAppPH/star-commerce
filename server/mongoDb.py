@@ -199,6 +199,12 @@ class mongoDb():
         # The daily voice counters (seconds, characters), deleted once their
         # day is over.
         self.db['VoiceUsage'].create_index('expireAt', expireAfterSeconds=0)
+        # What a chat turn is doing (chatThinking.py), deleted when the turn
+        # ends, else soon after.
+        self.db['ChatThinking'].create_index('expireAt', expireAfterSeconds=0)
+        # The spoken thinking texts, looked up by text when one is removed
+        # (chatThinking.syncThinkingSpeech).
+        self.db['ThinkingSpeech'].create_index('text')
 
     def create(self, data: dict, collection_name: str, session: Optional[ClientSession] = None) -> dict:
         """Insert a document into the collection and return the created data."""

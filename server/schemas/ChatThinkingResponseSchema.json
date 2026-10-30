@@ -1,0 +1,24 @@
+{
+    "description": "What getChatThinking sends: what the turn is doing right now.",
+    "properties": {
+        "thinkingText": {
+            "anyOf": [
+                {
+                    "maxLength": 60,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The running tool's thinking text; null before the first tool, and once the turn is over",
+            "title": "Thinkingtext"
+        }
+    },
+    "required": [
+        "thinkingText"
+    ],
+    "title": "ChatThinkingResponse",
+    "type": "object",
+    "additionalProperties": false
+}
