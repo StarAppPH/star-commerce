@@ -28,6 +28,12 @@ export function formatWhen(value: string): string {
   return `${formatShortDate(value)}, ${formatStoreTime(value)}`;
 }
 
+// A store time of day as the server keeps it (HH:MM, 24-hour), e.g. "4:30 PM".
+export function formatTimeOfDay(value: string): string {
+  const [hours, minutes] = value.split(':').map(Number);
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${hours < 12 ? 'AM' : 'PM'}`;
+}
+
 export function minutesLeft(until: string, now: number): number {
   const end = parseInstant(until);
   return end ? Math.max(0, Math.ceil((end.getTime() - now) / 60000)) : 0;

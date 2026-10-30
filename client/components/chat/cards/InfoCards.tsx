@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChatCard, ProductPhoto, PromptUsed } from './ChatCard';
 import { type PolicyAnswers, type PolicyQuestion, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
-import { POLICY_VALUE_LABELS, deliveryPerKmText, formatMoney } from './format';
+import { POLICY_VALUE_LABELS, deliveryPerKmText, formatMoney, formatTimeOfDay } from './format';
 import type { ComponentProps } from './types';
 
 // The admin's products a tool listed, added or changed.
@@ -41,16 +41,17 @@ export function StoreProductsCard({ component }: ComponentProps<'storeProducts'>
 
 type PolicyRowValue = string | number | boolean | string[] | null;
 
-function shown(value: PolicyRowValue, money: (amount: number) => string, isMoney: boolean): string {
+function shown(value: PolicyRowValue, money: (amount: number) => string, isMoney: boolean, isTime: boolean): string {
   if (value === null) return 'Not answered yet';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') return isMoney ? money(value) : String(value);
+  if (typeof value === 'string' && isTime) return formatTimeOfDay(value);
   if (Array.isArray(value)) return value.map((item) => POLICY_VALUE_LABELS[item] ?? item).join(', ');
   return POLICY_VALUE_LABELS[value] ?? value;
 }
 
 // The policy questions in the order a store's policy page reads.
-export function policyRows(answers: PolicyAnswers): { question: PolicyQuestion; label: string; value: PolicyRowValue; money?: boolean }[] {
+export function policyRows(answers: PolicyAnswers): { question: PolicyQuestion; label: string; value: PolicyRowValue; money?: boolean; time?: boolean }[] {
   return [
     { question: 'acceptedPaymentMethods', label: 'Payment methods', value: answers.acceptedPaymentMethods },
     { question: 'paidOrderCancellation', label: 'Cancelling a paid order', value: answers.paidOrderCancellation },
@@ -60,6 +61,7 @@ export function policyRows(answers: PolicyAnswers): { question: PolicyQuestion; 
     { question: 'offersFreeDelivery', label: 'Free delivery', value: answers.offersFreeDelivery },
     { question: 'freeDeliveryMinimum', label: 'Free delivery from', value: answers.freeDeliveryMinimum, money: true },
     { question: 'handoverDays', label: 'Days until ready or delivered', value: answers.handoverDays },
+    { question: 'handoverCutoffTime', label: 'Daily cutoff (paid later: next day)', value: answers.handoverCutoffTime, time: true },
     { question: 'acceptsReturns', label: 'Accepts returns', value: answers.acceptsReturns },
     { question: 'returnWindowDays', label: 'Return window (days)', value: answers.returnWindowDays },
     { question: 'returnConditions', label: 'Return conditions', value: answers.returnConditions },
@@ -91,7 +93,7 @@ export function PolicyCard({ component }: ComponentProps<'policy'>) {
         {answeredRows.map((row) => (
           <div key={row.label} className="contents">
             <dt className="text-muted-foreground">{row.label}</dt>
-            <dd>{shown(row.value, money, row.money === true)}</dd>
+            <dd>{shown(row.value, money, row.money === true, row.time === true)}</dd>
           </div>
         ))}
         {delivers && (

@@ -750,6 +750,27 @@ def test_aPolicySectionAskedInChat_isSavedByTheModel(wiped, model):
         'gcash', 'card']
 
 
+def test_sameDayDeliveryWithACutoff_isSavedByTheModel(wiped, model):
+    """"Same day, cut off at 4:30 PM, else next day": handoverDays 0 and
+    handoverCutoffTime 16:30, shown on the policy card."""
+    createTestStore(ADMIN)
+    model(reply('How many days after payment until ready?'))
+    cid = adminSays('Let us do the delivery policy')['conversationId']
+    model(calls(('c1', 'updateMyStorePolicy', json.dumps({
+        'handoverDays': 0, 'handoverCutoffTime': '16:30'}))),
+        reply('Saved: same day if paid by 4:30 PM, else the next day.'))
+
+    res = adminSays('Same day delivery. Cut off at 4:30PM. If we cannot '
+                    'reach the cutoff we deliver next day', cid)
+
+    [card] = res['components']
+    assert card['kind'] == 'policy'
+    assert (card['handoverDays'], card['handoverCutoffTime']) == (0, '16:30')
+    policy = api.getMyStorePolicy(ADMIN)
+    assert (policy['handoverDays'], policy['handoverCutoffTime']) == (0,
+                                                                      '16:30')
+
+
 def test_aStorePin_isSaved_andItsAddressSavedOnlyOnAYes(wiped, model,
                                                          _fakeGeocoding):
     """The owner's pin from the map is saved by the model; Google's address

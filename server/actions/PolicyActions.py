@@ -29,7 +29,7 @@ from objects import (POLICY_ANSWER_FIELDS, POLICY_CANCELLATION_HOURS_ANSWERS,
                      DeliveryOption,
                      PaidOrderCancellation, PaymentMethod, Policy,
                      RefundMethod, ReturnShippingPayer, StorePolicyResponse,
-                     projectedCopy, projection_of)
+                     TimeOfDay, projectedCopy, projection_of)
 from route_config import route_config
 from sharedConstants import DELIVERY_USD_PER_KM
 
@@ -84,6 +84,8 @@ def _rule(field: str) -> str:
         if answerType is float:
             return f'an amount {span}'
         return f'a whole number of days {span}'
+    if answerType == TimeOfDay:
+        return 'a time of day, 24-hour HH:MM (e.g. 16:30)'
     if answerType is str:
         maxLength = _limit(field, annotated_types.MaxLen, 'max_length')
         return f'text of at most {maxLength} characters'
@@ -131,7 +133,10 @@ may skip any):
   optional name for them (e.g. Metro Manila), and offersFreeDelivery, and if so
   freeDeliveryMinimum (the order total from which delivery is free);
   handoverDays, the days from payment until the order is ready for pickup
-  or delivered. What a delivery costs is set by the app, never asked:
+  or delivered (0: the same day), then handoverCutoffTime, whether there is
+  a time of day (HH:MM, 24-hour store time, e.g. 16:30 for 4:30 PM) after
+  which an order paid counts from the next day. What a delivery costs is
+  set by the app, never asked:
   {DELIVERY_USD_PER_KM} US dollars per km in a straight line from the
   store's pin, in the store's currency at today's rate (deliveryFeePerKm),
   so a store that delivers needs its pin (setUserStoreLocation);
@@ -144,12 +149,13 @@ Use only what the admin said, never guess, and confirm the answers with the
 admin before calling. Send only the fields the admin answered: a field left
 out keeps its answer. To take an answer back, list the field in `clear`
 (never with a value too). returnWindowDays and defectReportDays count from
-the handover (pickup or delivery); handoverDays counts from payment. Amounts
-are in the store's currency. Setting acceptsReturns to false drops the
-return window, conditions, refund method and who pays return shipping;
-leaving delivery out of deliveryOptions drops the delivery areas and free
-delivery; setting offersFreeDelivery to false drops the minimum; a
-paidOrderCancellation other than withinHours drops its hours. A customer
+the handover (pickup or delivery); handoverDays counts from payment (from
+the next day when paid after handoverCutoffTime). Amounts are in the
+store's currency. Setting acceptsReturns to false drops the return window,
+conditions, refund method and who pays return shipping; leaving delivery
+out of deliveryOptions drops the delivery areas and free delivery; setting
+offersFreeDelivery to false drops the minimum; a paidOrderCancellation
+other than withinHours drops its hours. A customer
 cancels a paid order themselves (refunded) when paidOrderCancellation allows
 it. The time a customer has to pay an order, and a customer cancelling an
 unpaid order, are set by the app, not by a policy: never ask about them.
@@ -188,9 +194,11 @@ def _validClear(clear: list[str] | None) -> list[str]:
 
 def _withFeePerKm(policy: dict, currency: str) -> dict:
     """`policy` (answers, as stored) with deliveryFeePerKm: what a km of
-    delivery costs in `currency`, None without delivery offered."""
+    delivery costs in `currency`, None without delivery offered. An answer
+    a document stored before it existed (handoverCutoffTime) reads as None,
+    not said."""
     delivers = 'delivery' in (policy.get('deliveryOptions') or [])
-    return {**policy,
+    return {**dict.fromkeys(POLICY_ANSWER_FIELDS), **policy,
             'deliveryFeePerKm': shownFeePerKm(currency) if delivers else None}
 
 
@@ -242,7 +250,10 @@ class PolicyActions():
         A defective or wrong item is always the store's to fix, whatever the
         return policy: defectReportDays (when set) is how long the customer
         has to report it. returnWindowDays and defectReportDays count from
-        the handover (pickup or delivery); handoverDays counts from payment.
+        the handover (pickup or delivery); handoverDays counts from payment:
+        from the payment day when paid by handoverCutoffTime (store time),
+        from the next day when paid after it (handoverDays 0 with a cutoff:
+        same day by the cutoff, else the next day); no cutoff: from payment.
         A delivery costs deliveryFeePerKm per km in a straight line from the
         store to the customer's pin (null: the price can't be read right
         now), nothing from freeDeliveryMinimum on. Amounts are in the
@@ -279,6 +290,7 @@ class PolicyActions():
                             offersFreeDelivery: bool | None = None,
                             freeDeliveryMinimum: float | None = None,
                             handoverDays: int | None = None,
+                            handoverCutoffTime: str | None = None,
                             acceptedPaymentMethods: list[str] | None = None,
                             paidOrderCancellation: str | None = None,
                             paidOrderCancellationHours: int | None = None,

@@ -204,6 +204,20 @@
             "description": "Days from payment until the order is ready for pickup or delivered",
             "title": "Handoverdays"
         },
+        "handoverCutoffTime": {
+            "anyOf": [
+                {
+                    "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The time of day (HH:MM, store time) handoverDays counts from the payment day: an order paid after it counts from the next day (handoverDays 0 with a cutoff: same day, else the next day)",
+            "title": "Handovercutofftime"
+        },
         "acceptedPaymentMethods": {
             "anyOf": [
                 {

@@ -406,12 +406,12 @@ def cancelExpiredOrders(storeId: str | None = None) -> int:
 
 def storeDelivery(storeId: str) -> dict:
     """The delivery answers of the store's policy: deliveryOptions,
-    deliveryAreas, offersFreeDelivery, freeDeliveryMinimum and handoverDays
-    (each None while the store has not said), storeLocation, the
-    store's pin (None until pinned) that a delivery is priced from, and
+    deliveryAreas, offersFreeDelivery, freeDeliveryMinimum, handoverDays and
+    handoverCutoffTime (each None while the store has not said),
+    storeLocation, the store's pin (None until pinned) that a delivery is priced from, and
     deliveryZones, the areas it delivers to (None or empty: anywhere)."""
     fields = ('deliveryOptions', 'deliveryAreas', 'offersFreeDelivery',
-              'freeDeliveryMinimum', 'handoverDays')
+              'freeDeliveryMinimum', 'handoverDays', 'handoverCutoffTime')
     policy = db.read({'storeId': storeId}, POLICIES,
                      projection={field: 1 for field in fields},
                      findOne=True) or {}

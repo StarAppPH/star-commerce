@@ -620,6 +620,10 @@ export type Freedeliveryminimum = number | null;
  */
 export type Handoverdays = number | null;
 /**
+ * The time of day (HH:MM, store time) handoverDays counts from the payment day: an order paid after it counts from the next day (handoverDays 0 with a cutoff: same day, else the next day)
+ */
+export type Handovercutofftime = string | null;
+/**
  * The ways a customer can pay
  */
 export type Acceptedpaymentmethods =
@@ -1262,6 +1266,7 @@ export interface PolicyCard {
   offersFreeDelivery: Offersfreedelivery;
   freeDeliveryMinimum: Freedeliveryminimum;
   handoverDays: Handoverdays;
+  handoverCutoffTime: Handovercutofftime;
   acceptedPaymentMethods: Acceptedpaymentmethods;
   paidOrderCancellation: Paidordercancellation;
   paidOrderCancellationHours: Paidordercancellationhours;

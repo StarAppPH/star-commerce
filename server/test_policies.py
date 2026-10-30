@@ -654,6 +654,67 @@ def test_paidCancellationWithinHours_needsTheHours_andOtherAnswersDropThem(
     assert _answers(_policyDoc(storeId)) == NONE_ANSWERS
 
 
+def test_handoverCutoffTime_isATimeOfDay_andNeedsTheHandoverDays(clean):
+    """Same-day delivery with a cutoff: handoverDays 0, and an order paid
+    after handoverCutoffTime counts from the next day."""
+    store = _setUpStore()
+    storeId = store['_id']
+    sentinel = 'ZZ:ZZ'
+
+    # A cutoff with no handover days asks for them.
+    assert _refusal(api.updateMyStorePolicy, ADMIN,
+                    handoverCutoffTime='16:30') == (
+        'A handover cutoff time is set: ask how many days from payment '
+        'until the order is ready for pickup or delivered (handoverDays; 0 '
+        'for the same day)')
+    # Anything but a 24-hour HH:MM is refused, never quoted.
+    for value in ('4:30PM', '4:30', '16:30:00', '24:00', '16:60', '1630',
+                  sentinel, 1630, True, ['16:30']):
+        message = _refusal(api.updateMyStorePolicy, ADMIN, handoverDays=0,
+                           handoverCutoffTime=value)
+        assert message == ('handoverCutoffTime is a time of day, 24-hour '
+                           'HH:MM (e.g. 16:30)'), (value, message)
+    assert _answers(_policyDoc(storeId)) == NONE_ANSWERS
+
+    res = api.updateMyStorePolicy(ADMIN, handoverDays=0,
+                                  handoverCutoffTime='16:30')
+    assert (res['handoverDays'], res['handoverCutoffTime']) == (0, '16:30')
+    assert _answers(_policyDoc(storeId)) == _expected(
+        handoverDays=0, handoverCutoffTime='16:30')
+    # The edges are accepted, and the cutoff changes alone.
+    for cutoff in ('00:00', '23:59'):
+        api.updateMyStorePolicy(ADMIN, handoverCutoffTime=cutoff)
+        assert _policyDoc(storeId)['handoverCutoffTime'] == cutoff
+    # Clearing the days alone leaves a cutoff with nothing to count.
+    assert _refusal(api.updateMyStorePolicy, ADMIN,
+                    clear=['handoverDays']).startswith(
+                        'A handover cutoff time is set')
+    # The cutoff is taken back with clear; the days stay.
+    res = api.updateMyStorePolicy(ADMIN, clear=['handoverCutoffTime'])
+    assert (res['handoverDays'], res['handoverCutoffTime']) == (0, None)
+    assert _answers(_policyDoc(storeId)) == _expected(handoverDays=0)
+
+
+def test_aPolicyStoredBeforeTheCutoffTime_readsItAsNotSaid(clean, firebase):
+    store = _setUpStore()
+    storeId = store['_id']
+    api.updateMyStorePolicy(ADMIN, handoverDays=1)
+    db.db['Policies'].update_one({'storeId': storeId},
+                                 {'$unset': {'handoverCutoffTime': ''}})
+    assert 'handoverCutoffTime' not in _policyDoc(storeId)
+
+    mine = api.getMyStorePolicy(ADMIN)
+    assertExactShape(StorePolicyResponse, mine)
+    assert (mine['handoverDays'], mine['handoverCutoffTime']) == (1, None)
+    customerId = guestAt(firebase, store, GUEST)
+    theirs = api.getStorePolicy(customerId, storeId)
+    assert theirs['handoverCutoffTime'] is None
+    # The next save stores it.
+    api.updateMyStorePolicy(ADMIN, handoverCutoffTime='16:30')
+    assert _answers(_policyDoc(storeId)) == _expected(
+        handoverDays=1, handoverCutoffTime='16:30')
+
+
 def test_thePolicy_sendsWhatAKmOfDeliveryCosts(clean, firebase):
     store = _setUpStore()
 

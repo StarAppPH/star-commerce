@@ -30,7 +30,8 @@ from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
                             AdditionalTerms, DefectReportDays, DeliveryAreas,
                             DeliveryFeePerKm, DeliveryOptions, FreeDeliveryMinimum,
                             OffersFreeDelivery,
-                            HandoverDays, NonReturnableItems,
+                            HandoverCutoffTime, HandoverDays,
+                            NonReturnableItems,
                             PaidOrderCancellationAnswer,
                             PaidOrderCancellationHours, RefundMethodAnswer,
                             ReturnConditions, ReturnShippingPaidBy,
@@ -244,6 +245,7 @@ class PolicyCard(ResponseModel):
     offersFreeDelivery: OffersFreeDelivery
     freeDeliveryMinimum: FreeDeliveryMinimum
     handoverDays: HandoverDays
+    handoverCutoffTime: HandoverCutoffTime
     acceptedPaymentMethods: AcceptedPaymentMethods
     paidOrderCancellation: PaidOrderCancellationAnswer
     paidOrderCancellationHours: PaidOrderCancellationHours

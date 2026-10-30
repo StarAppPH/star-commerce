@@ -5,7 +5,7 @@ receives (see objects/__init__.py)."""
 import datetime
 import typing
 
-from pydantic import Field, field_validator
+from pydantic import Field, StringConstraints, field_validator
 from typing import Annotated, Literal
 
 from objects.base import MongoModel, StoredDocumentKeys, ResponseModel
@@ -35,13 +35,17 @@ PolicyField = Literal['acceptsReturns', 'returnWindowDays', 'returnConditions',
                       'returnShippingPaidBy', 'defectReportDays',
                       'deliveryOptions', 'deliveryAreas',
                       'offersFreeDelivery', 'freeDeliveryMinimum',
-                      'handoverDays',
+                      'handoverDays', 'handoverCutoffTime',
                       'acceptedPaymentMethods', 'paidOrderCancellation',
                       'paidOrderCancellationHours',
                       'sendsMarketingMessages', 'additionalTerms']
 POLICY_TEXT_MAX_LENGTH = 300
 POLICY_TERMS_MAX_LENGTH = 1000
 POLICY_DAYS_MAX = 365
+# A time of day, 24-hour HH:MM (00:00 to 23:59), in store time: no text
+# answer (TEXT_LIMITS), its pattern alone checks it.
+POLICY_TIME_PATTERN = r'^([01][0-9]|2[0-3]):[0-5][0-9]$'
+TimeOfDay = Annotated[str, StringConstraints(pattern=POLICY_TIME_PATTERN)]
 # A week: paidOrderCancellationHours' longest window.
 POLICY_CANCELLATION_HOURS_MAX = 168
 
@@ -92,6 +96,10 @@ HandoverDays = Annotated[int | None, Field(
     ge=0, le=POLICY_DAYS_MAX,
     description='Days from payment until the order is ready for pickup or '
     'delivered')]
+HandoverCutoffTime = Annotated[TimeOfDay | None, Field(
+    description='The time of day (HH:MM, store time) handoverDays counts '
+    'from the payment day: an order paid after it counts from the next day '
+    '(handoverDays 0 with a cutoff: same day, else the next day)')]
 # Payment
 AcceptedPaymentMethods = Annotated[list[PaymentMethod] | None, Field(
     min_length=1, description='The ways a customer can pay')]
@@ -142,6 +150,7 @@ class Policy(MongoModel):
     offersFreeDelivery: OffersFreeDelivery = None
     freeDeliveryMinimum: FreeDeliveryMinimum = None
     handoverDays: HandoverDays = None
+    handoverCutoffTime: HandoverCutoffTime = None
     acceptedPaymentMethods: AcceptedPaymentMethods = None
     paidOrderCancellation: PaidOrderCancellationAnswer = None
     paidOrderCancellationHours: PaidOrderCancellationHours = None
@@ -184,6 +193,11 @@ class Policy(MongoModel):
         if self.offersFreeDelivery and self.freeDeliveryMinimum is None:
             return ('Free delivery is offered: ask from which order total '
                     '(freeDeliveryMinimum)')
+        if (self.handoverCutoffTime is not None
+                and self.handoverDays is None):
+            return ('A handover cutoff time is set: ask how many days from '
+                    'payment until the order is ready for pickup or '
+                    'delivered (handoverDays; 0 for the same day)')
         if (self.paidOrderCancellation == 'withinHours'
                 and self.paidOrderCancellationHours is None):
             return ('Paid orders can be cancelled within hours: ask how many '
@@ -226,6 +240,7 @@ class StorePolicyResponse(ResponseModel):
     offersFreeDelivery: OffersFreeDelivery = Field(...)
     freeDeliveryMinimum: FreeDeliveryMinimum = Field(...)
     handoverDays: HandoverDays = Field(...)
+    handoverCutoffTime: HandoverCutoffTime = Field(...)
     acceptedPaymentMethods: AcceptedPaymentMethods = Field(...)
     paidOrderCancellation: PaidOrderCancellationAnswer = Field(...)
     paidOrderCancellationHours: PaidOrderCancellationHours = Field(...)

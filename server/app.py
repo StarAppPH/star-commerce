@@ -1385,6 +1385,7 @@ def updateMyStorePolicy():
     offersFreeDelivery = data.get('offersFreeDelivery')
     freeDeliveryMinimum = data.get('freeDeliveryMinimum')
     handoverDays = data.get('handoverDays')
+    handoverCutoffTime = data.get('handoverCutoffTime')
     acceptedPaymentMethods = data.get('acceptedPaymentMethods')
     paidOrderCancellation = data.get('paidOrderCancellation')
     paidOrderCancellationHours = data.get('paidOrderCancellationHours')
@@ -1417,6 +1418,8 @@ def updateMyStorePolicy():
             raise ValueError('Invalid freeDeliveryMinimum')
         if isinstance(handoverDays, (dict, list)):
             raise ValueError('Invalid handoverDays')
+        if isinstance(handoverCutoffTime, (dict, list)):
+            raise ValueError('Invalid handoverCutoffTime')
         if isinstance(paidOrderCancellation, (dict, list)):
             raise ValueError('Invalid paidOrderCancellation')
         if isinstance(paidOrderCancellationHours, (dict, list)):
@@ -1433,17 +1436,17 @@ def updateMyStorePolicy():
             raise ValueError('Invalid clear')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().updateMyStorePolicy(userId, acceptsReturns, returnWindowDays, returnConditions, nonReturnableItems, refundMethod, returnShippingPaidBy, defectReportDays, deliveryOptions, deliveryAreas, offersFreeDelivery, freeDeliveryMinimum, handoverDays, acceptedPaymentMethods, paidOrderCancellation, paidOrderCancellationHours, sendsMarketingMessages, additionalTerms, clear)
+        res = ApiRequests().updateMyStorePolicy(userId, acceptsReturns, returnWindowDays, returnConditions, nonReturnableItems, refundMethod, returnShippingPaidBy, defectReportDays, deliveryOptions, deliveryAreas, offersFreeDelivery, freeDeliveryMinimum, handoverDays, handoverCutoffTime, acceptedPaymentMethods, paidOrderCancellation, paidOrderCancellationHours, sendsMarketingMessages, additionalTerms, clear)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'offersFreeDelivery', 'freeDeliveryMinimum', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'offersFreeDelivery', 'freeDeliveryMinimum', 'handoverDays', 'handoverCutoffTime', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'offersFreeDelivery', 'freeDeliveryMinimum', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'offersFreeDelivery', 'freeDeliveryMinimum', 'handoverDays', 'handoverCutoffTime', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'updateMyStorePolicy', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'offersFreeDelivery', 'freeDeliveryMinimum', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear'))})
+    logging.info({'function': 'updateMyStorePolicy', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'offersFreeDelivery', 'freeDeliveryMinimum', 'handoverDays', 'handoverCutoffTime', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Policy saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
