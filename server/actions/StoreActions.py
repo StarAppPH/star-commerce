@@ -416,7 +416,10 @@ class StoreActions():
         raise ValueError(
             'Could not pick a link name for this store, try another name')
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Saving your store details',
+                            'Updating your business',
+                            'Writing down your details'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Store details saved',
@@ -468,7 +471,10 @@ class StoreActions():
             raise ValueError(STORE_CHANGED)
         return projectedCopy(StoreResponse, updated)
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Finding your address',
+                            'Looking up the address',
+                            'Reading the map pin'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Address suggested',
@@ -490,7 +496,10 @@ class StoreActions():
                     location['latitude'], location['longitude']),
                 'address': store.get('address')}
 
-    @mcp_tool('admin')
+    @mcp_tool('admin',
+              thinkingText=['Saving your store pin',
+                            'Pinning your store',
+                            'Marking your location'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Store location saved',
