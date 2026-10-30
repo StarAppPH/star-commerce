@@ -269,7 +269,7 @@ def test_theAreasForm_opensWithTheAreasSoFar(clean, firebase, model):
     assertExactShape(ChatReplyResponse, res)
     [form] = res['components']
     assert form == {'kind': 'deliveryZonesForm', 'formId': form['formId'],
-                    'storeLocation': STORE_PIN, 'deliveryZones': [MAKATI]}
+                    'storeLocation': STORE_PIN, 'zones': [MAKATI]}
 
 
 def test_theAreasAnswer_saysWhatTheStoreSaved(clean, firebase, model):
@@ -278,7 +278,7 @@ def test_theAreasAnswer_saysWhatTheStoreSaved(clean, firebase, model):
           reply('Draw where you deliver.'))
     first = adminSays('We deliver')
     [form] = first['components']
-    assert (form['storeLocation'], form['deliveryZones']) == (None, [])
+    assert (form['storeLocation'], form['zones']) == (None, [])
     answer = {'kind': 'deliveryZones', 'formId': form['formId']}
     api.setMyDeliveryZones(ADMIN, [MAKATI, NORTH])
     fake = model(reply('Saved. A name for these areas?'))

@@ -26,7 +26,7 @@ export type Longitude = number;
  *
  * @maxItems 10
  */
-export type Deliveryzones =
+export type Zones =
   | []
   | [DeliveryZoneResponse]
   | [DeliveryZoneResponse, DeliveryZoneResponse]
@@ -103,7 +103,7 @@ export interface DeliveryZonesForm {
    * The store's pin, where the map opens; null until pinned
    */
   storeLocation: StoreLocationResponse | null;
-  deliveryZones: Deliveryzones;
+  zones: Zones;
 }
 /**
  * A store's map location as a route sends it. Each field restates

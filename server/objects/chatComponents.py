@@ -365,7 +365,7 @@ class DeliveryZonesForm(ResponseModel):
     storeLocation: StoreLocationResponse | None = Field(
         ..., description="The store's pin, where the map opens; null until "
         'pinned')
-    deliveryZones: list[DeliveryZoneResponse] = Field(
+    zones: list[DeliveryZoneResponse] = Field(
         ..., max_length=DELIVERY_ZONES_MAX,
         description='The areas drawn so far; empty: none')
 

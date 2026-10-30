@@ -282,7 +282,7 @@ def _deliveryZonesForm(userId: str, storeId: str,
         'kind': 'deliveryZonesForm',
         'formId': newFormId(),
         'storeLocation': _pin(store.get('location')),
-        'deliveryZones': store.get('deliveryZones') or [],
+        'zones': store.get('deliveryZones') or [],
     }
 
 

@@ -1275,13 +1275,13 @@
                     ],
                     "description": "The store's pin, where the map opens; null until pinned"
                 },
-                "deliveryZones": {
+                "zones": {
                     "description": "The areas drawn so far; empty: none",
                     "items": {
                         "$ref": "#/$defs/DeliveryZoneResponse"
                     },
                     "maxItems": 10,
-                    "title": "Deliveryzones",
+                    "title": "Zones",
                     "type": "array"
                 }
             },
@@ -1289,7 +1289,7 @@
                 "kind",
                 "formId",
                 "storeLocation",
-                "deliveryZones"
+                "zones"
             ],
             "title": "DeliveryZonesForm",
             "type": "object",

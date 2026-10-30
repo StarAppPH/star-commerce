@@ -921,7 +921,7 @@ export type Formid10 = string;
  *
  * @maxItems 10
  */
-export type Deliveryzones1 =
+export type Zones =
   | []
   | [DeliveryZoneResponse]
   | [DeliveryZoneResponse, DeliveryZoneResponse]
@@ -1390,7 +1390,7 @@ export interface DeliveryZonesForm {
    * The store's pin, where the map opens; null until pinned
    */
   storeLocation: StoreLocationResponse | null;
-  deliveryZones: Deliveryzones1;
+  zones: Zones;
 }
 /**
  * What the browser streams a reply's speech with, straight from

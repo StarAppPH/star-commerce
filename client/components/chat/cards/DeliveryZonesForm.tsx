@@ -165,7 +165,7 @@ export function DeliveryZonesForm({ component, answered, busy, onAnswer }: Compo
   const userId = userData?._id ?? null;
   const { server } = useServer();
   const { showApiResponseSnackbar, showSnackbar } = useSnackbar();
-  const [zones, setZones] = useState<readonly Corners[]>(() => component.deliveryZones.map((zone) => zone.points));
+  const [zones, setZones] = useState<readonly Corners[]>(() => component.zones.map((zone) => zone.points));
   const [draft, setDraft] = useState<Corners | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [working, setWorking] = useState(false);
