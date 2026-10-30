@@ -76,6 +76,10 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     # The map component pins the admin's store: requireAdmin, and only the
     # store the caller owns.
     'setUserStoreLocation',
+    # The admin's own store's details and its pin's address
+    # (requireAdmin, ownerStore).
+    'updateMyStoreDetails',
+    'suggestStoreAddress',
     # Customer side: the caller must be a Customers document
     # (requireCustomer).
     'verifyCustomerPhone',
