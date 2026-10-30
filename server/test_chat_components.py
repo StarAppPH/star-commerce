@@ -366,7 +366,8 @@ def test_aRetiredComponentKind_isLeftOutOfTheTurnsPage(wiped, model):
         'shopProducts', 'storeProducts', 'storeOrders', 'myOrders',
         'checkout', 'storeReturns', 'myReturns', 'policy', 'photos',
         'productPhotoChoice', 'store', 'locationForm', 'newProductsForm',
-        'phoneVerificationForm', 'photoRequestForm', 'deliveryPinForm'}
+        'phoneVerificationForm', 'photoRequestForm', 'deliveryPinForm',
+        'deliveryZonesForm'}
     # The retired form cannot be answered with a kind of today.
     fake = model()
     with pytest.raises(ValueError, match='^' + re.escape(

@@ -382,7 +382,7 @@ def test_toolLists_haveExactlyTheAudiencesTools():
     }
     assert set(names['admin']) == ADMIN_TOOLS | ADMIN_FORM_TOOLS
     assert set(names['customer']) == CUSTOMER_TOOLS | CUSTOMER_FORM_TOOLS
-    assert len(names['admin']) == 26 and len(names['customer']) == 11
+    assert len(names['admin']) == 27 and len(names['customer']) == 11
     for audience, tools in chatTools.TOOLS.items():
         assert [t['function']['name'] for t in tools] == sorted(names[audience])
         for tool in tools:
