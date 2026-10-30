@@ -199,9 +199,10 @@ def test_theDeliveryPin_isNoConfirmation_inTheCustomerPrompt():
         'admin']
     # A store that only delivers still gets the pin and the address.
     assert 'when that way is delivery, still do the delivery steps' in prompt
-    # Delivery is priced per km (getStorePolicy's deliveryFeePerKm), and
-    # an unpinned store's pin card refuses: the model offers pickup.
-    assert 'deliveryFeePerKm' in prompt and 'offer pickup' in prompt
+    # Delivery is priced by the zone under the pin (getStorePolicy's
+    # deliveryZones), and a store with no zone's pin card refuses: the model
+    # offers pickup.
+    assert 'deliveryZones' in prompt and 'offer pickup' in prompt
 
 
 @pytest.mark.parametrize('kind', ['location', 'deliveryPin'])

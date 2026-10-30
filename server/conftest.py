@@ -321,6 +321,19 @@ def _recordPublishedMessages(monkeypatch):
 TEST_GEOCODED_ADDRESS = '123 Test Street, Cebu City, 6000 Cebu, Philippines'
 
 
+class FakeGeocodingResponse:
+    def __init__(self, status: int, body: bytes):
+        self.status_code = status
+        self.body = body
+
+    def iter_content(self, chunkSize: int):
+        for start in range(0, len(self.body), chunkSize):
+            yield self.body[start:start + chunkSize]
+
+    def close(self) -> None:
+        pass
+
+
 class FakeGeocodingSession:
     """geocoding's Session: answers every GET with `status` and `body`
     (default: one street address, TEST_GEOCODED_ADDRESS, after a plus code),
@@ -343,7 +356,7 @@ class FakeGeocodingSession:
         self.calls.append({'url': url, **kwargs})
         if self.error is not None:
             raise self.error
-        return FakeRatesResponse(self.status, self.body)
+        return FakeGeocodingResponse(self.status, self.body)
 
 
 @pytest.fixture(autouse=True)
