@@ -49,7 +49,7 @@ export type Path = string;
 /**
  * Its type
  */
-export type Contenttype = "image/jpeg" | "image/png" | "application/pdf";
+export type Contenttype = "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
 /**
  * Its file name, from the path's last segment, sanitised
  */

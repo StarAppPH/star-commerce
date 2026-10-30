@@ -326,10 +326,15 @@ def _readFocusedColors(storeId: str, data: bytes, focus: str,
 def _references(read: list[tuple[bytes, str]]
                 ) -> list[tuple[str, bytes, str]]:
     """Photos read (bytes, content type) as the image model takes them:
-    (file name, bytes, content type)."""
-    return [(f'reference{i}.{"png" if contentType == "image/png" else "jpg"}',
-             data, contentType)
-            for i, (data, contentType) in enumerate(read)]
+    (file name, bytes, content type), a WebP turned into a PNG or JPEG
+    (photoStorage.modelImage)."""
+    references = []
+    for i, (data, contentType) in enumerate(read):
+        data, contentType = photoStorage.modelImage(data, contentType,
+                                                    f'imageUrls[{i}]')
+        extension = 'png' if contentType == 'image/png' else 'jpg'
+        references.append((f'reference{i}.{extension}', data, contentType))
+    return references
 
 
 def _makeImages(userId: str, store: dict, paths: list[str],

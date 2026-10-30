@@ -108,7 +108,7 @@ Why each rule exists is in `ARCHITECTURE.md`, section "Typed API Responses".
 ## File Upload
 
 - Do NOT accept HEIC or HEIF files — block both file extension (`.heic`, `.heif`) and MIME type (`image/heic`, `image/heif`).
-- Do NOT use `accept="image/*"` for photo inputs — use `accept="image/jpeg,image/png"` explicitly.
+- Do NOT use `accept="image/*"` for photo inputs — use `accept="image/jpeg,image/png,image/webp"` explicitly.
 
 ---
 

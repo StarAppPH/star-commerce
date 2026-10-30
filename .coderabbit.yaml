@@ -103,7 +103,7 @@ reviews:
         ## File Upload Convention
         - Block HEIC and HEIF file uploads in all file uploading functions.
         - Check both file extension (.heic, .heif) and MIME type (image/heic, image/heif).
-        - Throw an error instructing user to convert to JPG or PNG before uploading.
+        - Throw an error instructing user to convert to JPG, PNG or WebP before uploading.
 
     # ── Pydantic Models: No DB Queries ──
     - path: "server/objects.py"
@@ -178,8 +178,8 @@ reviews:
         - NOT on: individual buttons/inputs, repeated list items, generic layout wrappers with no semantic meaning.
 
         ## File Uploads
-        - All photo/image file inputs must use accept="image/jpeg,image/png" instead of accept="image/*".
-        - Block HEIC/HEIF uploads with an error message instructing user to convert to JPG or PNG.
+        - All photo/image file inputs must use accept="image/jpeg,image/png,image/webp" instead of accept="image/*".
+        - Block HEIC/HEIF uploads with an error message instructing user to convert to JPG, PNG or WebP.
 
     - path: "client/**/*.tsx"
       instructions: *frontend_ts_rules

@@ -28,8 +28,8 @@ At most CHAT_TURNS_AT_ONCE turns run at once per process: a message past
 that is a 503 before any lock or quota is taken.
 
 Attachments: a message may carry up to CHAT_ATTACHMENTS_MAX files (JPEG,
-PNG or PDF) the user uploaded to Storage under users/<uid>/, sent as their
-download URLs. Each URL is checked (our bucket, the caller's own folder,
+PNG, WebP or PDF) the user uploaded to Storage under users/<uid>/, sent as
+their download URLs. Each URL is checked (our bucket, the caller's own folder,
 the type its name says) before the slot, the lock or any quota; the files
 are counted per day (per customer, per store, all stores: ChatUsage) and
 read through the Storage SDK (photoStorage.ownFiles, downloadFiles: never
@@ -182,15 +182,15 @@ ATTACHMENTS_TWICE = 'attachments lists the same file twice'
 ONE_PDF_PER_MESSAGE = 'Attach at most one PDF per message'
 FORM_WITH_ATTACHMENTS = 'Send a form answer without attachments'
 ATTACHMENT_KIND = 'file'
-ATTACHMENT_TYPE = 'must be a JPG, PNG or PDF file'
+ATTACHMENT_TYPE = 'must be a JPG, PNG, WebP or PDF file'
 ATTACHMENTS_TOO_LARGE = (
     f'The attachments are over '
     f'{photoStorage.megabytes(CHAT_ATTACHMENTS_MAX_TOTAL_BYTES)} together: '
     'send fewer or smaller files')
-NOT_A_REAL_ATTACHMENT = "isn't a real JPEG, PNG or PDF file"
+NOT_A_REAL_ATTACHMENT = "isn't a real JPEG, PNG, WebP or PDF file"
 UNREADABLE_ATTACHMENT = ("One of the attachments couldn't be read, or they "
                          'have too many pages together: send fewer or '
-                         'shorter JPEG, PNG or PDF files')
+                         'shorter JPEG, PNG, WebP or PDF files')
 ATTACHMENT_CAP_REACHED = ("You've reached today's attachment limit: send "
                           'your message without files')
 STORE_ATTACHMENT_CAP_REACHED = ("This store's attachments are busy today: "
@@ -334,7 +334,7 @@ def _validAttachments(userId: str, urls) -> list[tuple[str, str]]:
     its download URLs (None or []: none): at most CHAT_ATTACHMENTS_MAX,
     each of our bucket (photoStorage.objectPathFromUrl) under the caller's
     own users/<uid>/ folder (ownImagePath: no HEIC/HEIF), named .jpg,
-    .jpeg, .png or .pdf, no file twice, at most one PDF
+    .jpeg, .png, .webp or .pdf, no file twice, at most one PDF
     (ONE_PDF_PER_MESSAGE). Pure: reads nothing. A refusal
     names the URL's place (attachments[0]), never the URL."""
     if urls is None or urls == []:
@@ -426,15 +426,17 @@ def _newUserMessage(audience: str, userId: str, userText: str,
                                     name=attachmentName(file.path),
                                     size=len(data)).model_dump()
         notes.append(_attachmentNote(audience, i, attachment))
-        parts.append(_filePart(attachment, data))
+        parts.append(_filePart(attachment, data, file.label))
         attachments.append(attachment)
     return _userMessage(userText, notes, parts), attachments
 
 
-def _filePart(attachment: dict, data: bytes) -> dict:
-    """A file as the content part Meta takes: an image as an image_url, a
-    PDF as a file, both base64 data URLs."""
-    contentType = attachment['contentType']
+def _filePart(attachment: dict, data: bytes, label: str) -> dict:
+    """A file as the content part Meta takes: an image as an image_url (a
+    WebP turned into a PNG or JPEG: photoStorage.modelImage, a refusal
+    naming `label`), a PDF as a file, both base64 data URLs."""
+    data, contentType = photoStorage.modelImage(
+        data, attachment['contentType'], label)
     dataUrl = (f'data:{contentType};base64,'
                f'{base64.b64encode(data).decode("ascii")}')
     if contentType == PDF_TYPE:
@@ -657,7 +659,8 @@ def _historyUserMessage(audience: str, turn: dict, t: int, status: dict,
         else:
             notes.append(_attachmentNote(audience, f, attachment))
             if withParts:
-                parts.append(_filePart(attachment, value))
+                parts.append(_filePart(attachment, value,
+                                       f'attachments[{f}]'))
     return _userMessage(turn.get('userContent') or turn['userText'],
                         notes, parts)
 
@@ -1220,8 +1223,8 @@ class ChatActions():
         and return its reply with the cards and forms to show under it. No
         conversationId starts a new conversation. Before the store is set
         up the assistant only sets it up (chatForms.SETUP_TOOLSET).
-        `attachments` are the Storage download URLs of up to 4 JPEGs, PNGs
-        or PDFs (one PDF at most) the admin uploaded under
+        `attachments` are the Storage download URLs of up to 4 JPEGs, PNGs,
+        WebPs or PDFs (one PDF at most) the admin uploaded under
         users/<uid>/chat/ (the message may then be empty; never with a
         form). `turnKey`, a random id of the client's, lets getChatThinking
         tell what the assistant is doing while it answers. `speak` adds
@@ -1249,8 +1252,8 @@ class ChatActions():
         conversation), to the shopping assistant of the store being
         visited, and return its reply with the cards and forms to show
         under it. No conversationId starts a new conversation.
-        `attachments` are the Storage download URLs of up to 4 JPEGs, PNGs
-        or PDFs (one PDF at most) the customer uploaded under
+        `attachments` are the Storage download URLs of up to 4 JPEGs, PNGs,
+        WebPs or PDFs (one PDF at most) the customer uploaded under
         users/<uid>/chat/ (the message may then be empty; never with a
         form). Capped per customer and per store each day, messages and
         files alike. `turnKey`, a random id of the client's, lets

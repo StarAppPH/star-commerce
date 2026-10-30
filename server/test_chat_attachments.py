@@ -1,6 +1,7 @@
-"""Chat attachments: up to 4 JPEG, PNG or PDF files a message carries, read
-from Storage by path (never by URL), checked, sent to the model as base64
-parts, stored as path/type/name/size, and re-sent from the last 3 turns.
+"""Chat attachments: up to 4 JPEG, PNG, WebP or PDF files a message carries,
+read from Storage by path (never by URL), checked, sent to the model as
+base64 parts (a WebP as a JPEG or PNG), stored as path/type/name/size,
+and re-sent from the last 3 turns.
 
 No real Meta or Storage call: a counting FakeBucket replaces
 photoStorage._bucket(), and the FakeModel, clock and frozen day of
@@ -339,6 +340,26 @@ def test_fourFilesOfEveryType_areAccepted_andReachTheModelInOrder(
                                                        PDF)}},
     ]
     assert storage.downloads == [mine(ADMIN, name) for name in names]
+
+
+def test_aWebP_reachesTheModelAsAJpeg_andIsStoredAsTheWebPItIs(
+        storage, model):
+    from test_photos import webp
+    createTestStore(ADMIN)
+    photo = webp('RGB')
+    storage.put(mine(ADMIN, 'a.webp'), photo, 'image/webp')
+    fake = model(reply('seen'))
+
+    res = sendAdmin('look', [urlOf(mine(ADMIN, 'a.webp'))])
+
+    [message] = userMessages(fake.requests[0])
+    [_, part] = message['content']
+    assert part['type'] == 'image_url'
+    assert part['image_url']['url'].startswith('data:image/jpeg;base64,')
+    [turn] = turnDocs(res['conversationId'])
+    [attachment] = turn['attachments']
+    assert attachment['contentType'] == 'image/webp'
+    assert attachment['size'] == len(photo)
 
 
 def test_aFilesOnlyMessage_forACustomer_hasNoUrl_andTitlesTheConversation(
