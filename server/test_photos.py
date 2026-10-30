@@ -3,7 +3,7 @@ photo theme (updateMyStoreTheme).
 
 No real Meta or Storage call: a FakeBucket replaces photoStorage._bucket()
 (an in-memory object store), and a FakeImages client replaces
-chatModel.client(), recording every images.edit call."""
+chatModel.client(), recording every images/edits request (modelClient)."""
 
 import asyncio
 import base64
@@ -110,13 +110,26 @@ class FakeImages:
                                      for _ in range(self.returned)])
 
 
+def modelClient(images):
+    """chatModel.client() for imageModel: its post('/images/edits', ...)
+    goes to images.edit as one call's fields (the body's, `image` the
+    photos in field order, `files` the multipart fields as sent,
+    `timeout`)."""
+
+    def post(path, *, cast_to, body, files, options):
+        assert path == '/images/edits'
+        return images.edit(**body, image=[file for _, file in files],
+                           files=files, timeout=options['timeout'])
+
+    return SimpleNamespace(post=post)
+
+
 @pytest.fixture
 def fakes(clean, monkeypatch):
     bucket = FakeBucket()
     images = FakeImages(returned=2)
     monkeypatch.setattr(photoStorage, '_bucket', lambda: bucket)
-    monkeypatch.setattr(chatModel, 'client',
-                        lambda: SimpleNamespace(images=images))
+    monkeypatch.setattr(chatModel, 'client', lambda: modelClient(images))
     return SimpleNamespace(bucket=bucket, images=images)
 
 
@@ -298,8 +311,7 @@ def test_editImages_skipsABadImage_andLogsAnEmptyAnswer(monkeypatch, caplog):
     data = [SimpleNamespace(b64_json='not base64!!'),
             SimpleNamespace(b64_json=good)]
     fake = SimpleNamespace(edit=lambda **k: SimpleNamespace(data=data))
-    monkeypatch.setattr(chatModel, 'client',
-                        lambda: SimpleNamespace(images=fake))
+    monkeypatch.setattr(chatModel, 'client', lambda: modelClient(fake))
     with caplog.at_level(logging.WARNING):
         assert imageModel.editImages([], 'p', 2,
                                      time.monotonic() + 60) == [JPEG]
@@ -483,8 +495,7 @@ class ScriptedImages:
 
 
 def useImages(monkeypatch, images):
-    monkeypatch.setattr(chatModel, 'client',
-                        lambda: SimpleNamespace(images=images))
+    monkeypatch.setattr(chatModel, 'client', lambda: modelClient(images))
     return images
 
 
@@ -997,6 +1008,44 @@ def test_generate_contentPolicyViolation_isTheFixed400_notRetried(
 def edit(deadline=None):
     return imageModel.editImages([('r.jpg', JPEG, 'image/jpeg')], 'prompt', 1,
                                  deadline or time.monotonic() + 60)
+
+
+def test_editImages_sendsThePhotosAsIndexedImageFields(monkeypatch):
+    """The real SDK's request: Meta refuses a list sent as image[] (what
+    images.edit sends), so each photo is image[0], image[1], ... in order."""
+    sent = []
+
+    def answer(request):
+        sent.append(request)
+        encoded = base64.b64encode(JPEG).decode()
+        return httpx.Response(200, json={'created': 0,
+                                         'data': [{'b64_json': encoded}]})
+
+    client = openai.OpenAI(
+        base_url=chatModel.CHAT_BASE_URL, api_key='test-key', max_retries=0,
+        http_client=httpx.Client(transport=httpx.MockTransport(answer)))
+    monkeypatch.setattr(chatModel, 'client', lambda: client)
+    PNG = b'\x89PNG\r\n\x1a\nsecond'
+
+    assert imageModel.editImages([('reference0.jpg', JPEG, 'image/jpeg'),
+                                  ('reference1.png', PNG, 'image/png')],
+                                 'prompt', 2,
+                                 time.monotonic() + 60) == [JPEG]
+
+    [request] = sent
+    assert str(request.url) == MODEL_URL
+    assert request.headers['content-type'].startswith(
+        'multipart/form-data; boundary=')
+    body = request.read()
+    first = body.index(b'name="image[0]"; filename="reference0.jpg"')
+    second = body.index(b'name="image[1]"; filename="reference1.png"')
+    assert first < body.index(JPEG) < second < body.index(PNG)
+    assert b'name="image[]"' not in body
+    for name, value in (('model', imageModel.IMAGE_MODEL), ('n', '2'),
+                        ('size', imageModel.IMAGE_SIZE),
+                        ('output_format', imageModel.IMAGE_OUTPUT_FORMAT),
+                        ('response_format', 'b64_json')):
+        assert f'name="{name}"\r\n\r\n{value}\r\n'.encode() in body
 
 
 @pytest.mark.parametrize('first', [

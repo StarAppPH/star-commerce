@@ -3,7 +3,10 @@
 
 editImages() sends the admin's reference photos and a prompt to
 POST /v1/images/edits through chatModel's client (MODEL_API_KEY, the SDK
-retrying nothing) and returns the images as bytes. It retries as
+retrying nothing) and returns the images as bytes. The photos go as
+image[0], image[1], ... (imageFields): Meta refuses the image[] the SDK's
+images.edit names a list with, so the request is the client's own
+post(). It retries as
 chatModel.callModel does: once, only a connection error, a timeout, a 429
 or a 5xx, within the call's deadline, never after a Retry-After sleep.
 
@@ -59,6 +62,13 @@ def _client():
         raise unavailable() from None
 
 
+def imageFields(images: list[tuple[str, bytes, str]]
+                ) -> list[tuple[str, tuple[str, bytes, str]]]:
+    """The multipart file fields of the reference `images`, as Meta takes
+    them: image[0], image[1], ... in order."""
+    return [(f'image[{i}]', image) for i, image in enumerate(images)]
+
+
 def editImages(images: list[tuple[str, bytes, str]], prompt: str, n: int,
                deadline: float) -> list[bytes]:
     """`n` images Meta makes from the reference `images` (each a file
@@ -67,14 +77,20 @@ def editImages(images: list[tuple[str, bytes, str]], prompt: str, n: int,
     the images it sent back (at most `n`, maybe fewer), decoded."""
 
     def request(timeout: float):
-        return _client().images.edit(model=IMAGE_MODEL,
-                                     image=images,
-                                     prompt=prompt,
-                                     n=n,
-                                     size=IMAGE_SIZE,
-                                     output_format=IMAGE_OUTPUT_FORMAT,
-                                     response_format='b64_json',
-                                     timeout=timeout)
+        from openai.types import ImagesResponse
+        return _client().post(
+            '/images/edits',
+            cast_to=ImagesResponse,
+            body={'model': IMAGE_MODEL,
+                  'prompt': prompt,
+                  'n': n,
+                  'size': IMAGE_SIZE,
+                  'output_format': IMAGE_OUTPUT_FORMAT,
+                  'response_format': 'b64_json'},
+            files=imageFields(images),
+            # The SDK sets the boundary of this multipart body.
+            options={'headers': {'Content-Type': 'multipart/form-data'},
+                     'timeout': timeout})
 
     response = chatModel.callModel(request, deadline, IMAGE_TIMEOUT_SECONDS,
                                    failure=unavailable, refusal=_declined,
