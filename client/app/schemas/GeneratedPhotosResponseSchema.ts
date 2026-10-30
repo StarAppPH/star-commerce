@@ -27,6 +27,10 @@ export type Url = string;
  * The prompt the model was given for it; null on a card saved before each photo carried its own
  */
 export type Prompt = string | null;
+/**
+ * Why fewer photos than asked were made (no photo style, a model call failed); null when all were
+ */
+export type Notgenerated = string | null;
 
 /**
  * What generateProductPhotos sends: the photos it saved, each with
@@ -34,6 +38,7 @@ export type Prompt = string | null;
  */
 export interface GeneratedPhotosResponse {
   photos: Photos;
+  notGenerated: Notgenerated;
 }
 export interface GeneratedPhotoRow {
   _id: Id;

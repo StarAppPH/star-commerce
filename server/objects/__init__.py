@@ -245,7 +245,9 @@ from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                            PhotoSource, GeneratedPhoto, GeneratedPhotoRow,
                            GeneratedPhotosResponse, PhotoChoiceRow,
                            ProductPhotoChoicesResponse, PHOTO_FIND_ITEMS_MAX,
-                           FoundProductRow, FoundProductsResponse)
+                           FoundProductRow, FoundProductsResponse,
+                           PHOTO_COLORS_MAX, PHOTO_COLOR_FOCUS_MAX_LENGTH,
+                           PhotoColorRow, PhotoColorsResponse)
 from objects.chatComponents import (
     CHAT_COMPONENTS_PER_TURN_MAX, CHAT_CARD_ROWS_MAX, CHAT_FORM_ID_MAX_LENGTH,
     CHAT_ANSWER_ID_MAX_LENGTH, CHAT_PHOTO_URL_MAX_LENGTH, FormId,
@@ -253,14 +255,14 @@ from objects.chatComponents import (
     StoreProductsCard, ChatStoreOrderRow, StoreOrdersCard, ChatMyOrderRow,
     MyOrdersCard, CheckoutCard, ChatStoreReturnRow, StoreReturnsCard,
     ChatMyReturnRow, MyReturnsCard, PolicyCard, PhotosCard,
-    ProductPhotoChoiceCard, StoreCard,
+    ProductPhotoChoiceCard, PhotoColorsCard, StoreCard,
     LocationForm, ChatProductDraft, NewProductsForm, PhoneVerificationForm,
     PhotoRequestForm, DeliveryPinForm, DeliveryZonesForm, ChatComponent, AnswerId,
     LocationAnswer, NewProductAnswerRow, NewProductsAnswer,
     PhoneVerifiedAnswer, PhotoRequestAnswer, OrderItemsAnswer, PaymentAnswer,
     HandoverAnswer, ReturnDecisionAnswer, DeliveryPinAnswer,
     DeliveryZonesAnswer,
-    ProductPhotoAnswer, ChatFormAnswer,
+    ProductPhotoAnswer, BrandColorsAnswer, ChatFormAnswer,
     ChatFormAnswerTagged)
 from objects.chat import (ChatAudience, CHAT_MESSAGE_MAX_LENGTH,
                           CHAT_TITLE_MAX_LENGTH, CHAT_TOOL_CALL_ID_MAX_LENGTH,

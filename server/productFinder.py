@@ -88,14 +88,15 @@ class Finding:
     notFound: list[str]  # the names of products listed but not located
 
 
-def _image(data: bytes):
-    """The photo, upright (its EXIF orientation) and in RGB."""
+def uprightImage(data: bytes, mode: str = 'RGB'):
+    """The photo, upright (its EXIF orientation) and in `mode` (RGB, or
+    RGBA to keep a logo's transparent pixels: colorFinder)."""
     from PIL import Image, ImageOps
     try:
         with Image.open(io.BytesIO(data)) as opened:
             if opened.width * opened.height > FIND_MAX_PIXELS:
                 raise ValueError(PHOTO_TOO_LARGE)
-            image = ImageOps.exif_transpose(opened).convert('RGB')
+            image = ImageOps.exif_transpose(opened).convert(mode)
     except (Image.DecompressionBombError, Image.DecompressionBombWarning):
         raise ValueError(PHOTO_TOO_LARGE) from None
     except (OSError, SyntaxError):
@@ -109,9 +110,9 @@ def _jpeg(image, quality: int) -> bytes:
     return out.getvalue()
 
 
-def _modelCopy(image) -> str:
-    """The photo as the models get it: a JPEG data URL, its long side at
-    most FIND_MODEL_SIDE pixels."""
+def modelCopy(image) -> str:
+    """The photo (RGB) as the models get it: a JPEG data URL, its long side
+    at most FIND_MODEL_SIDE pixels."""
     copy = image.copy()
     copy.thumbnail((FIND_MODEL_SIDE, FIND_MODEL_SIDE))
     data = _jpeg(copy, FIND_MODEL_JPEG_QUALITY)
@@ -192,8 +193,10 @@ def cropBox(image, box: samModel.Box):
                        max(bottom, top + 1)))
 
 
-def _locate(dataUrl: str, phrase: str, deadline: float
-            ) -> samModel.Box | None:
+def biggestMatch(dataUrl: str, phrase: str, deadline: float
+                 ) -> samModel.Box | None:
+    """SAM's biggest match of `phrase` (several alike: the most visible),
+    None for no match."""
     boxes = samModel.segment(dataUrl, phrase, deadline)
     return max(boxes, key=lambda box: box.area) if boxes else None
 
@@ -203,8 +206,8 @@ def findProducts(data: bytes, deadline: float) -> Finding:
     before `deadline` (time.monotonic()). A model failure is a 503; a SAM
     failure for one product makes it not found, unless every one failed
     (a 503)."""
-    image = _image(data)
-    dataUrl = _modelCopy(image)
+    image = uprightImage(data)
+    dataUrl = modelCopy(image)
     listed = _listProducts(dataUrl, deadline)
     if not listed:
         return Finding([], [])
@@ -212,7 +215,7 @@ def findProducts(data: bytes, deadline: float) -> Finding:
 
     def locate(product):
         try:
-            return _locate(dataUrl, product[1], deadline)
+            return biggestMatch(dataUrl, product[1], deadline)
         except ServiceUnavailable:
             failed.append(product[0])
             return None

@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import Field
 
 from objects.base import MongoModel, ResponseModel
+from objects.store import HEX_COLOR_PATTERN
 
 
 # ──────────────────────────────────────────────
@@ -24,6 +25,10 @@ PHOTOS_PER_CALL = 3
 PHOTOS_THEMED = PHOTOS_PER_CALL - 1
 # The most products findProductsInPhoto finds in one photo.
 PHOTO_FIND_ITEMS_MAX = 12
+# The most colors findColorsInPhoto reads from one photo, and the longest
+# focus phrase it sends SAM.
+PHOTO_COLORS_MAX = 6
+PHOTO_COLOR_FOCUS_MAX_LENGTH = 60
 
 # Where a store photo came from: the image model made it, or it is the
 # admin's own photo, copied as it is (makeProductPhotoChoices).
@@ -120,3 +125,30 @@ class FoundProductsResponse(ResponseModel):
     notFound: list[str] = Field(
         ..., max_length=PHOTO_FIND_ITEMS_MAX,
         description='The names of products seen but not located')
+
+
+class PhotoColorRow(ResponseModel):
+    """A color findColorsInPhoto read: its hex code and how much of the
+    photo (or of the part it looked at) it covers."""
+    hex: str = Field(..., pattern=HEX_COLOR_PATTERN,
+                     description='The color, like #1A73E8')
+    share: float = Field(..., gt=0, le=1,
+                         description='Its share of the pixels read, 0 to 1')
+    neutral: bool = Field(..., description='White, black or grey: rarely a '
+                          'brand color')
+
+
+class PhotoColorsResponse(ResponseModel):
+    """What findColorsInPhoto sends: the photo's main colors, biggest share
+    first, and the part it looked at."""
+    colors: list[PhotoColorRow] = Field(
+        ..., max_length=PHOTO_COLORS_MAX,
+        description='The main colors, biggest share first; empty when the '
+        'photo has no opaque pixels')
+    focus: str | None = Field(
+        ..., max_length=PHOTO_COLOR_FOCUS_MAX_LENGTH,
+        description='The part of the photo asked for ("green logo"); null '
+        'for the whole photo')
+    focusFound: bool | None = Field(
+        ..., description='Whether the focus was found (false: the colors '
+        'are the whole photo\'s); null without a focus')

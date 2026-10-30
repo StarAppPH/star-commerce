@@ -1,0 +1,80 @@
+{
+    "$defs": {
+        "PhotoColorRow": {
+            "description": "A color findColorsInPhoto read: its hex code and how much of the\nphoto (or of the part it looked at) it covers.",
+            "properties": {
+                "hex": {
+                    "description": "The color, like #1A73E8",
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "title": "Hex",
+                    "type": "string"
+                },
+                "share": {
+                    "description": "Its share of the pixels read, 0 to 1",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1,
+                    "title": "Share",
+                    "type": "number"
+                },
+                "neutral": {
+                    "description": "White, black or grey: rarely a brand color",
+                    "title": "Neutral",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "hex",
+                "share",
+                "neutral"
+            ],
+            "title": "PhotoColorRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "What findColorsInPhoto sends: the photo's main colors, biggest share\nfirst, and the part it looked at.",
+    "properties": {
+        "colors": {
+            "description": "The main colors, biggest share first; empty when the photo has no opaque pixels",
+            "items": {
+                "$ref": "#/$defs/PhotoColorRow"
+            },
+            "maxItems": 6,
+            "title": "Colors",
+            "type": "array"
+        },
+        "focus": {
+            "anyOf": [
+                {
+                    "maxLength": 60,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The part of the photo asked for (\"green logo\"); null for the whole photo",
+            "title": "Focus"
+        },
+        "focusFound": {
+            "anyOf": [
+                {
+                    "type": "boolean"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Whether the focus was found (false: the colors are the whole photo's); null without a focus",
+            "title": "Focusfound"
+        }
+    },
+    "required": [
+        "colors",
+        "focus",
+        "focusFound"
+    ],
+    "title": "PhotoColorsResponse",
+    "type": "object",
+    "additionalProperties": false
+}

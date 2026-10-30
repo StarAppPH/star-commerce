@@ -556,8 +556,10 @@ class StoreActions():
         listVoices returned, for the voice the owner chose ("" goes back to
         the default voice; getUserStore shows the voice saved). Never invent a style or a voice: use only
         what the owner said. If the owner asks you to pick the colors,
-        suggest two that suit the store. Confirm every value with the owner
-        before calling. Send only the fields the owner wants changed: a field left
+        suggest two that suit the store; if they want them from a logo or
+        image they attached, read them with findColorsInPhoto first. Confirm
+        every value with the owner before calling, unless they picked the
+        colors on its color card. Send only the fields the owner wants changed: a field left
         out keeps its value, and an empty one ("") clears it. If this tool
         refuses, relay its message to the owner and ask again."""
         requireAdmin(userId)
@@ -620,7 +622,9 @@ class StoreActions():
         the pin (pass address only when the admin already said it). Never
         invent or guess a value: use only what the admin said, except the
         colors: if the admin asks you to pick them, suggest two that suit
-        the store and use them once the admin agrees. Give the contact
+        the store and use them once the admin agrees; if the admin wants
+        them from a logo or image they attached, read them with
+        findColorsInPhoto first. Give the contact
         number in international format, e.g. +639171234567. Confirm all the
         details with the admin before calling. Before calling, tell the
         admin that the contact number and the address are shown to every
