@@ -216,30 +216,55 @@ def brandColorsLine(primaryColor: str | None,
             'the background and props, never on the product itself.')
 
 
-def globalPhotoPrompt(store: dict, notes: str | None,
-                      productName: str | None = None) -> str:
-    """The global prompt, every photo call's first photo: the fixed
-    instruction, the admin's notes as its special request (when sent), the
-    product's name (when known, so the model knows which item is the
-    product) and the store's brand colors (when set)."""
+def backgroundLine(primaryColor: str) -> str:
+    """The global prompt's line for its plain background in the store's
+    primary color."""
+    return (f'Background: a plain, seamless background in the primary '
+            f'brand color {primaryColor}. Show only the product: no props, '
+            'surfaces or scenery.')
+
+
+def _promptLines(notes: str | None, productName: str | None) -> list[str]:
+    """The lines every prompt starts with: the fixed instruction, the
+    admin's notes as its special request (when sent) and the product's
+    name (when known, so the model knows which item is the product)."""
     lines = [PHOTO_INSTRUCTION]
     if notes is not None:
         lines.append(f'Special request: {notes}')
     if productName is not None:
         lines.append(f'Product: {productName}')
+    return lines
+
+
+def _withBrandColors(lines: list[str], store: dict) -> list[str]:
+    """`lines` and the store's brand colors line (when it has a color)."""
     colors = brandColorsLine(store.get('primaryColor'),
                              store.get('secondaryColor'))
-    if colors is not None:
-        lines.append(colors)
+    return lines if colors is None else [*lines, colors]
+
+
+def globalPhotoPrompt(store: dict, notes: str | None,
+                      productName: str | None = None) -> str:
+    """The global prompt, every photo call's first photo: the first lines
+    (_promptLines), then just the product on a plain background in the
+    store's primary color (backgroundLine), or, for a store without one,
+    its brand colors (when set)."""
+    lines = _promptLines(notes, productName)
+    primaryColor = store.get('primaryColor')
+    if primaryColor:
+        lines.append(backgroundLine(primaryColor))
+    else:
+        lines = _withBrandColors(lines, store)
     return '\n'.join(lines)
 
 
 def photoPrompt(store: dict, notes: str | None,
                 productName: str | None = None) -> str:
-    """The themed prompt, every photo call's other photos: the global
-    prompt and the store's photo style."""
-    return (f'{globalPhotoPrompt(store, notes, productName)}\n'
-            f'Style: {store["photoStyle"]}')
+    """The themed prompt, every photo call's other photos: the first lines
+    (_promptLines), the store's brand colors (when set) and its photo
+    style; never the global prompt's plain background."""
+    lines = _withBrandColors(_promptLines(notes, productName), store)
+    return '\n'.join([*lines, f'Style: {store["photoStyle"]}'])
 
 
 def photoPrompts(store: dict, notes: str | None,

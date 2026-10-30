@@ -72,10 +72,14 @@ def test_photoChoices_keepTheOriginal_andMake3WithTheirPrompts(
     assert sorted(calls) == [1, PHOTOS_THEMED]
     for call in calls.values():
         assert call['image'] == [(PNG, 'image/png')]
-        assert 'primary #112233' in call['prompt']
+    # Photo 1 is the product on a plain primary color background; the
+    # themed ones use the brand colors as accents instead.
+    assert calls[1]['prompt'].endswith(
+        f'\n{PhotoActions.backgroundLine("#112233")}')
     assert 'Style:' not in calls[1]['prompt']
-    assert calls[PHOTOS_THEMED]['prompt'] == (
-        f'{calls[1]["prompt"]}\nStyle: white marble')
+    assert 'primary #112233' in calls[PHOTOS_THEMED]['prompt']
+    assert 'Background:' not in calls[PHOTOS_THEMED]['prompt']
+    assert calls[PHOTOS_THEMED]['prompt'].endswith('\nStyle: white marble')
     # The original has no prompt; photo 2 the global one, 3 and 4 the
     # themed one.
     assert [p['prompt'] for p in res['photos']] == [

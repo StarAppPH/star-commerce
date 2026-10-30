@@ -209,8 +209,9 @@ def test_generateProductPhotos_savesEachPhotoReturned(fakes, monkeypatch):
     for call in calls.values():
         assert call['model'] == imageModel.IMAGE_MODEL
         assert call['image'] == [(JPEG, 'image/jpeg')]
-        assert 'primary #112233' in call['prompt']
         assert 'Special request: from above' in call['prompt']
+    assert 'primary brand color #112233' in calls[1]['prompt']
+    assert 'primary #112233' in calls[PHOTOS_THEMED]['prompt']
     assert 'Style:' not in calls[1]['prompt']
     assert calls[PHOTOS_THEMED]['prompt'].endswith(
         '\nStyle: white marble, morning light')
@@ -1412,8 +1413,43 @@ def test_photoPrompts_theGlobalPromptsLines_thenTheStoreThemeLast():
         PhotoActions.PHOTO_INSTRUCTION,
         'Special request: on a desk',
         'Product: Blue Mug',
-        PhotoActions.brandColorsLine('#112233', '#445566')]
-    assert themed == f'{globalPrompt}\nStyle: calm'
+        PhotoActions.backgroundLine('#112233')]
+    assert themed.split('\n') == [
+        PhotoActions.PHOTO_INSTRUCTION,
+        'Special request: on a desk',
+        'Product: Blue Mug',
+        PhotoActions.brandColorsLine('#112233', '#445566'),
+        'Style: calm']
+
+
+def test_globalPhotoPrompt_isTheProductOnAPlainPrimaryColorBackground():
+    prompt = PhotoActions.globalPhotoPrompt(
+        {'primaryColor': '#112233', 'secondaryColor': '#445566'}, None)
+
+    assert prompt.split('\n') == [PhotoActions.PHOTO_INSTRUCTION,
+                                  PhotoActions.backgroundLine('#112233')]
+    assert 'plain, seamless background' in prompt
+    assert 'primary brand color #112233' in prompt
+    assert 'Show only the product' in prompt
+    assert '#445566' not in prompt and 'Brand colors:' not in prompt
+
+
+def test_globalPhotoPrompt_withoutAPrimaryColor_keepsTheBrandColorsLine():
+    prompt = PhotoActions.globalPhotoPrompt({'secondaryColor': '#445566'},
+                                            None)
+
+    assert prompt.split('\n') == [
+        PhotoActions.PHOTO_INSTRUCTION,
+        PhotoActions.brandColorsLine(None, '#445566')]
+    assert 'Background:' not in prompt
+
+
+def test_themedPrompts_neverGetThePlainBackground():
+    prompt = PhotoActions.photoPrompt(
+        {'photoStyle': 'calm', 'primaryColor': '#112233'}, None)
+
+    assert 'Background:' not in prompt
+    assert prompt.endswith('\nStyle: calm')
 
 
 def test_photoPrompts_aStoreWithNoPhotoStyle_getsTheGlobalPromptOnly():
