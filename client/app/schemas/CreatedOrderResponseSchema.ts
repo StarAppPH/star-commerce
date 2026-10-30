@@ -14,9 +14,13 @@ export type Fulfillment = "pickup" | "delivery";
  */
 export type Deliveryfee = number;
 /**
- * Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on
+ * Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on, for a delivery priced per km before delivery zones; null since
  */
 export type Deliverydistancekm = number | null;
+/**
+ * The delivery zone whose policy priced it; null for a pickup, or a delivery from before delivery zones
+ */
+export type Deliveryzone = string | null;
 /**
  * Where it is delivered, as the customer typed it
  */
@@ -139,6 +143,7 @@ export interface MyOrderRow {
   fulfillment: Fulfillment;
   deliveryFee: Deliveryfee;
   deliveryDistanceKm: Deliverydistancekm;
+  deliveryZone: Deliveryzone;
   deliveryAddress: Deliveryaddress;
   deliveryLatitude: Deliverylatitude;
   deliveryLongitude: Deliverylongitude;

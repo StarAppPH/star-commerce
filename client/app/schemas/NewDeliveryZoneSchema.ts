@@ -6,6 +6,10 @@
  */
 
 /**
+ * What the zone is called
+ */
+export type Name = string;
+/**
  * Degrees north
  */
 export type Latitude = number;
@@ -17,15 +21,37 @@ export type Longitude = number;
  * The corners in drawing order; the last joins the first
  */
 export type Points = NewDeliveryPoint[];
+/**
+ * The fee, in the store's currency; 0: free
+ */
+export type Deliveryfee = number;
+/**
+ * Days from payment until it arrives
+ */
+export type Deliverydays = number;
+/**
+ * The smallest items total; null: none
+ */
+export type Minimumorder = number | null;
+/**
+ * The items total from which delivery is free; null: never
+ */
+export type Freedeliveryfrom = number | null;
 
 /**
- * A setMyDeliveryZones area: its corners in drawing order.
+ * A setMyDeliveryZones zone: its corners in drawing order and its
+ * delivery policy. Types only, no limits (NewDeliveryPoint's reason).
  */
 export interface NewDeliveryZone {
+  name: Name;
   points: Points;
+  deliveryFee: Deliveryfee;
+  deliveryDays: Deliverydays;
+  minimumOrder?: Minimumorder;
+  freeDeliveryFrom?: Freedeliveryfrom;
 }
 /**
- * A corner of a setMyDeliveryZones area. Types only, no limits: the
+ * A corner of a setMyDeliveryZones zone. Types only, no limits: the
  * route checks them, never quoting a value (NewOrderDelivery's reason).
  */
 export interface NewDeliveryPoint {

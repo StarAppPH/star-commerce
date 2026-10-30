@@ -452,7 +452,7 @@ def setMyDeliveryZones():
     logging.info({'function': 'setMyDeliveryZones', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'zones'))})
 
     jwtToken = create_access_token(identity=current_user)
-    response = ApiResponse(message="Delivery areas saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    response = ApiResponse(message="Delivery zones saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
     return jsonify(response.model_dump(exclude_unset=True)), response.status
 
 
@@ -1382,8 +1382,6 @@ def updateMyStorePolicy():
     defectReportDays = data.get('defectReportDays')
     deliveryOptions = data.get('deliveryOptions')
     deliveryAreas = data.get('deliveryAreas')
-    offersFreeDelivery = data.get('offersFreeDelivery')
-    freeDeliveryMinimum = data.get('freeDeliveryMinimum')
     handoverDays = data.get('handoverDays')
     acceptedPaymentMethods = data.get('acceptedPaymentMethods')
     paidOrderCancellation = data.get('paidOrderCancellation')
@@ -1411,10 +1409,6 @@ def updateMyStorePolicy():
             raise ValueError('Invalid defectReportDays')
         if isinstance(deliveryAreas, (dict, list)):
             raise ValueError('Invalid deliveryAreas')
-        if isinstance(offersFreeDelivery, (dict, list)):
-            raise ValueError('Invalid offersFreeDelivery')
-        if isinstance(freeDeliveryMinimum, (dict, list)):
-            raise ValueError('Invalid freeDeliveryMinimum')
         if isinstance(handoverDays, (dict, list)):
             raise ValueError('Invalid handoverDays')
         if isinstance(paidOrderCancellation, (dict, list)):
@@ -1433,17 +1427,17 @@ def updateMyStorePolicy():
             raise ValueError('Invalid clear')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().updateMyStorePolicy(userId, acceptsReturns, returnWindowDays, returnConditions, nonReturnableItems, refundMethod, returnShippingPaidBy, defectReportDays, deliveryOptions, deliveryAreas, offersFreeDelivery, freeDeliveryMinimum, handoverDays, acceptedPaymentMethods, paidOrderCancellation, paidOrderCancellationHours, sendsMarketingMessages, additionalTerms, clear)
+        res = ApiRequests().updateMyStorePolicy(userId, acceptsReturns, returnWindowDays, returnConditions, nonReturnableItems, refundMethod, returnShippingPaidBy, defectReportDays, deliveryOptions, deliveryAreas, handoverDays, acceptedPaymentMethods, paidOrderCancellation, paidOrderCancellationHours, sendsMarketingMessages, additionalTerms, clear)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'offersFreeDelivery', 'freeDeliveryMinimum', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'offersFreeDelivery', 'freeDeliveryMinimum', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'updateMyStorePolicy', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'updateMyStorePolicy', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'offersFreeDelivery', 'freeDeliveryMinimum', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear'))})
+    logging.info({'function': 'updateMyStorePolicy', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'acceptsReturns', 'returnWindowDays', 'returnConditions', 'nonReturnableItems', 'refundMethod', 'returnShippingPaidBy', 'defectReportDays', 'deliveryOptions', 'deliveryAreas', 'handoverDays', 'acceptedPaymentMethods', 'paidOrderCancellation', 'paidOrderCancellationHours', 'sendsMarketingMessages', 'additionalTerms', 'clear'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Policy saved", status=200, current_user=current_user, data=res, jwtToken=jwtToken)

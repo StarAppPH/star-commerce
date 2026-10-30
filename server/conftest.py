@@ -313,20 +313,15 @@ def _recordPublishedMessages(monkeypatch):
     yield
 
 
-# --- No real exchange-rate call ---------------------------------------------
-# Every test prices a delivery at TEST_USD_RATES: exchangeRates.httpSession()
-# answers them as open.er-api.com would (FakeRatesSession), so no test
-# reaches the network. test_deliveryPricing.py replaces it to test failures.
+# --- Geocoding ---------------------------------------------------------------
+# Every test's geocoding.httpSession() is a FakeGeocodingSession, answering as
+# Google's Geocoding API would, and GOOGLE_MAPS_API_KEY is a test key: no test
+# reaches Google, even with a real key in server/.env.
 
-TEST_USD_RATES = {
-    'PHP': 58.0, 'USD': 1.0, 'EUR': 0.92, 'GBP': 0.79, 'JPY': 150.0,
-    'SGD': 1.35, 'AUD': 1.52, 'CAD': 1.37, 'HKD': 7.8, 'CNY': 7.2,
-    'KRW': 1380.0, 'MYR': 4.7, 'THB': 36.0, 'IDR': 16000.0, 'VND': 25000.0,
-    'INR': 83.0, 'AED': 3.67,
-}
+TEST_GEOCODED_ADDRESS = '123 Test Street, Cebu City, 6000 Cebu, Philippines'
 
 
-class FakeRatesResponse:
+class FakeGeocodingResponse:
     def __init__(self, status: int, body: bytes):
         self.status_code = status
         self.body = body
@@ -337,43 +332,6 @@ class FakeRatesResponse:
 
     def close(self) -> None:
         pass
-
-
-class FakeRatesSession:
-    """exchangeRates' Session: answers every GET with `status` and `body`
-    (default: TEST_USD_RATES), or raises `error`; counts the calls."""
-
-    def __init__(self, status: int = 200, body=None,
-                 error: Exception | None = None):
-        import json
-        self.status = status
-        self.body = (json.dumps({'result': 'success',
-                                 'rates': TEST_USD_RATES}).encode()
-                     if body is None else body)
-        self.error = error
-        self.calls = 0
-
-    def get(self, url, **kwargs):
-        self.calls += 1
-        if self.error is not None:
-            raise self.error
-        return FakeRatesResponse(self.status, self.body)
-
-
-@pytest.fixture(autouse=True)
-def _fakeExchangeRates(monkeypatch):
-    import exchangeRates
-    session = FakeRatesSession()
-    monkeypatch.setattr(exchangeRates, 'httpSession', lambda: session)
-    yield session
-
-
-# --- Geocoding ---------------------------------------------------------------
-# Every test's geocoding.httpSession() is a FakeGeocodingSession, answering as
-# Google's Geocoding API would, and GOOGLE_MAPS_API_KEY is a test key: no test
-# reaches Google, even with a real key in server/.env.
-
-TEST_GEOCODED_ADDRESS = '123 Test Street, Cebu City, 6000 Cebu, Philippines'
 
 
 class FakeGeocodingSession:
@@ -398,7 +356,7 @@ class FakeGeocodingSession:
         self.calls.append({'url': url, **kwargs})
         if self.error is not None:
             raise self.error
-        return FakeRatesResponse(self.status, self.body)
+        return FakeGeocodingResponse(self.status, self.body)
 
 
 @pytest.fixture(autouse=True)

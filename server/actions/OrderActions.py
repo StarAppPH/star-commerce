@@ -20,11 +20,11 @@ replacing OrderActions.datetime.
 An order is picked up or delivered (its fulfillment): the store's policy
 says which it offers (deliveryOptions; one that has not said offers pickup
 only, the app's way before delivery). A delivery carries the customer's
-address, map pin and notes, and costs DELIVERY_USD_PER_KM US dollars per km
-from the store's pin, in the store's currency (deliveryPricing), nothing
-from its freeDeliveryMinimum on; the fee is in the order's total, what
-payOrder charges. A store that delivers but has not pinned its location
-takes no delivery order (storeDelivery, bookableFulfillments).
+address, map pin and notes, and goes only into one of the store's delivery
+zones (objects/store.py: each with its own flat fee, delivery days, and
+optionally a minimum order and a total from which delivery is free); the fee
+is in the order's total, what payOrder charges. A store that delivers but has
+no zone yet takes no delivery order (storeDelivery, bookableFulfillments).
 
 The cap of MAX_PENDING_ORDERS_PER_STORE unpaid orders is held by a lock
 document per customer and store (ORDER_LOCKS): every createOrder writes it
@@ -42,7 +42,6 @@ from actions.ProductActions import (PRODUCT_LIST_DEFAULT_LIMIT, PRODUCTS,
                                     validBatch)
 from actions.StoreActions import (POLICIES, STORES, _validCoordinate,
                                   _validText, requireOwnerStore)
-from actions.deliveryPricing import deliveryFee, distanceKm, feePerKm
 from AppConfig import Timezone
 from mcpTools import mcp_tool
 from mongoDb import db
@@ -53,10 +52,9 @@ from objects import (DELIVERY_ADDRESS_MAX_LENGTH, DELIVERY_NOTES_MAX_LENGTH,
                      CancelReason, CreatedOrderResponse, Fulfillment,
                      MyOrderListResponse, MyOrderRow, NewOrderDelivery,
                      NewOrderItem, Order, OrderStatus, PaymentMethod,
-                     StoreOrderListResponse, StoreOrderRow, insideDeliveryZones,
-                     projectedCopy)
+                     StoreOrderListResponse, StoreOrderRow, deliveryFeeFor,
+                     deliveryZoneAt, projectedCopy, ruledZones)
 from route_config import route_config
-from sharedConstants import DELIVERY_USD_PER_KM
 from utils import appDayBounds, appDayStart, generateRandomString
 
 ORDERS = 'Orders'
@@ -95,11 +93,13 @@ NOT_OFFERED = {
     'pickup': "This store doesn't offer pickup: choose delivery",
     'delivery': "This store doesn't deliver: choose pickup",
 }
-NO_STORE_PIN_YET = ("The store hasn't pinned its location yet, so delivery "
-                    "can't be priced: choose pickup, or ask the store")
+NO_DELIVERY_ZONES_YET = ("The store hasn't set where it delivers yet: choose "
+                         'pickup, or ask the store')
 DELIVERY_REQUIRED = 'A delivery needs the address and the map pin'
 OUTSIDE_DELIVERY_ZONES = ("The store doesn't deliver to that pin: pin a spot "
-                          'inside its delivery areas, or choose pickup')
+                          'inside its delivery zones, or choose pickup')
+BELOW_ZONE_MINIMUM = ('Delivery to {zone} needs items worth at least '
+                      '{minimum:g} {currency}: add items, or choose pickup')
 DELIVERY_FOR_PICKUP = 'A pickup order has no delivery address'
 DELIVERY_NOT_AN_OBJECT = 'delivery is an object with address, latitude, longitude and notes'
 DELIVERY_ADDRESS_LABEL = 'The delivery address'
@@ -278,7 +278,7 @@ def _newestFirst(match: dict, limit: int | None) -> list:
 # The delivery fields as an order stored before delivery existed reads
 # them: a pickup, no fee, no address (Order's defaults).
 _DELIVERY_FIELDS = ('fulfillment', 'deliveryFee', 'deliveryDistanceKm',
-                    'deliveryAddress',
+                    'deliveryZone', 'deliveryAddress',
                     'deliveryLatitude', 'deliveryLongitude', 'deliveryNotes')
 _PICKUP_DEFAULTS = {field: Order.model_fields[field].default
                     for field in _DELIVERY_FIELDS}
@@ -406,21 +406,17 @@ def cancelExpiredOrders(storeId: str | None = None) -> int:
 
 def storeDelivery(storeId: str) -> dict:
     """The delivery answers of the store's policy: deliveryOptions,
-    deliveryAreas, offersFreeDelivery, freeDeliveryMinimum and handoverDays
-    (each None while the store has not said), storeLocation, the
-    store's pin (None until pinned) that a delivery is priced from, and
-    deliveryZones, the areas it delivers to (None or empty: anywhere)."""
-    fields = ('deliveryOptions', 'deliveryAreas', 'offersFreeDelivery',
-              'freeDeliveryMinimum', 'handoverDays')
+    deliveryAreas and handoverDays (each None while the store has not
+    said), and deliveryZones, the zones it delivers to with their policies
+    (ruledZones: empty until it drew one)."""
+    fields = ('deliveryOptions', 'deliveryAreas', 'handoverDays')
     policy = db.read({'storeId': storeId}, POLICIES,
                      projection={field: 1 for field in fields},
                      findOne=True) or {}
     store = db.read({'_id': storeId}, STORES,
-                    projection={'location': 1, 'deliveryZones': 1},
-                    findOne=True) or {}
+                    projection={'deliveryZones': 1}, findOne=True) or {}
     return {**{field: policy.get(field) for field in fields},
-            'storeLocation': store.get('location'),
-            'deliveryZones': store.get('deliveryZones')}
+            'deliveryZones': ruledZones(store.get('deliveryZones'))}
 
 
 def offeredFulfillments(delivery: dict) -> list[str]:
@@ -431,19 +427,9 @@ def offeredFulfillments(delivery: dict) -> list[str]:
 
 def bookableFulfillments(delivery: dict) -> list[str]:
     """What an order can choose: the offered ways, delivery only once the
-    store is pinned (a delivery is priced by its km from the pin)."""
+    store has a delivery zone (each delivery is priced by its zone)."""
     return [way for way in offeredFulfillments(delivery)
-            if way != 'delivery' or delivery['storeLocation'] is not None]
-
-
-def deliveryQuote(delivery: dict, address: dict,
-                  currency: str) -> tuple[float, float]:
-    """The km from the store's pin to the delivery's `address` pin, and
-    what a km costs in `currency` (ServiceUnavailable without a rate)."""
-    store = delivery['storeLocation']
-    km = distanceKm(store['latitude'], store['longitude'],
-                    address['deliveryLatitude'], address['deliveryLongitude'])
-    return km, feePerKm(currency)
+            if way != 'delivery' or delivery['deliveryZones']]
 
 
 def _validDelivery(value) -> dict:
@@ -471,9 +457,10 @@ def _validDelivery(value) -> dict:
 
 
 def _validFulfillment(fulfillment, delivery, policy: dict
-                      ) -> tuple[str, dict | None]:
-    """How the order is fulfilled and, for a delivery, where: what the
-    store offers, chosen for the customer when only one way can be booked."""
+                      ) -> tuple[str, dict | None, dict | None]:
+    """How the order is fulfilled and, for a delivery, where and the zone
+    (as stored) whose policy prices it: what the store offers, chosen for
+    the customer when only one way can be booked."""
     if fulfillment is not None and fulfillment not in FULFILLMENTS:
         raise ValueError(INVALID_FULFILLMENT)
     bookable = bookableFulfillments(policy)
@@ -483,23 +470,24 @@ def _validFulfillment(fulfillment, delivery, policy: dict
         elif bookable:
             raise ValueError(CHOOSE_FULFILLMENT)
         else:
-            raise ValueError(NO_STORE_PIN_YET)
+            raise ValueError(NO_DELIVERY_ZONES_YET)
     if fulfillment not in offeredFulfillments(policy):
         raise ValueError(NOT_OFFERED[fulfillment])
     if fulfillment == 'pickup':
         if delivery is not None:
             raise ValueError(DELIVERY_FOR_PICKUP)
-        return fulfillment, None
+        return fulfillment, None, None
     if fulfillment not in bookable:
-        raise ValueError(NO_STORE_PIN_YET)
+        raise ValueError(NO_DELIVERY_ZONES_YET)
     if delivery is None:
         raise ValueError(DELIVERY_REQUIRED)
     address = _validDelivery(delivery)
-    if not insideDeliveryZones(address['deliveryLatitude'],
-                               address['deliveryLongitude'],
-                               policy['deliveryZones']):
+    zone = deliveryZoneAt(address['deliveryLatitude'],
+                          address['deliveryLongitude'],
+                          policy['deliveryZones'])
+    if zone is None:
         raise ValueError(OUTSIDE_DELIVERY_ZONES)
-    return fulfillment, address
+    return fulfillment, address, zone
 
 
 def _validOrderItem(item: dict,
@@ -524,16 +512,43 @@ def _validOrderItems(items: list) -> list[tuple[str, int]]:
     return validBatch(items, NewOrderItem, 'Item', _validOrderItem)
 
 
+def _belowZoneMinimum(zone: dict, itemsTotal: float, currency: str) -> None:
+    """Refuse a delivery whose items come to less than its zone's
+    minimumOrder."""
+    minimum = zone.get('minimumOrder')
+    if minimum is not None and itemsTotal < minimum:
+        raise ValueError(BELOW_ZONE_MINIMUM.format(
+            zone=zone['name'], minimum=minimum, currency=currency))
+
+
+def _checkZoneMinimum(wanted: list[tuple[str, int]], storeId: str,
+                      zone: dict | None, currency: str) -> None:
+    """The zone's minimum order, checked on today's prices before anything
+    is reserved: without a transaction (a local mongod that is no replica
+    set) a refusal after reserving would leave the units held for good.
+    _reserveAndCreate checks it again on the prices it reserves at."""
+    if zone is None or zone.get('minimumOrder') is None:
+        return
+    prices = {product['_id']: product['price'] for product in db.read(
+        {'_id': {'$in': [productId for productId, _ in wanted]},
+         'storeId': storeId}, PRODUCTS, projection={'price': 1})}
+    if len(prices) < len(wanted):
+        return  # an unknown item: the reservation refuses it by position
+    _belowZoneMinimum(zone, orderTotal(
+        [{'price': prices[productId], 'quantity': quantity}
+         for productId, quantity in wanted]), currency)
+
+
 def _reserveAndCreate(wanted: list[tuple[str, int]], storeId: str,
                       customer: dict, currency: str, fulfillment: str,
-                      delivery: dict | None, quote: tuple[float, float] | None,
-                      freeDeliveryMinimum: float | None) -> dict:
+                      delivery: dict | None, zone: dict | None) -> dict:
     """Take each item's units out of its product's inventory into its
     reservedInventory, then store the order: one transaction, so on Atlas
     an item no product can fill rolls back every earlier reservation, and
-    a customer over MAX_PENDING_ORDERS_PER_STORE reserves nothing. A
-    delivery's `quote` (deliveryQuote: its km and the price of a km) is read
-    before, so no HTTP call runs inside the transaction.
+    a customer over MAX_PENDING_ORDERS_PER_STORE reserves nothing, nor does
+    a delivery whose items come to less than its `zone`'s minimumOrder.
+    The fee is the zone's (deliveryFeeFor: nothing from its
+    freeDeliveryFrom on).
 
     On a local mongod that is no replica set there is no transaction
     (addStoreProducts' accepted limit): a refused item leaves the earlier
@@ -580,9 +595,10 @@ def _reserveAndCreate(wanted: list[tuple[str, int]], storeId: str,
             items.append({'productId': productId, 'name': product['name'],
                           'price': product['price'], 'quantity': quantity})
         itemsTotal = orderTotal(items)
-        km, perKm = quote if quote is not None else (None, None)
-        fee = (deliveryFee(itemsTotal, km, perKm, freeDeliveryMinimum)
-               if quote is not None else 0)
+        fee = 0
+        if zone is not None:
+            _belowZoneMinimum(zone, itemsTotal, currency)
+            fee = deliveryFeeFor(zone, itemsTotal)
         order = Order(
             _id=orderId,
             storeId=storeId,
@@ -596,7 +612,7 @@ def _reserveAndCreate(wanted: list[tuple[str, int]], storeId: str,
             expiresAt=orderExpiresAt(createdAt),
             fulfillment=fulfillment,
             deliveryFee=fee,
-            deliveryDistanceKm=km,
+            deliveryZone=zone['name'] if zone is not None else None,
             **(delivery or {}),
             _version=0)
         return db.create(order.model_dump(by_alias=True), ORDERS,
@@ -617,11 +633,11 @@ first. A delivery needs `delivery`: `address`, as the customer gave it
 (house number, street, a landmark), `latitude` and `longitude`, the spot
 they pinned on the map (in the store's chat, showDeliveryPinForm), and
 `notes`, anything for the rider (optional). Send exactly what the customer
-gave, never an address of your own. Delivery
-costs {DELIVERY_USD_PER_KM} US dollars per km in a straight line from the
-store to the delivery pin, in the store's currency at today's rate
-(getStorePolicy's deliveryFeePerKm), nothing from its freeDeliveryMinimum
-on: the order's total includes it (deliveryFee, over deliveryDistanceKm).
+gave, never an address of your own. The pin must fall in one of the
+store's delivery zones (getStorePolicy's deliveryZones): that zone's flat
+deliveryFee applies, nothing from its freeDeliveryFrom on, and its
+minimumOrder is the smallest items total it takes; the order's total
+includes the fee (deliveryFee, deliveryZone).
 The order holds its units for
 {ORDER_PAYMENT_MINUTES} minutes: after the call, tell the customer the
 order's total (in its currency), that they have {ORDER_PAYMENT_MINUTES}
@@ -748,15 +764,13 @@ class OrderActions():
         currency = storeCurrency(storeId)
         wanted = _validOrderItems(items)
         policy = storeDelivery(storeId)
-        fulfillment, address = _validFulfillment(fulfillment, delivery,
-                                                 policy)
-        quote = (deliveryQuote(policy, address, currency)
-                 if fulfillment == 'delivery' else None)
+        fulfillment, address, zone = _validFulfillment(fulfillment,
+                                                       delivery, policy)
+        _checkZoneMinimum(wanted, storeId, zone, currency)
         # Units an expired order still holds are free for this one.
         cancelExpiredOrders(storeId)
         created = _reserveAndCreate(wanted, storeId, customer, currency,
-                                    fulfillment, address, quote,
-                                    policy['freeDeliveryMinimum'])
+                                    fulfillment, address, zone)
         return {
             'order': projectedCopy(MyOrderRow, created),
             'paymentMethods': list(PAYMENT_METHODS),

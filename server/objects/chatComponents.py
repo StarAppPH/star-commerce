@@ -28,8 +28,7 @@ from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                            GeneratedPhotoRow, PhotoChoiceRow)
 from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
                             AdditionalTerms, DefectReportDays, DeliveryAreas,
-                            DeliveryFeePerKm, DeliveryOptions, FreeDeliveryMinimum,
-                            OffersFreeDelivery,
+                            DeliveryOptions,
                             HandoverDays, NonReturnableItems,
                             PaidOrderCancellationAnswer,
                             PaidOrderCancellationHours, RefundMethodAnswer,
@@ -39,6 +38,7 @@ from objects.product import PRODUCT_BATCH_MAX, NewProduct
 from objects.returns import (RETURN_REJECT_REASON_MAX_LENGTH,
                              ReturnItemRow, ReturnReason, ReturnStatus)
 from objects.store import (DELIVERY_ZONES_MAX, DeliveryZoneResponse,
+                           DeliveryZoneRule,
                            Latitude, Longitude, StoreCurrency,
                            StoreLocationResponse)
 
@@ -241,15 +241,16 @@ class PolicyCard(ResponseModel):
     defectReportDays: DefectReportDays
     deliveryOptions: DeliveryOptions
     deliveryAreas: DeliveryAreas
-    offersFreeDelivery: OffersFreeDelivery
-    freeDeliveryMinimum: FreeDeliveryMinimum
     handoverDays: HandoverDays
     acceptedPaymentMethods: AcceptedPaymentMethods
     paidOrderCancellation: PaidOrderCancellationAnswer
     paidOrderCancellationHours: PaidOrderCancellationHours
     sendsMarketingMessages: SendsMarketingMessages
     additionalTerms: AdditionalTerms
-    deliveryFeePerKm: DeliveryFeePerKm
+    # Null on a card saved before zones had policies.
+    deliveryZones: list[DeliveryZoneRule] | None = Field(
+        None, max_length=DELIVERY_ZONES_MAX,
+        description="The store's delivery zones and their policies")
 
 
 class PhotosCard(ResponseModel):
@@ -349,19 +350,25 @@ class DeliveryPinForm(ResponseModel):
     storeLocation: StoreLocationResponse | None = Field(
         ..., description="The store's pin, where the map opens; null until "
         'pinned')
-    # Sent only when the store drew its delivery areas: a pin must fall in
-    # one (a form saved before areas existed has none).
+    # Null on a form saved before zones had policies.
+    currency: StoreCurrency | None = Field(
+        None, description="The zones' fees and totals are in it")
+    # A pin must fall in one. A form saved before zones existed has none
+    # (null), and takes no pin.
     deliveryZones: list[DeliveryZoneResponse] | None = Field(
-        None, max_length=DELIVERY_ZONES_MAX, exclude_if=lambda v: v is None,
-        description='The areas the store delivers to; absent: anywhere')
+        None, max_length=DELIVERY_ZONES_MAX,
+        description='The zones the store delivers to, with their policies')
 
 
 class DeliveryZonesForm(ResponseModel):
-    """Asks the admin to draw where the store delivers: areas on a map,
-    each closed. The map saves them (setMyDeliveryZones), then answers with
+    """Asks the admin to draw where the store delivers: zones on a map,
+    each closed, never overlapping, each with its own delivery policy. The
+    map saves them (setMyDeliveryZones), then answers with
     DeliveryZonesAnswer."""
     kind: Literal['deliveryZonesForm'] = Field(..., description='The form')
     formId: FormId
+    currency: StoreCurrency = Field(..., description="The zones' fees and "
+                                    'totals are in it')
     storeLocation: StoreLocationResponse | None = Field(
         ..., description="The store's pin, where the map opens; null until "
         'pinned')

@@ -14,6 +14,27 @@ export type Kind = "deliveryZonesForm";
  */
 export type Formid = string;
 /**
+ * The zones' fees and totals are in it
+ */
+export type Currency =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
  * Degrees north (negative: south)
  */
 export type Latitude = number;
@@ -84,6 +105,26 @@ export type Zones =
       DeliveryZoneResponse
     ];
 /**
+ * What the zone is called, e.g. Makati
+ */
+export type Name = string;
+/**
+ * What a delivery into the zone costs, in the store's currency; 0: free
+ */
+export type Deliveryfee = number;
+/**
+ * Days from payment until a delivery into the zone arrives
+ */
+export type Deliverydays = number;
+/**
+ * The smallest items total the zone takes, in the store's currency; null: no minimum
+ */
+export type Minimumorder = number | null;
+/**
+ * The items total from which delivery into the zone is free, in the store's currency; null: never free
+ */
+export type Freedeliveryfrom = number | null;
+/**
  * The corners in drawing order; the last joins the first
  *
  * @minItems 3
@@ -92,13 +133,15 @@ export type Zones =
 export type Points = [StoreLocationResponse, StoreLocationResponse, StoreLocationResponse, ...StoreLocationResponse[]];
 
 /**
- * Asks the admin to draw where the store delivers: areas on a map,
- * each closed. The map saves them (setMyDeliveryZones), then answers with
+ * Asks the admin to draw where the store delivers: zones on a map,
+ * each closed, never overlapping, each with its own delivery policy. The
+ * map saves them (setMyDeliveryZones), then answers with
  * DeliveryZonesAnswer.
  */
 export interface DeliveryZonesForm {
   kind: Kind;
   formId: Formid;
+  currency: Currency;
   /**
    * The store's pin, where the map opens; null until pinned
    */
@@ -115,10 +158,13 @@ export interface StoreLocationResponse {
   longitude: Longitude;
 }
 /**
- * A delivery area as a route sends it. Each field restates
- * DeliveryZone's, which test_route_response_models.py's MIRRORS keeps
- * in step.
+ * A zone as a route sends it: its policy and its shape.
  */
 export interface DeliveryZoneResponse {
+  name: Name;
+  deliveryFee: Deliveryfee;
+  deliveryDays: Deliverydays;
+  minimumOrder: Minimumorder;
+  freeDeliveryFrom: Freedeliveryfrom;
   points: Points;
 }

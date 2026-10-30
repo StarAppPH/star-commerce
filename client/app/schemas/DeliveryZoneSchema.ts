@@ -6,6 +6,10 @@
  */
 
 /**
+ * What the zone is called, e.g. Makati
+ */
+export type Name = string;
+/**
  * The corners in drawing order; the last joins the first
  *
  * @minItems 3
@@ -20,12 +24,34 @@ export type Latitude = number;
  * Degrees east (negative: west)
  */
 export type Longitude = number;
+/**
+ * What a delivery into the zone costs, in the store's currency; 0: free
+ */
+export type Deliveryfee = number;
+/**
+ * Days from payment until a delivery into the zone arrives
+ */
+export type Deliverydays = number;
+/**
+ * The smallest items total the zone takes, in the store's currency; null: no minimum
+ */
+export type Minimumorder = number | null;
+/**
+ * The items total from which delivery into the zone is free, in the store's currency; null: never free
+ */
+export type Freedeliveryfrom = number | null;
 
 /**
- * One area a store delivers to (deliveryZoneProblem holds its shape).
+ * One zone a store delivers to, with its own delivery policy
+ * (deliveryZoneProblem holds its shape, zonesOverlap keeps zones apart).
  */
 export interface DeliveryZone {
+  name: Name;
   points: Points;
+  deliveryFee: Deliveryfee;
+  deliveryDays: Deliverydays;
+  minimumOrder?: Minimumorder;
+  freeDeliveryFrom?: Freedeliveryfrom;
 }
 /**
  * Where a store is on the map, pinned by its admin.

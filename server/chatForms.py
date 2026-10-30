@@ -27,7 +27,7 @@ from typing import Callable, get_args
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from actions.CustomerActions import CUSTOMERS
-from actions.OrderActions import (NO_STORE_PIN_YET, NOT_OFFERED,
+from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
                                   OUTSIDE_DELIVERY_ZONES,
                                   bookableFulfillments, offeredFulfillments,
                                   storeDelivery)
@@ -38,7 +38,7 @@ from objects import (CHAT_MESSAGE_MAX_LENGTH, PHOTOS_PER_CALL_MAX,
                      PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH,
                      PRODUCT_INVENTORY_MAX, PRODUCT_NAME_MAX_LENGTH,
                      PRODUCT_PRICE_MAX, ChatComponent, ChatFormAnswerTagged,
-                     insideDeliveryZones)
+                     DELIVERY_ZONE_RULES, deliveryZoneAt, ruledZones)
 from utils import generateRandomString
 
 # ChatActions.CHAT_TURNS (ChatActions imports this module).
@@ -257,20 +257,19 @@ def _deliveryPinForm(userId: str, storeId: str,
     if 'delivery' not in offeredFulfillments(delivery):
         raise FormRefused(NOT_OFFERED['delivery'])
     if 'delivery' not in bookableFulfillments(delivery):
-        raise FormRefused(NO_STORE_PIN_YET)
-    store = db.read({'_id': storeId}, STORES, projection={'location': 1},
-                    findOne=True)
+        raise FormRefused(NO_DELIVERY_ZONES_YET)
+    store = db.read({'_id': storeId}, STORES,
+                    projection={'location': 1, 'currency': 1}, findOne=True)
     if store is None:
         raise FormRefused(STORE_NOT_FOUND)
     location = store.get('location')
-    form = {
+    return {
         'kind': 'deliveryPinForm',
         'formId': newFormId(),
         'storeLocation': _pin(location),
+        'currency': store['currency'],
+        'deliveryZones': delivery['deliveryZones'],
     }
-    if delivery['deliveryZones']:
-        form['deliveryZones'] = delivery['deliveryZones']
-    return form
 
 
 def _pin(location: dict | None) -> dict | None:
@@ -280,12 +279,14 @@ def _pin(location: dict | None) -> dict | None:
 
 def _deliveryZonesForm(userId: str, storeId: str,
                        args: ShowDeliveryZonesFormArgs) -> dict:
-    store = _ownStore(userId, {'location': 1, 'deliveryZones': 1})
+    store = _ownStore(userId, {'location': 1, 'deliveryZones': 1,
+                               'currency': 1})
     return {
         'kind': 'deliveryZonesForm',
         'formId': newFormId(),
+        'currency': store['currency'],
         'storeLocation': _pin(store.get('location')),
-        'zones': store.get('deliveryZones') or [],
+        'zones': ruledZones(store.get('deliveryZones')),
     }
 
 
@@ -349,20 +350,25 @@ FORM_TOOLS: dict[str, FormTool] = {
         'Open a map under your reply where the customer pins where their '
         'delivery goes (or uses where they are). Use it before createOrder, '
         'once they chose delivery in chat; it refuses when the store cannot '
-        'deliver. The pin comes as their next message: then ask in chat for '
-        "the rest of createOrder's `delivery` and call it with fulfillment "
-        'delivery and the pin\'s latitude and longitude.',
+        'deliver. The map shows the store\'s delivery zones and takes a pin '
+        'only inside one. The pin comes as their next message, with its zone '
+        "and that zone's fee, delivery days, minimum order and free delivery "
+        "total: tell them, then ask in chat for the rest of createOrder's "
+        '`delivery` and call it with fulfillment delivery and the pin\'s '
+        'latitude and longitude.',
         ShowDeliveryPinFormArgs, _deliveryPinForm),
     'showDeliveryZonesForm': FormTool(
         ('admin', ),
-        'Open a map under your reply where the owner draws the areas the '
-        'store delivers to (up to 10, each closed), or clears them to '
-        'deliver anywhere. Use it in the policy\'s delivery section once the '
-        'owner said they deliver, instead of asking which areas in chat. The '
-        'map saves the areas itself; their next message says how many: '
-        'then ask, optionally, for deliveryAreas, a name for them (e.g. '
-        'Metro Manila). A customer can book a delivery only to a pin '
-        'inside an area.',
+        'Open a map under your reply where the owner draws the zones the '
+        'store delivers to (up to 10, never overlapping) and gives each its '
+        'own delivery policy there: a name, a flat fee, the days a delivery '
+        'takes, and optionally a minimum order and an order total from which '
+        'delivery is free. Use it in the policy\'s delivery section once the '
+        'owner said they deliver, instead of asking about areas or fees in '
+        'chat: never ask for a zone\'s policy in chat. A store that delivers '
+        'takes no delivery order until it has a zone. The map saves the '
+        'zones itself; their next message lists them: then ask, optionally, '
+        'for deliveryAreas, a name for them all (e.g. Metro Manila).',
         ShowDeliveryZonesFormArgs, _deliveryZonesForm),
 }
 
@@ -576,25 +582,35 @@ def _productPhoto(answer, component, userId) -> tuple[str, dict]:
              'photoId': answer.photoId})
 
 
+def _zoneRules(zone: dict) -> dict:
+    """A zone's delivery policy, without its shape."""
+    return {rule: zone.get(rule) for rule in DELIVERY_ZONE_RULES}
+
+
 def _deliveryPin(answer, component, userId) -> tuple[str, dict]:
-    # The areas the customer saw; createOrder checks the store's own again.
-    if not insideDeliveryZones(answer.latitude, answer.longitude,
-                               component.get('deliveryZones')):
+    # The zones the customer saw; createOrder checks the store's own again.
+    zone = deliveryZoneAt(answer.latitude, answer.longitude,
+                          component.get('deliveryZones'))
+    if zone is None:
         raise ValueError(OUTSIDE_DELIVERY_ZONES)
     return (f'Deliver to my pin at {answer.latitude:.5f}, '
-            f'{answer.longitude:.5f}',
-            answer.model_dump(exclude={'formId'}))
+            f'{answer.longitude:.5f} ({zone["name"]})',
+            {**answer.model_dump(exclude={'formId'}),
+             'zone': _zoneRules(zone)})
 
 
 def _deliveryZones(answer, component, userId) -> tuple[str, dict]:
     # The map saved them (setMyDeliveryZones): what the store has now.
     store = _ownStore(userId, {'deliveryZones': 1})
-    count = len(store.get('deliveryZones') or [])
-    if count == 0:
-        text = 'Deliver anywhere: no delivery areas drawn.'
+    zones = ruledZones(store.get('deliveryZones'))
+    if not zones:
+        text = 'No delivery zones: no delivery orders until I draw one.'
     else:
-        text = f'Saved {count} delivery area{"s" if count > 1 else ""}.'
-    return text, {'kind': 'deliveryZones', 'areas': count}
+        names = ', '.join(zone['name'] for zone in zones)
+        text = (f'Saved {len(zones)} delivery zone'
+                f'{"s" if len(zones) > 1 else ""}: {names}.')
+    return text, {'kind': 'deliveryZones',
+                  'zones': [_zoneRules(zone) for zone in zones]}
 
 
 _ANSWER_TURNS = {

@@ -1,8 +1,57 @@
 {
     "$defs": {
         "DeliveryZoneResponse": {
-            "description": "A delivery area as a route sends it. Each field restates\nDeliveryZone's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "description": "A zone as a route sends it: its policy and its shape.",
             "properties": {
+                "name": {
+                    "description": "What the zone is called, e.g. Makati",
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "deliveryFee": {
+                    "description": "What a delivery into the zone costs, in the store's currency; 0: free",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Deliveryfee",
+                    "type": "number"
+                },
+                "deliveryDays": {
+                    "description": "Days from payment until a delivery into the zone arrives",
+                    "maximum": 365,
+                    "minimum": 0,
+                    "title": "Deliverydays",
+                    "type": "integer"
+                },
+                "minimumOrder": {
+                    "anyOf": [
+                        {
+                            "maximum": 10000000,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The smallest items total the zone takes, in the store's currency; null: no minimum",
+                    "title": "Minimumorder"
+                },
+                "freeDeliveryFrom": {
+                    "anyOf": [
+                        {
+                            "maximum": 10000000,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The items total from which delivery into the zone is free, in the store's currency; null: never free",
+                    "title": "Freedeliveryfrom"
+                },
                 "points": {
                     "description": "The corners in drawing order; the last joins the first",
                     "items": {
@@ -15,6 +64,11 @@
                 }
             },
             "required": [
+                "name",
+                "deliveryFee",
+                "deliveryDays",
+                "minimumOrder",
+                "freeDeliveryFrom",
                 "points"
             ],
             "title": "DeliveryZoneResponse",
@@ -74,6 +128,38 @@
             ],
             "description": "The store's pin, where the map opens; null until pinned"
         },
+        "currency": {
+            "anyOf": [
+                {
+                    "enum": [
+                        "PHP",
+                        "USD",
+                        "EUR",
+                        "GBP",
+                        "JPY",
+                        "SGD",
+                        "AUD",
+                        "CAD",
+                        "HKD",
+                        "CNY",
+                        "KRW",
+                        "MYR",
+                        "THB",
+                        "IDR",
+                        "VND",
+                        "INR",
+                        "AED"
+                    ],
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The zones' fees and totals are in it",
+            "title": "Currency"
+        },
         "deliveryZones": {
             "anyOf": [
                 {
@@ -88,7 +174,7 @@
                 }
             ],
             "default": null,
-            "description": "The areas the store delivers to; absent: anywhere",
+            "description": "The zones the store delivers to, with their policies",
             "title": "Deliveryzones"
         }
     },

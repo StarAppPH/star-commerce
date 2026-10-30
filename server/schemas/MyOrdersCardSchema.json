@@ -30,8 +30,22 @@
                             "type": "null"
                         }
                     ],
-                    "description": "Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on",
+                    "description": "Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on, for a delivery priced per km before delivery zones; null since",
                     "title": "Deliverydistancekm"
+                },
+                "deliveryZone": {
+                    "anyOf": [
+                        {
+                            "maxLength": 40,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery zone whose policy priced it; null for a pickup, or a delivery from before delivery zones",
+                    "title": "Deliveryzone"
                 },
                 "deliveryAddress": {
                     "anyOf": [
@@ -235,6 +249,7 @@
                 "fulfillment",
                 "deliveryFee",
                 "deliveryDistanceKm",
+                "deliveryZone",
                 "deliveryAddress",
                 "deliveryLatitude",
                 "deliveryLongitude",

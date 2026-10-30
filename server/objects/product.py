@@ -8,7 +8,7 @@ from pydantic import Field
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
                           ResponseModel)
-from objects.store import StoreCurrency
+from objects.store import DELIVERY_ZONE_AMOUNT_MAX, StoreCurrency
 
 
 # ──────────────────────────────────────────────
@@ -21,6 +21,10 @@ PRODUCT_DESCRIPTION_MAX_LENGTH = 500
 # overflowing MongoDB's int64 (or a price's float precision).
 PRODUCT_INVENTORY_MAX = 1_000_000
 PRODUCT_PRICE_MAX = 10_000_000
+# A zone's delivery fee and totals share the price's limit (objects/store.py
+# cannot import this module).
+if DELIVERY_ZONE_AMOUNT_MAX != PRODUCT_PRICE_MAX:
+    raise TypeError('DELIVERY_ZONE_AMOUNT_MAX must equal PRODUCT_PRICE_MAX')
 # The most products one addStoreProducts call adds.
 PRODUCT_BATCH_MAX = 50
 # The most products one store holds.

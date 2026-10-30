@@ -649,9 +649,13 @@ export type Fulfillment = "pickup" | "delivery";
  */
 export type Deliveryfee = number;
 /**
- * Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on
+ * Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on, for a delivery priced per km before delivery zones; null since
  */
 export type Deliverydistancekm = number | null;
+/**
+ * The delivery zone whose policy priced it; null for a pickup, or a delivery from before delivery zones
+ */
+export type Deliveryzone = string | null;
 /**
  * Where it is delivered, as the customer typed it
  */
@@ -760,9 +764,13 @@ export type Fulfillment1 = "pickup" | "delivery";
  */
 export type Deliveryfee1 = number;
 /**
- * Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on
+ * Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on, for a delivery priced per km before delivery zones; null since
  */
 export type Deliverydistancekm1 = number | null;
+/**
+ * The delivery zone whose policy priced it; null for a pickup, or a delivery from before delivery zones
+ */
+export type Deliveryzone1 = string | null;
 /**
  * Where it is delivered, as the customer typed it
  */
@@ -1078,15 +1086,7 @@ export type Deliveryoptions = ["pickup" | "delivery", ...("pickup" | "delivery")
  */
 export type Deliveryareas = string | null;
 /**
- * Whether delivery is free from an order total (freeDeliveryMinimum)
- */
-export type Offersfreedelivery = boolean | null;
-/**
- * The order total from which delivery is free, in the store's currency
- */
-export type Freedeliveryminimum = number | null;
-/**
- * Days from payment until the order is ready for pickup or delivered
+ * Days from payment until a pickup order is ready (a delivery takes its zone's deliveryDays)
  */
 export type Handoverdays = number | null;
 /**
@@ -1115,9 +1115,79 @@ export type Sendsmarketingmessages = boolean | null;
  */
 export type Additionalterms = string | null;
 /**
- * What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read
+ * The store's delivery zones and their policies
  */
-export type Deliveryfeeperkm = number | null;
+export type Deliveryzones =
+  | []
+  | [DeliveryZoneRule]
+  | [DeliveryZoneRule, DeliveryZoneRule]
+  | [DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule]
+  | [DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule]
+  | [DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule]
+  | [DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule, DeliveryZoneRule]
+  | [
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule
+    ]
+  | [
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule
+    ]
+  | [
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule
+    ]
+  | [
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule,
+      DeliveryZoneRule
+    ]
+  | null;
+/**
+ * What the zone is called, e.g. Makati
+ */
+export type Name6 = string;
+/**
+ * What a delivery into the zone costs, in the store's currency; 0: free
+ */
+export type Deliveryfee2 = number;
+/**
+ * Days from payment until a delivery into the zone arrives
+ */
+export type Deliverydays = number;
+/**
+ * The smallest items total the zone takes, in the store's currency; null: no minimum
+ */
+export type Minimumorder = number | null;
+/**
+ * The items total from which delivery into the zone is free, in the store's currency; null: never free
+ */
+export type Freedeliveryfrom = number | null;
 /**
  * The card
  */
@@ -1192,7 +1262,7 @@ export type Kind10 = "store";
 /**
  * Store name
  */
-export type Name6 = string | null;
+export type Name7 = string | null;
 /**
  * The store's link name
  */
@@ -1286,7 +1356,7 @@ export type Currency8 =
 /**
  * Product name
  */
-export type Name7 = string | null;
+export type Name8 = string | null;
 /**
  * Price
  */
@@ -1334,9 +1404,33 @@ export type Kind15 = "deliveryPinForm";
  */
 export type Formid9 = string;
 /**
- * The areas the store delivers to; absent: anywhere
+ * The zones' fees and totals are in it
  */
-export type Deliveryzones =
+export type Currency9 =
+  | (
+      | "PHP"
+      | "USD"
+      | "EUR"
+      | "GBP"
+      | "JPY"
+      | "SGD"
+      | "AUD"
+      | "CAD"
+      | "HKD"
+      | "CNY"
+      | "KRW"
+      | "MYR"
+      | "THB"
+      | "IDR"
+      | "VND"
+      | "INR"
+      | "AED"
+    )
+  | null;
+/**
+ * The zones the store delivers to, with their policies
+ */
+export type Deliveryzones1 =
   | []
   | [DeliveryZoneResponse]
   | [DeliveryZoneResponse, DeliveryZoneResponse]
@@ -1395,6 +1489,26 @@ export type Deliveryzones =
     ]
   | null;
 /**
+ * What the zone is called, e.g. Makati
+ */
+export type Name9 = string;
+/**
+ * What a delivery into the zone costs, in the store's currency; 0: free
+ */
+export type Deliveryfee3 = number;
+/**
+ * Days from payment until a delivery into the zone arrives
+ */
+export type Deliverydays1 = number;
+/**
+ * The smallest items total the zone takes, in the store's currency; null: no minimum
+ */
+export type Minimumorder1 = number | null;
+/**
+ * The items total from which delivery into the zone is free, in the store's currency; null: never free
+ */
+export type Freedeliveryfrom1 = number | null;
+/**
  * The corners in drawing order; the last joins the first
  *
  * @minItems 3
@@ -1409,6 +1523,27 @@ export type Kind16 = "deliveryZonesForm";
  * Answer it with this id
  */
 export type Formid10 = string;
+/**
+ * The zones' fees and totals are in it
+ */
+export type Currency10 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
 /**
  * The areas drawn so far; empty: none
  *
@@ -1523,7 +1658,7 @@ export type Products3 = [NewProductAnswerRow, ...NewProductAnswerRow[]];
 /**
  * Product name
  */
-export type Name8 = string;
+export type Name10 = string;
 /**
  * Price in the store's currency
  */
@@ -1836,6 +1971,7 @@ export interface ChatStoreOrderRow {
   fulfillment: Fulfillment;
   deliveryFee: Deliveryfee;
   deliveryDistanceKm: Deliverydistancekm;
+  deliveryZone: Deliveryzone;
   deliveryAddress: Deliveryaddress;
   deliveryLatitude: Deliverylatitude;
   deliveryLongitude: Deliverylongitude;
@@ -1876,6 +2012,7 @@ export interface ChatMyOrderRow {
   fulfillment: Fulfillment1;
   deliveryFee: Deliveryfee1;
   deliveryDistanceKm: Deliverydistancekm1;
+  deliveryZone: Deliveryzone1;
   deliveryAddress: Deliveryaddress1;
   deliveryLatitude: Deliverylatitude1;
   deliveryLongitude: Deliverylongitude1;
@@ -1979,15 +2116,25 @@ export interface PolicyCard {
   defectReportDays: Defectreportdays;
   deliveryOptions: Deliveryoptions;
   deliveryAreas: Deliveryareas;
-  offersFreeDelivery: Offersfreedelivery;
-  freeDeliveryMinimum: Freedeliveryminimum;
   handoverDays: Handoverdays;
   acceptedPaymentMethods: Acceptedpaymentmethods;
   paidOrderCancellation: Paidordercancellation;
   paidOrderCancellationHours: Paidordercancellationhours;
   sendsMarketingMessages: Sendsmarketingmessages;
   additionalTerms: Additionalterms;
-  deliveryFeePerKm: Deliveryfeeperkm;
+  deliveryZones?: Deliveryzones;
+}
+/**
+ * A zone's delivery policy as a route sends it, without its shape.
+ * Each field restates DeliveryZone's, which test_route_response_models.py's
+ * MIRRORS keeps in step.
+ */
+export interface DeliveryZoneRule {
+  name: Name6;
+  deliveryFee: Deliveryfee2;
+  deliveryDays: Deliverydays;
+  minimumOrder: Minimumorder;
+  freeDeliveryFrom: Freedeliveryfrom;
 }
 /**
  * The product photos a tool made.
@@ -2027,7 +2174,7 @@ export interface PhotoChoiceRow {
  */
 export interface StoreCard {
   kind: Kind10;
-  name: Name6;
+  name: Name7;
   slug: Slug;
   currency: Currency7;
   description: Description1;
@@ -2075,7 +2222,7 @@ export interface NewProductsForm {
  * form.
  */
 export interface ChatProductDraft {
-  name: Name7;
+  name: Name8;
   price: Price4;
   inventory: Inventory2;
   description: Description2;
@@ -2110,24 +2257,30 @@ export interface DeliveryPinForm {
    * The store's pin, where the map opens; null until pinned
    */
   storeLocation: StoreLocationResponse | null;
-  deliveryZones?: Deliveryzones;
+  currency?: Currency9;
+  deliveryZones?: Deliveryzones1;
 }
 /**
- * A delivery area as a route sends it. Each field restates
- * DeliveryZone's, which test_route_response_models.py's MIRRORS keeps
- * in step.
+ * A zone as a route sends it: its policy and its shape.
  */
 export interface DeliveryZoneResponse {
+  name: Name9;
+  deliveryFee: Deliveryfee3;
+  deliveryDays: Deliverydays1;
+  minimumOrder: Minimumorder1;
+  freeDeliveryFrom: Freedeliveryfrom1;
   points: Points;
 }
 /**
- * Asks the admin to draw where the store delivers: areas on a map,
- * each closed. The map saves them (setMyDeliveryZones), then answers with
+ * Asks the admin to draw where the store delivers: zones on a map,
+ * each closed, never overlapping, each with its own delivery policy. The
+ * map saves them (setMyDeliveryZones), then answers with
  * DeliveryZonesAnswer.
  */
 export interface DeliveryZonesForm {
   kind: Kind16;
   formId: Formid10;
+  currency: Currency10;
   /**
    * The store's pin, where the map opens; null until pinned
    */
@@ -2156,7 +2309,7 @@ export interface NewProductsAnswer {
  * uploaded for it, if any.
  */
 export interface NewProductAnswerRow {
-  name: Name8;
+  name: Name10;
   price: Price5;
   inventory: Inventory3;
   description?: Description3;

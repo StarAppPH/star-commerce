@@ -26,7 +26,9 @@ import photoStorage
 import voiceModel
 from mongoDb import db
 from mcpTools import mcp_tool
-from objects import (DEFAULT_STORE_CURRENCY, DELIVERY_ZONES_MAX,
+from objects import (DEFAULT_STORE_CURRENCY, DELIVERY_ZONE_AMOUNT_MAX,
+                     DELIVERY_ZONE_DAYS_MAX, DELIVERY_ZONE_NAME_MAX_LENGTH,
+                     DELIVERY_ZONES_MAX,
                      HEX_COLOR_EXAMPLE, LATITUDE_LIMIT, LONGITUDE_LIMIT,
                      PHONE_NUMBER_PATTERN,
                      PHOTO_STYLE_MAX_LENGTH,
@@ -39,6 +41,7 @@ from objects import (DEFAULT_STORE_CURRENCY, DELIVERY_ZONES_MAX,
                      NewDeliveryZone, Policy, Store,
                      StoreCurrency, StoreLocation, StoreResponse,
                      StoreThemeResponse, deliveryZoneProblem, hexColor,
+                     zoneCorners, zonesOverlap,
                      projectedCopy,
                      projection_of)
 from route_config import route_config
@@ -72,8 +75,11 @@ VOICE_NOT_AVAILABLE = "That voice isn't available: pick one from listVoices"
 STORE_CHANGED = 'Your store just changed, try again'
 NO_DETAILS_SENT = 'Send a store detail to change'
 NO_PIN_YET = 'Pin the store on the map first'
-DELIVERY_ZONES_NOT_A_LIST = 'zones is a list of areas, each with its points'
-TOO_MANY_DELIVERY_ZONES = f'Draw at most {DELIVERY_ZONES_MAX} delivery areas'
+DELIVERY_ZONES_NOT_A_LIST = ('zones is a list of zones, each with its points '
+                             'and delivery policy')
+TOO_MANY_DELIVERY_ZONES = f'Draw at most {DELIVERY_ZONES_MAX} delivery zones'
+ZONES_OVERLAP = ('Zone {later} overlaps zone {earlier}: draw them so they '
+                 'only share a border')
 # What createUserStore writes: the details the admin gives, and the slug
 # that sets the store up.
 STORE_DETAILS = ('name', 'slug', 'currency', 'description', 'contactNumber',
@@ -273,8 +279,7 @@ def _deleteStoreData(storeId: str, chatPaths: list[str]) -> dict:
     batches). The attachment paths those turns carried are added to
     `chatPaths` as each batch is read, so a failure part way still leaves
     them for _deleteResetFiles. Returns the count deleted per collection.
-    Never the usage counters, Users, Customers, Bootstrap or
-    ExchangeRates."""
+    Never the usage counters, Users, Customers or Bootstrap."""
     # Imported here: each of these modules imports this one.
     from actions.ChatActions import CHAT_TURNS, CONVERSATIONS
     from actions.OrderActions import ORDER_LOCKS, ORDERS
@@ -423,38 +428,89 @@ def _plain(value):
     return value if isinstance(value, dict) else None
 
 
+def _validAmount(value, label: str, required: bool = True) -> float | None:
+    """A zone's fee or total: a number from 0 to DELIVERY_ZONE_AMOUNT_MAX (a
+    bool is no number; NaN fails the range), to 2 decimals. None is no
+    amount when not `required`."""
+    if value is None and not required:
+        return None
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not 0 <= value <= DELIVERY_ZONE_AMOUNT_MAX):
+        raise ValueError(f'{label} is an amount from 0 to '
+                         f'{DELIVERY_ZONE_AMOUNT_MAX}')
+    return round(float(value), 2)
+
+
+def _validDays(value, label: str) -> int:
+    if (isinstance(value, bool) or not isinstance(value, int)
+            or not 0 <= value <= DELIVERY_ZONE_DAYS_MAX):
+        raise ValueError(f'{label} is a whole number from 0 to '
+                         f'{DELIVERY_ZONE_DAYS_MAX}')
+    return value
+
+
 def _validDeliveryZone(zone, position: int) -> dict:
-    """One delivery area of setMyDeliveryZones as stored, refused with
-    its position (1 based) and never its values."""
+    """One zone of setMyDeliveryZones as stored: its shape and its delivery
+    policy, each refusal naming the zone's position (1 based) and the
+    field, never a value."""
+    label = f'Zone {position}'
     zone = _plain(zone)
-    points = zone.get('points') if zone is not None else None
+    if zone is None:
+        raise ValueError(f'{label}: a zone has a name, points and its '
+                         'delivery policy')
+    points = zone.get('points')
     if not isinstance(points, list):
-        raise ValueError(f'Area {position}: points is a list of corners')
+        raise ValueError(f'{label}: points is a list of corners')
     corners = []
     for point in points:
         point = _plain(point) or {}
         corners.append((
             _validCoordinate(point.get('latitude'),
-                             f'Area {position}: a latitude', LATITUDE_LIMIT),
+                             f'{label}: a latitude', LATITUDE_LIMIT),
             _validCoordinate(point.get('longitude'),
-                             f'Area {position}: a longitude',
-                             LONGITUDE_LIMIT)))
+                             f'{label}: a longitude', LONGITUDE_LIMIT)))
     problem = deliveryZoneProblem(corners)
     if problem is not None:
-        raise ValueError(f'Area {position}: {problem}')
-    return {'points': [{'latitude': latitude, 'longitude': longitude}
-                       for latitude, longitude in corners]}
+        raise ValueError(f'{label}: {problem}')
+    return {
+        'name': _validText(zone.get('name'), f'{label}: the name',
+                           DELIVERY_ZONE_NAME_MAX_LENGTH),
+        'points': [{'latitude': latitude, 'longitude': longitude}
+                   for latitude, longitude in corners],
+        'deliveryFee': _validAmount(zone.get('deliveryFee'),
+                                    f'{label}: the delivery fee'),
+        'deliveryDays': _validDays(zone.get('deliveryDays'),
+                                   f'{label}: the delivery days'),
+        'minimumOrder': _validAmount(zone.get('minimumOrder'),
+                                     f'{label}: the minimum order',
+                                     required=False),
+        'freeDeliveryFrom': _validAmount(zone.get('freeDeliveryFrom'),
+                                         f'{label}: the free delivery total',
+                                         required=False),
+    }
 
 
 def _validDeliveryZones(zones) -> list[dict]:
-    """setMyDeliveryZones' areas as stored: up to DELIVERY_ZONES_MAX
-    closed shapes (deliveryZoneProblem)."""
+    """setMyDeliveryZones' zones as stored: up to DELIVERY_ZONES_MAX closed
+    shapes (deliveryZoneProblem), each named once, no two overlapping
+    (zonesOverlap: a shared border is fine)."""
     if not isinstance(zones, list):
         raise ValueError(DELIVERY_ZONES_NOT_A_LIST)
     if len(zones) > DELIVERY_ZONES_MAX:
         raise ValueError(TOO_MANY_DELIVERY_ZONES)
-    return [_validDeliveryZone(zone, position)
-            for position, zone in enumerate(zones, start=1)]
+    valid = [_validDeliveryZone(zone, position)
+             for position, zone in enumerate(zones, start=1)]
+    for later in range(len(valid)):
+        for earlier in range(later):
+            if (valid[later]['name'].casefold()
+                    == valid[earlier]['name'].casefold()):
+                raise ValueError(f'Zone {later + 1}: zone {earlier + 1} has '
+                                 'that name already')
+            if zonesOverlap(zoneCorners(valid[earlier]),
+                            zoneCorners(valid[later])):
+                raise ValueError(ZONES_OVERLAP.format(
+                    later=later + 1, earlier=earlier + 1))
+    return valid
 
 
 class StoreActions():
@@ -756,15 +812,18 @@ class StoreActions():
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,
-                  successMessage='Delivery areas saved',
+                  successMessage='Delivery zones saved',
                   responseModel=DeliveryZonesResponse)
     def setMyDeliveryZones(self, userId: str,
                            zones: list[NewDeliveryZone]) -> dict:
-        """Save where the admin's store delivers: the areas drawn on the
-        delivery areas map (showDeliveryZonesForm), each a closed shape of
-        3 to 100 corners whose sides never cross, at most 10. No area: it
-        delivers anywhere. A customer can book a delivery only to a pin
-        inside one. No chat or MCP tool: the map sends it."""
+        """Save where the admin's store delivers: the zones drawn on the
+        delivery zones map (showDeliveryZonesForm), at most 10, each a
+        closed shape of 3 to 100 corners whose sides never cross, with its
+        own delivery policy (name, flat fee, delivery days, optional minimum
+        order and free delivery total). Zones may share a border, never
+        overlap. No zone: the store takes no delivery order. A customer can
+        book a delivery only to a pin inside one. No chat or MCP tool: the
+        map sends it."""
         requireAdmin(userId)
         deliveryZones = _validDeliveryZones(zones)
         store = ownerStore(userId, {'_id': 1, '_version': 1})

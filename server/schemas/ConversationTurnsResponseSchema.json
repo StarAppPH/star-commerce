@@ -66,8 +66,22 @@
                             "type": "null"
                         }
                     ],
-                    "description": "Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on",
+                    "description": "Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on, for a delivery priced per km before delivery zones; null since",
                     "title": "Deliverydistancekm"
+                },
+                "deliveryZone": {
+                    "anyOf": [
+                        {
+                            "maxLength": 40,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery zone whose policy priced it; null for a pickup, or a delivery from before delivery zones",
+                    "title": "Deliveryzone"
                 },
                 "deliveryAddress": {
                     "anyOf": [
@@ -271,6 +285,7 @@
                 "fulfillment",
                 "deliveryFee",
                 "deliveryDistanceKm",
+                "deliveryZone",
                 "deliveryAddress",
                 "deliveryLatitude",
                 "deliveryLongitude",
@@ -561,8 +576,22 @@
                             "type": "null"
                         }
                     ],
-                    "description": "Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on",
+                    "description": "Km from the store's pin to the delivery pin, in a straight line: what the fee was priced on, for a delivery priced per km before delivery zones; null since",
                     "title": "Deliverydistancekm"
+                },
+                "deliveryZone": {
+                    "anyOf": [
+                        {
+                            "maxLength": 40,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery zone whose policy priced it; null for a pickup, or a delivery from before delivery zones",
+                    "title": "Deliveryzone"
                 },
                 "deliveryAddress": {
                     "anyOf": [
@@ -752,6 +781,7 @@
                 "fulfillment",
                 "deliveryFee",
                 "deliveryDistanceKm",
+                "deliveryZone",
                 "deliveryAddress",
                 "deliveryLatitude",
                 "deliveryLongitude",
@@ -1200,6 +1230,38 @@
                     ],
                     "description": "The store's pin, where the map opens; null until pinned"
                 },
+                "currency": {
+                    "anyOf": [
+                        {
+                            "enum": [
+                                "PHP",
+                                "USD",
+                                "EUR",
+                                "GBP",
+                                "JPY",
+                                "SGD",
+                                "AUD",
+                                "CAD",
+                                "HKD",
+                                "CNY",
+                                "KRW",
+                                "MYR",
+                                "THB",
+                                "IDR",
+                                "VND",
+                                "INR",
+                                "AED"
+                            ],
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The zones' fees and totals are in it",
+                    "title": "Currency"
+                },
                 "deliveryZones": {
                     "anyOf": [
                         {
@@ -1214,7 +1276,7 @@
                         }
                     ],
                     "default": null,
-                    "description": "The areas the store delivers to; absent: anywhere",
+                    "description": "The zones the store delivers to, with their policies",
                     "title": "Deliveryzones"
                 }
             },
@@ -1228,8 +1290,57 @@
             "additionalProperties": false
         },
         "DeliveryZoneResponse": {
-            "description": "A delivery area as a route sends it. Each field restates\nDeliveryZone's, which test_route_response_models.py's MIRRORS keeps\nin step.",
+            "description": "A zone as a route sends it: its policy and its shape.",
             "properties": {
+                "name": {
+                    "description": "What the zone is called, e.g. Makati",
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "deliveryFee": {
+                    "description": "What a delivery into the zone costs, in the store's currency; 0: free",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Deliveryfee",
+                    "type": "number"
+                },
+                "deliveryDays": {
+                    "description": "Days from payment until a delivery into the zone arrives",
+                    "maximum": 365,
+                    "minimum": 0,
+                    "title": "Deliverydays",
+                    "type": "integer"
+                },
+                "minimumOrder": {
+                    "anyOf": [
+                        {
+                            "maximum": 10000000,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The smallest items total the zone takes, in the store's currency; null: no minimum",
+                    "title": "Minimumorder"
+                },
+                "freeDeliveryFrom": {
+                    "anyOf": [
+                        {
+                            "maximum": 10000000,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The items total from which delivery into the zone is free, in the store's currency; null: never free",
+                    "title": "Freedeliveryfrom"
+                },
                 "points": {
                     "description": "The corners in drawing order; the last joins the first",
                     "items": {
@@ -1242,14 +1353,83 @@
                 }
             },
             "required": [
+                "name",
+                "deliveryFee",
+                "deliveryDays",
+                "minimumOrder",
+                "freeDeliveryFrom",
                 "points"
             ],
             "title": "DeliveryZoneResponse",
             "type": "object",
             "additionalProperties": false
         },
+        "DeliveryZoneRule": {
+            "description": "A zone's delivery policy as a route sends it, without its shape.\nEach field restates DeliveryZone's, which test_route_response_models.py's\nMIRRORS keeps in step.",
+            "properties": {
+                "name": {
+                    "description": "What the zone is called, e.g. Makati",
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "deliveryFee": {
+                    "description": "What a delivery into the zone costs, in the store's currency; 0: free",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Deliveryfee",
+                    "type": "number"
+                },
+                "deliveryDays": {
+                    "description": "Days from payment until a delivery into the zone arrives",
+                    "maximum": 365,
+                    "minimum": 0,
+                    "title": "Deliverydays",
+                    "type": "integer"
+                },
+                "minimumOrder": {
+                    "anyOf": [
+                        {
+                            "maximum": 10000000,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The smallest items total the zone takes, in the store's currency; null: no minimum",
+                    "title": "Minimumorder"
+                },
+                "freeDeliveryFrom": {
+                    "anyOf": [
+                        {
+                            "maximum": 10000000,
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The items total from which delivery into the zone is free, in the store's currency; null: never free",
+                    "title": "Freedeliveryfrom"
+                }
+            },
+            "required": [
+                "name",
+                "deliveryFee",
+                "deliveryDays",
+                "minimumOrder",
+                "freeDeliveryFrom"
+            ],
+            "title": "DeliveryZoneRule",
+            "type": "object",
+            "additionalProperties": false
+        },
         "DeliveryZonesForm": {
-            "description": "Asks the admin to draw where the store delivers: areas on a map,\neach closed. The map saves them (setMyDeliveryZones), then answers with\nDeliveryZonesAnswer.",
+            "description": "Asks the admin to draw where the store delivers: zones on a map,\neach closed, never overlapping, each with its own delivery policy. The\nmap saves them (setMyDeliveryZones), then answers with\nDeliveryZonesAnswer.",
             "properties": {
                 "kind": {
                     "const": "deliveryZonesForm",
@@ -1262,6 +1442,30 @@
                     "maxLength": 64,
                     "minLength": 1,
                     "title": "Formid",
+                    "type": "string"
+                },
+                "currency": {
+                    "description": "The zones' fees and totals are in it",
+                    "enum": [
+                        "PHP",
+                        "USD",
+                        "EUR",
+                        "GBP",
+                        "JPY",
+                        "SGD",
+                        "AUD",
+                        "CAD",
+                        "HKD",
+                        "CNY",
+                        "KRW",
+                        "MYR",
+                        "THB",
+                        "IDR",
+                        "VND",
+                        "INR",
+                        "AED"
+                    ],
+                    "title": "Currency",
                     "type": "string"
                 },
                 "storeLocation": {
@@ -1288,6 +1492,7 @@
             "required": [
                 "kind",
                 "formId",
+                "currency",
                 "storeLocation",
                 "zones"
             ],
@@ -1812,32 +2017,6 @@
                     "description": "Where the store delivers",
                     "title": "Deliveryareas"
                 },
-                "offersFreeDelivery": {
-                    "anyOf": [
-                        {
-                            "type": "boolean"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "Whether delivery is free from an order total (freeDeliveryMinimum)",
-                    "title": "Offersfreedelivery"
-                },
-                "freeDeliveryMinimum": {
-                    "anyOf": [
-                        {
-                            "maximum": 10000000,
-                            "minimum": 0,
-                            "type": "number"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "The order total from which delivery is free, in the store's currency",
-                    "title": "Freedeliveryminimum"
-                },
                 "handoverDays": {
                     "anyOf": [
                         {
@@ -1849,7 +2028,7 @@
                             "type": "null"
                         }
                     ],
-                    "description": "Days from payment until the order is ready for pickup or delivered",
+                    "description": "Days from payment until a pickup order is ready (a delivery takes its zone's deliveryDays)",
                     "title": "Handoverdays"
                 },
                 "acceptedPaymentMethods": {
@@ -1932,18 +2111,22 @@
                     "description": "Any other terms, as the admin gave them",
                     "title": "Additionalterms"
                 },
-                "deliveryFeePerKm": {
+                "deliveryZones": {
                     "anyOf": [
                         {
-                            "minimum": 0,
-                            "type": "number"
+                            "items": {
+                                "$ref": "#/$defs/DeliveryZoneRule"
+                            },
+                            "maxItems": 10,
+                            "type": "array"
                         },
                         {
                             "type": "null"
                         }
                     ],
-                    "description": "What delivery costs per km from the store, in the store's currency at today's rate; null without delivery, or while the rate cannot be read",
-                    "title": "Deliveryfeeperkm"
+                    "default": null,
+                    "description": "The store's delivery zones and their policies",
+                    "title": "Deliveryzones"
                 }
             },
             "required": [
@@ -1958,15 +2141,12 @@
                 "defectReportDays",
                 "deliveryOptions",
                 "deliveryAreas",
-                "offersFreeDelivery",
-                "freeDeliveryMinimum",
                 "handoverDays",
                 "acceptedPaymentMethods",
                 "paidOrderCancellation",
                 "paidOrderCancellationHours",
                 "sendsMarketingMessages",
-                "additionalTerms",
-                "deliveryFeePerKm"
+                "additionalTerms"
             ],
             "title": "PolicyCard",
             "type": "object",

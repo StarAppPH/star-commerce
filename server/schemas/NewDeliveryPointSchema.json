@@ -1,5 +1,5 @@
 {
-    "description": "A corner of a setMyDeliveryZones area. Types only, no limits: the\nroute checks them, never quoting a value (NewOrderDelivery's reason).",
+    "description": "A corner of a setMyDeliveryZones zone. Types only, no limits: the\nroute checks them, never quoting a value (NewOrderDelivery's reason).",
     "properties": {
         "latitude": {
             "description": "Degrees north",

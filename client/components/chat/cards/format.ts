@@ -1,5 +1,5 @@
 // How the cards say money, orders and the server's codes.
-import { DELIVERY_USD_PER_KM } from '@/lib/generated/serverConstants';
+import type { DeliveryZoneRule } from '@/app/schemas/DeliveryZoneRuleSchema';
 import { formatShortDate, formatStoreTime, parseInstant } from '@/lib/storeTime';
 
 const moneyFormats = new Map<string, Intl.NumberFormat>();
@@ -13,10 +13,21 @@ export function formatMoney(amount: number, currency: string): string {
   return format.format(amount);
 }
 
-// What a km of delivery costs: in the store's currency at today's rate, else
-// (no rate right now) the app's rate in US dollars.
-export function deliveryPerKmText(perKm: number | null, currency: string): string {
-  return perKm === null ? `${formatMoney(DELIVERY_USD_PER_KM, 'USD')} per km` : `${formatMoney(perKm, currency)} per km`;
+function daysText(days: number): string {
+  if (days === 0) return 'same day';
+  return days === 1 ? '1 day' : `${days} days`;
+}
+
+// A delivery zone's policy in a line: its fee, how long it takes, its minimum
+// order and the total from which it is free.
+export function zoneRuleText(zone: DeliveryZoneRule, currency: string): string {
+  const parts = [
+    zone.deliveryFee > 0 ? `${formatMoney(zone.deliveryFee, currency)} fee` : 'free delivery',
+    daysText(zone.deliveryDays),
+  ];
+  if (zone.minimumOrder !== null) parts.push(`min. order ${formatMoney(zone.minimumOrder, currency)}`);
+  if (zone.freeDeliveryFrom !== null && zone.deliveryFee > 0) parts.push(`free from ${formatMoney(zone.freeDeliveryFrom, currency)}`);
+  return parts.join(' · ');
 }
 
 // The short reference an order is shown by (server chatForms.orderRef).
