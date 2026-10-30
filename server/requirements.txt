@@ -21,3 +21,4 @@ mcp==2.3.0
 openai==3.40.0
 google-cloud-storage==3.17.1
 PyJWT>=2.8
+Pillow==12.3.0

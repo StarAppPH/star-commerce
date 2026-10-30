@@ -87,6 +87,8 @@ DOWNLOAD_TOKEN_KEY = 'firebaseStorageDownloadTokens'
 STORE_FOLDER = 'stores'
 USER_FOLDER = 'users'
 USER_CHAT_FOLDER = 'chat'
+# The products cut out of a user's group photos (saveFoundPhoto).
+USER_FOUND_FOLDER = 'found'
 # The one folder deletePrefix may empty: stores/<id>/ or users/<id>/, the
 # id one segment with no backslash or control character.
 FOLDER_PREFIX_PATTERN = re.compile(
@@ -492,18 +494,13 @@ def downloadUrl(path: str, token: str) -> str:
             f'{quote(path, safe="")}?alt=media&token={token}')
 
 
-def saveStorePhoto(storeId: str, photoId: str, data: bytes,
-                   deadline: float,
-                   contentType: str = STORE_PHOTO_CONTENT_TYPE) -> str:
-    """Write `data` (a JPEG, or a PNG original: `contentType`) to
-    storePhotoPath(storeId, photoId, contentType) with a fresh random
-    download token, before `deadline` (time.monotonic()), and return its
-    download URL. Create-only (if_generation_match=0: the path is a fresh
-    id), which also lets the SDK retry the upload."""
+def _upload(path: str, data: bytes, contentType: str,
+            deadline: float) -> str:
+    """Write `data` to the fresh path `path` with a fresh random download
+    token, before `deadline` (time.monotonic()), and return its download
+    URL. Create-only (if_generation_match=0: the path is a fresh id), which
+    also lets the SDK retry the upload."""
     from google.api_core.exceptions import PreconditionFailed
-    if contentType not in IMAGE_CONTENT_TYPES:
-        raise ValueError('A store photo is a JPEG or a PNG')
-    path = storePhotoPath(storeId, photoId, contentType)
     token = secrets.token_urlsafe(24)
     try:
         blob = _bucket().blob(path)
@@ -517,6 +514,33 @@ def saveStorePhoto(storeId: str, photoId: str, data: bytes,
     except _storageErrors() as error:
         raise _storageFailure(error) from None
     return downloadUrl(path, token)
+
+
+def saveStorePhoto(storeId: str, photoId: str, data: bytes,
+                   deadline: float,
+                   contentType: str = STORE_PHOTO_CONTENT_TYPE) -> str:
+    """Write `data` (a JPEG, or a PNG original: `contentType`) to
+    storePhotoPath(storeId, photoId, contentType) (_upload) and return its
+    download URL."""
+    if contentType not in IMAGE_CONTENT_TYPES:
+        raise ValueError('A store photo is a JPEG or a PNG')
+    return _upload(storePhotoPath(storeId, photoId, contentType), data,
+                   contentType, deadline)
+
+
+def foundPhotoPath(uid: str, photoId: str) -> str:
+    """Where a product cut out of the user `uid`'s group photo is saved (a
+    JPEG): their own folder, so it is theirs to put on a product."""
+    return f'{userFolder(uid)}{USER_FOUND_FOLDER}/{photoId}.jpg'
+
+
+def saveFoundPhoto(uid: str, photoId: str, data: bytes,
+                   deadline: float) -> str:
+    """Write the JPEG `data` to foundPhotoPath(uid, photoId) (_upload) and
+    return the path."""
+    path = foundPhotoPath(uid, photoId)
+    _upload(path, data, STORE_PHOTO_CONTENT_TYPE, deadline)
+    return path
 
 
 def storeFolder(storeId: str) -> str:

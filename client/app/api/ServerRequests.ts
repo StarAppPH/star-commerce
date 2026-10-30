@@ -14,6 +14,7 @@ import type { DeliveryZonesAnswer } from '../schemas/DeliveryZonesAnswerSchema';
 import type { DeliveryZonesResponse } from '../schemas/DeliveryZonesResponseSchema';
 import type { DevUserListResponse } from '../schemas/DevUserListResponseSchema';
 import type { FirebaseUserObject } from '../schemas/FirebaseUserObjectSchema';
+import type { FoundProductsResponse } from '../schemas/FoundProductsResponseSchema';
 import type { GeneratedPhotosResponse } from '../schemas/GeneratedPhotosResponseSchema';
 import type { HandoverAnswer } from '../schemas/HandoverAnswerSchema';
 import type { LocationAnswer } from '../schemas/LocationAnswerSchema';
@@ -1185,6 +1186,29 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
+    async findProductsInPhoto(userId: string, imageUrl: string): Promise<ApiResponse<FoundProductsResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/findProductsInPhoto`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "imageUrl": imageUrl}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<FoundProductsResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
     async setProductPhoto(userId: string, productId: string, photoId: string | null): Promise<ApiResponse<AdminProductRow>> {
         try {
         const res = await fetch(`${this.apiUrl}/setProductPhoto`, {
@@ -1259,6 +1283,7 @@ export interface RouteResponseModels {
     listVoices: VoiceListResponse;
     generateProductPhotos: GeneratedPhotosResponse;
     makeProductPhotoChoices: ProductPhotoChoicesResponse;
+    findProductsInPhoto: FoundProductsResponse;
     setProductPhoto: AdminProductRow;
 }
 
@@ -1312,6 +1337,7 @@ export interface RouteRequestBodies {
     listVoices: { userId: string; search: string | null; pageToken: string | null };
     generateProductPhotos: { userId: string; imageUrls: string[]; count: number; notes: string | null; productName: string | null };
     makeProductPhotoChoices: { userId: string; productId: string; imageUrl: string };
+    findProductsInPhoto: { userId: string; imageUrl: string };
     setProductPhoto: { userId: string; productId: string; photoId: string | null };
 }
 

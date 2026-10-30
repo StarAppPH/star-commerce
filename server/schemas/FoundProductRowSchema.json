@@ -1,0 +1,24 @@
+{
+    "description": "A product findProductsInPhoto found: its name and its cut-out\nphoto.",
+    "properties": {
+        "name": {
+            "description": "Product name",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "imageUrl": {
+            "description": "The cut-out photo's URL, the admin's own upload",
+            "minLength": 1,
+            "title": "Imageurl",
+            "type": "string"
+        }
+    },
+    "required": [
+        "name",
+        "imageUrl"
+    ],
+    "title": "FoundProductRow",
+    "type": "object",
+    "additionalProperties": false
+}

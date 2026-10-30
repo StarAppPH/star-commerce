@@ -156,7 +156,8 @@ CHAT_PROMPTS = {
             example='I can only help with running your store. What would '
             'you like to do?') + _ATTACHMENT_RULE +
         " Pass an attached image's url to generateProductPhotos only when "
-        'the owner asks for product photos.'),
+        'the owner asks for product photos, and to findProductsInPhoto '
+        'when it shows several products the owner wants to add.'),
     'customer': (
         "You are this store's shopping assistant. Answer from the tools "
         'only, never invent prices, stock or policies. A null policy field '

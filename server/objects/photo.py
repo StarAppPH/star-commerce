@@ -20,6 +20,8 @@ PHOTO_REFERENCES_MAX = 10
 PHOTOS_PER_CALL_MAX = 4
 # The styled photos makeProductPhotoChoices makes next to the original.
 PHOTO_CHOICES_GENERATED = 3
+# The most products findProductsInPhoto finds in one photo.
+PHOTO_FIND_ITEMS_MAX = 12
 
 # Where a store photo came from: the image model made it, or it is the
 # admin's own photo, copied as it is (makeProductPhotoChoices).
@@ -89,3 +91,23 @@ class ProductPhotoChoicesResponse(ResponseModel):
         ..., description='Why no styled photos were made (no photo style, '
         "today's limit reached, generation unavailable); null when they "
         'were')
+
+
+class FoundProductRow(ResponseModel):
+    """A product findProductsInPhoto found: its name and its cut-out
+    photo."""
+    name: str = Field(..., min_length=1, description='Product name')
+    imageUrl: str = Field(..., min_length=1,
+                          description="The cut-out photo's URL, the "
+                          "admin's own upload")
+
+
+class FoundProductsResponse(ResponseModel):
+    """What findProductsInPhoto sends: the products found, in the photo's
+    order, and those named but not located."""
+    products: list[FoundProductRow] = Field(
+        ..., max_length=PHOTO_FIND_ITEMS_MAX,
+        description='The products found, left to right')
+    notFound: list[str] = Field(
+        ..., max_length=PHOTO_FIND_ITEMS_MAX,
+        description='The names of products seen but not located')

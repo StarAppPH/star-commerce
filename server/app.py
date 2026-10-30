@@ -1928,6 +1928,40 @@ def makeProductPhotoChoices():
 
 
 
+@app.route('/findProductsInPhoto', methods=['POST'])
+@jwt_required()
+def findProductsInPhoto():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    imageUrl = data.get('imageUrl')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(imageUrl, (dict, list)):
+            raise ValueError('Invalid imageUrl')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().findProductsInPhoto(userId, imageUrl)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'findProductsInPhoto', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrl')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'findProductsInPhoto', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrl')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'findProductsInPhoto', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'imageUrl'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Products found", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 @app.route('/setProductPhoto', methods=['POST'])
 @jwt_required()
 def setProductPhoto():

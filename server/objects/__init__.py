@@ -244,7 +244,8 @@ from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                            PHOTOS_PER_CALL_MAX, PHOTO_CHOICES_GENERATED,
                            PhotoSource, GeneratedPhoto, GeneratedPhotoRow,
                            GeneratedPhotosResponse, PhotoChoiceRow,
-                           ProductPhotoChoicesResponse)
+                           ProductPhotoChoicesResponse, PHOTO_FIND_ITEMS_MAX,
+                           FoundProductRow, FoundProductsResponse)
 from objects.chatComponents import (
     CHAT_COMPONENTS_PER_TURN_MAX, CHAT_CARD_ROWS_MAX, CHAT_FORM_ID_MAX_LENGTH,
     CHAT_ANSWER_ID_MAX_LENGTH, CHAT_PHOTO_URL_MAX_LENGTH, FormId,
