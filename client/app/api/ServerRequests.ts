@@ -1140,7 +1140,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async generateProductPhotos(userId: string, imageUrls: string[], count: number, notes: string | null, productName: string | null): Promise<ApiResponse<GeneratedPhotosResponse>> {
+    async generateProductPhotos(userId: string, imageUrls: string[], notes: string | null, productName: string | null): Promise<ApiResponse<GeneratedPhotosResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/generateProductPhotos`, {
             method: 'POST',
@@ -1148,7 +1148,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "imageUrls": imageUrls, "count": count, "notes": notes, "productName": productName}),
+            body: JSON.stringify({"userId": userId, "imageUrls": imageUrls, "notes": notes, "productName": productName}),
             cache: 'no-store'
         });
         const data: ApiResponse<GeneratedPhotosResponse> & { msg?: string } = await res.json();
@@ -1163,7 +1163,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async makeProductPhotoChoices(userId: string, productId: string, imageUrl: string): Promise<ApiResponse<ProductPhotoChoicesResponse>> {
+    async makeProductPhotoChoices(userId: string, productId: string, imageUrl: string, notes: string | null): Promise<ApiResponse<ProductPhotoChoicesResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/makeProductPhotoChoices`, {
             method: 'POST',
@@ -1171,7 +1171,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "productId": productId, "imageUrl": imageUrl}),
+            body: JSON.stringify({"userId": userId, "productId": productId, "imageUrl": imageUrl, "notes": notes}),
             cache: 'no-store'
         });
         const data: ApiResponse<ProductPhotoChoicesResponse> & { msg?: string } = await res.json();
@@ -1335,8 +1335,8 @@ export interface RouteRequestBodies {
     speakChatTurn: { userId: string; conversationId: string; turnSeq: number };
     speakChatThinking: { userId: string; turnKey: string };
     listVoices: { userId: string; search: string | null; pageToken: string | null };
-    generateProductPhotos: { userId: string; imageUrls: string[]; count: number; notes: string | null; productName: string | null };
-    makeProductPhotoChoices: { userId: string; productId: string; imageUrl: string };
+    generateProductPhotos: { userId: string; imageUrls: string[]; notes: string | null; productName: string | null };
+    makeProductPhotoChoices: { userId: string; productId: string; imageUrl: string; notes: string | null };
     findProductsInPhoto: { userId: string; imageUrl: string };
     setProductPhoto: { userId: string; productId: string; photoId: string | null };
 }

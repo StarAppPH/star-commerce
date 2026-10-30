@@ -1512,6 +1512,19 @@
                     "minLength": 1,
                     "title": "Url",
                     "type": "string"
+                },
+                "prompt": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The prompt the model was given for it; null on a card saved before each photo carried its own",
+                    "title": "Prompt"
                 }
             },
             "required": [
@@ -1782,6 +1795,19 @@
                     ],
                     "title": "Source",
                     "type": "string"
+                },
+                "prompt": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The prompt the model was given for it; null for the original, and on a card saved before each photo carried its own",
+                    "title": "Prompt"
                 }
             },
             "required": [
@@ -1808,19 +1834,11 @@
                     "minLength": 1,
                     "title": "Formid",
                     "type": "string"
-                },
-                "count": {
-                    "description": "How many photos to make, prefilled",
-                    "maximum": 4,
-                    "minimum": 1,
-                    "title": "Count",
-                    "type": "integer"
                 }
             },
             "required": [
                 "kind",
-                "formId",
-                "count"
+                "formId"
             ],
             "title": "PhotoRequestForm",
             "type": "object",
@@ -1855,6 +1873,19 @@
                     "default": null,
                     "description": "The prompt they were made with; null on a card saved before prompts were shown",
                     "title": "Prompt"
+                },
+                "notGenerated": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Why fewer photos than asked were made; null when all were",
+                    "title": "Notgenerated"
                 }
             },
             "required": [
@@ -2182,7 +2213,7 @@
                     "type": "string"
                 },
                 "photos": {
-                    "description": "The original first, then the styled photos",
+                    "description": "The original first, then the photos made",
                     "items": {
                         "$ref": "#/$defs/PhotoChoiceRow"
                     },
@@ -2200,6 +2231,7 @@
                             "type": "null"
                         }
                     ],
+                    "default": null,
                     "description": "The prompt the styled photos were made with; null when none were",
                     "title": "Prompt"
                 },
@@ -2212,7 +2244,7 @@
                             "type": "null"
                         }
                     ],
-                    "description": "Why no styled photos were made; null when they were",
+                    "description": "Why fewer photos than asked were made; null when all were",
                     "title": "Notgenerated"
                 }
             },
@@ -2222,7 +2254,6 @@
                 "productId",
                 "productName",
                 "photos",
-                "prompt",
                 "notGenerated"
             ],
             "title": "ProductPhotoChoiceCard",

@@ -459,6 +459,25 @@ def test_aRetiredComponentKind_isLeftOutOfTheTurnsPage(wiped, model):
     assert fake.requests == []
 
 
+def test_aPhotoFormSavedWithACount_loadsWithoutIt(wiped, model):
+    """A photo form saved when it asked how many photos to make (every
+    call makes 3 now) shows without that count."""
+    createTestStore(ADMIN)
+    model(calls(('c1', 'getMyStorePolicy', '{}')), reply('Your policy.'))
+    res = adminSays('Policy?')
+    db.db['ChatTurns'].update_one(
+        {'conversationId': res['conversationId']},
+        {'$push': {'components': {'kind': 'photoRequestForm',
+                                  'formId': 'old-photo-form', 'count': 2}}})
+
+    page = api.getConversationTurns(ADMIN, res['conversationId'])
+
+    assertExactShape(ConversationTurnsResponse, page)
+    [_, photoForm] = page['turns'][0]['components']
+    assert photoForm == {'kind': 'photoRequestForm',
+                         'formId': 'old-photo-form'}
+
+
 def test_anAdminWithNoStoreAtAll_isStillRefused(wiped, model):
     from conftest import createTestUser
     from actions.StoreActions import NO_STORE_YET
@@ -693,9 +712,11 @@ def test_formTools_openTheirForms(wiped, firebase, model):
           reply('Fill these in.'))
     res = adminSays('Set up delivery and add products')
     kinds = [c['kind'] for c in res['components']]
-    # No photo style yet: the photo form refused, the others opened.
-    assert kinds == ['newProductsForm', 'locationForm']
-    productsForm, locationForm = res['components']
+    # No photo style yet: the photo form opens too (its call makes the
+    # global photo only), and asks no count.
+    assert kinds == ['newProductsForm', 'locationForm', 'photoRequestForm']
+    productsForm, locationForm, photoForm = res['components']
+    assert set(photoForm) == {'kind', 'formId'}
     assert productsForm['products'][0] == {
         'name': 'Barako', 'price': 520, 'inventory': None,
         'description': None}

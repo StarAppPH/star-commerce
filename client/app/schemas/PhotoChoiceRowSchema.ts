@@ -17,6 +17,10 @@ export type Url = string;
  * Styled, or the original
  */
 export type Source = "generated" | "original";
+/**
+ * The prompt the model was given for it; null for the original, and on a card saved before each photo carried its own
+ */
+export type Prompt = string | null;
 
 /**
  * One photo the admin may put on the product.
@@ -25,4 +29,5 @@ export interface PhotoChoiceRow {
   _id: Id;
   url: Url;
   source: Source;
+  prompt?: Prompt;
 }

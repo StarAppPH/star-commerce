@@ -13,10 +13,6 @@ export type Kind = "photoRequestForm";
  * Answer it with this id
  */
 export type Formid = string;
-/**
- * How many photos to make, prefilled
- */
-export type Count = number;
 
 /**
  * Asks the admin for photos of one item to turn into product photos.
@@ -25,5 +21,4 @@ export type Count = number;
 export interface PhotoRequestForm {
   kind: Kind;
   formId: Formid;
-  count: Count;
 }

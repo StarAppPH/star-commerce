@@ -704,13 +704,21 @@ export type Id6 = string;
  */
 export type Url = string;
 /**
+ * The prompt the model was given for it; null on a card saved before each photo carried its own
+ */
+export type Prompt = string | null;
+/**
  * The photos
  */
 export type Photos = GeneratedPhotoRow[];
 /**
  * The prompt they were made with; null on a card saved before prompts were shown
  */
-export type Prompt = string | null;
+export type Prompt1 = string | null;
+/**
+ * Why fewer photos than asked were made; null when all were
+ */
+export type Notgenerated = string | null;
 /**
  * The card
  */
@@ -728,7 +736,7 @@ export type Productid = string;
  */
 export type Productname = string;
 /**
- * The original first, then the styled photos
+ * The original first, then the photos made
  *
  * @minItems 1
  * @maxItems 4
@@ -751,13 +759,17 @@ export type Url1 = string;
  */
 export type Source = "generated" | "original";
 /**
+ * The prompt the model was given for it; null for the original, and on a card saved before each photo carried its own
+ */
+export type Prompt2 = string | null;
+/**
  * The prompt the styled photos were made with; null when none were
  */
-export type Prompt1 = string | null;
+export type Prompt3 = string | null;
 /**
- * Why no styled photos were made; null when they were
+ * Why fewer photos than asked were made; null when all were
  */
-export type Notgenerated = string | null;
+export type Notgenerated1 = string | null;
 /**
  * The card
  */
@@ -900,10 +912,6 @@ export type Kind14 = "photoRequestForm";
  * Answer it with this id
  */
 export type Formid8 = string;
-/**
- * How many photos to make, prefilled
- */
-export type Count = number;
 /**
  * The form
  */
@@ -1401,11 +1409,13 @@ export interface DeliveryZoneRule {
 export interface PhotosCard {
   kind: Kind8;
   photos: Photos;
-  prompt?: Prompt;
+  prompt?: Prompt1;
+  notGenerated?: Notgenerated;
 }
 export interface GeneratedPhotoRow {
   _id: Id6;
   url: Url;
+  prompt?: Prompt;
 }
 /**
  * The photos the admin picks one of for a product: its original and
@@ -1417,8 +1427,8 @@ export interface ProductPhotoChoiceCard {
   productId: Productid;
   productName: Productname;
   photos: Photos1;
-  prompt: Prompt1;
-  notGenerated: Notgenerated;
+  prompt?: Prompt3;
+  notGenerated: Notgenerated1;
 }
 /**
  * One photo the admin may put on the product.
@@ -1427,6 +1437,7 @@ export interface PhotoChoiceRow {
   _id: Id7;
   url: Url1;
   source: Source;
+  prompt?: Prompt2;
 }
 /**
  * The admin's store a tool read, created or pinned.
@@ -1503,7 +1514,6 @@ export interface PhoneVerificationForm {
 export interface PhotoRequestForm {
   kind: Kind14;
   formId: Formid8;
-  count: Count;
 }
 /**
  * Asks the shopper to pin where their delivery goes: a map and "use

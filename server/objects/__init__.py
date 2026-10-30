@@ -241,7 +241,7 @@ from objects.returns import (ReturnStatus, ReturnReason,
                              MyReturnListResponse, StoreReturnListResponse,
                              returnDeadline, returnRefusal)
 from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
-                           PHOTOS_PER_CALL_MAX, PHOTO_CHOICES_GENERATED,
+                           PHOTOS_PER_CALL, PHOTOS_THEMED,
                            PhotoSource, GeneratedPhoto, GeneratedPhotoRow,
                            GeneratedPhotosResponse, PhotoChoiceRow,
                            ProductPhotoChoicesResponse, PHOTO_FIND_ITEMS_MAX,

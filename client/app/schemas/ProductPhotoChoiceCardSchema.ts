@@ -22,7 +22,7 @@ export type Productid = string;
  */
 export type Productname = string;
 /**
- * The original first, then the styled photos
+ * The original first, then the photos made
  *
  * @minItems 1
  * @maxItems 4
@@ -45,11 +45,15 @@ export type Url = string;
  */
 export type Source = "generated" | "original";
 /**
- * The prompt the styled photos were made with; null when none were
+ * The prompt the model was given for it; null for the original, and on a card saved before each photo carried its own
  */
 export type Prompt = string | null;
 /**
- * Why no styled photos were made; null when they were
+ * The prompt the styled photos were made with; null when none were
+ */
+export type Prompt1 = string | null;
+/**
+ * Why fewer photos than asked were made; null when all were
  */
 export type Notgenerated = string | null;
 
@@ -63,7 +67,7 @@ export interface ProductPhotoChoiceCard {
   productId: Productid;
   productName: Productname;
   photos: Photos;
-  prompt: Prompt;
+  prompt?: Prompt1;
   notGenerated: Notgenerated;
 }
 /**
@@ -73,4 +77,5 @@ export interface PhotoChoiceRow {
   _id: Id;
   url: Url;
   source: Source;
+  prompt?: Prompt;
 }

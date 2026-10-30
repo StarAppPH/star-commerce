@@ -22,6 +22,19 @@
                     ],
                     "title": "Source",
                     "type": "string"
+                },
+                "prompt": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The prompt the model was given for it; null for the original, and on a card saved before each photo carried its own",
+                    "title": "Prompt"
                 }
             },
             "required": [
@@ -60,7 +73,7 @@
             "type": "string"
         },
         "photos": {
-            "description": "The original first, then the styled photos",
+            "description": "The original first, then the photos made",
             "items": {
                 "$ref": "#/$defs/PhotoChoiceRow"
             },
@@ -78,6 +91,7 @@
                     "type": "null"
                 }
             ],
+            "default": null,
             "description": "The prompt the styled photos were made with; null when none were",
             "title": "Prompt"
         },
@@ -90,7 +104,7 @@
                     "type": "null"
                 }
             ],
-            "description": "Why no styled photos were made; null when they were",
+            "description": "Why fewer photos than asked were made; null when all were",
             "title": "Notgenerated"
         }
     },
@@ -100,7 +114,6 @@
         "productId",
         "productName",
         "photos",
-        "prompt",
         "notGenerated"
     ],
     "title": "ProductPhotoChoiceCard",

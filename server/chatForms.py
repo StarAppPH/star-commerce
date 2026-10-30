@@ -35,7 +35,7 @@ from actions.StoreActions import STORES, ownerQuery
 import photoStorage
 from mongoDb import db
 from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_MESSAGE_MAX_LENGTH,
-                     PHOTOS_PER_CALL_MAX, PRODUCT_BATCH_MAX,
+                     PHOTOS_PER_CALL, PRODUCT_BATCH_MAX,
                      PRODUCT_DESCRIPTION_MAX_LENGTH, PRODUCT_INVENTORY_MAX,
                      PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
                      ChatComponent, ChatFormAnswerTagged,
@@ -56,8 +56,6 @@ SETS_UP_THE_STORE = 'createUserStore'
 FORM_SHOWN = ('The form is on screen under your reply. Ask the user to fill '
               'it in there; its answer comes as their next message.')
 ALREADY_VERIFIED = 'The phone number is already verified'
-NO_PHOTO_STYLE_YET = ('Set the photo style first (updateMyStoreTheme), then '
-                      'open the photo form')
 STORE_NOT_FOUND = 'Store not found'
 # Refusals of a form answer, the user's to act on.
 FORM_NOT_FOUND = 'That form is no longer in this chat'
@@ -168,7 +166,6 @@ class ShowNewProductsFormArgs(_Args):
 
 class ShowPhotoRequestFormArgs(_Args):
     model_config = ConfigDict(title='showPhotoRequestFormArguments')
-    count: int | None = Field(None, ge=1, le=PHOTOS_PER_CALL_MAX)
 
 
 class ShowPhoneVerificationArgs(_Args):
@@ -260,11 +257,8 @@ def _newProductsForm(userId: str, storeId: str,
 
 def _photoRequestForm(userId: str, storeId: str,
                       args: ShowPhotoRequestFormArgs) -> dict:
-    store = _ownStore(userId, {'photoStyle': 1})
-    if not store.get('photoStyle'):
-        raise FormRefused(NO_PHOTO_STYLE_YET)
-    return {'kind': 'photoRequestForm', 'formId': newFormId(),
-            'count': args.count or 1}
+    _ownStore(userId, {'_id': 1})
+    return {'kind': 'photoRequestForm', 'formId': newFormId()}
 
 
 def _phoneVerification(userId: str, storeId: str,
@@ -367,10 +361,9 @@ FORM_TOOLS: dict[str, FormTool] = {
     'showPhotoRequestForm': FormTool(
         ('admin', ),
         "Open a form under your reply where the owner uploads 1 to 10 plain "
-        'photos of one item, picks how many product photos to make (count, '
-        'prefilled) and adds notes. The store needs a photo style first '
-        '(updateMyStoreTheme). The upload comes as their next message: then '
-        'call generateProductPhotos with its imageUrls, count and notes.',
+        f'photos of one item and adds notes; {PHOTOS_PER_CALL} product photos '
+        'are made from them. The upload comes as their next message: then '
+        'call generateProductPhotos with its imageUrls and notes.',
         ShowPhotoRequestFormArgs, _photoRequestForm),
     'showPhoneVerification': FormTool(
         ('customer', ),
@@ -534,8 +527,7 @@ def _phoneVerified(answer, component, userId) -> tuple[str, dict]:
 
 
 def _photoRequest(answer, component, userId) -> tuple[str, dict]:
-    count = answer.count
-    text = (f'Make {count} product photo{"s" if count > 1 else ""} from my '
+    text = (f'Make {PHOTOS_PER_CALL} product photos from my '
             f'{len(answer.imageUrls)} photo'
             f'{"s" if len(answer.imageUrls) > 1 else ""}.'
             + (f' Notes: {answer.notes}' if answer.notes else ''))
