@@ -22,6 +22,19 @@
                     ],
                     "title": "Source",
                     "type": "string"
+                },
+                "prompt": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The prompt the model was given for it; null for the original, and on a card saved before each photo carried its own",
+                    "title": "Prompt"
                 }
             },
             "required": [
@@ -34,7 +47,7 @@
             "additionalProperties": false
         }
     },
-    "description": "What makeProductPhotoChoices sends: the product, its original photo\nfirst, then the styled ones made.",
+    "description": "What makeProductPhotoChoices sends: the product, its original photo\nfirst, then the ones made, each with its prompt.",
     "properties": {
         "productId": {
             "description": "The Products _id",
@@ -49,7 +62,7 @@
             "type": "string"
         },
         "photos": {
-            "description": "The original first, then the styled photos",
+            "description": "The original first, then the photos made",
             "items": {
                 "$ref": "#/$defs/PhotoChoiceRow"
             },
@@ -57,18 +70,6 @@
             "minItems": 1,
             "title": "Photos",
             "type": "array"
-        },
-        "prompt": {
-            "anyOf": [
-                {
-                    "type": "string"
-                },
-                {
-                    "type": "null"
-                }
-            ],
-            "description": "The prompt the styled photos were made with; null when none were made",
-            "title": "Prompt"
         },
         "notGenerated": {
             "anyOf": [
@@ -79,7 +80,7 @@
                     "type": "null"
                 }
             ],
-            "description": "Why no styled photos were made (no photo style, today's limit reached, generation unavailable); null when they were",
+            "description": "Why fewer photos than asked were made (no photo style, today's limit reached, generation unavailable); null when all were",
             "title": "Notgenerated"
         }
     },
@@ -87,7 +88,6 @@
         "productId",
         "productName",
         "photos",
-        "prompt",
         "notGenerated"
     ],
     "title": "ProductPhotoChoicesResponse",

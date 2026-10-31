@@ -20,6 +20,19 @@
             ],
             "title": "Source",
             "type": "string"
+        },
+        "prompt": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The prompt the model was given for it; null for the original, and on a card saved before each photo carried its own",
+            "title": "Prompt"
         }
     },
     "required": [

@@ -9,6 +9,7 @@ import asyncio
 import base64
 import datetime
 import importlib
+import io
 import json
 import logging
 import time
@@ -31,7 +32,8 @@ from ApiRequests import ApiRequests
 from conftest import (assertExactShape, createTestStore, createTestUser,
                       modelKeys, wipeCollections, withoutBrandColors)
 from mongoDb import db
-from objects import (PHOTO_NOTES_MAX_LENGTH, PRODUCT_NAME_MAX_LENGTH,
+from objects import (PHOTO_NOTES_MAX_LENGTH, PHOTOS_PER_CALL, PHOTOS_THEMED,
+                     PRODUCT_NAME_MAX_LENGTH,
                      AdminStoreResponse,
                      GeneratedPhotosResponse, MyStoreResponse, StoreResponse,
                      StoreThemeResponse)
@@ -100,16 +102,26 @@ class FakeBucket:
 
 
 class FakeImages:
+    """images.edit returns `returned` images per call, or the n asked for
+    when it is None. Calls may come at once (one per prompt)."""
 
-    def __init__(self, returned: int):
+    def __init__(self, returned: int | None = None):
         self.returned = returned
         self.calls = []
 
     def edit(self, **kwargs):
         self.calls.append(kwargs)
         encoded = base64.b64encode(JPEG).decode()
+        returned = kwargs['n'] if self.returned is None else self.returned
         return SimpleNamespace(data=[SimpleNamespace(b64_json=encoded)
-                                     for _ in range(self.returned)])
+                                     for _ in range(returned)])
+
+    def byN(self) -> dict:
+        """The calls by their n: 1 is the global prompt's, PHOTOS_THEMED
+        the themed one's."""
+        byN = {call['n']: call for call in self.calls}
+        assert len(byN) == len(self.calls)
+        return byN
 
 
 def dataUrlImage(dataUrl: str) -> tuple[bytes, str]:
@@ -140,7 +152,7 @@ def modelClient(images):
 @pytest.fixture
 def fakes(clean, monkeypatch):
     bucket = FakeBucket()
-    images = FakeImages(returned=2)
+    images = FakeImages()
     monkeypatch.setattr(photoStorage, '_bucket', lambda: bucket)
     monkeypatch.setattr(chatModel, 'client', lambda: modelClient(images))
     return SimpleNamespace(bucket=bucket, images=images)
@@ -186,27 +198,83 @@ def test_generateProductPhotos_savesEachPhotoReturned(fakes, monkeypatch):
     fakes.bucket.objects[source] = {'data': JPEG, 'contentType': 'image/jpeg',
                                     'metadata': None}
 
-    res = api.generateProductPhotos(ADMIN, [downloadUrl(source)], count=3,
+    res = api.generateProductPhotos(ADMIN, [downloadUrl(source)],
                                     notes='from above')
 
     assertExactShape(GeneratedPhotosResponse, res)
-    assert len(res['photos']) == 2
-    [call] = fakes.images.calls
-    assert call['model'] == imageModel.IMAGE_MODEL and call['n'] == 3
-    assert call['image'] == [(JPEG, 'image/jpeg')]
-    assert 'Style: white marble, morning light' in call['prompt']
-    assert 'primary #112233' in call['prompt']
-    assert 'Notes: from above' in call['prompt']
+    assert len(res['photos']) == PHOTOS_PER_CALL
+    assert res['notGenerated'] is None
+    calls = fakes.images.byN()
+    assert sorted(calls) == [1, PHOTOS_THEMED]
+    for call in calls.values():
+        assert call['model'] == imageModel.IMAGE_MODEL
+        assert call['image'] == [(JPEG, 'image/jpeg')]
+        assert 'Special request: from above' in call['prompt']
+    assert 'primary brand color #112233' in calls[1]['prompt']
+    assert 'primary #112233' in calls[PHOTOS_THEMED]['prompt']
+    assert 'Style:' not in calls[1]['prompt']
+    assert calls[PHOTOS_THEMED]['prompt'].endswith(
+        '\nStyle: white marble, morning light')
+    # Photo 1 in the global prompt, photos 2 and 3 in the themed one.
+    assert [p['prompt'] for p in res['photos']] == [
+        calls[1]['prompt'], *[calls[PHOTOS_THEMED]['prompt']] * PHOTOS_THEMED]
     saved = db.read({'storeId': store['_id']}, 'GeneratedPhotos')
     assert {doc['_id'] for doc in saved} == {p['_id'] for p in res['photos']}
+    prompts = {p['_id']: p['prompt'] for p in res['photos']}
     for doc in saved:
         assert doc['path'] == f'stores/{store["_id"]}/photos/{doc["_id"]}.jpg'
         assert fakes.bucket.objects[doc['path']]['data'] == JPEG
+        assert doc['prompt'] == prompts[doc['_id']]
     assert all(u['if_generation_match'] == 0 for u in fakes.bucket.uploads)
-    # 3 asked for, 2 returned: 1 given back, on both counters.
     counts = {doc['_id'].split(':')[1]: doc['count']
               for doc in db.read({}, PhotoActions.PHOTO_USAGE)}
-    assert counts == {store['_id']: 2, PhotoActions.ALL_STORES: 2}
+    assert counts == {store['_id']: PHOTOS_PER_CALL,
+                      PhotoActions.ALL_STORES: PHOTOS_PER_CALL}
+
+
+def test_generate_aStoreWithNoPhotoStyle_getsTheGlobalPhotoOnly(fakes):
+    createTestStore(ADMIN)
+    theme(primaryColor='#112233')
+    url = putObject(fakes, MINE)
+
+    res = api.generateProductPhotos(ADMIN, [url], notes='on a desk')
+
+    assertExactShape(GeneratedPhotosResponse, res)
+    [call] = fakes.images.calls
+    assert call['n'] == 1 and 'Style:' not in call['prompt']
+    assert 'Special request: on a desk' in call['prompt']
+    assert 'primary #112233' in call['prompt']
+    [photo] = res['photos']
+    assert photo['prompt'] == call['prompt']
+    assert res['notGenerated'] == PhotoActions.NO_STYLE_GLOBAL_ONLY
+    assert usageCounts() == [1, 1]
+
+
+def test_generate_aFailedThemedCall_keepsTheGlobalPhoto_andGivesTwoBack(
+        fakes, frozen, monkeypatch, noSleep, caplog):
+    store, url = themedStoreWithPhoto(fakes)
+
+    class ThemedFails(FakeImages):
+        def edit(self, **kwargs):
+            if kwargs['n'] == PHOTOS_THEMED:
+                self.calls.append(kwargs)
+                raise sdkError(openai.BadRequestError, 400)
+            return super().edit(**kwargs)
+
+    images = useImages(monkeypatch, ThemedFails())
+
+    with caplog.at_level(logging.WARNING):
+        res = api.generateProductPhotos(ADMIN, [url])
+
+    assert len(images.calls) == 2
+    [photo] = res['photos']
+    assert 'Style:' not in photo['prompt']
+    assert res['notGenerated'] == PhotoActions.SOME_NOT_MADE
+    assert counterValue(store['_id']) == 1
+    assert counterValue(PhotoActions.ALL_STORES) == 1
+    assert any(isinstance(r.msg, dict)
+               and r.msg.get('event') == 'productPhotoCallFailed'
+               for r in caplog.records)
 
 
 def themedStoreWithPhoto(fakes, size=None) -> tuple[dict, str]:
@@ -229,7 +297,7 @@ def test_allStoresCap_refusesAndGivesTheStoreCountBack(fakes, monkeypatch):
     monkeypatch.setenv(PhotoActions.PHOTO_DAILY_CAP_ALL_VARIABLE, '1')
 
     with pytest.raises(ValueError, match='^Photo generation is busy today'):
-        api.generateProductPhotos(ADMIN, [url], count=2)
+        api.generateProductPhotos(ADMIN, [url])
 
     assert fakes.images.calls == []
     assert usageCounts() == [0]
@@ -249,14 +317,14 @@ def test_aFailedLaterUpload_returnsTheSavedPhotos_andKeepsTheCount(fakes):
     store, url = themedStoreWithPhoto(fakes)
     fakes.bucket.uploadsThatWork = 1
 
-    res = api.generateProductPhotos(ADMIN, [url], count=2)
+    res = api.generateProductPhotos(ADMIN, [url])
 
     assertExactShape(GeneratedPhotosResponse, res)
     assert len(res['photos']) == 1
     [saved] = db.read({'storeId': store['_id']}, 'GeneratedPhotos')
     assert saved['_id'] == res['photos'][0]['_id']
-    # Both photos came back from Meta (billed): none is given back.
-    assert usageCounts() == [2, 2]
+    # All 3 photos came back from Meta (billed): none is given back.
+    assert usageCounts() == [PHOTOS_PER_CALL, PHOTOS_PER_CALL]
 
 
 def test_noUploadWorks_raises_andRecordsNothing(fakes):
@@ -264,7 +332,7 @@ def test_noUploadWorks_raises_andRecordsNothing(fakes):
     fakes.bucket.uploadsThatWork = 0
 
     with pytest.raises(Exception, match='photo storage'):
-        api.generateProductPhotos(ADMIN, [url], count=1)
+        api.generateProductPhotos(ADMIN, [url])
     assert db.read({}, 'GeneratedPhotos') == []
 
 
@@ -304,7 +372,7 @@ def test_tooLittleTimeLeft_skipsTheModel_andGivesEverythingBack(
                         SimpleNamespace(monotonic=monotonic))
 
     with pytest.raises(Exception, match='photo generation'):
-        api.generateProductPhotos(ADMIN, [url], count=2)
+        api.generateProductPhotos(ADMIN, [url])
     assert fakes.images.calls == []
     assert usageCounts() == [0, 0]
 
@@ -370,8 +438,6 @@ def test_localdev_withoutALoopbackEmulator_isA503_neverRealCredentials(
 def test_aRetriedUploadFinding412_isSaved(fakes, monkeypatch):
     from google.api_core.exceptions import PreconditionFailed
     store, url = themedStoreWithPhoto(fakes)
-    fakes.images.returned = 1
-
     def landedThenRetried(self, data, content_type, **kwargs):
         raise PreconditionFailed('the first attempt landed')
 
@@ -379,8 +445,9 @@ def test_aRetriedUploadFinding412_isSaved(fakes, monkeypatch):
 
     res = api.generateProductPhotos(ADMIN, [url])
 
-    assert len(res['photos']) == 1
-    assert len(db.read({'storeId': store['_id']}, 'GeneratedPhotos')) == 1
+    assert len(res['photos']) == PHOTOS_PER_CALL
+    assert len(db.read({'storeId': store['_id']},
+                       'GeneratedPhotos')) == PHOTOS_PER_CALL
 
 
 def test_capAllZero_isPhotosTurnedOff(fakes, monkeypatch):
@@ -708,6 +775,7 @@ def test_ownImagePath_heicByName_asksToConvert(name):
     {'contentType': 'image/JPEG; charset=x'},
     {'contentType': 'image/png', 'data': b'\x89PNG\r\n\x1a\n' + b'png'},
     {'data': b'\xff\xd8\xff' + b'x' * (MAX - 3), 'size': MAX},
+    {'contentType': 'image/webp', 'data': b'RIFF\x00\x00\x00\x00WEBPVP8 '},
 ])
 def test_readOwnImages_acceptsTheBoundaries(fakes, stored):
     [(data, contentType)] = readOne(fakes, **stored)
@@ -721,10 +789,12 @@ def test_readOwnImages_acceptsTheBoundaries(fakes, stored):
     ({'size': None}, 'is over 10 MB'),
     # The metadata understates it: the read bound (end + 1 byte) catches it.
     ({'data': b'x' * (MAX + 5), 'size': 10}, 'is over 10 MB'),
-    ({'contentType': None}, 'must be a JPG or PNG photo'),
-    ({'contentType': 'image/webp'}, 'must be a JPG or PNG photo'),
-    ({'contentType': 'image/gif'}, 'must be a JPG or PNG photo'),
-    ({'contentType': 'application/pdf'}, 'must be a JPG or PNG photo'),
+    ({'contentType': None}, 'must be a JPG, PNG or WebP photo'),
+    ({'contentType': 'image/gif'}, 'must be a JPG, PNG or WebP photo'),
+    ({'contentType': 'application/pdf'}, 'must be a JPG, PNG or WebP photo'),
+    # A WebP's RIFF header without its WEBP mark (a WAV, say) is no WebP.
+    ({'contentType': 'image/webp', 'data': b'RIFF\x00\x00\x00\x00WAVE'},
+     photoStorage.NOT_A_REAL_PHOTO),
     ({'contentType': 'image/heic'}, photoStorage.CONVERT_PHOTO),
     ({'contentType': 'image/HEIF; charset=x'}, photoStorage.CONVERT_PHOTO),
 ])
@@ -736,6 +806,53 @@ def test_readOwnImages_refusesABadObject_withoutQuotingItsPath(fakes, stored,
     assert message in str(error.value)
     assert str(error.value).startswith('imageUrls[0]')
     assert MINE not in str(error.value)
+
+
+def webp(mode: str) -> bytes:
+    from PIL import Image
+    out = io.BytesIO()
+    color = (10, 200, 30, 128) if mode == 'RGBA' else (10, 200, 30)
+    Image.new(mode, (4, 3), color).save(out, 'WEBP')
+    return out.getvalue()
+
+
+def test_modelImage_aWebP_becomesAJpeg_orAPngWithTransparency():
+    """Meta does not say it takes WebP: a WebP goes to it as a JPEG, or a
+    PNG when it has transparency; a JPEG or PNG goes as it is."""
+    from PIL import Image
+    opaque, clear = webp('RGB'), webp('RGBA')
+
+    data, contentType = photoStorage.modelImage(opaque, 'image/webp', 'x')
+    assert contentType == 'image/jpeg' and data.startswith(b'\xff\xd8\xff')
+    data, contentType = photoStorage.modelImage(clear, 'image/webp', 'x')
+    assert contentType == 'image/png'
+    with Image.open(io.BytesIO(data)) as image:
+        assert image.mode == 'RGBA' and image.size == (4, 3)
+    assert photoStorage.modelImage(JPEG, 'image/jpeg', 'x') == (
+        JPEG, 'image/jpeg')
+
+
+@pytest.mark.parametrize('data', [
+    b'RIFF\x00\x00\x00\x00WEBPVP8 broken', JPEG])
+def test_modelImage_aWebPThatCannotBeRead_isRefused_namingItsPlace(data):
+    with pytest.raises(ValueError) as error:
+        photoStorage.modelImage(data, 'image/webp', 'imageUrls[1]')
+
+    assert str(error.value) == (
+        f'imageUrls[1] {photoStorage.NOT_A_REAL_PHOTO}')
+
+
+def test_references_aWebP_goesToTheModelAsAJpeg():
+    [(name, data, contentType)] = PhotoActions._references(
+        [(webp('RGB'), 'image/webp')])
+
+    assert (name, contentType) == ('reference0.jpg', 'image/jpeg')
+    assert data.startswith(b'\xff\xd8\xff')
+
+
+def test_storePhotoPath_aWebPOriginal_isSavedAsWebp():
+    assert photoStorage.storePhotoPath('s1', 'p1', 'image/webp') == (
+        'stores/s1/photos/p1.webp')
 
 
 def test_readOwnImages_downloadsAtMostOneByteOverTheLimit(fakes, monkeypatch):
@@ -823,7 +940,6 @@ def test_generate_imageUrlsShape_refused(fakes, imageUrls):
 def test_generate_tenUrlsWork_elevenAreRefused(fakes):
     themedStoreWithPhoto(fakes)
     urls = [putObject(fakes, f'users/{ADMIN}/p{i}.jpg') for i in range(11)]
-    fakes.images.returned = 1
 
     with pytest.raises(ValueError) as error:
         api.generateProductPhotos(ADMIN, urls)
@@ -831,9 +947,10 @@ def test_generate_tenUrlsWork_elevenAreRefused(fakes):
     assert usageCounts() == [] and fakes.images.calls == []
 
     res = api.generateProductPhotos(ADMIN, urls[:10])
-    assert len(res['photos']) == 1
-    [call] = fakes.images.calls
-    assert len(call['image']) == 10
+    assert len(res['photos']) == PHOTOS_PER_CALL
+    assert len(fakes.images.calls) == 2
+    for call in fakes.images.calls:
+        assert len(call['image']) == 10
 
 
 @pytest.mark.parametrize('second', [
@@ -853,50 +970,25 @@ def test_generate_theSamePhotoTwice_isRefused_beforeAnyQuota(fakes, second):
     assert usageCounts() == [] and fakes.images.calls == []
 
 
-@pytest.mark.parametrize('count', [0, 5, -1, True, False, '2', 2.0, [2]])
-def test_generate_badCount_refused_beforeAnyQuota(fakes, count):
-    _, url = themedStoreWithPhoto(fakes)
-
-    with pytest.raises(ValueError) as error:
-        api.generateProductPhotos(ADMIN, [url], count=count)
-
-    assert str(error.value) == PhotoActions.PHOTO_COUNT
-    assert usageCounts() == [] and fakes.images.calls == []
-
-
-@pytest.mark.parametrize('count', [0, 5, True, '2'])
-def test_generate_badCountOverHttp_is400_andNothingIsCounted(
-        fakes, monkeypatch, count):
+def test_generate_overHttp_alwaysMakes3_aCountSentIsIgnored(fakes,
+                                                            monkeypatch):
     _, url = themedStoreWithPhoto(fakes)
 
     status, body = httpPost(monkeypatch, 'generateProductPhotos', ADMIN,
                             {'userId': ADMIN, 'imageUrls': [url],
-                             'count': count})
-
-    assert status == 400 and body['status'] == 400
-    assert body['message'] == PhotoActions.PHOTO_COUNT
-    assert body['data'] is None
-    assert usageCounts() == [] and fakes.images.calls == []
-
-
-def test_generate_aMissingCountOverHttp_isOne(fakes, monkeypatch):
-    _, url = themedStoreWithPhoto(fakes)
-    fakes.images.returned = 1
-
-    status, body = httpPost(monkeypatch, 'generateProductPhotos', ADMIN,
-                            {'userId': ADMIN, 'imageUrls': [url]})
+                             'count': 1})
 
     assert status == 200
-    assert fakes.images.calls[0]['n'] == 1
-    assert len(body['data']['photos']) == 1
+    assert sorted(fakes.images.byN()) == [1, PHOTOS_THEMED]
+    assert len(body['data']['photos']) == PHOTOS_PER_CALL
 
 
 def test_generate_notes_whitespaceIsNone_overLengthAndNonTextRefused(fakes):
     store, url = themedStoreWithPhoto(fakes)
 
     api.generateProductPhotos(ADMIN, [url], notes='  \n ')
-    [call] = fakes.images.calls
-    assert 'Notes:' not in call['prompt']
+    for call in fakes.images.calls:
+        assert 'Special request:' not in call['prompt']
     [saved, *_] = db.read({'storeId': store['_id']}, 'GeneratedPhotos')
     assert saved['notes'] is None
 
@@ -904,11 +996,11 @@ def test_generate_notes_whitespaceIsNone_overLengthAndNonTextRefused(fakes):
     for notes in ('n' * (PHOTO_NOTES_MAX_LENGTH + 1), 5, ['x']):
         with pytest.raises(ValueError):
             api.generateProductPhotos(ADMIN, [url], notes=notes)
-    assert usageCounts() == before and len(fakes.images.calls) == 1
+    assert usageCounts() == before and len(fakes.images.calls) == 2
 
 
 @pytest.mark.parametrize('clear', [None, '', '   '])
-def test_generate_withoutAPhotoStyle_isRefused_beforeAnyQuota(fakes, clear):
+def test_generate_withoutAPhotoStyle_makesTheGlobalPhotoOnly(fakes, clear):
     if clear is None:
         createTestStore(ADMIN)
         url = putObject(fakes, MINE)
@@ -916,21 +1008,13 @@ def test_generate_withoutAPhotoStyle_isRefused_beforeAnyQuota(fakes, clear):
         _, url = themedStoreWithPhoto(fakes)
         theme(photoStyle=clear)
 
-    with pytest.raises(ValueError) as error:
-        api.generateProductPhotos(ADMIN, [url])
+    res = api.generateProductPhotos(ADMIN, [url])
 
-    assert str(error.value) == PhotoActions.NO_PHOTO_STYLE
-    assert usageCounts() == [] and fakes.images.calls == []
-
-
-def test_generate_withColorsButNoStyle_isStillRefused(fakes):
-    createTestStore(ADMIN)
-    theme(primaryColor='#112233')
-    url = putObject(fakes, MINE)
-
-    with pytest.raises(ValueError) as error:
-        api.generateProductPhotos(ADMIN, [url])
-    assert str(error.value) == PhotoActions.NO_PHOTO_STYLE
+    assert len(res['photos']) == 1
+    assert res['notGenerated'] == PhotoActions.NO_STYLE_GLOBAL_ONLY
+    [call] = fakes.images.calls
+    assert call['n'] == 1 and 'Style:' not in call['prompt']
+    assert usageCounts() == [1, 1]
 
 
 # -------------------------------- access -------------------------------- #
@@ -985,15 +1069,15 @@ def test_generate_logsNeverAUrlPathNotesOrStyle(fakes, caplog):
     url = putObject(fakes, MINE)
 
     with caplog.at_level(logging.INFO):
-        res = api.generateProductPhotos(ADMIN, [url], count=2,
-                                        notes=SENTINEL_NOTES)
+        res = api.generateProductPhotos(ADMIN, [url], notes=SENTINEL_NOTES)
 
     assertNothingSensitiveLogged(caplog, url,
                                  *(p['url'] for p in res['photos']))
     [line] = [r.msg for r in caplog.records if isinstance(r.msg, dict)
               and r.msg.get('event') == 'productPhotos']
-    assert line['storeId'] == store['_id'] and line['count'] == 2
-    assert line['returned'] == 2 and 'durationMs' in line
+    assert line['storeId'] == store['_id']
+    assert line['count'] == PHOTOS_PER_CALL
+    assert line['returned'] == PHOTOS_PER_CALL and 'durationMs' in line
 
 
 @pytest.mark.parametrize('key', ['code', 'type'])
@@ -1002,15 +1086,16 @@ def test_generate_contentPolicyViolation_isTheFixed400_notRetried(
     store = createTestStore(ADMIN)
     theme(photoStyle=SENTINEL_STYLE)
     url = putObject(fakes, MINE)
-    images = useImages(monkeypatch, ScriptedImages(policyError(key)))
+    # Both calls (the global and the themed prompt) are refused.
+    images = useImages(monkeypatch, ScriptedImages(policyError(key),
+                                                   policyError(key)))
 
     with caplog.at_level(logging.INFO):
         with pytest.raises(ValueError) as error:
-            api.generateProductPhotos(ADMIN, [url], count=3,
-                                      notes=SENTINEL_NOTES)
+            api.generateProductPhotos(ADMIN, [url], notes=SENTINEL_NOTES)
 
     assert str(error.value) == imageModel.PHOTO_REQUEST_DECLINED
-    assert len(images.calls) == 1 and noSleep == []
+    assert len(images.calls) == 2 and noSleep == []
     assert routeFailure(error.value, status=400).status == 400
     assert counterValue(store['_id']) == 0
     assert counterValue(PhotoActions.ALL_STORES) == 0
@@ -1150,7 +1235,7 @@ def test_generate_aMissingModelApiKey_is503_andRefunded(
     store, url = themedStoreWithPhoto(SimpleNamespace(bucket=bucket))
 
     with pytest.raises(ServiceUnavailable) as error:
-        api.generateProductPhotos(ADMIN, [url], count=2)
+        api.generateProductPhotos(ADMIN, [url])
 
     assert error.value.service == imageModel.PHOTO_SERVICE
     assert routeFailure(error.value, status=400).status == 503
@@ -1298,7 +1383,7 @@ def test_photoPrompt_hasTheColorsLineOnlyWhenAColorIsSet(colors, expected,
     prompt = PhotoActions.photoPrompt({'photoStyle': 'calm', **colors}, None)
 
     assert prompt.startswith(PhotoActions.PHOTO_INSTRUCTION)
-    assert 'Style: calm' in prompt and 'Notes:' not in prompt
+    assert 'Style: calm' in prompt and 'Special request:' not in prompt
     for text in expected:
         assert text in prompt
     for text in absent:
@@ -1311,9 +1396,67 @@ def test_photoPrompt_namesTheProduct_onlyWhenItsNameIsKnown():
     named = PhotoActions.photoPrompt(store, None, 'Blue Mug').split('\n')
     unnamed = PhotoActions.photoPrompt(store, None)
 
-    assert named[:3] == [PhotoActions.PHOTO_INSTRUCTION, 'Product: Blue Mug',
-                         'Style: calm']
+    assert named == [PhotoActions.PHOTO_INSTRUCTION, 'Product: Blue Mug',
+                     'Style: calm']
     assert 'Product:' not in unnamed
+
+
+def test_photoPrompts_theGlobalPromptsLines_thenTheStoreThemeLast():
+    store = {'photoStyle': 'calm', 'primaryColor': '#112233',
+             'secondaryColor': '#445566'}
+
+    [(globalPrompt, one), (themed, two)] = PhotoActions.photoPrompts(
+        store, 'on a desk', 'Blue Mug')
+
+    assert (one, two) == (1, PHOTOS_THEMED)
+    assert globalPrompt.split('\n') == [
+        PhotoActions.PHOTO_INSTRUCTION,
+        'Special request: on a desk',
+        'Product: Blue Mug',
+        PhotoActions.backgroundLine('#112233')]
+    assert themed.split('\n') == [
+        PhotoActions.PHOTO_INSTRUCTION,
+        'Special request: on a desk',
+        'Product: Blue Mug',
+        PhotoActions.brandColorsLine('#112233', '#445566'),
+        'Style: calm']
+
+
+def test_globalPhotoPrompt_isTheProductOnAPlainPrimaryColorBackground():
+    prompt = PhotoActions.globalPhotoPrompt(
+        {'primaryColor': '#112233', 'secondaryColor': '#445566'}, None)
+
+    assert prompt.split('\n') == [PhotoActions.PHOTO_INSTRUCTION,
+                                  PhotoActions.backgroundLine('#112233')]
+    assert 'plain, seamless background' in prompt
+    assert 'primary brand color #112233' in prompt
+    assert 'Show only the product' in prompt
+    assert '#445566' not in prompt and 'Brand colors:' not in prompt
+
+
+def test_globalPhotoPrompt_withoutAPrimaryColor_keepsTheBrandColorsLine():
+    prompt = PhotoActions.globalPhotoPrompt({'secondaryColor': '#445566'},
+                                            None)
+
+    assert prompt.split('\n') == [
+        PhotoActions.PHOTO_INSTRUCTION,
+        PhotoActions.brandColorsLine(None, '#445566')]
+    assert 'Background:' not in prompt
+
+
+def test_themedPrompts_neverGetThePlainBackground():
+    prompt = PhotoActions.photoPrompt(
+        {'photoStyle': 'calm', 'primaryColor': '#112233'}, None)
+
+    assert 'Background:' not in prompt
+    assert prompt.endswith('\nStyle: calm')
+
+
+def test_photoPrompts_aStoreWithNoPhotoStyle_getsTheGlobalPromptOnly():
+    for style in (None, ''):
+        [(prompt, n)] = PhotoActions.photoPrompts({'photoStyle': style},
+                                                  None)
+        assert n == 1 and prompt == PhotoActions.PHOTO_INSTRUCTION
 
 
 def test_photoInstruction_asksForTheProductOnly_withoutWhatSitsBesideIt():
@@ -1333,7 +1476,9 @@ def test_generate_productName_isInThePrompt_strippedAndBlankIsNone(fakes):
 
     named, *unnamed = [call['prompt'] for call in fakes.images.calls]
     assert 'Product: Blue Mug\n' in named
-    assert len(unnamed) == 3
+    # Each call's two prompts name it (or not) alike.
+    assert 'Product: Blue Mug\n' in unnamed.pop(0)
+    assert len(unnamed) == 6
     assert all('Product:' not in prompt for prompt in unnamed)
 
 
@@ -1349,7 +1494,7 @@ def test_generate_productName_overLengthOrNotText_isRefused_beforeAnyQuota(
     assert usageCounts() == [] and fakes.images.calls == []
     api.generateProductPhotos(ADMIN, [url],
                               productName='n' * PRODUCT_NAME_MAX_LENGTH)
-    assert len(fakes.images.calls) == 1
+    assert len(fakes.images.calls) == 2
 
 
 def test_generate_withNoColors_thePromptHasNoColorsLine(fakes):
@@ -1358,7 +1503,9 @@ def test_generate_withNoColors_thePromptHasNoColorsLine(fakes):
 
     api.generateProductPhotos(ADMIN, [url])
 
-    assert 'Brand colors' not in fakes.images.calls[0]['prompt']
+    assert len(fakes.images.calls) == 2
+    for call in fakes.images.calls:
+        assert 'Brand colors' not in call['prompt']
 
 
 def test_mcp_generateProductPhotos_hasNoUserIdInItsSchema():
@@ -1369,24 +1516,23 @@ def test_mcp_generateProductPhotos_hasNoUserIdInItsSchema():
     byName = asyncio.run(schemas())
 
     assert set(byName['generateProductPhotos']['properties']) == {
-        'imageUrls', 'count', 'notes', 'productName'}
+        'imageUrls', 'notes', 'productName'}
     assert 'userId' not in byName['updateMyStoreTheme']['properties']
 
 
 # -------------------------------- quota --------------------------------- #
 
 
-def test_quota_98Used_aRequestFor4IsRefused_andTheSlotIsReleased(fakes,
+def test_quota_98Used_aRequestFor3IsRefused_andTheSlotIsReleased(fakes,
                                                                   frozen):
     store, url = themedStoreWithPhoto(fakes)
     usageCounters.takeQuota(PhotoActions.PHOTO_USAGE,
                             counterKey(store['_id']),
                             PhotoActions.STORE_DAILY_PHOTO_CAP, FAR_EXPIRY,
                             amount=98)
-    fakes.images.returned = 4
 
     with pytest.raises(ValueError) as error:
-        api.generateProductPhotos(ADMIN, [url], count=4)
+        api.generateProductPhotos(ADMIN, [url])
 
     assert str(error.value) == PhotoActions.PHOTO_CAP_REACHED
     assert counterValue(store['_id']) == 98
@@ -1394,16 +1540,17 @@ def test_quota_98Used_aRequestFor4IsRefused_andTheSlotIsReleased(fakes,
     assert fakes.images.calls == []
     assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
 
-    # The slot is free again, and the 2 left are still there to take.
-    fakes.images.returned = 2
-    assert len(api.generateProductPhotos(ADMIN, [url],
-                                         count=2)['photos']) == 2
+    # The slot is free again, and the 3 left (97 used) are still there to
+    # take.
+    usageCounters.giveBackQuota(PhotoActions.PHOTO_USAGE,
+                                counterKey(store['_id']), 1)
+    assert len(api.generateProductPhotos(ADMIN, [url])['photos']) == 3
     assert counterValue(store['_id']) == 100
     with pytest.raises(ValueError) as again:
-        api.generateProductPhotos(ADMIN, [url], count=1)
+        api.generateProductPhotos(ADMIN, [url])
     assert str(again.value) == PhotoActions.PHOTO_CAP_REACHED
     assert counterValue(store['_id']) == 100
-    assert counterValue(PhotoActions.ALL_STORES) == 2
+    assert counterValue(PhotoActions.ALL_STORES) == 3
 
 
 def test_slots_bothHeld_theNextCallIs503_beforeAnyQuotaOrRead(fakes, frozen,
@@ -1418,7 +1565,7 @@ def test_slots_bothHeld_theNextCallIs503_beforeAnyQuotaOrRead(fakes, frozen,
     try:
         assert held == PhotoActions.PHOTO_CALLS_AT_ONCE
         with pytest.raises(ServiceUnavailable) as error:
-            api.generateProductPhotos(ADMIN, [url], count=2)
+            api.generateProductPhotos(ADMIN, [url])
         assert error.value.service == imageModel.PHOTO_SERVICE
         assert counterValue(store['_id']) is None
         assert counterValue(PhotoActions.ALL_STORES) is None
@@ -1431,7 +1578,9 @@ def test_slots_bothHeld_theNextCallIs503_beforeAnyQuotaOrRead(fakes, frozen,
 
 def test_slots_aCallSucceedsAfterMoreFailuresThanThereAreSlots(
         fakes, monkeypatch, noSleep):
-    _, url = themedStoreWithPhoto(fakes)
+    # No photo style: one model call each, so the script plays in order.
+    createTestStore(ADMIN)
+    url = putObject(fakes, MINE)
     failures = PhotoActions.PHOTO_CALLS_AT_ONCE + 1
     images = useImages(monkeypatch, ScriptedImages(
         *[sdkError(openai.BadRequestError, 400) for _ in range(failures)],
@@ -1455,7 +1604,6 @@ def test_slots_aCallSucceedsAfterMoreFailuresThanThereAreSlots(
 def test_quota_theDayKeyRollsAt16UtcWhichIsMidnightUtcPlus8(
         fakes, monkeypatch, instant, day):
     store, url = themedStoreWithPhoto(fakes)
-    fakes.images.returned = 1
     monkeypatch.setattr(PhotoActions, '_now', lambda: instant)
 
     api.generateProductPhotos(ADMIN, [url])
@@ -1471,13 +1619,14 @@ def test_quota_theDayKeyRollsAt16UtcWhichIsMidnightUtcPlus8(
 def test_quota_aFailedModelCall_givesEverythingBack_onBothCounters(
         fakes, frozen, monkeypatch, noSleep, failure, expected):
     store, url = themedStoreWithPhoto(fakes)
-    useImages(monkeypatch, ScriptedImages({
-        'policy': policyError(),
-        'model503': sdkError(openai.BadRequestError, 400),
-        'noImages': 0}[failure]))
+    outcome = {'policy': policyError,
+               'model503': lambda: sdkError(openai.BadRequestError, 400),
+               'noImages': lambda: 0}[failure]
+    # Both calls (the global and the themed prompt) fail alike.
+    useImages(monkeypatch, ScriptedImages(outcome(), outcome()))
 
     with pytest.raises(expected):
-        api.generateProductPhotos(ADMIN, [url], count=3)
+        api.generateProductPhotos(ADMIN, [url])
 
     assert counterValue(store['_id']) == 0
     assert counterValue(PhotoActions.ALL_STORES) == 0
@@ -1485,13 +1634,15 @@ def test_quota_aFailedModelCall_givesEverythingBack_onBothCounters(
     assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
 
 
-def test_quota_2Of4Returned_gives2Back_onBothCounters(fakes, frozen):
+def test_quota_2Of3Returned_gives1Back_onBothCounters(fakes, frozen):
     store, url = themedStoreWithPhoto(fakes)
-    fakes.images.returned = 2
+    # The themed call returns 1 of its 2.
+    fakes.images.returned = 1
 
-    res = api.generateProductPhotos(ADMIN, [url], count=4)
+    res = api.generateProductPhotos(ADMIN, [url])
 
     assert len(res['photos']) == 2
+    assert res['notGenerated'] == PhotoActions.SOME_NOT_MADE
     assert counterValue(store['_id']) == 2
     assert counterValue(PhotoActions.ALL_STORES) == 2
 
@@ -1513,7 +1664,7 @@ def test_quota_aReferenceReadFailure_refundsAll_andReleasesTheSlot(
         monkeypatch.setattr(FakeBucket, 'get_blob', down)
 
     with pytest.raises(expected) as error:
-        api.generateProductPhotos(ADMIN, [url], count=3)
+        api.generateProductPhotos(ADMIN, [url])
 
     if where == 'missing':
         assert 'was not found' in str(error.value)

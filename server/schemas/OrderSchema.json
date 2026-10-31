@@ -121,6 +121,7 @@
             "description": "Where the order is",
             "enum": [
                 "pending",
+                "awaitingPayment",
                 "paid",
                 "completed",
                 "cancelled"
@@ -135,7 +136,7 @@
             "type": "string"
         },
         "expiresAt": {
-            "description": "Unpaid by then, it is cancelled (UTC)",
+            "description": "Still pending (no way to pay chosen) by then, it is cancelled (UTC)",
             "format": "date-time",
             "title": "Expiresat",
             "type": "string"
@@ -144,11 +145,15 @@
             "anyOf": [
                 {
                     "enum": [
+                        "cash",
                         "card",
+                        "eWallet",
+                        "bankTransfer",
+                        "check",
+                        "crypto",
                         "gcash",
                         "maya",
-                        "grabPay",
-                        "bankTransfer"
+                        "grabPay"
                     ],
                     "type": "string"
                 },
@@ -157,8 +162,22 @@
                 }
             ],
             "default": null,
-            "description": "How the customer paid",
+            "description": "How the customer pays or paid",
             "title": "Paymentmethod"
+        },
+        "paymentProvider": {
+            "anyOf": [
+                {
+                    "const": "demo",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The payment provider it was paid through; null: paid by hand to the store (or not chosen yet)",
+            "title": "Paymentprovider"
         },
         "paymentReference": {
             "anyOf": [
@@ -172,6 +191,49 @@
             "default": null,
             "description": "The payment provider's id of the payment",
             "title": "Paymentreference"
+        },
+        "manualPaymentReference": {
+            "anyOf": [
+                {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The reference the customer gave for a payment made by hand, e.g. a bank transfer's",
+            "title": "Manualpaymentreference"
+        },
+        "paymentReceiptPath": {
+            "anyOf": [
+                {
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Where the photo of its receipt is kept (photoStorage.receiptPath), for a payment made by hand",
+            "title": "Paymentreceiptpath"
+        },
+        "paymentReceiptAt": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "When the customer sent the photo of its receipt",
+            "title": "Paymentreceiptat"
         },
         "paidAt": {
             "anyOf": [

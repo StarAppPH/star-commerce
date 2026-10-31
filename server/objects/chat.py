@@ -31,12 +31,15 @@ CHAT_TOOL_NAME_MAX_LENGTH = 64
 CHAT_TOOL_ARGUMENTS_MAX_LENGTH = 16000
 # Attachments: the files a user sends with a message (uploaded to Storage
 # under users/<uid>/ first), read from Storage and given to the model.
-ChatAttachmentType = Literal['image/jpeg', 'image/png', 'application/pdf']
-CHAT_ATTACHMENT_TYPES = ('image/jpeg', 'image/png', 'application/pdf')
+ChatAttachmentType = Literal['image/jpeg', 'image/png', 'image/webp',
+                             'application/pdf']
+CHAT_ATTACHMENT_TYPES = ('image/jpeg', 'image/png', 'image/webp',
+                         'application/pdf')
 # The type each file name extension stands for: a file whose Storage type
 # is another is refused.
 CHAT_ATTACHMENT_EXTENSIONS = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-                              '.png': 'image/png', '.pdf': 'application/pdf'}
+                              '.png': 'image/png', '.webp': 'image/webp',
+                              '.pdf': 'application/pdf'}
 CHAT_ATTACHMENTS_MAX = 4
 # Each file at most (storage.rules allows no larger upload), and one
 # request's files together: this message's, then the history's.

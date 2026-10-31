@@ -18,14 +18,22 @@ bucket. Every other environment ignores both.
   type, and by contents: a file's first bytes must be its type's
   (SIGNATURES). ownFiles() and downloadFiles() are its two steps, for a
   caller that budgets between them.
-  readOwnImages() is it for photos: JPEGs or PNGs of at most
+  readOwnImages() is it for photos: JPEGs, PNGs or WebPs of at most
   MAX_IMAGE_BYTES each (and PHOTO_REFERENCES_MAX_TOTAL_BYTES together);
-  the chat's attachments add PDFs.
+  the chat's attachments add PDFs. modelImage() turns a WebP into a PNG
+  or JPEG before its bytes go to Meta, which does not say it takes WebP.
 - publicPathUrl(): the canonical download URL of a path, without a token
   (objectPathFromUrl reads it back).
-- saveStorePhoto(): writes stores/<storeId>/photos/<photoId>.jpg, which
+- saveStorePhoto(): writes stores/<storeId>/photos/<photoId>.jpg (.png or
+  .webp for such an original), which
   storage.rules lets anyone get (never list) and only the server (admin
   credentials) write, and returns its download URL.
+- receiptImage(), saveReceipt(), readReceipt(), deleteReceipt(): a payment
+  receipt a customer uploaded to their own folder, re-encoded as a JPEG
+  (no metadata, at most RECEIPT_MAX_SIDE pixels a side) and kept under
+  stores/<storeId>/receipts/, which storage.rules lets no client read: only
+  the server does, for the store's admin (PaymentActions.getPaymentReceipt).
+  It has no download token, so no URL serves it.
 - deletePrefix(): deletes every file of one folder, a store's
   (storeFolder) or a user's (userFolder, but never its chat/ subfolder);
   deleteOwnChatFiles() deletes named files of a user's chat/ subfolder:
@@ -38,6 +46,7 @@ credentials: without a loopback emulator, every call is a 503. A Storage failure
 ("Photo storage is unavailable right now"), logged by class only.
 """
 
+import io
 import logging
 import os
 import re
@@ -66,17 +75,20 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024
 PHOTO_REFERENCES_MAX_TOTAL_BYTES = 25 * 1024 * 1024
 REFERENCES_TOO_LARGE = ('The photos are over 25 MB together: send fewer or '
                         'smaller photos')
-IMAGE_CONTENT_TYPES = ('image/jpeg', 'image/png')
+WEBP_CONTENT_TYPE = 'image/webp'
+IMAGE_CONTENT_TYPES = ('image/jpeg', 'image/png', WEBP_CONTENT_TYPE)
 HEIC_CONTENT_TYPES = ('image/heic', 'image/heif')
 HEIC_EXTENSIONS = ('.heic', '.heif')
-# The first bytes of each type's files, and the ISO-BMFF brands of a
-# HEIC/HEIF one (its ftyp box): a file whose contents are not its type's is
-# refused.
+# The first bytes of each type's files (a WebP's RIFF header has its size
+# between them: WEBP_SIGNATURE), and the ISO-BMFF brands of a HEIC/HEIF one
+# (its ftyp box): a file whose contents are not its type's is refused.
 SIGNATURES = {'image/jpeg': b'\xff\xd8\xff',
               'image/png': b'\x89PNG\r\n\x1a\n',
-              'application/pdf': b'%PDF-'}
+              'application/pdf': b'%PDF-',
+              WEBP_CONTENT_TYPE: b'RIFF'}
+WEBP_SIGNATURE = b'WEBP'  # bytes 8 to 12, after RIFF and the size
 HEIC_BRANDS = (b'heic', b'heix', b'hevc', b'heim', b'heis', b'mif1', b'msf1')
-NOT_A_REAL_PHOTO = "isn't a real JPG or PNG photo"
+NOT_A_REAL_PHOTO = "isn't a real JPG, PNG or WebP photo"
 # What a skipped file of a skipUnreadable read is.
 GONE = 'gone'
 REFUSED = 'refused'
@@ -87,6 +99,8 @@ DOWNLOAD_TOKEN_KEY = 'firebaseStorageDownloadTokens'
 STORE_FOLDER = 'stores'
 USER_FOLDER = 'users'
 USER_CHAT_FOLDER = 'chat'
+# The products cut out of a user's group photos (saveFoundPhoto).
+USER_FOUND_FOLDER = 'found'
 # The one folder deletePrefix may empty: stores/<id>/ or users/<id>/, the
 # id one segment with no backslash or control character.
 FOLDER_PREFIX_PATTERN = re.compile(
@@ -94,7 +108,12 @@ FOLDER_PREFIX_PATTERN = re.compile(
     r'/([^/\\\x00-\x1f\x7f]+)/')
 # What routeErrors' 503 names: "Photo storage is unavailable right now".
 STORAGE_SERVICE = 'photo storage'
-CONVERT_PHOTO = 'Convert the photo to JPG or PNG before uploading'
+CONVERT_PHOTO = 'Convert the photo to JPG, PNG or WebP before uploading'
+# A WebP as modelImage() turns it: JPEG at this quality, PNG with
+# transparency; at most this many pixels (else MODEL_IMAGE_TOO_LARGE).
+MODEL_IMAGE_JPEG_QUALITY = 90
+MODEL_IMAGE_MAX_PIXELS = 50_000_000
+MODEL_IMAGE_TOO_LARGE = 'is too large: send a smaller photo'
 # Each Storage request waits at most STORAGE_TIMEOUT_SECONDS, and the SDK's
 # retries stop after STORAGE_RETRY_SECONDS, both cut to the time the photo
 # call has left (its deadline).
@@ -322,7 +341,9 @@ def _checkContents(data: bytes, contentType: str, label: str,
     (after the label)."""
     if _isHeicData(data):
         raise ValueError(f'{label} is a HEIC or HEIF photo. {CONVERT_PHOTO}')
-    if not data.startswith(SIGNATURES[contentType]):
+    if not data.startswith(SIGNATURES[contentType]) or (
+            contentType == WEBP_CONTENT_TYPE
+            and data[8:12] != WEBP_SIGNATURE):
         raise ValueError(f'{label} {notReal}')
 
 
@@ -456,21 +477,54 @@ def readOwnFiles(uid: str, files: list[tuple[str, str]],
 def readOwnImages(uid: str, photos: list[tuple[str, str]],
                   deadline: float) -> list[tuple[bytes, str]]:
     """The bytes and content type of each photo (its label and path) under
-    the caller `uid`'s own folder: JPEGs or PNGs of at most MAX_IMAGE_BYTES
+    the caller `uid`'s own folder: JPEGs, PNGs or WebPs of at most
+    MAX_IMAGE_BYTES
     each and PHOTO_REFERENCES_MAX_TOTAL_BYTES together (readOwnFiles), read
     before `deadline` (time.monotonic())."""
     return readOwnFiles(uid, photos, IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES,
                         PHOTO_REFERENCES_MAX_TOTAL_BYTES, deadline,
-                        wrongType='must be a JPG or PNG photo',
+                        wrongType='must be a JPG, PNG or WebP photo',
                         notReal=NOT_A_REAL_PHOTO,
                         totalTooLarge=REFERENCES_TOO_LARGE)
 
 
+def modelImage(data: bytes, contentType: str,
+               label: str) -> tuple[bytes, str]:
+    """The photo (its bytes and content type) as Meta takes it: a JPEG or
+    PNG as is, a WebP turned into a PNG when it has transparency, else a
+    JPEG (MODEL_IMAGE_JPEG_QUALITY). A WebP that cannot be read is
+    NOT_A_REAL_PHOTO, one over MODEL_IMAGE_MAX_PIXELS MODEL_IMAGE_TOO_LARGE
+    (after the label)."""
+    if contentType != WEBP_CONTENT_TYPE:
+        return data, contentType
+    from PIL import Image
+    try:
+        with Image.open(io.BytesIO(data)) as opened:
+            if opened.format != 'WEBP':
+                raise ValueError(f'{label} {NOT_A_REAL_PHOTO}')
+            if opened.width * opened.height > MODEL_IMAGE_MAX_PIXELS:
+                raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}')
+            hasAlpha = opened.mode in ('RGBA', 'LA') or (
+                'transparency' in opened.info)
+            image = opened.convert('RGBA' if hasAlpha else 'RGB')
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}') from None
+    except (OSError, SyntaxError):
+        raise ValueError(f'{label} {NOT_A_REAL_PHOTO}') from None
+    out = io.BytesIO()
+    if hasAlpha:
+        image.save(out, 'PNG')
+        return out.getvalue(), 'image/png'
+    image.save(out, 'JPEG', quality=MODEL_IMAGE_JPEG_QUALITY)
+    return out.getvalue(), 'image/jpeg'
+
+
 def storePhotoPath(storeId: str, photoId: str,
                    contentType: str = STORE_PHOTO_CONTENT_TYPE) -> str:
-    """Where a store photo of `contentType` (a JPEG, or an admin's PNG
-    original) is saved."""
-    extension = 'png' if contentType == 'image/png' else 'jpg'
+    """Where a store photo of `contentType` (a JPEG, or an admin's PNG or
+    WebP original) is saved."""
+    extension = {'image/png': 'png', WEBP_CONTENT_TYPE: 'webp'}.get(
+        contentType, 'jpg')
     return f'{storeFolder(storeId)}photos/{photoId}.{extension}'
 
 
@@ -492,18 +546,13 @@ def downloadUrl(path: str, token: str) -> str:
             f'{quote(path, safe="")}?alt=media&token={token}')
 
 
-def saveStorePhoto(storeId: str, photoId: str, data: bytes,
-                   deadline: float,
-                   contentType: str = STORE_PHOTO_CONTENT_TYPE) -> str:
-    """Write `data` (a JPEG, or a PNG original: `contentType`) to
-    storePhotoPath(storeId, photoId, contentType) with a fresh random
-    download token, before `deadline` (time.monotonic()), and return its
-    download URL. Create-only (if_generation_match=0: the path is a fresh
-    id), which also lets the SDK retry the upload."""
+def _upload(path: str, data: bytes, contentType: str,
+            deadline: float) -> str:
+    """Write `data` to the fresh path `path` with a fresh random download
+    token, before `deadline` (time.monotonic()), and return its download
+    URL. Create-only (if_generation_match=0: the path is a fresh id), which
+    also lets the SDK retry the upload."""
     from google.api_core.exceptions import PreconditionFailed
-    if contentType not in IMAGE_CONTENT_TYPES:
-        raise ValueError('A store photo is a JPEG or a PNG')
-    path = storePhotoPath(storeId, photoId, contentType)
     token = secrets.token_urlsafe(24)
     try:
         blob = _bucket().blob(path)
@@ -517,6 +566,116 @@ def saveStorePhoto(storeId: str, photoId: str, data: bytes,
     except _storageErrors() as error:
         raise _storageFailure(error) from None
     return downloadUrl(path, token)
+
+
+def saveStorePhoto(storeId: str, photoId: str, data: bytes,
+                   deadline: float,
+                   contentType: str = STORE_PHOTO_CONTENT_TYPE) -> str:
+    """Write `data` (a JPEG, or a PNG or WebP original: `contentType`) to
+    storePhotoPath(storeId, photoId, contentType) (_upload) and return its
+    download URL."""
+    if contentType not in IMAGE_CONTENT_TYPES:
+        raise ValueError('A store photo is a JPEG, a PNG or a WebP')
+    return _upload(storePhotoPath(storeId, photoId, contentType), data,
+                   contentType, deadline)
+
+
+def foundPhotoPath(uid: str, photoId: str) -> str:
+    """Where a product cut out of the user `uid`'s group photo is saved (a
+    JPEG): their own folder, so it is theirs to put on a product."""
+    return f'{userFolder(uid)}{USER_FOUND_FOLDER}/{photoId}.jpg'
+
+
+def saveFoundPhoto(uid: str, photoId: str, data: bytes,
+                   deadline: float) -> str:
+    """Write the JPEG `data` to foundPhotoPath(uid, photoId) (_upload) and
+    return the path."""
+    path = foundPhotoPath(uid, photoId)
+    _upload(path, data, STORE_PHOTO_CONTENT_TYPE, deadline)
+    return path
+
+
+# A payment receipt as the store keeps it: a JPEG at most this many pixels
+# a side, plenty to read a reference number.
+RECEIPT_MAX_SIDE = 1600
+RECEIPT_JPEG_QUALITY = 85
+RECEIPT_FOLDER = 'receipts'
+
+
+def receiptImage(data: bytes, label: str) -> bytes:
+    """A receipt photo (a checked JPEG, PNG or WebP) as the store keeps
+    it: a JPEG with no metadata (a phone's EXIF location is dropped), its
+    transparency on white, scaled to at most RECEIPT_MAX_SIDE a side. One
+    that cannot be read is NOT_A_REAL_PHOTO, one over
+    MODEL_IMAGE_MAX_PIXELS MODEL_IMAGE_TOO_LARGE (after the label)."""
+    from PIL import Image, ImageOps
+    try:
+        with Image.open(io.BytesIO(data)) as opened:
+            if opened.width * opened.height > MODEL_IMAGE_MAX_PIXELS:
+                raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}')
+            image = ImageOps.exif_transpose(opened)
+            image = image.convert('RGBA')
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}') from None
+    except (OSError, SyntaxError):
+        raise ValueError(f'{label} {NOT_A_REAL_PHOTO}') from None
+    flat = Image.new('RGB', image.size, 'white')
+    flat.paste(image, mask=image.getchannel('A'))
+    flat.thumbnail((RECEIPT_MAX_SIDE, RECEIPT_MAX_SIDE))
+    out = io.BytesIO()
+    flat.save(out, 'JPEG', quality=RECEIPT_JPEG_QUALITY)
+    return out.getvalue()
+
+
+def receiptPath(storeId: str, receiptId: str) -> str:
+    """Where a payment receipt of the store is kept (a JPEG)."""
+    return f'{storeFolder(storeId)}{RECEIPT_FOLDER}/{receiptId}.jpg'
+
+
+def saveReceipt(storeId: str, receiptId: str, data: bytes,
+                deadline: float) -> str:
+    """Write the JPEG `data` to receiptPath(storeId, receiptId), a fresh
+    path, with no download token, before `deadline`; returns the path."""
+    from google.api_core.exceptions import PreconditionFailed
+    path = receiptPath(storeId, receiptId)
+    try:
+        _bucket().blob(path).upload_from_string(
+            data, content_type=STORE_PHOTO_CONTENT_TYPE,
+            if_generation_match=0, **_limits(deadline))
+    except PreconditionFailed:
+        pass  # a retry found the first attempt's upload: saved
+    except _storageErrors() as error:
+        raise _storageFailure(error) from None
+    return path
+
+
+def readReceipt(path: str, deadline: float) -> bytes | None:
+    """The bytes of the receipt at `path` (receiptPath), None when it is
+    gone (a store reset deleted it). A Storage failure is a 503."""
+    from google.api_core.exceptions import NotFound
+    if not path.startswith(f'{STORE_FOLDER}/') or (
+            f'/{RECEIPT_FOLDER}/' not in path):
+        raise ValueError('Not a receipt path')
+    try:
+        blob = _bucket().get_blob(path, **_limits(deadline))
+        if blob is None:
+            return None
+        return blob.download_as_bytes(end=MAX_IMAGE_BYTES,
+                                      **_limits(deadline))
+    except NotFound:
+        return None
+    except _storageErrors() as error:
+        raise _storageFailure(error) from None
+
+
+def deleteReceipt(path: str, deadline: float) -> None:
+    """Delete the receipt at `path`, best effort: a failure is logged by
+    class and left (an orphan file no client can read)."""
+    try:
+        _deleteBlob(_bucket().blob(path), deadline)
+    except Exception as error:  # noqa: BLE001 - best effort
+        logging.warning({'function': 'deleteReceipt',
+                         'error': type(error).__name__})
 
 
 def storeFolder(storeId: str) -> str:

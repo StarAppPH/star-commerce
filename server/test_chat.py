@@ -357,7 +357,8 @@ ADMIN_TOOLS = {
     'updateMyStorePolicy', 'updateMyStoreTheme', 'generateProductPhotos',
     'setProductPhoto', 'getStoreReturns', 'approveReturn', 'rejectReturn',
     'receiveReturn', 'listVoices', 'setUserStoreLocation',
-    'suggestStoreAddress', 'updateMyStoreDetails', 'makeProductPhotoChoices'
+    'suggestStoreAddress', 'updateMyStoreDetails', 'makeProductPhotoChoices',
+    'findProductsInPhoto'
 }
 CUSTOMER_TOOLS = {
     'listStoreProducts', 'getMyOrders', 'createOrder', 'payOrder',

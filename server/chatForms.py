@@ -34,20 +34,22 @@ from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
 from actions.StoreActions import STORES, ownerQuery
 import photoStorage
 from mongoDb import db
-from objects import (CHAT_MESSAGE_MAX_LENGTH, PHOTOS_PER_CALL_MAX,
-                     PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH,
-                     PRODUCT_INVENTORY_MAX, PRODUCT_NAME_MAX_LENGTH,
-                     PRODUCT_PRICE_MAX, ChatComponent, ChatFormAnswerTagged,
+from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_MESSAGE_MAX_LENGTH,
+                     PHOTOS_PER_CALL, PRODUCT_BATCH_MAX,
+                     PRODUCT_DESCRIPTION_MAX_LENGTH, PRODUCT_INVENTORY_MAX,
+                     PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
+                     ChatComponent, ChatFormAnswerTagged,
                      DELIVERY_ZONE_RULES, deliveryZoneAt, ruledZones)
 from utils import generateRandomString
 
 # ChatActions.CHAT_TURNS (ChatActions imports this module).
 CHAT_TURNS = 'ChatTurns'
 # The toolset of an admin whose store is not set up yet: the store's
-# details, nothing else (a route tool needs a set-up store).
+# details, and its brand colors read from a logo (findColorsInPhoto, the one
+# route tool that needs no set-up store).
 SETUP_TOOLSET = 'adminSetup'
 # Its route tools (chatToolsCreator.py copies them from the admin's).
-SETUP_ROUTE_TOOLS = ('createUserStore', 'getUserStore')
+SETUP_ROUTE_TOOLS = ('createUserStore', 'getUserStore', 'findColorsInPhoto')
 # The setup tool that sets the store up: once it succeeds, the turn goes on
 # with the admin's tools (the map to pin the store among them).
 SETS_UP_THE_STORE = 'createUserStore'
@@ -55,8 +57,6 @@ SETS_UP_THE_STORE = 'createUserStore'
 FORM_SHOWN = ('The form is on screen under your reply. Ask the user to fill '
               'it in there; its answer comes as their next message.')
 ALREADY_VERIFIED = 'The phone number is already verified'
-NO_PHOTO_STYLE_YET = ('Set the photo style first (updateMyStoreTheme), then '
-                      'open the photo form')
 STORE_NOT_FOUND = 'Store not found'
 # Refusals of a form answer, the user's to act on.
 FORM_NOT_FOUND = 'That form is no longer in this chat'
@@ -71,6 +71,10 @@ PICKED_TWICE = 'Each one once'
 REJECT_NEEDS_REASON = 'Say why you reject it'
 PHONE_NOT_VERIFIED = 'Verify your phone number first'
 FORM_ANSWER_PREFIX = 'Form answer: '
+# The attachments a new products row may take as its photo.
+PHOTO_EXTENSIONS = tuple(extension for extension, contentType
+                         in CHAT_ATTACHMENT_EXTENSIONS.items()
+                         if contentType.startswith('image/'))
 
 _ANSWER = TypeAdapter(ChatFormAnswerTagged)
 _COMPONENT = TypeAdapter(ChatComponent)
@@ -94,12 +98,13 @@ ANSWERS_TO = {
     'deliveryPin': 'deliveryPinForm',
     'deliveryZones': 'deliveryZonesForm',
     'productPhoto': 'productPhotoChoice',
+    'brandColors': 'photoColors',
 }
 
 # How a payment method reads in the user's turn.
 _LABELS = {
-    'card': 'card', 'gcash': 'GCash', 'maya': 'Maya', 'grabPay': 'GrabPay',
-    'bankTransfer': 'bank transfer',
+    'cash': 'cash', 'card': 'card', 'eWallet': 'e-wallet',
+    'bankTransfer': 'bank transfer', 'check': 'check', 'crypto': 'crypto',
 }
 
 
@@ -152,6 +157,7 @@ class ProductDraftArgs(_Args):
     price: float | None = None
     inventory: int | None = None
     description: str | None = None
+    imageUrl: str | None = None
 
 
 class ShowNewProductsFormArgs(_Args):
@@ -162,7 +168,6 @@ class ShowNewProductsFormArgs(_Args):
 
 class ShowPhotoRequestFormArgs(_Args):
     model_config = ConfigDict(title='showPhotoRequestFormArguments')
-    count: int | None = Field(None, ge=1, le=PHOTOS_PER_CALL_MAX)
 
 
 class ShowPhoneVerificationArgs(_Args):
@@ -212,10 +217,24 @@ def _locationForm(userId: str, storeId: str,
     }
 
 
+def _draftPhoto(userId: str, imageUrl) -> str | None:
+    """The Storage path of a prefill's photo: the owner's own JPG, PNG or
+    WebP (one they attached), else None (left for the owner to add)."""
+    if imageUrl is None:
+        return None
+    try:
+        path = photoStorage.ownImagePath(
+            userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
+            'imageUrl')
+    except ValueError:
+        return None
+    return path if photoStorage.hasExtension(path, PHOTO_EXTENSIONS) else None
+
+
 def _newProductsForm(userId: str, storeId: str,
                      args: ShowNewProductsFormArgs) -> dict:
     store = _ownStore(userId, {'currency': 1})
-    drafts = []
+    drafts, photos = [], []
     for draft in args.products or []:
         price, inventory = draft.price, draft.inventory
         drafts.append({
@@ -229,17 +248,19 @@ def _newProductsForm(userId: str, storeId: str,
             'description': _clip(draft.description,
                                  PRODUCT_DESCRIPTION_MAX_LENGTH),
         })
+        photos.append(_draftPhoto(userId, draft.imageUrl))
+    # A photo on several rows shows them all (a list, a screenshot): no
+    # row's own photo.
+    photos = [None if photos.count(path) > 1 else path for path in photos]
     return {'kind': 'newProductsForm', 'formId': newFormId(),
-            'currency': store['currency'], 'products': drafts}
+            'currency': store['currency'], 'products': drafts,
+            'photos': photos}
 
 
 def _photoRequestForm(userId: str, storeId: str,
                       args: ShowPhotoRequestFormArgs) -> dict:
-    store = _ownStore(userId, {'photoStyle': 1})
-    if not store.get('photoStyle'):
-        raise FormRefused(NO_PHOTO_STYLE_YET)
-    return {'kind': 'photoRequestForm', 'formId': newFormId(),
-            'count': args.count or 1}
+    _ownStore(userId, {'_id': 1})
+    return {'kind': 'photoRequestForm', 'formId': newFormId()}
 
 
 def _phoneVerification(userId: str, storeId: str,
@@ -319,9 +340,18 @@ FORM_TOOLS: dict[str, FormTool] = {
     'showNewProductsForm': FormTool(
         ('admin', ),
         'Open a form under your reply where the owner lists new products: '
-        'name, price, units in stock and an optional description, one row '
-        'each. Prefill only what the owner already said; never invent a '
-        'price or a stock count. Use it to add products instead of asking '
+        'name, price, units in stock, an optional description and an '
+        'optional photo, one row each. Prefill each row from what the owner '
+        'gave in this conversation: their words and the files they attached '
+        '(a photo, a screenshot, a price list, a PDF), one row per product '
+        'they show. Take a name, price or description only where it is '
+        'written or said; never guess a price or a stock count, and leave a '
+        'field empty when it is not there. Keep a unit a price is for (per '
+        'pack of 25, per box) in the name or description. Give a row '
+        'imageUrl, the url of an attached image, only when that image is a '
+        'photo of that one product alone, never a list or a screenshot of '
+        'several. In your reply, say what you filled in from their files '
+        'so the owner checks it. Use it to add products instead of asking '
         'each detail in chat. The owner may upload one photo per product '
         'there. Their list comes as their next message: then call '
         'addStoreProducts with it. For each product sent with an imageUrl, '
@@ -333,10 +363,9 @@ FORM_TOOLS: dict[str, FormTool] = {
     'showPhotoRequestForm': FormTool(
         ('admin', ),
         "Open a form under your reply where the owner uploads 1 to 10 plain "
-        'photos of one item, picks how many product photos to make (count, '
-        'prefilled) and adds notes. The store needs a photo style first '
-        '(updateMyStoreTheme). The upload comes as their next message: then '
-        'call generateProductPhotos with its imageUrls, count and notes.',
+        f'photos of one item and adds notes; {PHOTOS_PER_CALL} product photos '
+        'are made from them. The upload comes as their next message: then '
+        'call generateProductPhotos with its imageUrls and notes.',
         ShowPhotoRequestFormArgs, _photoRequestForm),
     'showPhoneVerification': FormTool(
         ('customer', ),
@@ -500,8 +529,7 @@ def _phoneVerified(answer, component, userId) -> tuple[str, dict]:
 
 
 def _photoRequest(answer, component, userId) -> tuple[str, dict]:
-    count = answer.count
-    text = (f'Make {count} product photo{"s" if count > 1 else ""} from my '
+    text = (f'Make {PHOTOS_PER_CALL} product photos from my '
             f'{len(answer.imageUrls)} photo'
             f'{"s" if len(answer.imageUrls) > 1 else ""}.'
             + (f' Notes: {answer.notes}' if answer.notes else ''))
@@ -522,13 +550,21 @@ def _orderItems(answer, component, userId) -> tuple[str, dict]:
 
 
 def _payment(answer, component, userId) -> tuple[str, dict]:
-    if answer.paymentMethod not in component['paymentMethods']:
+    # A card saved before payment options has none, so it takes no answer.
+    if not any(option['method'] == answer.paymentMethod
+               and option['provider'] == answer.paymentProvider
+               for option in component.get('paymentOptions') or []):
         raise ValueError(NOT_ON_THE_CARD)
     order = component['order']
-    return (f'Pay {order["total"]:g} {order["currency"]} with '
-            f'{_label(answer.paymentMethod)}',
+    how = _label(answer.paymentMethod)
+    if answer.paymentProvider is None:
+        how += ', paid to the store'
+    else:
+        how += ' online'
+    return (f'Pay {order["total"]:g} {order["currency"]} by {how}',
             {'kind': 'payment', 'orderId': order['_id'],
-             'paymentMethod': answer.paymentMethod})
+             'paymentMethod': answer.paymentMethod,
+             'paymentProvider': answer.paymentProvider})
 
 
 def _handover(answer, component, userId) -> tuple[str, dict]:
@@ -582,6 +618,23 @@ def _productPhoto(answer, component, userId) -> tuple[str, dict]:
              'photoId': answer.photoId})
 
 
+def _brandColors(answer, component, userId) -> tuple[str, dict]:
+    picks = [(role, color.upper()) for role, color in
+             (('primary', answer.primaryColor),
+              ('secondary', answer.secondaryColor)) if color is not None]
+    if not picks:
+        raise ValueError(NOTHING_PICKED)
+    _unique([color for _, color in picks])
+    shown = {color['hex'] for color in component['colors']}
+    if any(color not in shown for _, color in picks):
+        raise ValueError(NOT_ON_THE_CARD)
+    text = ' and '.join(f'{color} as the {role} color'
+                        for role, color in picks)
+    return (f'Use {text}',
+            {'kind': 'brandColors', **{f'{role}Color': color
+                                       for role, color in picks}})
+
+
 def _zoneRules(zone: dict) -> dict:
     """A zone's delivery policy, without its shape."""
     return {rule: zone.get(rule) for rule in DELIVERY_ZONE_RULES}
@@ -625,6 +678,7 @@ _ANSWER_TURNS = {
     'deliveryPin': _deliveryPin,
     'deliveryZones': _deliveryZones,
     'productPhoto': _productPhoto,
+    'brandColors': _brandColors,
 }
 assert set(_ANSWER_TURNS) == set(ANSWERS_TO)
 

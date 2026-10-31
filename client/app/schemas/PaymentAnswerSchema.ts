@@ -16,7 +16,11 @@ export type Formid = string;
 /**
  * How to pay
  */
-export type Paymentmethod = "card" | "gcash" | "maya" | "grabPay" | "bankTransfer";
+export type Paymentmethod = "cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto";
+/**
+ * The provider of the option picked; null: paid by hand to the store
+ */
+export type Paymentprovider = "demo" | null;
 
 /**
  * A CheckoutCard's payment method.
@@ -25,4 +29,5 @@ export interface PaymentAnswer {
   kind: Kind;
   formId: Formid;
   paymentMethod: Paymentmethod;
+  paymentProvider?: Paymentprovider;
 }

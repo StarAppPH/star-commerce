@@ -964,9 +964,10 @@ def test_theCheckoutToolsArguments_leaveOutTheInjectedParams():
     assert set(byName['createOrder'].input_schema['properties']) == {
         'items', 'fulfillment', 'delivery'}
     assert set(byName['payOrder'].input_schema['properties']) == {
-        'orderId', 'paymentMethod'}
-    assert 'enum' not in str(
-        byName['payOrder'].input_schema['properties']['paymentMethod'])
+        'orderId', 'paymentMethod', 'paymentProvider'}
+    for param in ('paymentMethod', 'paymentProvider'):
+        assert 'enum' not in str(
+            byName['payOrder'].input_schema['properties'][param])
 
 
 def test_e2e_listCreateAndPayAnOrder_overMcp(clean, firebase):
@@ -982,16 +983,20 @@ def test_e2e_listCreateAndPayAnOrder_overMcp(clean, firebase):
 
     assert not created.is_error, _text(created)
     order = created.structured_content['order']
-    assert created.structured_content['paymentMethods'] == [
-        'card', 'gcash', 'maya', 'grabPay', 'bankTransfer']
+    assert [(o['method'], o['provider'])
+            for o in created.structured_content['paymentOptions']] == [
+        ('cash', None), ('card', 'demo'), ('eWallet', 'demo'),
+        ('eWallet', None), ('bankTransfer', None), ('check', None),
+        ('crypto', 'demo')]
     assert (order['status'], order['total']) == ('pending', 1300)
 
     paid = callTool(headers, 'payOrder', {
-        'orderId': order['_id'], 'paymentMethod': 'maya'})
+        'orderId': order['_id'], 'paymentMethod': 'eWallet',
+        'paymentProvider': 'demo'})
 
     assert not paid.is_error, _text(paid)
     assert paid.structured_content['status'] == 'paid'
-    assert paid.structured_content['paymentMethod'] == 'maya'
+    assert paid.structured_content['paymentMethod'] == 'eWallet'
     assert db.read({'_id': ube['_id']}, 'Products', findOne=True)[
         'inventory'] == 8
 

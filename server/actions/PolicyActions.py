@@ -18,6 +18,7 @@ import annotated_types
 from pydantic import TypeAdapter, ValidationError
 
 from actions.OrderActions import customerAtStore
+from actions.ProductActions import validBatch
 from actions.StoreActions import (POLICIES, _validText, emptyPolicy,
                                   ensurePolicy, requireOwnerStore, setUpStore)
 from mcpTools import mcp_tool
@@ -25,10 +26,13 @@ from mongoDb import db
 from objects import (POLICY_ANSWER_FIELDS, POLICY_CANCELLATION_HOURS_ANSWERS,
                      DELIVERY_ZONE_RULES, POLICY_DELIVERY_ANSWERS,
                      POLICY_RETURN_ANSWERS, RETIRED_POLICY_FIELDS,
-                     DeliveryOption,
-                     PaidOrderCancellation, PaymentMethod, Policy,
+                     CHECK_PAYEE_MAX_LENGTH, PAYMENT_ACCOUNT_NAME_MAX_LENGTH,
+                     PAYMENT_ACCOUNT_NUMBER_MAX_LENGTH, PAYMENT_ACCOUNTS_MAX,
+                     DeliveryOption, NewBankAccount, NewEwalletAccount,
+                     NewPaymentMethod, PaidOrderCancellation, PaymentMethod,
+                     PaymentProvider, Policy, methodProblem,
                      RefundMethod, ReturnShippingPayer, StorePolicyResponse,
-                     projectedCopy, projection_of, ruledZones)
+                     projectedCopy, ruledZones)
 from route_config import route_config
 
 POLICY_CHANGED = 'The policy just changed, try again'
@@ -84,9 +88,94 @@ def _rule(field: str) -> str:
         return f'text of at most {maxLength} characters'
     if typing.get_origin(answerType) is typing.Literal:
         return _oneOf(answerType)
+    if field == PAYMENT_METHODS_FIELD:
+        return (f'a list of 1 to {len(typing.get_args(PaymentMethod))} '
+                'payment methods, each with its method and what paying that '
+                'way needs')
     if typing.get_origin(answerType) is list:
         return f'a list of {_oneOf(typing.get_args(answerType)[0])}'
     raise TypeError(f'No rule for the policy answer {field}')
+
+
+# The one answer that is a list of objects, checked by _validPaymentMethods.
+PAYMENT_METHODS_FIELD = 'authorizedPaymentMethods'
+INVALID_METHOD = f'method is {_oneOf(PaymentMethod)}'
+INVALID_PROVIDER = (f'provider is {_oneOf(PaymentProvider)}, or null for a '
+                    'method paid by hand to the store')
+
+
+def _accounts(value, label: str) -> list | None:
+    """An account list of a payment method: None, or a list of 1 to
+    PAYMENT_ACCOUNTS_MAX."""
+    if value is None:
+        return None
+    if not isinstance(value, list) or not (
+            1 <= len(value) <= PAYMENT_ACCOUNTS_MAX):
+        raise ValueError(f'{label} is a list of 1 to {PAYMENT_ACCOUNTS_MAX}')
+    return value
+
+
+def _validAccounts(value, model, nameFields: tuple[str, ...],
+                   label: str) -> list | None:
+    """The e-wallet or bank accounts of a payment method (`nameFields` and
+    accountNumber each), stripped; a refusal names the account's position,
+    never its value."""
+    if _accounts(value, label) is None:
+        return None
+
+    def account(item, earlier):
+        return {
+            **{field: _validText(item.get(field), field,
+                                 PAYMENT_ACCOUNT_NAME_MAX_LENGTH)
+               for field in nameFields},
+            'accountNumber': _validText(item.get('accountNumber'),
+                                        'accountNumber',
+                                        PAYMENT_ACCOUNT_NUMBER_MAX_LENGTH),
+        }
+    return validBatch(value, model, label, account)
+
+
+def _validPaymentMethod(item: dict, earlier: list[dict]) -> dict:
+    """One payment method of authorizedPaymentMethods (a dict), as stored:
+    its method, provider and the details it needs (methodProblem). A method
+    listed twice is Policy.problems()' to refuse."""
+    method = item.get('method')
+    if not isinstance(method, str) or method not in typing.get_args(
+            PaymentMethod):
+        raise ValueError(INVALID_METHOD)
+    provider = item.get('provider')
+    if isinstance(provider, str):
+        provider = provider.strip() or None
+    if provider is not None and (not isinstance(provider, str)
+                                 or provider not in typing.get_args(
+                                     PaymentProvider)):
+        raise ValueError(INVALID_PROVIDER)
+    eWallets = _validAccounts(item.get('eWallets'), NewEwalletAccount,
+                              ('ewalletName',), 'E-wallet')
+    banks = _validAccounts(item.get('banks'), NewBankAccount,
+                           ('bankName', 'accountName'), 'Bank')
+    checkPayees = _accounts(item.get('checkPayees'), 'checkPayees')
+    if checkPayees is not None:
+        checkPayees = [
+            _validText(payee, f'Check payee {position}',
+                       CHECK_PAYEE_MAX_LENGTH)
+            for position, payee in enumerate(checkPayees, start=1)]
+    problem = methodProblem(method, provider, eWallets, banks, checkPayees)
+    if problem is not None:
+        raise ValueError(problem)
+    return {'method': method, 'provider': provider, 'eWallets': eWallets,
+            'banks': banks, 'checkPayees': checkPayees}
+
+
+def _validPaymentMethods(value) -> list[dict]:
+    """authorizedPaymentMethods as stored, each refusal naming the method's
+    position and never quoting a value."""
+    if not isinstance(value, list) or not (
+            1 <= len(value) <= len(typing.get_args(PaymentMethod))):
+        raise ValueError(
+            f'{PAYMENT_METHODS_FIELD} is {_rule(PAYMENT_METHODS_FIELD)}')
+    return validBatch(value, NewPaymentMethod, 'Payment method',
+                      _validPaymentMethod)
 
 
 def _answerAdapter(field: str) -> TypeAdapter:
@@ -115,7 +204,19 @@ TEXT_LIMITS = {
 UPDATE_POLICY_DESCRIPTION = f"""Save answers of the admin's store policies.
 Ask the admin one section at a time, one question per message (the admin
 may skip any):
-- payment: acceptedPaymentMethods (a list, {_oneOf(PaymentMethod)}) and
+- payment: authorizedPaymentMethods, the ways a customer can pay, each an
+  object with its `method` ({_oneOf(PaymentMethod)}) and what paying that
+  way needs, asked as follow-up questions for each method the admin picks:
+  cash nothing (paid by hand at the handover); card and crypto their
+  `provider` ({_oneOf(PaymentProvider)}: they are paid online); eWallet
+  either the store's own accounts customers pay to by hand, `eWallets` (a
+  list of ewalletName, e.g. GCash, and accountNumber), or a `provider` to
+  pay online, or both; bankTransfer the store's `banks` (a list of
+  bankName, accountName, the name the account is under, and
+  accountNumber); check `checkPayees`, the account names a check is
+  made out to. A payment made by hand waits for the admin to confirm it
+  (confirmOrderPayment). The list replaces the stored one: send every
+  method the store takes, with its details. Then
   paidOrderCancellation, whether a customer can cancel a paid order
   ({_oneOf(PaidOrderCancellation)}); with withinHours,
   paidOrderCancellationHours, how many hours after payment (and before
@@ -158,6 +259,8 @@ def _validAnswer(field: str, value):
         value = value.strip() or None
     if value is None:
         return None
+    if field == PAYMENT_METHODS_FIELD:
+        value = _validPaymentMethods(value)
     if field in TEXT_LIMITS:
         value = _validText(value, field, TEXT_LIMITS[field])
     try:
@@ -274,7 +377,8 @@ class PolicyActions():
                             deliveryOptions: list[str] | None = None,
                             deliveryAreas: str | None = None,
                             handoverDays: int | None = None,
-                            acceptedPaymentMethods: list[str] | None = None,
+                            authorizedPaymentMethods:
+                            list[NewPaymentMethod] | None = None,
                             paidOrderCancellation: str | None = None,
                             paidOrderCancellationHours: int | None = None,
                             additionalTerms: str | None = None,
@@ -316,6 +420,8 @@ class PolicyActions():
         problem = policy.problems()
         if problem is not None:
             raise ValueError(problem)
+        # Read whole, then cut by projectedCopy below: projection_of cannot
+        # read authorizedPaymentMethods, a list of models that may be null.
         updated = db.findOneAndUpdate(
             {'_id': stored['_id'], '_version': stored['_version']},
             {
@@ -327,8 +433,7 @@ class PolicyActions():
                 '$unset': dict.fromkeys(RETIRED_POLICY_FIELDS, ''),
             },
             POLICIES,
-            upsert=False,
-            projection=projection_of(StorePolicyResponse))
+            upsert=False)
         if updated is None:
             raise ValueError(POLICY_CHANGED)
         return projectedCopy(StorePolicyResponse,

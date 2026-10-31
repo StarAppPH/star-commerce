@@ -14,7 +14,7 @@ turn's tools have run (build), in the order the tools ran:
 
 A card that takes a choice gets a formId (chatForms.ANSWERS_TO): products to
 order, an order to pay, paid orders to hand over, requested returns to
-decide. A tool that refused (an {"error": ...} result) shows nothing, and so
+decide, colors to pick the brand colors from. A tool that refused (an {"error": ...} result) shows nothing, and so
 does a result that does not fit its card: it is logged, and the turn goes on.
 At most CHAT_COMPONENTS_PER_TURN_MAX components are kept, the latest.
 """
@@ -65,10 +65,11 @@ _ORDER_DELIVERY = ('fulfillment', 'deliveryFee', 'deliveryDistanceKm',
                    'deliveryLatitude', 'deliveryLongitude', 'deliveryNotes')
 _STORE_ORDER = ('_id', 'status', 'total', 'currency', 'contactNumber',
                 'createdAt', 'paymentMethod', 'paidAt', 'completedAt',
-                'cancelReason', *_ORDER_DELIVERY)
+                'cancelReason', 'manualPaymentReference', 'paymentReceiptAt',
+                *_ORDER_DELIVERY)
 _MY_ORDER = ('_id', 'status', 'total', 'currency', 'createdAt', 'expiresAt',
              'paymentMethod', 'paidAt', 'completedAt', 'cancelReason',
-             'refundedAt', *_ORDER_DELIVERY)
+             'refundedAt', 'paymentReceiptAt', *_ORDER_DELIVERY)
 _STORE_RETURN = ('_id', 'orderId', 'status', 'reason', 'note',
                  'refundAmount', 'currency', 'createdAt', 'contactNumber',
                  'rejectReason', 'restocked')
@@ -142,7 +143,7 @@ def _myOrder(result: dict, context: CardContext) -> dict:
 def _checkout(result: dict, context: CardContext) -> dict:
     return {'kind': 'checkout', 'formId': newFormId(),
             'order': _withItems(result['order'], _MY_ORDER),
-            'paymentMethods': result['paymentMethods']}
+            'paymentOptions': result['paymentOptions']}
 
 
 def _storeReturns(result: dict, context: CardContext) -> dict:
@@ -174,8 +175,9 @@ def _policy(result: dict, context: CardContext) -> dict:
 
 def _photos(result: dict, context: CardContext) -> dict:
     return {'kind': 'photos',
-            'photos': [_pick(p, ('_id', 'url')) for p in result['photos']],
-            'prompt': result.get('prompt')}
+            'photos': [_pick(p, ('_id', 'url', 'prompt'))
+                       for p in result['photos']],
+            'notGenerated': result.get('notGenerated')}
 
 
 def _photoChoice(result: dict, context: CardContext) -> dict:
@@ -184,10 +186,20 @@ def _photoChoice(result: dict, context: CardContext) -> dict:
     return {'kind': 'productPhotoChoice', 'formId': newFormId(),
             'productId': result['productId'],
             'productName': result['productName'],
-            'photos': [_pick(p, ('_id', 'url', 'source'))
+            'photos': [_pick(p, ('_id', 'url', 'source', 'prompt'))
                        for p in result['photos']],
-            'prompt': result['prompt'],
             'notGenerated': result['notGenerated']}
+
+
+def _photoColors(result: dict, context: CardContext) -> dict | None:
+    """The colors read from a photo, the admin picking the brand colors
+    from them (answered with BrandColorsAnswer); none read, no card."""
+    if not result['colors']:
+        return None
+    return {'kind': 'photoColors', 'formId': newFormId(),
+            'colors': [_pick(c, ('hex', 'share', 'neutral'))
+                       for c in result['colors']],
+            'focus': result['focus'], 'focusFound': result['focusFound']}
 
 
 def _store(result: dict, context: CardContext) -> dict | None:
@@ -215,6 +227,8 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'cancelStoreOrder': _storeOrder,
     'getMyOrders': _myOrders,
     'payOrder': _myOrder,
+    'addPaymentReference': _myOrder,
+    'confirmOrderPayment': _storeOrder,
     'cancelMyOrder': _myOrder,
     'createOrder': _checkout,
     'getStoreReturns': _storeReturns,
@@ -229,6 +243,7 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'getStorePolicy': _policy,
     'generateProductPhotos': _photos,
     'makeProductPhotoChoices': _photoChoice,
+    'findColorsInPhoto': _photoColors,
     'getUserStore': _store,
     'createUserStore': _store,
     'setUserStoreLocation': _store,

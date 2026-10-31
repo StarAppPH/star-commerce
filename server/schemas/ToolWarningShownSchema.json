@@ -1,0 +1,74 @@
+{
+    "description": "A ToolWarningsShown document: one item of one warning, last told to\nthe model at lastShownAt, so it is not told again before expireAt (the\nwarning's cooldown). Its _id is \"<storeId>:<code>:<itemId>\"; a TTL\nindex on expireAt deletes it once the cooldown is over.",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "storeId": {
+            "description": "The Stores _id",
+            "title": "Storeid",
+            "type": "string"
+        },
+        "code": {
+            "description": "The warning",
+            "enum": [
+                "noPhoto",
+                "outOfStock",
+                "lowStock",
+                "hidden",
+                "staleUnfulfilled",
+                "staleAwaitingPayment",
+                "refundMissing",
+                "unanswered",
+                "staleApproved",
+                "noPaymentMethods",
+                "noDeliveryZones",
+                "policyUnset",
+                "storeDetailMissing"
+            ],
+            "title": "Code",
+            "type": "string"
+        },
+        "itemId": {
+            "description": "What it is about: a Products, Orders or Returns _id, or a policy or store field name",
+            "minLength": 1,
+            "title": "Itemid",
+            "type": "string"
+        },
+        "lastShownAt": {
+            "description": "When the model was last told",
+            "format": "date-time",
+            "title": "Lastshownat",
+            "type": "string"
+        },
+        "expireAt": {
+            "description": "Until then it is not told again",
+            "format": "date-time",
+            "title": "Expireat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "storeId",
+        "code",
+        "itemId",
+        "lastShownAt",
+        "expireAt"
+    ],
+    "title": "ToolWarningShown",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -49,7 +49,7 @@ export type Path = string;
 /**
  * Its type
  */
-export type Contenttype = "image/jpeg" | "image/png" | "application/pdf";
+export type Contenttype = "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
 /**
  * Its file name, from the path's last segment, sanitised
  */
@@ -112,6 +112,7 @@ export type Components =
       | PolicyCard
       | PhotosCard
       | ProductPhotoChoiceCard
+      | PhotoColorsCard
       | StoreCard
       | LocationForm
       | NewProductsForm
@@ -132,6 +133,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -151,6 +153,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -172,6 +175,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -191,6 +195,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -210,6 +215,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -231,6 +237,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -250,6 +257,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -269,6 +277,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -288,6 +297,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -309,6 +319,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -328,6 +339,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -347,6 +359,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -366,6 +379,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -385,6 +399,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -406,6 +421,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -425,6 +441,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -444,6 +461,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -463,6 +481,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -482,6 +501,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -501,6 +521,7 @@ export type Components =
         | PolicyCard
         | PhotosCard
         | ProductPhotoChoiceCard
+        | PhotoColorsCard
         | StoreCard
         | LocationForm
         | NewProductsForm
@@ -679,7 +700,7 @@ export type Id4 = string;
 /**
  * Where the order is
  */
-export type Status = "pending" | "paid" | "completed" | "cancelled";
+export type Status = "pending" | "awaitingPayment" | "paid" | "completed" | "cancelled";
 /**
  * Product name when ordered
  */
@@ -730,9 +751,10 @@ export type Contactnumber = string;
  */
 export type Createdat = string;
 /**
- * How it was paid
+ * How it is or was paid
  */
-export type Paymentmethod = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+export type Paymentmethod =
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
 /**
  * When it was paid
  */
@@ -745,6 +767,14 @@ export type Completedat = string | null;
  * Why it was cancelled
  */
 export type Cancelreason = ("expired" | "byStore" | "byCustomer") | null;
+/**
+ * The reference the customer gave for a payment made by hand
+ */
+export type Manualpaymentreference = string | null;
+/**
+ * When the customer sent the photo of its receipt (getPaymentReceipt shows it)
+ */
+export type Paymentreceiptat = string | null;
 /**
  * The orders
  *
@@ -794,7 +824,7 @@ export type Id5 = string;
 /**
  * Where the order is
  */
-export type Status1 = "pending" | "paid" | "completed" | "cancelled";
+export type Status1 = "pending" | "awaitingPayment" | "paid" | "completed" | "cancelled";
 /**
  * What was ordered
  */
@@ -833,9 +863,10 @@ export type Createdat1 = string;
  */
 export type Expiresat = string;
 /**
- * How it was paid
+ * How it is or was paid
  */
-export type Paymentmethod1 = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+export type Paymentmethod1 =
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
 /**
  * When it was paid
  */
@@ -853,6 +884,10 @@ export type Cancelreason1 = ("expired" | "byStore" | "byCustomer") | null;
  */
 export type Refundedat = string | null;
 /**
+ * When the shopper sent the photo of its receipt
+ */
+export type Paymentreceiptat1 = string | null;
+/**
  * The orders
  *
  * @maxItems 50
@@ -869,7 +904,52 @@ export type Formid2 = string;
 /**
  * The ways the shopper can pay it (never none)
  */
-export type Paymentmethods = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[];
+export type Paymentoptions = PaymentOption[] | null;
+/**
+ * The way to pay
+ */
+export type Method = "cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto";
+/**
+ * The payment provider that takes it; null: paid by hand to the store, which then confirms it
+ */
+export type Provider = "demo" | null;
+/**
+ * A manual eWallet: the store's accounts to pay to
+ */
+export type Ewallets = EwalletAccountRow[] | null;
+/**
+ * The e-wallet, e.g. GCash
+ */
+export type Ewalletname = string;
+/**
+ * The account or mobile number a customer pays to
+ */
+export type Accountnumber = string;
+/**
+ * bankTransfer: the store's accounts to transfer to
+ */
+export type Banks = BankAccountRow[] | null;
+/**
+ * The bank, e.g. BDO
+ */
+export type Bankname = string;
+/**
+ * The name the account is under, as the bank has it
+ */
+export type Accountname = string;
+/**
+ * The account or mobile number a customer pays to
+ */
+export type Accountnumber1 = string;
+/**
+ * check: the names a check is made out to
+ */
+export type Checkpayees = string[] | null;
+/**
+ * The ways the shopper could pay it, on a card saved before payment options
+ */
+export type Paymentmethods =
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
 /**
  * The card
  */
@@ -1090,14 +1170,155 @@ export type Deliveryareas = string | null;
  */
 export type Handoverdays = number | null;
 /**
- * The ways a customer can pay
+ * The ways a customer can pay, each with what paying that way needs
  */
-export type Acceptedpaymentmethods =
+export type Authorizedpaymentmethods =
+  | [AuthorizedPaymentMethodRow]
+  | [AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow]
+  | [AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow]
+  | [AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow]
   | [
-      "card" | "gcash" | "maya" | "grabPay" | "bankTransfer",
-      ...("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[]
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow
+    ]
+  | [
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow
     ]
   | null;
+/**
+ * The way to pay
+ */
+export type Method1 = "cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto";
+/**
+ * The payment provider that takes it; null: paid by hand to the store only
+ */
+export type Provider1 = "demo" | null;
+/**
+ * eWallet: the store's own accounts, paid to by hand
+ */
+export type Ewallets1 =
+  | [EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | null;
+/**
+ * bankTransfer: the store's bank accounts
+ */
+export type Banks1 =
+  | [BankAccountRow]
+  | [BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow
+    ]
+  | [
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow
+    ]
+  | [
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow
+    ]
+  | null;
+/**
+ * check: the account names a check is made out to
+ */
+export type Checkpayees1 =
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string]
+  | null;
+/**
+ * The ways a customer could pay, on a card saved before each method had its details
+ */
+export type Acceptedpaymentmethods =
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
 /**
  * Whether a customer can cancel a paid order
  */
@@ -1197,13 +1418,21 @@ export type Id8 = string;
  */
 export type Url = string;
 /**
+ * The prompt the model was given for it; null on a card saved before each photo carried its own
+ */
+export type Prompt = string | null;
+/**
  * The photos
  */
 export type Photos = GeneratedPhotoRow[];
 /**
  * The prompt they were made with; null on a card saved before prompts were shown
  */
-export type Prompt = string | null;
+export type Prompt1 = string | null;
+/**
+ * Why fewer photos than asked were made; null when all were
+ */
+export type Notgenerated = string | null;
 /**
  * The card
  */
@@ -1221,7 +1450,7 @@ export type Productid = string;
  */
 export type Productname = string;
 /**
- * The original first, then the styled photos
+ * The original first, then the photos made
  *
  * @minItems 1
  * @maxItems 4
@@ -1244,17 +1473,62 @@ export type Url1 = string;
  */
 export type Source = "generated" | "original";
 /**
+ * The prompt the model was given for it; null for the original, and on a card saved before each photo carried its own
+ */
+export type Prompt2 = string | null;
+/**
  * The prompt the styled photos were made with; null when none were
  */
-export type Prompt1 = string | null;
+export type Prompt3 = string | null;
 /**
- * Why no styled photos were made; null when they were
+ * Why fewer photos than asked were made; null when all were
  */
-export type Notgenerated = string | null;
+export type Notgenerated1 = string | null;
 /**
  * The card
  */
-export type Kind10 = "store";
+export type Kind10 = "photoColors";
+/**
+ * Answer it with this id
+ */
+export type Formid5 = string;
+/**
+ * The main colors, biggest share first
+ *
+ * @minItems 1
+ * @maxItems 6
+ */
+export type Colors =
+  | [PhotoColorRow]
+  | [PhotoColorRow, PhotoColorRow]
+  | [PhotoColorRow, PhotoColorRow, PhotoColorRow]
+  | [PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow]
+  | [PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow]
+  | [PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow, PhotoColorRow];
+/**
+ * The color, like #1A73E8
+ */
+export type Hex = string;
+/**
+ * Its share of the pixels read, 0 to 1
+ */
+export type Share = number;
+/**
+ * White, black or grey: rarely a brand color
+ */
+export type Neutral = boolean;
+/**
+ * The part of the photo read; null for the whole photo
+ */
+export type Focus = string | null;
+/**
+ * Whether the focus was found (false: the colors are the whole photo's); null without a focus
+ */
+export type Focusfound = boolean | null;
+/**
+ * The card
+ */
+export type Kind11 = "store";
 /**
  * Store name
  */
@@ -1311,11 +1585,11 @@ export type Longitude = number;
 /**
  * The form
  */
-export type Kind11 = "locationForm";
+export type Kind12 = "locationForm";
 /**
  * Answer it with this id
  */
-export type Formid5 = string;
+export type Formid6 = string;
 /**
  * The store's address
  */
@@ -1323,11 +1597,11 @@ export type Address1 = string | null;
 /**
  * The form
  */
-export type Kind12 = "newProductsForm";
+export type Kind13 = "newProductsForm";
 /**
  * Answer it with this id
  */
-export type Formid6 = string;
+export type Formid7 = string;
 /**
  * Prices are in it
  */
@@ -1372,33 +1646,35 @@ export type Description2 = string | null;
  */
 export type Products2 = ChatProductDraft[];
 /**
- * The form
+ * Each prefilled row's photo (by position): the Storage path of an image the owner attached; null without one
+ *
+ * @maxItems 50
  */
-export type Kind13 = "phoneVerificationForm";
-/**
- * Answer it with this id
- */
-export type Formid7 = string;
+export type Photos2 = (string | null)[];
 /**
  * The form
  */
-export type Kind14 = "photoRequestForm";
+export type Kind14 = "phoneVerificationForm";
 /**
  * Answer it with this id
  */
 export type Formid8 = string;
 /**
- * How many photos to make, prefilled
- */
-export type Count = number;
-/**
  * The form
  */
-export type Kind15 = "deliveryPinForm";
+export type Kind15 = "photoRequestForm";
 /**
  * Answer it with this id
  */
 export type Formid9 = string;
+/**
+ * The form
+ */
+export type Kind16 = "deliveryPinForm";
+/**
+ * Answer it with this id
+ */
+export type Formid10 = string;
 /**
  * The zones' fees and totals are in it
  */
@@ -1514,11 +1790,11 @@ export type Points = [StoreLocationResponse, StoreLocationResponse, StoreLocatio
 /**
  * The form
  */
-export type Kind16 = "deliveryZonesForm";
+export type Kind17 = "deliveryZonesForm";
 /**
  * Answer it with this id
  */
-export type Formid10 = string;
+export type Formid11 = string;
 /**
  * The zones' fees and totals are in it
  */
@@ -1618,16 +1894,17 @@ export type Formanswer =
       | DeliveryPinAnswer
       | DeliveryZonesAnswer
       | ProductPhotoAnswer
+      | BrandColorsAnswer
     )
   | null;
 /**
  * The answer
  */
-export type Kind17 = "location";
+export type Kind18 = "location";
 /**
  * Answer it with this id
  */
-export type Formid11 = string;
+export type Formid12 = string;
 /**
  * Degrees north
  */
@@ -1639,11 +1916,11 @@ export type Longitude1 = number;
 /**
  * The answer
  */
-export type Kind18 = "newProducts";
+export type Kind19 = "newProducts";
 /**
  * Answer it with this id
  */
-export type Formid12 = string;
+export type Formid13 = string;
 /**
  * The products to add
  *
@@ -1678,19 +1955,19 @@ export type Imageurl = string | null;
 /**
  * The answer
  */
-export type Kind19 = "phoneVerified";
-/**
- * Answer it with this id
- */
-export type Formid13 = string;
-/**
- * The answer
- */
-export type Kind20 = "photoRequest";
+export type Kind20 = "phoneVerified";
 /**
  * Answer it with this id
  */
 export type Formid14 = string;
+/**
+ * The answer
+ */
+export type Kind21 = "photoRequest";
+/**
+ * Answer it with this id
+ */
+export type Formid15 = string;
 /**
  * The download URLs of the uploaded photos
  *
@@ -1709,21 +1986,17 @@ export type Imageurls =
   | [string, string, string, string, string, string, string, string, string]
   | [string, string, string, string, string, string, string, string, string, string];
 /**
- * How many photos to make
- */
-export type Count1 = number;
-/**
  * Extra direction
  */
 export type Notes = string | null;
 /**
  * The answer
  */
-export type Kind21 = "orderItems";
+export type Kind22 = "orderItems";
 /**
  * Answer it with this id
  */
-export type Formid15 = string;
+export type Formid16 = string;
 /**
  * What to order
  *
@@ -1742,23 +2015,27 @@ export type Quantity2 = number;
 /**
  * The answer
  */
-export type Kind22 = "payment";
-/**
- * Answer it with this id
- */
-export type Formid16 = string;
-/**
- * How to pay
- */
-export type Paymentmethod2 = "card" | "gcash" | "maya" | "grabPay" | "bankTransfer";
-/**
- * The answer
- */
-export type Kind23 = "handover";
+export type Kind23 = "payment";
 /**
  * Answer it with this id
  */
 export type Formid17 = string;
+/**
+ * How to pay
+ */
+export type Paymentmethod2 = "cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto";
+/**
+ * The provider of the option picked; null: paid by hand to the store
+ */
+export type Paymentprovider = "demo" | null;
+/**
+ * The answer
+ */
+export type Kind24 = "handover";
+/**
+ * Answer it with this id
+ */
+export type Formid18 = string;
 /**
  * The orders handed over
  *
@@ -1769,11 +2046,11 @@ export type Orderids = [string, ...string[]];
 /**
  * The answer
  */
-export type Kind24 = "returnDecision";
+export type Kind25 = "returnDecision";
 /**
  * Answer it with this id
  */
-export type Formid18 = string;
+export type Formid19 = string;
 /**
  * The Returns _id
  */
@@ -1789,11 +2066,11 @@ export type Reason2 = string | null;
 /**
  * The answer
  */
-export type Kind25 = "deliveryPin";
+export type Kind26 = "deliveryPin";
 /**
  * Answer it with this id
  */
-export type Formid19 = string;
+export type Formid20 = string;
 /**
  * Degrees north
  */
@@ -1805,19 +2082,19 @@ export type Longitude2 = number;
 /**
  * The answer
  */
-export type Kind26 = "deliveryZones";
-/**
- * Answer it with this id
- */
-export type Formid20 = string;
-/**
- * The answer
- */
-export type Kind27 = "productPhoto";
+export type Kind27 = "deliveryZones";
 /**
  * Answer it with this id
  */
 export type Formid21 = string;
+/**
+ * The answer
+ */
+export type Kind28 = "productPhoto";
+/**
+ * Answer it with this id
+ */
+export type Formid22 = string;
 /**
  * The card's Products _id
  */
@@ -1826,6 +2103,22 @@ export type Productid2 = string;
  * The GeneratedPhotos _id
  */
 export type Photoid = string;
+/**
+ * The answer
+ */
+export type Kind29 = "brandColors";
+/**
+ * Answer it with this id
+ */
+export type Formid23 = string;
+/**
+ * The primary color
+ */
+export type Primarycolor = string | null;
+/**
+ * The secondary color
+ */
+export type Secondarycolor = string | null;
 /**
  * Tool calls it ran
  */
@@ -1983,6 +2276,8 @@ export interface ChatStoreOrderRow {
   paidAt: Paidat;
   completedAt: Completedat;
   cancelReason: Cancelreason;
+  manualPaymentReference?: Manualpaymentreference;
+  paymentReceiptAt?: Paymentreceiptat;
 }
 /**
  * One item of an order as a route sends it: OrderItem without its
@@ -2025,6 +2320,7 @@ export interface ChatMyOrderRow {
   completedAt: Completedat1;
   cancelReason: Cancelreason1;
   refundedAt: Refundedat;
+  paymentReceiptAt?: Paymentreceiptat1;
 }
 /**
  * The order a shopper just placed, unpaid. Answered with PaymentAnswer:
@@ -2037,7 +2333,38 @@ export interface CheckoutCard {
    * The order to pay
    */
   order: ChatMyOrderRow;
-  paymentMethods: Paymentmethods;
+  paymentOptions?: Paymentoptions;
+  paymentMethods?: Paymentmethods;
+}
+/**
+ * One way a customer can pay an order at checkout, as payOrder takes
+ * it (paymentMethod and paymentProvider). With a provider it is paid
+ * there and then; without one it is paid by hand to the store, to the
+ * accounts listed (none for cash), and the store confirms it.
+ */
+export interface PaymentOption {
+  method: Method;
+  provider: Provider;
+  eWallets: Ewallets;
+  banks: Banks;
+  checkPayees: Checkpayees;
+}
+/**
+ * EwalletAccount as a route sends it. Each field restates
+ * EwalletAccount's, which test_route_response_models.py's MIRRORS keeps
+ * in step.
+ */
+export interface EwalletAccountRow {
+  ewalletName: Ewalletname;
+  accountNumber: Accountnumber;
+}
+/**
+ * BankAccount as a route sends it (MIRRORS keeps it in step).
+ */
+export interface BankAccountRow {
+  bankName: Bankname;
+  accountName: Accountname;
+  accountNumber: Accountnumber1;
 }
 /**
  * The store's returns a tool listed or decided. With requested returns
@@ -2113,11 +2440,23 @@ export interface PolicyCard {
   deliveryOptions: Deliveryoptions;
   deliveryAreas: Deliveryareas;
   handoverDays: Handoverdays;
-  acceptedPaymentMethods: Acceptedpaymentmethods;
+  authorizedPaymentMethods?: Authorizedpaymentmethods;
+  acceptedPaymentMethods?: Acceptedpaymentmethods;
   paidOrderCancellation: Paidordercancellation;
   paidOrderCancellationHours: Paidordercancellationhours;
   additionalTerms: Additionalterms;
   deliveryZones?: Deliveryzones;
+}
+/**
+ * AuthorizedPaymentMethod as a route sends it (MIRRORS keeps it in
+ * step): every detail, null where the method takes none.
+ */
+export interface AuthorizedPaymentMethodRow {
+  method: Method1;
+  provider: Provider1;
+  eWallets: Ewallets1;
+  banks: Banks1;
+  checkPayees: Checkpayees1;
 }
 /**
  * A zone's delivery policy as a route sends it, without its shape.
@@ -2137,11 +2476,13 @@ export interface DeliveryZoneRule {
 export interface PhotosCard {
   kind: Kind8;
   photos: Photos;
-  prompt?: Prompt;
+  prompt?: Prompt1;
+  notGenerated?: Notgenerated;
 }
 export interface GeneratedPhotoRow {
   _id: Id8;
   url: Url;
+  prompt?: Prompt;
 }
 /**
  * The photos the admin picks one of for a product: its original and
@@ -2153,8 +2494,8 @@ export interface ProductPhotoChoiceCard {
   productId: Productid;
   productName: Productname;
   photos: Photos1;
-  prompt: Prompt1;
-  notGenerated: Notgenerated;
+  prompt?: Prompt3;
+  notGenerated: Notgenerated1;
 }
 /**
  * One photo the admin may put on the product.
@@ -2163,12 +2504,33 @@ export interface PhotoChoiceRow {
   _id: Id9;
   url: Url1;
   source: Source;
+  prompt?: Prompt2;
+}
+/**
+ * The main colors findColorsInPhoto read from a photo the admin
+ * attached, as swatches. Answered with BrandColorsAnswer.
+ */
+export interface PhotoColorsCard {
+  kind: Kind10;
+  formId: Formid5;
+  colors: Colors;
+  focus: Focus;
+  focusFound: Focusfound;
+}
+/**
+ * A color findColorsInPhoto read: its hex code and how much of the
+ * photo (or of the part it looked at) it covers.
+ */
+export interface PhotoColorRow {
+  hex: Hex;
+  share: Share;
+  neutral: Neutral;
 }
 /**
  * The admin's store a tool read, created or pinned.
  */
 export interface StoreCard {
-  kind: Kind10;
+  kind: Kind11;
   name: Name7;
   slug: Slug;
   currency: Currency7;
@@ -2195,8 +2557,8 @@ export interface StoreLocationResponse {
  * LocationAnswer.
  */
 export interface LocationForm {
-  kind: Kind11;
-  formId: Formid5;
+  kind: Kind12;
+  formId: Formid6;
   /**
    * The pin so far; null when there is none
    */
@@ -2207,10 +2569,11 @@ export interface LocationForm {
  * Asks the admin for new products. Answered with NewProductsAnswer.
  */
 export interface NewProductsForm {
-  kind: Kind12;
-  formId: Formid6;
+  kind: Kind13;
+  formId: Formid7;
   currency: Currency8;
   products: Products2;
+  photos?: Photos2;
 }
 /**
  * A product the admin mentioned, prefilled on the new products
@@ -2228,17 +2591,16 @@ export interface ChatProductDraft {
  * stored it.
  */
 export interface PhoneVerificationForm {
-  kind: Kind13;
-  formId: Formid7;
+  kind: Kind14;
+  formId: Formid8;
 }
 /**
  * Asks the admin for photos of one item to turn into product photos.
  * Answered with PhotoRequestAnswer.
  */
 export interface PhotoRequestForm {
-  kind: Kind14;
-  formId: Formid8;
-  count: Count;
+  kind: Kind15;
+  formId: Formid9;
 }
 /**
  * Asks the shopper to pin where their delivery goes: a map and "use
@@ -2246,8 +2608,8 @@ export interface PhotoRequestForm {
  * Answered with DeliveryPinAnswer.
  */
 export interface DeliveryPinForm {
-  kind: Kind15;
-  formId: Formid9;
+  kind: Kind16;
+  formId: Formid10;
   /**
    * The store's pin, where the map opens; null until pinned
    */
@@ -2273,8 +2635,8 @@ export interface DeliveryZoneResponse {
  * DeliveryZonesAnswer.
  */
 export interface DeliveryZonesForm {
-  kind: Kind16;
-  formId: Formid10;
+  kind: Kind17;
+  formId: Formid11;
   currency: Currency10;
   /**
    * The store's pin, where the map opens; null until pinned
@@ -2286,8 +2648,8 @@ export interface DeliveryZonesForm {
  * A LocationForm's pin.
  */
 export interface LocationAnswer {
-  kind: Kind17;
-  formId: Formid11;
+  kind: Kind18;
+  formId: Formid12;
   latitude: Latitude1;
   longitude: Longitude1;
 }
@@ -2295,8 +2657,8 @@ export interface LocationAnswer {
  * A NewProductsForm, filled in.
  */
 export interface NewProductsAnswer {
-  kind: Kind18;
-  formId: Formid12;
+  kind: Kind19;
+  formId: Formid13;
   products: Products3;
 }
 /**
@@ -2315,25 +2677,24 @@ export interface NewProductAnswerRow {
  * A PhoneVerificationForm done: the number is verified.
  */
 export interface PhoneVerifiedAnswer {
-  kind: Kind19;
-  formId: Formid13;
+  kind: Kind20;
+  formId: Formid14;
 }
 /**
  * A PhotoRequestForm, filled in: the uploaded photos' URLs.
  */
 export interface PhotoRequestAnswer {
-  kind: Kind20;
-  formId: Formid14;
+  kind: Kind21;
+  formId: Formid15;
   imageUrls: Imageurls;
-  count: Count1;
   notes?: Notes;
 }
 /**
  * A ShopProductsCard's picks.
  */
 export interface OrderItemsAnswer {
-  kind: Kind21;
-  formId: Formid15;
+  kind: Kind22;
+  formId: Formid16;
   items: Items4;
 }
 /**
@@ -2349,24 +2710,25 @@ export interface NewOrderItem {
  * A CheckoutCard's payment method.
  */
 export interface PaymentAnswer {
-  kind: Kind22;
-  formId: Formid16;
+  kind: Kind23;
+  formId: Formid17;
   paymentMethod: Paymentmethod2;
+  paymentProvider?: Paymentprovider;
 }
 /**
  * A StoreOrdersCard's orders handed over.
  */
 export interface HandoverAnswer {
-  kind: Kind23;
-  formId: Formid17;
+  kind: Kind24;
+  formId: Formid18;
   orderIds: Orderids;
 }
 /**
  * A StoreReturnsCard's decision on one requested return.
  */
 export interface ReturnDecisionAnswer {
-  kind: Kind24;
-  formId: Formid18;
+  kind: Kind25;
+  formId: Formid19;
   returnId: Returnid;
   decision: Decision;
   reason?: Reason2;
@@ -2375,8 +2737,8 @@ export interface ReturnDecisionAnswer {
  * A DeliveryPinForm's pin: where the delivery goes.
  */
 export interface DeliveryPinAnswer {
-  kind: Kind25;
-  formId: Formid19;
+  kind: Kind26;
+  formId: Formid20;
   latitude: Latitude2;
   longitude: Longitude2;
 }
@@ -2384,17 +2746,27 @@ export interface DeliveryPinAnswer {
  * A DeliveryZonesForm done: the areas are saved.
  */
 export interface DeliveryZonesAnswer {
-  kind: Kind26;
-  formId: Formid20;
+  kind: Kind27;
+  formId: Formid21;
 }
 /**
  * A ProductPhotoChoiceCard's pick: the photo to put on the product.
  */
 export interface ProductPhotoAnswer {
-  kind: Kind27;
-  formId: Formid21;
+  kind: Kind28;
+  formId: Formid22;
   productId: Productid2;
   photoId: Photoid;
+}
+/**
+ * A PhotoColorsCard's picks: the store's brand colors, each one of the
+ * card's colors (null: keep the store's own).
+ */
+export interface BrandColorsAnswer {
+  kind: Kind29;
+  formId: Formid23;
+  primaryColor?: Primarycolor;
+  secondaryColor?: Secondarycolor;
 }
 /**
  * The tokens a turn's model calls used, summed over its calls.

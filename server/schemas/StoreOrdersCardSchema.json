@@ -112,6 +112,7 @@
                     "description": "Where the order is",
                     "enum": [
                         "pending",
+                        "awaitingPayment",
                         "paid",
                         "completed",
                         "cancelled"
@@ -172,11 +173,15 @@
                     "anyOf": [
                         {
                             "enum": [
+                                "cash",
                                 "card",
+                                "eWallet",
+                                "bankTransfer",
+                                "check",
+                                "crypto",
                                 "gcash",
                                 "maya",
-                                "grabPay",
-                                "bankTransfer"
+                                "grabPay"
                             ],
                             "type": "string"
                         },
@@ -184,7 +189,7 @@
                             "type": "null"
                         }
                     ],
-                    "description": "How it was paid",
+                    "description": "How it is or was paid",
                     "title": "Paymentmethod"
                 },
                 "paidAt": {
@@ -229,6 +234,34 @@
                     ],
                     "description": "Why it was cancelled",
                     "title": "Cancelreason"
+                },
+                "manualPaymentReference": {
+                    "anyOf": [
+                        {
+                            "maxLength": 100,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The reference the customer gave for a payment made by hand",
+                    "title": "Manualpaymentreference"
+                },
+                "paymentReceiptAt": {
+                    "anyOf": [
+                        {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "When the customer sent the photo of its receipt (getPaymentReceipt shows it)",
+                    "title": "Paymentreceiptat"
                 }
             },
             "required": [

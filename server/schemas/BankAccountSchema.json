@@ -1,0 +1,34 @@
+{
+    "description": "One of the store's bank accounts a customer transfers to by hand.",
+    "properties": {
+        "bankName": {
+            "description": "The bank, e.g. BDO",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Bankname",
+            "type": "string"
+        },
+        "accountName": {
+            "description": "The name the account is under, as the bank has it",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Accountname",
+            "type": "string"
+        },
+        "accountNumber": {
+            "description": "The account or mobile number a customer pays to",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Accountnumber",
+            "type": "string"
+        }
+    },
+    "required": [
+        "bankName",
+        "accountName",
+        "accountNumber"
+    ],
+    "title": "BankAccount",
+    "type": "object",
+    "additionalProperties": false
+}

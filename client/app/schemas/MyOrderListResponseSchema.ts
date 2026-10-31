@@ -44,7 +44,7 @@ export type Id = string;
 /**
  * Where the order is
  */
-export type Status = "pending" | "paid" | "completed" | "cancelled";
+export type Status = "pending" | "awaitingPayment" | "paid" | "completed" | "cancelled";
 /**
  * What was ordered
  *
@@ -94,15 +94,28 @@ export type Currency =
  */
 export type Createdat = string;
 /**
- * How the customer paid
+ * How the customer pays or paid
  */
-export type Paymentmethod = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+export type Paymentmethod =
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
+/**
+ * The payment provider it was paid through; null: paid by hand to the store (or not chosen yet)
+ */
+export type Paymentprovider = "demo" | null;
+/**
+ * The reference the customer gave for a payment made by hand, e.g. a bank transfer's
+ */
+export type Manualpaymentreference = string | null;
+/**
+ * When the customer sent the photo of its receipt
+ */
+export type Paymentreceiptat = string | null;
 /**
  * When it was paid
  */
 export type Paidat = string | null;
 /**
- * Unpaid by then, it is cancelled (UTC)
+ * Still pending (no way to pay chosen) by then, it is cancelled (UTC)
  */
 export type Expiresat = string;
 /**
@@ -151,6 +164,9 @@ export interface MyOrderRow {
   currency: Currency;
   createdAt: Createdat;
   paymentMethod: Paymentmethod;
+  paymentProvider?: Paymentprovider;
+  manualPaymentReference?: Manualpaymentreference;
+  paymentReceiptAt?: Paymentreceiptat;
   paidAt: Paidat;
   expiresAt: Expiresat;
   completedAt: Completedat;

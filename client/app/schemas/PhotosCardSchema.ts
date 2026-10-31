@@ -18,13 +18,21 @@ export type Id = string;
  */
 export type Url = string;
 /**
+ * The prompt the model was given for it; null on a card saved before each photo carried its own
+ */
+export type Prompt = string | null;
+/**
  * The photos
  */
 export type Photos = GeneratedPhotoRow[];
 /**
  * The prompt they were made with; null on a card saved before prompts were shown
  */
-export type Prompt = string | null;
+export type Prompt1 = string | null;
+/**
+ * Why fewer photos than asked were made; null when all were
+ */
+export type Notgenerated = string | null;
 
 /**
  * The product photos a tool made.
@@ -32,9 +40,11 @@ export type Prompt = string | null;
 export interface PhotosCard {
   kind: Kind;
   photos: Photos;
-  prompt?: Prompt;
+  prompt?: Prompt1;
+  notGenerated?: Notgenerated;
 }
 export interface GeneratedPhotoRow {
   _id: Id;
   url: Url;
+  prompt?: Prompt;
 }

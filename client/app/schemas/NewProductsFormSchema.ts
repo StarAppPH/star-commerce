@@ -56,6 +56,12 @@ export type Description = string | null;
  * @maxItems 50
  */
 export type Products = ChatProductDraft[];
+/**
+ * Each prefilled row's photo (by position): the Storage path of an image the owner attached; null without one
+ *
+ * @maxItems 50
+ */
+export type Photos = (string | null)[];
 
 /**
  * Asks the admin for new products. Answered with NewProductsAnswer.
@@ -65,6 +71,7 @@ export interface NewProductsForm {
   formId: Formid;
   currency: Currency;
   products: Products;
+  photos?: Photos;
 }
 /**
  * A product the admin mentioned, prefilled on the new products

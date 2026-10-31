@@ -46,13 +46,169 @@ export type Deliveryareas = string | null;
  */
 export type Handoverdays = number | null;
 /**
- * The ways a customer can pay
+ * The ways a customer can pay, each with what paying that way needs
  */
-export type Acceptedpaymentmethods =
+export type Authorizedpaymentmethods =
+  | [AuthorizedPaymentMethodRow]
+  | [AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow]
+  | [AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow]
+  | [AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow, AuthorizedPaymentMethodRow]
   | [
-      "card" | "gcash" | "maya" | "grabPay" | "bankTransfer",
-      ...("card" | "gcash" | "maya" | "grabPay" | "bankTransfer")[]
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow
     ]
+  | [
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow,
+      AuthorizedPaymentMethodRow
+    ]
+  | null;
+/**
+ * The way to pay
+ */
+export type Method = "cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto";
+/**
+ * The payment provider that takes it; null: paid by hand to the store only
+ */
+export type Provider = "demo" | null;
+/**
+ * eWallet: the store's own accounts, paid to by hand
+ */
+export type Ewallets =
+  | [EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow, EwalletAccountRow]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | [
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow,
+      EwalletAccountRow
+    ]
+  | null;
+/**
+ * The e-wallet, e.g. GCash
+ */
+export type Ewalletname = string;
+/**
+ * The account or mobile number a customer pays to
+ */
+export type Accountnumber = string;
+/**
+ * bankTransfer: the store's bank accounts
+ */
+export type Banks =
+  | [BankAccountRow]
+  | [BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow, BankAccountRow]
+  | [
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow
+    ]
+  | [
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow
+    ]
+  | [
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow,
+      BankAccountRow
+    ]
+  | null;
+/**
+ * The bank, e.g. BDO
+ */
+export type Bankname = string;
+/**
+ * The name the account is under, as the bank has it
+ */
+export type Accountname = string;
+/**
+ * The account or mobile number a customer pays to
+ */
+export type Accountnumber1 = string;
+/**
+ * check: the account names a check is made out to
+ */
+export type Checkpayees =
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string]
   | null;
 /**
  * Whether a customer can cancel a paid order
@@ -164,12 +320,40 @@ export interface StorePolicyResponse {
   deliveryOptions: Deliveryoptions;
   deliveryAreas: Deliveryareas;
   handoverDays: Handoverdays;
-  acceptedPaymentMethods: Acceptedpaymentmethods;
+  authorizedPaymentMethods: Authorizedpaymentmethods;
   paidOrderCancellation: Paidordercancellation;
   paidOrderCancellationHours: Paidordercancellationhours;
   additionalTerms: Additionalterms;
   deliveryZones: Deliveryzones;
   updatedAt: Updatedat;
+}
+/**
+ * AuthorizedPaymentMethod as a route sends it (MIRRORS keeps it in
+ * step): every detail, null where the method takes none.
+ */
+export interface AuthorizedPaymentMethodRow {
+  method: Method;
+  provider: Provider;
+  eWallets: Ewallets;
+  banks: Banks;
+  checkPayees: Checkpayees;
+}
+/**
+ * EwalletAccount as a route sends it. Each field restates
+ * EwalletAccount's, which test_route_response_models.py's MIRRORS keeps
+ * in step.
+ */
+export interface EwalletAccountRow {
+  ewalletName: Ewalletname;
+  accountNumber: Accountnumber;
+}
+/**
+ * BankAccount as a route sends it (MIRRORS keeps it in step).
+ */
+export interface BankAccountRow {
+  bankName: Bankname;
+  accountName: Accountname;
+  accountNumber: Accountnumber1;
 }
 /**
  * A zone's delivery policy as a route sends it, without its shape.

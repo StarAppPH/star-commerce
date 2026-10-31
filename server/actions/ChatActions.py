@@ -28,8 +28,8 @@ At most CHAT_TURNS_AT_ONCE turns run at once per process: a message past
 that is a 503 before any lock or quota is taken.
 
 Attachments: a message may carry up to CHAT_ATTACHMENTS_MAX files (JPEG,
-PNG or PDF) the user uploaded to Storage under users/<uid>/, sent as their
-download URLs. Each URL is checked (our bucket, the caller's own folder,
+PNG, WebP or PDF) the user uploaded to Storage under users/<uid>/, sent as
+their download URLs. Each URL is checked (our bucket, the caller's own folder,
 the type its name says) before the slot, the lock or any quota; the files
 are counted per day (per customer, per store, all stores: ChatUsage) and
 read through the Storage SDK (photoStorage.ownFiles, downloadFiles: never
@@ -86,6 +86,7 @@ import chatForms
 import chatModel
 import chatThinking
 import photoStorage
+import toolWarnings
 from actions.OrderActions import customerAtStore
 from actions.ProductActions import _validLimit
 from actions.callSlots import slot
@@ -182,15 +183,15 @@ ATTACHMENTS_TWICE = 'attachments lists the same file twice'
 ONE_PDF_PER_MESSAGE = 'Attach at most one PDF per message'
 FORM_WITH_ATTACHMENTS = 'Send a form answer without attachments'
 ATTACHMENT_KIND = 'file'
-ATTACHMENT_TYPE = 'must be a JPG, PNG or PDF file'
+ATTACHMENT_TYPE = 'must be a JPG, PNG, WebP or PDF file'
 ATTACHMENTS_TOO_LARGE = (
     f'The attachments are over '
     f'{photoStorage.megabytes(CHAT_ATTACHMENTS_MAX_TOTAL_BYTES)} together: '
     'send fewer or smaller files')
-NOT_A_REAL_ATTACHMENT = "isn't a real JPEG, PNG or PDF file"
+NOT_A_REAL_ATTACHMENT = "isn't a real JPEG, PNG, WebP or PDF file"
 UNREADABLE_ATTACHMENT = ("One of the attachments couldn't be read, or they "
                          'have too many pages together: send fewer or '
-                         'shorter JPEG, PNG or PDF files')
+                         'shorter JPEG, PNG, WebP or PDF files')
 ATTACHMENT_CAP_REACHED = ("You've reached today's attachment limit: send "
                           'your message without files')
 STORE_ATTACHMENT_CAP_REACHED = ("This store's attachments are busy today: "
@@ -334,7 +335,7 @@ def _validAttachments(userId: str, urls) -> list[tuple[str, str]]:
     its download URLs (None or []: none): at most CHAT_ATTACHMENTS_MAX,
     each of our bucket (photoStorage.objectPathFromUrl) under the caller's
     own users/<uid>/ folder (ownImagePath: no HEIC/HEIF), named .jpg,
-    .jpeg, .png or .pdf, no file twice, at most one PDF
+    .jpeg, .png, .webp or .pdf, no file twice, at most one PDF
     (ONE_PDF_PER_MESSAGE). Pure: reads nothing. A refusal
     names the URL's place (attachments[0]), never the URL."""
     if urls is None or urls == []:
@@ -426,15 +427,17 @@ def _newUserMessage(audience: str, userId: str, userText: str,
                                     name=attachmentName(file.path),
                                     size=len(data)).model_dump()
         notes.append(_attachmentNote(audience, i, attachment))
-        parts.append(_filePart(attachment, data))
+        parts.append(_filePart(attachment, data, file.label))
         attachments.append(attachment)
     return _userMessage(userText, notes, parts), attachments
 
 
-def _filePart(attachment: dict, data: bytes) -> dict:
-    """A file as the content part Meta takes: an image as an image_url, a
-    PDF as a file, both base64 data URLs."""
-    contentType = attachment['contentType']
+def _filePart(attachment: dict, data: bytes, label: str) -> dict:
+    """A file as the content part Meta takes: an image as an image_url (a
+    WebP turned into a PNG or JPEG: photoStorage.modelImage, a refusal
+    naming `label`), a PDF as a file, both base64 data URLs."""
+    data, contentType = photoStorage.modelImage(
+        data, attachment['contentType'], label)
     dataUrl = (f'data:{contentType};base64,'
                f'{base64.b64encode(data).decode("ascii")}')
     if contentType == PDF_TYPE:
@@ -657,7 +660,8 @@ def _historyUserMessage(audience: str, turn: dict, t: int, status: dict,
         else:
             notes.append(_attachmentNote(audience, f, attachment))
             if withParts:
-                parts.append(_filePart(attachment, value))
+                parts.append(_filePart(attachment, value,
+                                       f'attachments[{f}]'))
     return _userMessage(turn.get('userContent') or turn['userText'],
                         notes, parts)
 
@@ -820,10 +824,12 @@ def _runModel(toolset: str, userId: str, storeId: str,
     MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call without tools): a
     route tool through chatModel.runTool, a form tool through
     chatForms.runFormTool. Returns the reply, the steps, the forms opened
-    (by tool call id), the tools called (as the log names them) and the
-    usage. Sets progress['sent'] just before the
-    first model call and progress['answered'] once the model answered
-    (before any tool runs). Raises unavailable() past
+    (by tool call id), the tools called (as the log names them), the
+    usage and the warnings told (`warningsTold`: an admin's read tool
+    results carry what the store's data lacks, toolWarnings.TurnWarnings,
+    marked as told once the turn is saved). Sets progress['sent'] just
+    before the first model call and progress['answered'] once the model
+    answered (before any tool runs). Raises unavailable() past
     TURN_DEADLINE_SECONDS (or `deadline`). `refusal` is
     chatModel.complete's, on the first call only, logged at
     `refusalLevel`. Before each route tool runs, one of its thinking texts
@@ -835,6 +841,7 @@ def _runModel(toolset: str, userId: str, storeId: str,
         deadline = time.monotonic() + TURN_DEADLINE_SECONDS
     steps, toolNames, usage = [], [], _Usage()
     forms = {}
+    warnings = toolWarnings.TurnWarnings(storeId)
     formTools = chatForms.formToolNames(toolset)
     toolsAllowed = True
     while True:
@@ -872,9 +879,12 @@ def _runModel(toolset: str, userId: str, storeId: str,
                     chatModel.remainingSeconds(deadline)
                     chatThinking.note(userId, storeId, turnKey,
                                       call['name'])
-                    content = chatModel.runTool(toolset, call['name'],
-                                                call['arguments'], userId,
-                                                storeId)
+                    content = warnings.attach(
+                        toolset, call['name'],
+                        chatModel.runTool(toolset, call['name'],
+                                          call['arguments'], userId,
+                                          storeId),
+                        chatModel.CHAT_TOOL_RESULT_MAX_CHARS)
                     if chatForms.setsUpTheStore(toolset, call['name'],
                                                 content):
                         # The store exists now: the rest of the turn has
@@ -891,7 +901,8 @@ def _runModel(toolset: str, userId: str, storeId: str,
             reply = (TOO_LONG_REPLY if choice is not None
                      and choice.finish_reason == 'length' else NO_REPLY)
         return {'reply': reply, 'steps': steps, 'forms': forms,
-                'toolNames': toolNames, 'usage': usage.model()}
+                'toolNames': toolNames, 'usage': usage.model(),
+                'warningsTold': warnings.told}
 
 
 def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
@@ -1104,6 +1115,7 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
         _saveTurn(newConversation, conversationId, userId, storeId, seq,
                   userTurn, answer, components, busyUntil, sent)
         busyUntil = None  # cleared by the save
+        toolWarnings.markShown(storeId, answer['warningsTold'])
     finally:
         inFlight.release()
         chatThinking.clear(userId, turnKey)
@@ -1181,11 +1193,15 @@ def _validBefore(before) -> dict:
 def _turnRow(row: dict) -> dict:
     """A ChatTurns row as getConversationTurns sends it: a turn saved
     before turns had components shows none, one saved with a component kind
-    since retired shows the rest (chatForms.COMPONENT_KINDS), and one that
-    answered no form has a null answeredFormId."""
+    since retired shows the rest (chatForms.COMPONENT_KINDS), a photo form
+    saved when it asked how many photos to make shows without that count,
+    and one that answered no form has a null answeredFormId."""
     row = {'components': [], 'answeredFormId': None, **row}
-    row['components'] = [c for c in row['components']
-                         if c.get('kind') in chatForms.COMPONENT_KINDS]
+    row['components'] = [
+        {k: v for k, v in c.items() if k != 'count'}
+        if c.get('kind') == 'photoRequestForm' else c
+        for c in row['components']
+        if c.get('kind') in chatForms.COMPONENT_KINDS]
     return row
 
 
@@ -1216,8 +1232,8 @@ class ChatActions():
         and return its reply with the cards and forms to show under it. No
         conversationId starts a new conversation. Before the store is set
         up the assistant only sets it up (chatForms.SETUP_TOOLSET).
-        `attachments` are the Storage download URLs of up to 4 JPEGs, PNGs
-        or PDFs (one PDF at most) the admin uploaded under
+        `attachments` are the Storage download URLs of up to 4 JPEGs, PNGs,
+        WebPs or PDFs (one PDF at most) the admin uploaded under
         users/<uid>/chat/ (the message may then be empty; never with a
         form). `turnKey`, a random id of the client's, lets getChatThinking
         tell what the assistant is doing while it answers. `speak` adds
@@ -1245,8 +1261,8 @@ class ChatActions():
         conversation), to the shopping assistant of the store being
         visited, and return its reply with the cards and forms to show
         under it. No conversationId starts a new conversation.
-        `attachments` are the Storage download URLs of up to 4 JPEGs, PNGs
-        or PDFs (one PDF at most) the customer uploaded under
+        `attachments` are the Storage download URLs of up to 4 JPEGs, PNGs,
+        WebPs or PDFs (one PDF at most) the customer uploaded under
         users/<uid>/chat/ (the message may then be empty; never with a
         form). Capped per customer and per store each day, messages and
         files alike. `turnKey`, a random id of the client's, lets

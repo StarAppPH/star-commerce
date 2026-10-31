@@ -13,8 +13,13 @@ export type Id = string;
  * Its download URL
  */
 export type Url = string;
+/**
+ * The prompt the model was given for it; null on a card saved before each photo carried its own
+ */
+export type Prompt = string | null;
 
 export interface GeneratedPhotoRow {
   _id: Id;
   url: Url;
+  prompt?: Prompt;
 }

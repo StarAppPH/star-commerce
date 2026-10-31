@@ -14,7 +14,7 @@ export type Productid = string;
  */
 export type Productname = string;
 /**
- * The original first, then the styled photos
+ * The original first, then the photos made
  *
  * @minItems 1
  * @maxItems 4
@@ -37,23 +37,22 @@ export type Url = string;
  */
 export type Source = "generated" | "original";
 /**
- * The prompt the styled photos were made with; null when none were made
+ * The prompt the model was given for it; null for the original, and on a card saved before each photo carried its own
  */
 export type Prompt = string | null;
 /**
- * Why no styled photos were made (no photo style, today's limit reached, generation unavailable); null when they were
+ * Why fewer photos than asked were made (no photo style, today's limit reached, generation unavailable); null when all were
  */
 export type Notgenerated = string | null;
 
 /**
  * What makeProductPhotoChoices sends: the product, its original photo
- * first, then the styled ones made.
+ * first, then the ones made, each with its prompt.
  */
 export interface ProductPhotoChoicesResponse {
   productId: Productid;
   productName: Productname;
   photos: Photos;
-  prompt: Prompt;
   notGenerated: Notgenerated;
 }
 /**
@@ -63,4 +62,5 @@ export interface PhotoChoiceRow {
   _id: Id;
   url: Url;
   source: Source;
+  prompt?: Prompt;
 }

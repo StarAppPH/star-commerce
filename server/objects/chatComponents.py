@@ -20,13 +20,16 @@ from typing import Annotated, Literal, Union
 from pydantic import Field
 
 from objects.base import AppModel, ResponseModel
-from objects.order import (ORDER_ITEMS_MAX, CancelReason, NewOrderItem,
-                           OrderDeliveryRow, OrderItemRow, OrderStatus,
-                           PaymentMethod)
-from objects.photo import (PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
-                           PHOTOS_PER_CALL_MAX, PHOTO_CHOICES_GENERATED,
-                           GeneratedPhotoRow, PhotoChoiceRow)
-from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
+from objects.order import (MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
+                           ORDER_ITEMS_MAX, CancelReason, NewOrderItem,
+                           OrderDeliveryRow, OrderItemRow, OrderStatus)
+from objects.payment import (OrderPaymentMethod, PaymentMethod,
+                             PaymentOption, PaymentProvider)
+from objects.photo import (PHOTO_COLOR_FOCUS_MAX_LENGTH, PHOTO_COLORS_MAX,
+                           PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
+                           PHOTOS_PER_CALL, GeneratedPhotoRow,
+                           PhotoChoiceRow, PhotoColorRow)
+from objects.policy import (AcceptsReturns, AuthorizedPaymentMethodRows,
                             AdditionalTerms, DefectReportDays, DeliveryAreas,
                             DeliveryOptions,
                             HandoverDays, NonReturnableItems,
@@ -37,7 +40,7 @@ from objects.policy import (AcceptedPaymentMethods, AcceptsReturns,
 from objects.product import PRODUCT_BATCH_MAX, NewProduct
 from objects.returns import (RETURN_REJECT_REASON_MAX_LENGTH,
                              ReturnItemRow, ReturnReason, ReturnStatus)
-from objects.store import (DELIVERY_ZONES_MAX, DeliveryZoneResponse,
+from objects.store import (DELIVERY_ZONES_MAX, HEX_COLOR_PATTERN, DeliveryZoneResponse,
                            DeliveryZoneRule,
                            Latitude, Longitude, StoreCurrency,
                            StoreLocationResponse)
@@ -115,14 +118,22 @@ class ChatStoreOrderRow(OrderDeliveryRow):
     currency: StoreCurrency = Field(..., description="The order's currency")
     contactNumber: str = Field(..., description="The customer's number")
     createdAt: datetime.datetime = Field(..., description='When it was placed')
-    paymentMethod: PaymentMethod | None = Field(...,
-                                                description='How it was paid')
+    paymentMethod: OrderPaymentMethod | None = Field(
+        ..., description='How it is or was paid')
     paidAt: datetime.datetime | None = Field(...,
                                              description='When it was paid')
     completedAt: datetime.datetime | None = Field(
         ..., description='When it was handed over')
     cancelReason: CancelReason | None = Field(...,
                                               description='Why it was cancelled')
+    # Null on a card saved before payments made by hand.
+    manualPaymentReference: str | None = Field(
+        None, max_length=MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
+        description='The reference the customer gave for a payment made by '
+        'hand')
+    paymentReceiptAt: datetime.datetime | None = Field(
+        None, description='When the customer sent the photo of its receipt '
+        '(getPaymentReceipt shows it)')
 
 
 class StoreOrdersCard(ResponseModel):
@@ -145,8 +156,8 @@ class ChatMyOrderRow(OrderDeliveryRow):
     createdAt: datetime.datetime = Field(..., description='When it was placed')
     expiresAt: datetime.datetime = Field(
         ..., description='Unpaid by then, it is cancelled')
-    paymentMethod: PaymentMethod | None = Field(...,
-                                                description='How it was paid')
+    paymentMethod: OrderPaymentMethod | None = Field(
+        ..., description='How it is or was paid')
     paidAt: datetime.datetime | None = Field(...,
                                              description='When it was paid')
     completedAt: datetime.datetime | None = Field(
@@ -155,6 +166,9 @@ class ChatMyOrderRow(OrderDeliveryRow):
                                               description='Why it was cancelled')
     refundedAt: datetime.datetime | None = Field(
         ..., description='When its payment was refunded')
+    # Null on a card saved before payment receipts.
+    paymentReceiptAt: datetime.datetime | None = Field(
+        None, description='When the shopper sent the photo of its receipt')
 
 
 class MyOrdersCard(ResponseModel):
@@ -170,8 +184,14 @@ class CheckoutCard(ResponseModel):
     kind: Literal['checkout'] = Field(..., description='The card')
     formId: FormId
     order: ChatMyOrderRow = Field(..., description='The order to pay')
-    paymentMethods: list[PaymentMethod] = Field(
-        ..., description='The ways the shopper can pay it (never none)')
+    # Null on a card saved before payment options.
+    paymentOptions: list[PaymentOption] | None = Field(
+        None, description='The ways the shopper can pay it (never none)')
+    # Only on a card saved before payment options: it can no longer be
+    # answered.
+    paymentMethods: list[OrderPaymentMethod] | None = Field(
+        None, description='The ways the shopper could pay it, on a card '
+        'saved before payment options')
 
 
 class ChatStoreReturnRow(ResponseModel):
@@ -242,7 +262,12 @@ class PolicyCard(ResponseModel):
     deliveryOptions: DeliveryOptions
     deliveryAreas: DeliveryAreas
     handoverDays: HandoverDays
-    acceptedPaymentMethods: AcceptedPaymentMethods
+    # Null on a card saved before authorizedPaymentMethods.
+    authorizedPaymentMethods: AuthorizedPaymentMethodRows = None
+    # Only on a card saved before authorizedPaymentMethods.
+    acceptedPaymentMethods: list[OrderPaymentMethod] | None = Field(
+        None, description='The ways a customer could pay, on a card saved '
+        'before each method had its details')
     paidOrderCancellation: PaidOrderCancellationAnswer
     paidOrderCancellationHours: PaidOrderCancellationHours
     additionalTerms: AdditionalTerms
@@ -256,9 +281,13 @@ class PhotosCard(ResponseModel):
     """The product photos a tool made."""
     kind: Literal['photos'] = Field(..., description='The card')
     photos: list[GeneratedPhotoRow] = Field(..., description='The photos')
+    # Only on a card saved before each photo carried its own prompt.
     prompt: str | None = Field(
         None, description='The prompt they were made with; null on a card '
         'saved before prompts were shown')
+    notGenerated: str | None = Field(
+        None, description='Why fewer photos than asked were made; null when '
+        'all were')
 
 
 class ProductPhotoChoiceCard(ResponseModel):
@@ -269,12 +298,29 @@ class ProductPhotoChoiceCard(ResponseModel):
     productId: str = Field(..., description='The Products _id')
     productName: str = Field(..., description='Product name')
     photos: list[PhotoChoiceRow] = Field(
-        ..., min_length=1, max_length=1 + PHOTO_CHOICES_GENERATED,
-        description='The original first, then the styled photos')
-    prompt: str | None = Field(..., description='The prompt the styled '
+        ..., min_length=1, max_length=1 + PHOTOS_PER_CALL,
+        description='The original first, then the photos made')
+    # Only on a card saved before each photo carried its own prompt.
+    prompt: str | None = Field(None, description='The prompt the styled '
                                'photos were made with; null when none were')
-    notGenerated: str | None = Field(..., description='Why no styled photos '
-                                     'were made; null when they were')
+    notGenerated: str | None = Field(..., description='Why fewer photos than '
+                                     'asked were made; null when all were')
+
+
+class PhotoColorsCard(ResponseModel):
+    """The main colors findColorsInPhoto read from a photo the admin
+    attached, as swatches. Answered with BrandColorsAnswer."""
+    kind: Literal['photoColors'] = Field(..., description='The card')
+    formId: FormId
+    colors: list[PhotoColorRow] = Field(
+        ..., min_length=1, max_length=PHOTO_COLORS_MAX,
+        description='The main colors, biggest share first')
+    focus: str | None = Field(
+        ..., max_length=PHOTO_COLOR_FOCUS_MAX_LENGTH,
+        description='The part of the photo read; null for the whole photo')
+    focusFound: bool | None = Field(
+        ..., description='Whether the focus was found (false: the colors '
+        "are the whole photo's); null without a focus")
 
 
 class StoreCard(ResponseModel):
@@ -321,6 +367,12 @@ class NewProductsForm(ResponseModel):
     currency: StoreCurrency = Field(..., description='Prices are in it')
     products: list[ChatProductDraft] = Field(
         ..., max_length=PRODUCT_BATCH_MAX, description='Prefilled rows')
+    # Beside the rows, not on them: a form saved before photos were
+    # prefilled has none.
+    photos: list[str | None] = Field(
+        default_factory=list, max_length=PRODUCT_BATCH_MAX,
+        description="Each prefilled row's photo (by position): the Storage "
+                    "path of an image the owner attached; null without one")
 
 
 class PhoneVerificationForm(ResponseModel):
@@ -336,8 +388,6 @@ class PhotoRequestForm(ResponseModel):
     Answered with PhotoRequestAnswer."""
     kind: Literal['photoRequestForm'] = Field(..., description='The form')
     formId: FormId
-    count: int = Field(..., ge=1, le=PHOTOS_PER_CALL_MAX,
-                       description='How many photos to make, prefilled')
 
 
 class DeliveryPinForm(ResponseModel):
@@ -379,7 +429,7 @@ class DeliveryZonesForm(ResponseModel):
 ChatComponent = Annotated[Union[
     ShopProductsCard, StoreProductsCard, StoreOrdersCard, MyOrdersCard,
     CheckoutCard, StoreReturnsCard, MyReturnsCard, PolicyCard, PhotosCard,
-    ProductPhotoChoiceCard, StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
+    ProductPhotoChoiceCard, PhotoColorsCard, StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
     PhotoRequestForm, DeliveryPinForm, DeliveryZonesForm,
 ], Field(discriminator='kind')]
 
@@ -433,8 +483,6 @@ class PhotoRequestAnswer(AppModel):
         min_length=1, max_length=CHAT_PHOTO_URL_MAX_LENGTH)]] = Field(
             ..., min_length=1, max_length=PHOTO_REFERENCES_MAX,
             description='The download URLs of the uploaded photos')
-    count: int = Field(..., ge=1, le=PHOTOS_PER_CALL_MAX,
-                       description='How many photos to make')
     notes: str | None = Field(None, max_length=PHOTO_NOTES_MAX_LENGTH,
                               description='Extra direction')
 
@@ -453,6 +501,9 @@ class PaymentAnswer(AppModel):
     kind: Literal['payment'] = Field(..., description='The answer')
     formId: FormId
     paymentMethod: PaymentMethod = Field(..., description='How to pay')
+    paymentProvider: PaymentProvider | None = Field(
+        None, description='The provider of the option picked; null: paid by '
+        'hand to the store')
 
 
 class HandoverAnswer(AppModel):
@@ -498,10 +549,22 @@ class ProductPhotoAnswer(AppModel):
     photoId: AnswerId = Field(..., description='The GeneratedPhotos _id')
 
 
+class BrandColorsAnswer(AppModel):
+    """A PhotoColorsCard's picks: the store's brand colors, each one of the
+    card's colors (null: keep the store's own)."""
+    kind: Literal['brandColors'] = Field(..., description='The answer')
+    formId: FormId
+    primaryColor: str | None = Field(None, pattern=HEX_COLOR_PATTERN,
+                                     description='The primary color')
+    secondaryColor: str | None = Field(None, pattern=HEX_COLOR_PATTERN,
+                                       description='The secondary color')
+
+
 # The chat route's `form` param (a plain union: a route param cannot be
 # Annotated); ChatFormAnswerTagged reads it by its kind.
 ChatFormAnswer = (LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer
                   | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer
                   | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer
-                  | DeliveryZonesAnswer | ProductPhotoAnswer)
+                  | DeliveryZonesAnswer | ProductPhotoAnswer
+                  | BrandColorsAnswer)
 ChatFormAnswerTagged = Annotated[ChatFormAnswer, Field(discriminator='kind')]

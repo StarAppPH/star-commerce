@@ -1,5 +1,12 @@
 """payments.py: the payment provider, a demo one for now.
 
+Only an order paid through a provider (a PaymentOption with a provider:
+cards, crypto, an e-wallet paid online) reaches these functions. One paid
+by hand to the store (cash, a check, a bank transfer, the store's own
+e-wallet account) is confirmed by the store's admin (confirmOrderPayment)
+and never charged or refunded here. A real provider confirms a payment
+through its webhook to us, not in payOrder's call.
+
 These functions are the one place a real gateway (PayMongo, Stripe)
 plugs in. They are pure logic (no db, no route): models and actions never
 import a gateway directly.

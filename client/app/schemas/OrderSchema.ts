@@ -70,23 +70,40 @@ export type Contactnumber = string;
 /**
  * Where the order is
  */
-export type Status = "pending" | "paid" | "completed" | "cancelled";
+export type Status = "pending" | "awaitingPayment" | "paid" | "completed" | "cancelled";
 /**
  * When it was placed
  */
 export type Createdat = string;
 /**
- * Unpaid by then, it is cancelled (UTC)
+ * Still pending (no way to pay chosen) by then, it is cancelled (UTC)
  */
 export type Expiresat = string;
 /**
- * How the customer paid
+ * How the customer pays or paid
  */
-export type Paymentmethod = ("card" | "gcash" | "maya" | "grabPay" | "bankTransfer") | null;
+export type Paymentmethod =
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
+/**
+ * The payment provider it was paid through; null: paid by hand to the store (or not chosen yet)
+ */
+export type Paymentprovider = "demo" | null;
 /**
  * The payment provider's id of the payment
  */
 export type Paymentreference = string | null;
+/**
+ * The reference the customer gave for a payment made by hand, e.g. a bank transfer's
+ */
+export type Manualpaymentreference = string | null;
+/**
+ * Where the photo of its receipt is kept (photoStorage.receiptPath), for a payment made by hand
+ */
+export type Paymentreceiptpath = string | null;
+/**
+ * When the customer sent the photo of its receipt
+ */
+export type Paymentreceiptat = string | null;
 /**
  * When it was paid
  */
@@ -169,7 +186,11 @@ export interface Order {
   createdAt: Createdat;
   expiresAt: Expiresat;
   paymentMethod?: Paymentmethod;
+  paymentProvider?: Paymentprovider;
   paymentReference?: Paymentreference;
+  manualPaymentReference?: Manualpaymentreference;
+  paymentReceiptPath?: Paymentreceiptpath;
+  paymentReceiptAt?: Paymentreceiptat;
   paidAt?: Paidat;
   cancelledAt?: Cancelledat;
   cancelReason?: Cancelreason;

@@ -7,6 +7,7 @@ import { DeliveryPinForm, LocationForm } from './LocationForm';
 import { DeliveryZonesForm } from './DeliveryZonesForm';
 import { NewProductsForm } from './NewProductsForm';
 import { PhoneVerificationForm } from './PhoneVerificationForm';
+import { PhotoColorsCard } from './PhotoColorsCard';
 import { PhotoRequestForm } from './PhotoRequestForm';
 import { ProductPhotoChoiceCard } from './ProductPhotoChoiceCard';
 import { ShopProductsCard } from './ShopProductsCard';
@@ -14,6 +15,8 @@ import type { ChatComponent, ChatFormAnswer } from './types';
 
 interface ChatComponentsProps {
   components: ChatComponent[];
+  // Above the reply's text, or below it.
+  place: 'above' | 'below';
   answeredFormIds: ReadonlySet<string>;
   busy: boolean;
   onAnswer: (answer: ChatFormAnswer) => void;
@@ -23,12 +26,25 @@ function formIdOf(component: ChatComponent): string | null {
   return 'formId' in component ? component.formId : null;
 }
 
-// The cards and forms under one assistant reply.
-export function ChatComponents({ components, answeredFormIds, busy, onAnswer }: ChatComponentsProps) {
-  if (components.length === 0) return null;
+// Cards that only show something go above the reply's text; what answers it
+// (a form or a choosing card) goes below, so the question comes first.
+function isAnswerable(component: ChatComponent): boolean {
+  return formIdOf(component) !== null;
+}
+
+// The cards and forms of one assistant reply, on one side of its text. An
+// index is the component's position in the whole reply.
+export function ChatComponents({ components, place, answeredFormIds, busy, onAnswer }: ChatComponentsProps) {
+  const placed = components
+    .map((component, index) => ({ component, index }))
+    .filter(({ component }) => isAnswerable(component) === (place === 'below'));
+  if (placed.length === 0) return null;
   return (
-    <div data-component="chatComponents" className="flex flex-col gap-3">
-      {components.map((component, index) => {
+    <div
+      data-component={place === 'above' ? 'chatComponentsAbove' : 'chatComponentsBelow'}
+      className="flex flex-col gap-3"
+    >
+      {placed.map(({ component, index }) => {
         const formId = formIdOf(component);
         const shared = { answered: formId !== null && answeredFormIds.has(formId), busy, onAnswer };
         const key = formId ?? `${component.kind}-${index}`;
@@ -43,6 +59,7 @@ export function ChatComponents({ components, answeredFormIds, busy, onAnswer }: 
           case 'policy': return <PolicyCard key={key} component={component} {...shared} />;
           case 'photos': return <PhotosCard key={key} component={component} {...shared} />;
           case 'productPhotoChoice': return <ProductPhotoChoiceCard key={key} component={component} {...shared} />;
+          case 'photoColors': return <PhotoColorsCard key={key} component={component} {...shared} />;
           case 'store': return <StoreCard key={key} component={component} {...shared} />;
           case 'locationForm': return <LocationForm key={key} component={component} {...shared} />;
           case 'newProductsForm': return <NewProductsForm key={key} component={component} {...shared} />;

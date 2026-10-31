@@ -40,6 +40,34 @@ export interface ChatTurnView {
   thinkingText: string | null;
 }
 
+// The photo choice cards whose photo was put on the product by a later
+// turn (the owner said "use the 2nd one" instead of tapping): that turn's
+// product card shows one of the card's photos.
+function photoChoicesSettled(turns: ChatTurnView[]): string[] {
+  const settled: string[] = [];
+  // The photos later turns put on each product, by its _id.
+  const later = new Map<string, Set<string>>();
+  // Oldest first, so from the newest back: a card is settled by what came after it.
+  [...turns].reverse().forEach((turn) => {
+    if (turn.status === 'failed') return;
+    turn.components.forEach((component) => {
+      if (component.kind !== 'productPhotoChoice') return;
+      const set = later.get(component.productId);
+      if (set && component.photos.some((photo) => set.has(photo.url))) settled.push(component.formId);
+    });
+    turn.components.forEach((component) => {
+      if (component.kind !== 'storeProducts') return;
+      component.products.forEach((product) => {
+        if (!product.photoUrl) return;
+        const set = later.get(product._id) ?? new Set<string>();
+        set.add(product.photoUrl);
+        later.set(product._id, set);
+      });
+    });
+  });
+  return settled;
+}
+
 // Called with each new thinking text of a turn being answered, and a way to
 // fetch that text spoken (base64 MP3, null when it cannot be).
 export type OnThinking = (text: string, spoken: () => Promise<string | null>) => void;
@@ -111,7 +139,7 @@ function answerLabel(form: ChatFormAnswer): string {
     case 'location': return 'Here is the store’s pin.';
     case 'newProducts': return `Add ${form.products.length === 1 ? 'this product' : `these ${form.products.length} products`}.`;
     case 'phoneVerified': return 'I verified my phone number.';
-    case 'photoRequest': return `Make ${form.count} product ${form.count === 1 ? 'photo' : 'photos'}.`;
+    case 'photoRequest': return 'Make 3 product photos.';
     case 'orderItems': return 'I’d like to order these.';
     case 'payment': return 'I’ll pay now.';
     case 'handover': return `Mark ${form.orderIds.length === 1 ? 'this order' : `these ${form.orderIds.length} orders`} handed over.`;
@@ -300,10 +328,11 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
   }, [send]);
 
   const sending = turns.some((turn) => turn.status === 'sending');
-  const answeredFormIds = useMemo(
-    () => new Set(turns.flatMap((turn) => (turn.answeredFormId && turn.status !== 'failed' ? [turn.answeredFormId] : []))),
-    [turns],
-  );
+  const answeredFormIds = useMemo(() => {
+    const answered = new Set(turns.flatMap((turn) => (turn.answeredFormId && turn.status !== 'failed' ? [turn.answeredFormId] : [])));
+    photoChoicesSettled(turns).forEach((formId) => answered.add(formId));
+    return answered;
+  }, [turns]);
 
   return { turns, loading, loadError, hasEarlier, loadingEarlier, sending, answeredFormIds, ask, sendMessage, upload: transport.upload, talk, answer, retry, reload, loadEarlier };
 }

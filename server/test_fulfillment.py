@@ -729,7 +729,7 @@ def test_cancelMyOrderAgainstPayOrder_aPaymentThatWins_isNotCancelled(
     order = _place(customerId, store, (pandesal, 2))
     reserved = _product(pandesal['_id'])
     _beforeTheMove(monkeypatch, lambda: api.payOrder(
-        customerId, store['_id'], order['_id'], 'card'))
+        customerId, store['_id'], order['_id'], 'card', 'demo'))
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE['paid'])):
         api.cancelMyOrder(customerId, store['_id'], order['_id'])

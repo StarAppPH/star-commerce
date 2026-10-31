@@ -6,7 +6,7 @@ import type { ChatAttachmentRow } from '@/app/schemas/ChatAttachmentRowSchema';
 export const ATTACHMENTS_MAX = 4;
 const ATTACHMENT_BYTES_MAX = 10 * 1024 * 1024;
 const PDF_TYPE = 'application/pdf';
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', PDF_TYPE];
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', PDF_TYPE];
 const HEIC_TYPES = ['image/heic', 'image/heif'];
 const HEIC_EXTENSIONS = ['.heic', '.heif'];
 // The longest file name the server keeps (CHAT_ATTACHMENT_NAME_MAX_LENGTH).
@@ -42,9 +42,9 @@ export function isAttachmentType(type: string): type is AttachmentType {
 export function attachmentProblem(file: File): string | null {
   const name = file.name.toLowerCase();
   if (HEIC_TYPES.includes(file.type) || HEIC_EXTENSIONS.some((extension) => name.endsWith(extension))) {
-    return `${file.name} is a HEIC photo. Convert it to JPG or PNG before uploading.`;
+    return `${file.name} is a HEIC photo. Convert it to JPG, PNG or WebP before uploading.`;
   }
-  if (!isAttachmentType(file.type)) return `${file.name} is not a JPG, PNG or PDF file.`;
+  if (!isAttachmentType(file.type)) return `${file.name} is not a JPG, PNG, WebP or PDF file.`;
   if (file.size >= ATTACHMENT_BYTES_MAX) return `${file.name} is over 10 MB.`;
   return null;
 }
@@ -57,7 +57,8 @@ export function isPdf(file: File): boolean {
 // letters, digits, spaces and ._-() only, its extension matching its type
 // (a camera photo may be named image.jpeg or have none).
 function storedName(file: File): string {
-  const extension = file.type === PDF_TYPE ? '.pdf' : file.type === 'image/png' ? '.png' : '.jpg';
+  const extensions: Record<string, string> = { [PDF_TYPE]: '.pdf', 'image/png': '.png', 'image/webp': '.webp' };
+  const extension = extensions[file.type] ?? '.jpg';
   const base = file.name.normalize('NFC').replace(/\.[^.]*$/, '').replace(/[^\p{L}\p{N} ._()-]/gu, '_').trim();
   return `${(base || 'file').slice(0, NAME_MAX_LENGTH - extension.length)}${extension}`;
 }

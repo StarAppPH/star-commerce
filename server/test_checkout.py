@@ -31,27 +31,29 @@ import actions.PaymentActions as paymentActions
 import job_cancelExpiredOrders
 import mcpServer
 from actions.OrderActions import (ALREADY_IN_ORDER, ITEMS_COUNT, NOT_IN_STOCK,
-                                  ORDER_STATUSES, PAYMENT_METHODS,
-                                  PHONE_REQUIRED, PRODUCT_ID_NOT_TEXT,
-                                  QUANTITY_RANGE, STORE_ID_NOT_TEXT,
-                                  TOO_MANY_UNPAID)
-from actions.PaymentActions import (INVALID_PAYMENT_METHOD, NOT_PAYABLE,
-                                    ORDER_EXPIRED, ORDER_NOT_FOUND,
-                                    PAYMENT_FAILED)
+                                  NO_PAYMENT_METHODS, ORDER_STATUSES,
+                                  PAYMENT_METHODS, PHONE_REQUIRED,
+                                  PRODUCT_ID_NOT_TEXT, QUANTITY_RANGE,
+                                  STORE_ID_NOT_TEXT, TOO_MANY_UNPAID)
+from actions.PaymentActions import (INVALID_PAYMENT_METHOD,
+                                    INVALID_PAYMENT_PROVIDER, NOT_PAYABLE,
+                                    OPTION_NOT_OFFERED, ORDER_EXPIRED,
+                                    ORDER_NOT_FOUND, PAYMENT_FAILED)
 from ApiRequests import ApiRequests
-from conftest import (addOrder, addProduct, assertExactShape, createTestStore,
-                      guestAt, storeWithProducts,
-                      verifiedGuestAt, wipeCollections)
+from conftest import (ALL_PAYMENT_METHODS, addOrder, addProduct,
+                      assertExactShape, createTestStore, guestAt,
+                      storeWithProducts, takePayments, verifiedGuestAt,
+                      wipeCollections)
 from mongoDb import db
 from objects import (MAX_PENDING_ORDERS_PER_STORE, ORDER_ITEMS_MAX,
                      ORDER_PAYMENT_MINUTES, PAYMENT_REFERENCE_PREFIX,
                      PRODUCT_INVENTORY_MAX, CreatedOrderResponse,
-                     MyOrderRow, NewOrderItem)
+                     MyOrderRow, NewOrderItem, paymentOptions)
 from utils import generateRandomString
 
 COLLECTIONS = [
     'Users', 'Bootstrap', 'Stores', 'Customers', 'Products', 'Orders',
-    'OrderLocks'
+    'OrderLocks', 'Policies'
 ]
 ADMIN = 'ck-admin'
 OTHER_ADMIN = 'ck-other-admin'
@@ -266,7 +268,7 @@ def test_createOrder_copiesTheStoresCurrency_theVerifiedPhone_andTheWindow(
     assert stored['expiresAt'] == res['order']['expiresAt'] == T0 + WINDOW
 
 
-def test_createOrder_answersTheOrderAndEveryPaymentMethod(
+def test_createOrder_answersTheOrderAndTheStoresPaymentOptions(
         clean, firebase, clock):
     store, customerId, products = _shop(firebase)
 
@@ -274,8 +276,19 @@ def test_createOrder_answersTheOrderAndEveryPaymentMethod(
                           _items((products['Pandesal'], 1)))
 
     assertExactShape(CreatedOrderResponse, res)
-    assert res['paymentMethods'] == list(PAYMENT_METHODS)
-    assert len(PAYMENT_METHODS) == 5
+    # Every method, in the store's order; the eWallet it takes both ways is
+    # two options, the provider's first.
+    assert [(o['method'], o['provider']) for o in res['paymentOptions']] == [
+        ('cash', None), ('card', 'demo'), ('eWallet', 'demo'),
+        ('eWallet', None), ('bankTransfer', None), ('check', None),
+        ('crypto', 'demo')]
+    assert res['paymentOptions'][3]['eWallets'] == [
+        {'ewalletName': 'GCash', 'accountNumber': '09171234567'}]
+    assert res['paymentOptions'][4]['banks'] == [
+        {'bankName': 'BDO', 'accountName': 'Bakery A Inc.',
+         'accountNumber': '001234567890'}]
+    assert res['paymentOptions'][5]['checkPayees'] == ['Bakery A Inc.']
+    assert len(PAYMENT_METHODS) == 6
     assert res['order']['status'] == 'pending'
     # The cap's lock document is no part of any answer.
     assert f"{customerId}:{store['_id']}" not in json.dumps(res, default=str)
@@ -456,7 +469,7 @@ def test_checkoutRoutes_refuseAnAdmin_andAnUnknownUser(
         if route == 'createOrder':
             api.createOrder(caller, store['_id'], _items((pandesal, 1)))
         else:
-            api.payOrder(caller, store['_id'], order['_id'], 'card')
+            api.payOrder(caller, store['_id'], order['_id'], 'card', 'demo')
 
     assert _product(pandesal['_id']) == before
     assert _order(order['_id'])['status'] == 'pending'
@@ -469,9 +482,9 @@ def test_checkoutRoutes_refuseAnAdmin_andAnUnknownUser(
         c, s, [{'productId': o, 'quantity': SENTINEL}]),
     lambda api, c, s, o: api.createOrder(c, SENTINEL, [{
         'productId': o, 'quantity': 1}]),
-    lambda api, c, s, o: api.payOrder(c, s, SENTINEL, 'card'),
+    lambda api, c, s, o: api.payOrder(c, s, SENTINEL, 'card', 'demo'),
     lambda api, c, s, o: api.payOrder(c, s, o, SENTINEL),
-    lambda api, c, s, o: api.payOrder(c, SENTINEL, o, 'card'),
+    lambda api, c, s, o: api.payOrder(c, SENTINEL, o, 'card', 'demo'),
 ])
 def test_checkoutRefusals_neverQuoteWhatWasSent(clean, firebase, clock, call):
     store, customerId, products = _shop(firebase)
@@ -483,6 +496,41 @@ def test_checkoutRefusals_neverQuoteWhatWasSent(clean, firebase, clock, call):
     for sent in (SENTINEL, store['_id'], order['_id'],
                  products['Pandesal']['_id']):
         assert sent not in str(error.value)
+
+
+def test_createOrder_aStoreThatHasNotSaidHowToPay_takesNoOrder(
+        clean, firebase, clock):
+    store = createTestStore(ADMIN)
+    pandesal = addProduct(store['_id'], 'Pandesal', 5)
+    customerId = verifiedGuestAt(firebase, store, GUEST)
+
+    with pytest.raises(ValueError, match=exactly(NO_PAYMENT_METHODS)):
+        _place(customerId, store, (pandesal, 1))
+
+    assert _product(pandesal['_id']) == pandesal
+    assert db.read({}, 'Orders') == []
+
+
+def test_createOrder_offersOnlyTheStoresOwnMethods(clean, firebase, clock):
+    store = takePayments(createTestStore(ADMIN), [
+        {'method': 'bankTransfer', 'provider': None, 'eWallets': None,
+         'banks': [{'bankName': 'BPI', 'accountName': 'Bakery A Inc.',
+                    'accountNumber': '1234'}],
+         'checkPayees': None}])
+    pandesal = addProduct(store['_id'], 'Pandesal', 5)
+    customerId = verifiedGuestAt(firebase, store, GUEST)
+
+    res = api.createOrder(customerId, store['_id'], _items((pandesal, 1)))
+
+    assert res['paymentOptions'] == [
+        {'method': 'bankTransfer', 'provider': None, 'eWallets': None,
+         'banks': [{'bankName': 'BPI', 'accountName': 'Bakery A Inc.',
+                    'accountNumber': '1234'}],
+         'checkPayees': None}]
+    with pytest.raises(ValueError, match=exactly(OPTION_NOT_OFFERED)):
+        api.payOrder(customerId, store['_id'], res['order']['_id'], 'card',
+                     'demo')
+    assert _order(res['order']['_id'])['status'] == 'pending'
 
 
 # ----------------------------- the cap ----------------------------- #
@@ -505,7 +553,7 @@ def test_createOrder_refusesAFourthUnpaidOrder(clean, firebase, clock):
 
 def test_createOrder_theCapIsPerCustomerAndPerStore(clean, firebase, clock):
     store, customerId, products = _shop(firebase)
-    other = createTestStore(OTHER_ADMIN, 'Coffee B')
+    other = takePayments(createTestStore(OTHER_ADMIN, 'Coffee B'))
     latte = addProduct(other['_id'], 'Latte', 150)
     anotherCustomer = verifiedGuestAt(firebase, store, OTHER_GUEST)
     for _ in range(MAX_PENDING_ORDERS_PER_STORE):
@@ -587,7 +635,7 @@ def test_createOrder_usesTheUnitsAndTheSlotsExpiredOrdersHeld(
 def test_createOrder_standaloneAndReplicaSet_lockDocumentOnlyWithATransaction(
         clean, firebase, clock):
     store, customerId, products = _shop(firebase)
-    other = createTestStore(OTHER_ADMIN, 'Coffee B')
+    other = takePayments(createTestStore(OTHER_ADMIN, 'Coffee B'))
     latte = addProduct(other['_id'], 'Latte', 150)
     _place(customerId, store, (products['Pandesal'], 1))
     _place(customerId, store, (products['Pandesal'], 1))
@@ -607,7 +655,7 @@ def test_createOrder_standaloneAndReplicaSet_lockDocumentOnlyWithATransaction(
     'a transaction, so racing creates conflict. Never runs locally.')
 def test_createOrder_racingCreates_neverPassTheCap(clean, firebase, clock):
     store, customerId, _ = _shop(firebase)
-    other = createTestStore(OTHER_ADMIN, 'Coffee B')
+    other = takePayments(createTestStore(OTHER_ADMIN, 'Coffee B'))
     latte = addProduct(other['_id'], 'Latte', 150)
     anotherCustomer = verifiedGuestAt(firebase, store, OTHER_GUEST)
     racers = 6
@@ -658,13 +706,15 @@ def test_payOrder_marksThePendingOrderPaid_andChargesOnce(
     reserved = _product(ube['_id'])
     clock.advance(minutes=5)
 
-    res = api.payOrder(customerId, store['_id'], order['_id'], 'gcash')
+    res = api.payOrder(customerId, store['_id'], order['_id'], 'eWallet',
+                       'demo')
 
     stored = _order(order['_id'])
     assertExactShape(MyOrderRow, res)
     assert 'paymentReference' not in res
     assert res['status'] == stored['status'] == 'paid'
-    assert res['paymentMethod'] == stored['paymentMethod'] == 'gcash'
+    assert res['paymentMethod'] == stored['paymentMethod'] == 'eWallet'
+    assert res['paymentProvider'] == stored['paymentProvider'] == 'demo'
     assert res['paidAt'] == stored['paidAt'] == T0 + datetime.timedelta(
         minutes=5)
     assert stored['paymentReference'].startswith(PAYMENT_REFERENCE_PREFIX)
@@ -675,23 +725,41 @@ def test_payOrder_marksThePendingOrderPaid_andChargesOnce(
     # The charge got the order's id, the stored reference, the total, the
     # currency and the method; once.
     assert charges.calls == [(order['_id'], stored['paymentReference'], 1300,
-                              'PHP', 'gcash')]
+                              'PHP', 'eWallet')]
     # The units stay reserved until the order is completed.
     assert _product(ube['_id']) == reserved
 
 
-@pytest.mark.parametrize('method', PAYMENT_METHODS)
-def test_payOrder_everyMethodWorks(clean, firebase, clock, method):
+@pytest.mark.parametrize(
+    'option', paymentOptions(ALL_PAYMENT_METHODS),
+    ids=lambda o: f"{o['method']}-{o['provider'] or 'byHand'}")
+def test_payOrder_everyOption_paysThroughItsProvider_orAwaitsTheStore(
+        clean, firebase, clock, charges, option):
     store, customerId, products = _shop(firebase)
     order = _place(customerId, store, (products['Pandesal'], 1))
 
-    res = api.payOrder(customerId, store['_id'], order['_id'], method)
+    res = api.payOrder(customerId, store['_id'], order['_id'],
+                       option['method'], option['provider'])
 
-    assert (res['status'], res['paymentMethod']) == ('paid', method)
+    stored = _order(order['_id'])
+    assert (res['paymentMethod'], res['paymentProvider']) == (
+        option['method'], option['provider'])
+    if option['provider'] is None:
+        # Paid by hand: nothing charged, no deadline left to meet, and the
+        # units stay held until the store confirms it or it is cancelled.
+        assert res['status'] == stored['status'] == 'awaitingPayment'
+        assert (stored['paidAt'], stored['paymentReference']) == (None, None)
+        assert charges.calls == []
+        clock.advance(days=3)
+        assert orderActions.cancelExpiredOrders() == 0
+        assert _order(order['_id'])['status'] == 'awaitingPayment'
+    else:
+        assert res['status'] == stored['status'] == 'paid'
+        assert len(charges.calls) == 1
 
 
 @pytest.mark.parametrize(
-    'method', [None, '', 'cash', 'CARD', 5, ['card'], {'a': 1}, SENTINEL])
+    'method', [None, '', 'gcash', 'CARD', 5, ['card'], {'a': 1}, SENTINEL])
 def test_payOrder_refusesABadMethod_withoutQuotingIt(
         clean, firebase, clock, charges, method):
     store, customerId, products = _shop(firebase)
@@ -708,6 +776,38 @@ def test_payOrder_refusesABadMethod_withoutQuotingIt(
 def test_payOrder_pinsTheMethodsItNames():
     assert INVALID_PAYMENT_METHOD == 'Pick one of ' + ', '.join(
         PAYMENT_METHODS)
+
+
+@pytest.mark.parametrize('provider', ['', 'paymongo', 5, ['demo'], SENTINEL])
+def test_payOrder_refusesABadProvider_withoutQuotingIt(
+        clean, firebase, clock, charges, provider):
+    store, customerId, products = _shop(firebase)
+    order = _place(customerId, store, (products['Pandesal'], 1))
+    before = _order(order['_id'])
+
+    with pytest.raises(ValueError, match=exactly(INVALID_PAYMENT_PROVIDER)):
+        api.payOrder(customerId, store['_id'], order['_id'], 'card',
+                     provider)
+
+    assert _order(order['_id']) == before
+    assert charges.calls == []
+
+
+@pytest.mark.parametrize('method, provider', [
+    ('cash', 'demo'), ('card', None), ('bankTransfer', 'demo'),
+    ('crypto', None)])
+def test_payOrder_refusesAnOptionTheStoreDoesNotOffer(
+        clean, firebase, clock, charges, method, provider):
+    store, customerId, products = _shop(firebase)
+    order = _place(customerId, store, (products['Pandesal'], 1))
+    before = _order(order['_id'])
+
+    with pytest.raises(ValueError, match=exactly(OPTION_NOT_OFFERED)):
+        api.payOrder(customerId, store['_id'], order['_id'], method,
+                     provider)
+
+    assert _order(order['_id']) == before
+    assert charges.calls == []
 
 
 @pytest.mark.parametrize(
@@ -730,7 +830,7 @@ def test_payOrder_anOrderThatIsNotTheCallers_isNotFound(
     before = _order(order['_id'])
 
     with pytest.raises(ValueError, match=exactly(ORDER_NOT_FOUND)):
-        api.payOrder(caller, storeId, orderId, 'card')
+        api.payOrder(caller, storeId, orderId, 'card', 'demo')
 
     assert _order(order['_id']) == before
     assert charges.calls == []
@@ -755,7 +855,7 @@ def test_payOrder_refusesAnOrderThatIsNotPending(
     before = _order(orderId)
 
     with pytest.raises(ValueError, match=exactly(NOT_PAYABLE[status])):
-        api.payOrder(customerId, store['_id'], orderId, 'card')
+        api.payOrder(customerId, store['_id'], orderId, 'card', 'demo')
 
     assert _order(orderId) == before
     assert charges.calls == []
@@ -769,7 +869,7 @@ def test_payOrder_aCancelledExpiredOrder_saysItExpired(
                          cancelReason='expired', cancelledAt=T0)
 
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.payOrder(customerId, store['_id'], orderId, 'card')
+        api.payOrder(customerId, store['_id'], orderId, 'card', 'demo')
 
     assert charges.calls == []
 
@@ -778,12 +878,13 @@ def test_payOrder_payingTwice_refusesTheSecond_andKeepsTheFirst(
         clean, firebase, clock, charges):
     store, customerId, products = _shop(firebase)
     order = _place(customerId, store, (products['Pandesal'], 1))
-    api.payOrder(customerId, store['_id'], order['_id'], 'card')
+    api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
     paid = _order(order['_id'])
     clock.advance(minutes=1)
 
     with pytest.raises(ValueError, match=exactly(NOT_PAYABLE['paid'])):
-        api.payOrder(customerId, store['_id'], order['_id'], 'maya')
+        api.payOrder(customerId, store['_id'], order['_id'], 'eWallet',
+                     'demo')
 
     assert _order(order['_id']) == paid
     assert len(charges.calls) == 1
@@ -802,7 +903,7 @@ def test_payOrder_aFailedCharge_putsTheOrderBackToPending(
     clock.advance(minutes=1)
 
     with pytest.raises(ValueError) as error:
-        api.payOrder(customerId, store['_id'], order['_id'], 'card')
+        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     assert str(error.value) == PAYMENT_FAILED
     assert 'gateway-secret-detail' not in str(error.value)
@@ -825,16 +926,17 @@ def test_payOrder_aFailedCharge_canBeRetried_orExpires_once(
     order = _place(customerId, store, (ube, 2))
     charges.error = RuntimeError('boom')
     with pytest.raises(ValueError, match=exactly(PAYMENT_FAILED)):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card')
+        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     charges.error = None
-    paid = api.payOrder(customerId, store['_id'], order['_id'], 'card')
+    paid = api.payOrder(customerId, store['_id'], order['_id'], 'card',
+                        'demo')
     assert paid['status'] == 'paid'
 
     second = _place(customerId, store, (ube, 1))
     charges.error = RuntimeError('boom')
     with pytest.raises(ValueError, match=exactly(PAYMENT_FAILED)):
-        api.payOrder(customerId, store['_id'], second['_id'], 'card')
+        api.payOrder(customerId, store['_id'], second['_id'], 'card', 'demo')
     # The reverted order keeps its original deadline: one sweep after it
     # cancels it exactly once, and the paid one stays.
     clock.advance(minutes=ORDER_PAYMENT_MINUTES)
@@ -873,7 +975,7 @@ def test_payOrder_aFailedCharge_andAFailedRevert_leavesTheOrderPaid(
     monkeypatch.setattr(paymentActions, 'db', FlakyDb())
 
     with pytest.raises(RuntimeError, match='revert-boom'):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card')
+        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     stored = _order(order['_id'])
     assert stored['status'] == 'paid'
@@ -889,7 +991,7 @@ def test_payOrder_untilTheLastSecond_pays(clean, firebase, clock, charges):
     order = _place(customerId, store, (products['Pandesal'], 1))
     clock.advance(minutes=29, seconds=59)
 
-    res = api.payOrder(customerId, store['_id'], order['_id'], 'card')
+    res = api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     assert res['status'] == 'paid'
 
@@ -900,7 +1002,7 @@ def test_payOrder_anOrderExpiringInOneMillisecond_stillPays(
     orderId = _heldOrder(store, customerId, [(products['Pandesal'], 1)],
                          T0 - WINDOW + MS)
 
-    res = api.payOrder(customerId, store['_id'], orderId, 'card')
+    res = api.payOrder(customerId, store['_id'], orderId, 'card', 'demo')
 
     assert res['status'] == 'paid'
 
@@ -913,7 +1015,7 @@ def test_payOrder_atTheDeadline_refusesExpired_cancels_andReleasesTheUnits(
     clock.advance(minutes=ORDER_PAYMENT_MINUTES)
 
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card')
+        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     stored = _order(order['_id'])
     assert stored['status'] == 'cancelled'
@@ -1085,7 +1187,7 @@ def test_payOrder_anotherPaymentWinsTheClaim_isNotChargedAndNotOverwritten(
     _betweenCheckAndClaim(monkeypatch, otherPays)
 
     with pytest.raises(ValueError, match=exactly(NOT_PAYABLE['paid'])):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card')
+        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     stored = _order(order['_id'])
     assert (stored['paymentMethod'], stored['paymentReference'],
@@ -1107,7 +1209,7 @@ def test_payOrder_anExpiryWinsTheClaim_isNotChargedAndReleasedOnce(
         lambda: orderActions._cancelExpiredOrder(order['_id'], later))
 
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card')
+        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     stored = _order(order['_id'])
     assert (stored['status'], stored['cancelReason'],
@@ -1156,7 +1258,7 @@ def test_expiry_payOrderThenTheSweep_releasesOnce(
     order = _place(customerId, store, (pandesal, 4))
     clock.advance(minutes=ORDER_PAYMENT_MINUTES)
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card')
+        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
     released = _product(pandesal['_id'])
 
     assert orderActions.cancelExpiredOrders() == 0
@@ -1175,7 +1277,7 @@ def test_expiry_theSweepThenPayOrder_releasesOnce(
     released = _product(pandesal['_id'])
 
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card')
+        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     assert _product(pandesal['_id']) == released
     assert released['inventory'] == 10

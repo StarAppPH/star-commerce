@@ -6,6 +6,16 @@
  */
 
 /**
+ * The photos made, in order: the first in the global prompt, the others in the store's photo style too
+ *
+ * @maxItems 3
+ */
+export type Photos =
+  | []
+  | [GeneratedPhotoRow]
+  | [GeneratedPhotoRow, GeneratedPhotoRow]
+  | [GeneratedPhotoRow, GeneratedPhotoRow, GeneratedPhotoRow];
+/**
  * GeneratedPhotos _id
  */
 export type Id = string;
@@ -14,23 +24,24 @@ export type Id = string;
  */
 export type Url = string;
 /**
- * The photos made, in order
+ * The prompt the model was given for it; null on a card saved before each photo carried its own
  */
-export type Photos = GeneratedPhotoRow[];
+export type Prompt = string | null;
 /**
- * The prompt the model was given
+ * Why fewer photos than asked were made (no photo style, a model call failed); null when all were
  */
-export type Prompt = string;
+export type Notgenerated = string | null;
 
 /**
- * What generateProductPhotos sends: the photos it saved and the prompt
- * they were made with.
+ * What generateProductPhotos sends: the photos it saved, each with
+ * the prompt it was made with.
  */
 export interface GeneratedPhotosResponse {
   photos: Photos;
-  prompt: Prompt;
+  notGenerated: Notgenerated;
 }
 export interface GeneratedPhotoRow {
   _id: Id;
   url: Url;
+  prompt?: Prompt;
 }

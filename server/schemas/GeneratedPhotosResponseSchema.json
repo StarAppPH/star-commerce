@@ -12,6 +12,19 @@
                     "minLength": 1,
                     "title": "Url",
                     "type": "string"
+                },
+                "prompt": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The prompt the model was given for it; null on a card saved before each photo carried its own",
+                    "title": "Prompt"
                 }
             },
             "required": [
@@ -23,26 +36,33 @@
             "additionalProperties": false
         }
     },
-    "description": "What generateProductPhotos sends: the photos it saved and the prompt\nthey were made with.",
+    "description": "What generateProductPhotos sends: the photos it saved, each with\nthe prompt it was made with.",
     "properties": {
         "photos": {
-            "description": "The photos made, in order",
+            "description": "The photos made, in order: the first in the global prompt, the others in the store's photo style too",
             "items": {
                 "$ref": "#/$defs/GeneratedPhotoRow"
             },
+            "maxItems": 3,
             "title": "Photos",
             "type": "array"
         },
-        "prompt": {
-            "description": "The prompt the model was given",
-            "minLength": 1,
-            "title": "Prompt",
-            "type": "string"
+        "notGenerated": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Why fewer photos than asked were made (no photo style, a model call failed); null when all were",
+            "title": "Notgenerated"
         }
     },
     "required": [
         "photos",
-        "prompt"
+        "notGenerated"
     ],
     "title": "GeneratedPhotosResponse",
     "type": "object",

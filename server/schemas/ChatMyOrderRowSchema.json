@@ -145,6 +145,7 @@
             "description": "Where the order is",
             "enum": [
                 "pending",
+                "awaitingPayment",
                 "paid",
                 "completed",
                 "cancelled"
@@ -206,11 +207,15 @@
             "anyOf": [
                 {
                     "enum": [
+                        "cash",
                         "card",
+                        "eWallet",
+                        "bankTransfer",
+                        "check",
+                        "crypto",
                         "gcash",
                         "maya",
-                        "grabPay",
-                        "bankTransfer"
+                        "grabPay"
                     ],
                     "type": "string"
                 },
@@ -218,7 +223,7 @@
                     "type": "null"
                 }
             ],
-            "description": "How it was paid",
+            "description": "How it is or was paid",
             "title": "Paymentmethod"
         },
         "paidAt": {
@@ -276,6 +281,20 @@
             ],
             "description": "When its payment was refunded",
             "title": "Refundedat"
+        },
+        "paymentReceiptAt": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "When the shopper sent the photo of its receipt",
+            "title": "Paymentreceiptat"
         }
     },
     "required": [

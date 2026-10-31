@@ -459,6 +459,25 @@ def test_aRetiredComponentKind_isLeftOutOfTheTurnsPage(wiped, model):
     assert fake.requests == []
 
 
+def test_aPhotoFormSavedWithACount_loadsWithoutIt(wiped, model):
+    """A photo form saved when it asked how many photos to make (every
+    call makes 3 now) shows without that count."""
+    createTestStore(ADMIN)
+    model(calls(('c1', 'getMyStorePolicy', '{}')), reply('Your policy.'))
+    res = adminSays('Policy?')
+    db.db['ChatTurns'].update_one(
+        {'conversationId': res['conversationId']},
+        {'$push': {'components': {'kind': 'photoRequestForm',
+                                  'formId': 'old-photo-form', 'count': 2}}})
+
+    page = api.getConversationTurns(ADMIN, res['conversationId'])
+
+    assertExactShape(ConversationTurnsResponse, page)
+    [_, photoForm] = page['turns'][0]['components']
+    assert photoForm == {'kind': 'photoRequestForm',
+                         'formId': 'old-photo-form'}
+
+
 def test_anAdminWithNoStoreAtAll_isStillRefused(wiped, model):
     from conftest import createTestUser
     from actions.StoreActions import NO_STORE_YET
@@ -509,20 +528,25 @@ def test_theShopsProductCard_isTheRoutesResult_andOrdersThroughTheModel(
     assert checkout['kind'] == 'checkout' and checkout['formId']
     assert checkout['order']['status'] == 'pending'
     assert checkout['order']['total'] == 665
-    assert checkout['paymentMethods']
+    assert checkout['paymentOptions']
 
-    method = checkout['paymentMethods'][0]
+    online = next(option for option in checkout['paymentOptions']
+                  if option['provider'] is not None)
+    method, provider = online['method'], online['provider']
     fake = model(calls(('c3', 'payOrder', json.dumps({
-        'orderId': checkout['order']['_id'], 'paymentMethod': method}))),
+        'orderId': checkout['order']['_id'], 'paymentMethod': method,
+        'paymentProvider': provider}))),
         reply('Paid, thank you!'))
     third = customerSays(customerId, store['_id'], None,
                          first['conversationId'],
                          {'kind': 'payment', 'formId': checkout['formId'],
-                          'paymentMethod': method})
+                          'paymentMethod': method,
+                          'paymentProvider': provider})
     details = formAnswerDetails(fake.requests[0]['messages'][-1]['content'])
     assert details == {'kind': 'payment',
                        'orderId': checkout['order']['_id'],
-                       'paymentMethod': method}
+                       'paymentMethod': method,
+                       'paymentProvider': provider}
     [paid] = third['components']
     assert paid['kind'] == 'myOrders'
     assert paid['orders'][0]['status'] == 'paid'
@@ -693,9 +717,11 @@ def test_formTools_openTheirForms(wiped, firebase, model):
           reply('Fill these in.'))
     res = adminSays('Set up delivery and add products')
     kinds = [c['kind'] for c in res['components']]
-    # No photo style yet: the photo form refused, the others opened.
-    assert kinds == ['newProductsForm', 'locationForm']
-    productsForm, locationForm = res['components']
+    # No photo style yet: the photo form opens too (its call makes the
+    # global photo only), and asks no count.
+    assert kinds == ['newProductsForm', 'locationForm', 'photoRequestForm']
+    productsForm, locationForm, photoForm = res['components']
+    assert set(photoForm) == {'kind', 'formId'}
     assert productsForm['products'][0] == {
         'name': 'Barako', 'price': 520, 'inventory': None,
         'description': None}
@@ -735,20 +761,28 @@ def test_aPolicySectionAskedInChat_isSavedByTheModel(wiped, model):
     model(reply('GCash and card; cancel before handover. Save?'))
     adminSays('Before handover', cid)
     model(calls(('c1', 'updateMyStorePolicy', json.dumps({
-        'acceptedPaymentMethods': ['gcash', 'card'],
+        'authorizedPaymentMethods': [
+            {'method': 'eWallet', 'eWallets': [
+                {'ewalletName': 'GCash', 'accountNumber': '09171234567'}]},
+            {'method': 'card', 'provider': 'demo'}],
         'paidOrderCancellation': 'beforeHandover'}))),
         reply('Saved. Next: delivery.'))
 
     res = adminSays('Yes', cid)
 
+    saved = [
+        {'method': 'eWallet', 'provider': None, 'eWallets': [
+            {'ewalletName': 'GCash', 'accountNumber': '09171234567'}],
+         'banks': None, 'checkPayees': None},
+        {'method': 'card', 'provider': 'demo', 'eWallets': None,
+         'banks': None, 'checkPayees': None}]
     [card] = res['components']
     assert card['kind'] == 'policy'
-    assert card['acceptedPaymentMethods'] == ['gcash', 'card']
+    assert card['authorizedPaymentMethods'] == saved
     assert card['paidOrderCancellation'] == 'beforeHandover'
     # An answer of another section is kept.
     assert card['handoverDays'] == 2
-    assert api.getMyStorePolicy(ADMIN)['acceptedPaymentMethods'] == [
-        'gcash', 'card']
+    assert api.getMyStorePolicy(ADMIN)['authorizedPaymentMethods'] == saved
 
 
 def test_aStorePin_isSaved_andItsAddressSavedOnlyOnAYes(wiped, model,
@@ -881,7 +915,12 @@ def test_cards_fromEveryCardTool_fitTheirModels():
         'payOrder': order,
         'cancelMyOrder': order,
         'createOrder': {'order': {**order, 'status': 'pending'},
-                        'paymentMethods': ['gcash']},
+                        'paymentOptions': [
+                            {'method': 'cash', 'provider': None,
+                             'eWallets': None, 'banks': None,
+                             'checkPayees': None}]},
+        'addPaymentReference': order,
+        'confirmOrderPayment': order,
         'getStoreReturns': {'returns': [ret]},
         'approveReturn': ret,
         'rejectReturn': ret,
@@ -1039,6 +1078,50 @@ def test_aNewProductsAnswer_withAPhotoNotTheirs_isRefused(wiped, photoBucket,
                  'imageUrl': theirs}]})
     assert theirs not in str(error.value)
     assert fake.requests == []
+
+
+def test_aNewProductsForm_prefillsOnlyTheOwnersOwnPhotos(wiped, photoBucket,
+                                                        model):
+    createTestStore(ADMIN)
+    mug = f'users/{ADMIN}/chat/a/mug.jpg'
+    sheet = uploadUrl(ADMIN, 'price-list.png')
+    model(calls(('c1', 'showNewProductsForm', json.dumps({'products': [
+                    {'name': 'Mug', 'imageUrl': photoStorage.publicPathUrl(mug)},
+                    {'name': 'Plate', 'imageUrl': uploadUrl('someone-else')},
+                    {'name': 'Bowl', 'imageUrl': uploadUrl(ADMIN, 'list.pdf')},
+                    {'name': 'Cup', 'imageUrl': 'https://example.com/cup.jpg'},
+                    {'name': 'Tray', 'imageUrl': sheet},
+                    {'name': 'Box', 'imageUrl': sheet},
+                    {'name': 'Lid'}]}))),
+          reply('I filled in what your files show.'))
+    [form] = adminSays('Add these')['components']
+    # Only an image the owner uploaded, on one row: a photo on several rows
+    # shows them all (a list, a screenshot).
+    assert form['photos'] == [mug, None, None, None, None, None, None]
+    assert [p['name'] for p in form['products']] == [
+        'Mug', 'Plate', 'Bowl', 'Cup', 'Tray', 'Box', 'Lid']
+    tool = chatForms.FORM_TOOLS['showNewProductsForm']
+    assert 'files they attached' in tool.description
+    assert 'never a list or a screenshot' in tool.description
+
+
+def test_aNewProductsAnswer_takesAPrefilledPhoto(wiped, photoBucket, model):
+    createTestStore(ADMIN)
+    url = uploadUrl(ADMIN, 'mug.png')
+    model(calls(('c1', 'showNewProductsForm', json.dumps(
+              {'products': [{'name': 'Mug', 'imageUrl': url}]}))),
+          reply('Check the photo.'))
+    res = adminSays('Add this mug')
+    [form] = res['components']
+    assert form['photos'] == [f'users/{ADMIN}/chat-photos/mug.png']
+    fake = model(reply('Adding it.'))
+
+    adminSays(None, res['conversationId'], {
+        'kind': 'newProducts', 'formId': form['formId'], 'products': [
+            {'name': 'Mug', 'price': 250, 'inventory': 3, 'imageUrl': url}]})
+
+    products = formAnswerDetails(lastUserContent(fake))['products']
+    assert products[0]['imageUrl'] == url
 
 
 CHOICES = {'productId': 'p-mug', 'productName': 'Mug', 'photos': [

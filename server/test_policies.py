@@ -40,6 +40,10 @@ GUEST = 'po-guest-uid'
 SIGNUP_UID = 'po-signup-uid'
 UNSET_STORE_OWNER = 'po-unset-owner'
 NONE_ANSWERS = dict.fromkeys(POLICY_ANSWER_FIELDS)
+# Payment methods as authorizedPaymentMethods stores and sends them.
+CASH = {'method': 'cash', 'provider': None, 'eWallets': None, 'banks': None,
+        'checkPayees': None}
+CARD = {**CASH, 'method': 'card', 'provider': 'demo'}
 
 api = ApiRequests()
 
@@ -395,12 +399,15 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
                                      deliveryAreas='',
                                      acceptsReturns=False,
                                      paidOrderCancellation='beforeHandover',
-                                     acceptedPaymentMethods=['gcash', 'card'])
+                                     authorizedPaymentMethods=[
+                                         {'method': 'cash'},
+                                         {'method': 'card',
+                                          'provider': 'demo'}])
     after = _policyDoc(storeId)
     want = {
         **want, 'acceptsReturns': False,
         'paidOrderCancellation': 'beforeHandover',
-        'acceptedPaymentMethods': ['gcash', 'card']
+        'authorizedPaymentMethods': [CASH, CARD]
     }
     assert _answers(after) == want
     assert {f: second[f] for f in POLICY_ANSWER_FIELDS} == want
@@ -473,7 +480,7 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
                      deliveryOptions=['pickup', 'delivery'],
                      deliveryAreas='Quezon City',
                      handoverDays=2,
-                     acceptedPaymentMethods=['gcash'],
+                     authorizedPaymentMethods=[CASH],
                      paidOrderCancellation='beforeHandover',
                      additionalTerms='terms')
     api.updateMyStorePolicy(ADMIN, **full)
@@ -567,8 +574,8 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
     before = _policyDoc(storeId)
     for kwargs, field in (({'deliveryOptions': ['pickup', 'pickup']},
                            'deliveryOptions'),
-                          ({'acceptedPaymentMethods': ['gcash', 'gcash']},
-                           'acceptedPaymentMethods')):
+                          ({'authorizedPaymentMethods': [CASH, CASH]},
+                           'authorizedPaymentMethods')):
         assert f'{field} lists an option twice' in _refusal(
             api.updateMyStorePolicy, ADMIN, **kwargs)
     _unchanged(storeId, before)
@@ -645,9 +652,10 @@ def test_updateMyStorePolicy_refusesBadValues_withoutQuotingThem(clean):
         ('deliveryOptions', []),
         ('deliveryOptions', 'pickup'),
         ('deliveryOptions', ['pickup', sentinel]),
-        ('acceptedPaymentMethods', []),
-        ('acceptedPaymentMethods', ['card', sentinel]),
-        ('acceptedPaymentMethods', {'card': 1}),
+        ('authorizedPaymentMethods', []),
+        ('authorizedPaymentMethods', sentinel),
+        ('authorizedPaymentMethods', {'card': 1}),
+        ('authorizedPaymentMethods', [CASH] * 7),
         ('returnConditions', 'a' * (POLICY_TEXT_MAX_LENGTH + 1)),
         ('nonReturnableItems', sentinel + 'b' * POLICY_TEXT_MAX_LENGTH),
         ('deliveryAreas', sentinel + 'c' * POLICY_TEXT_MAX_LENGTH),
@@ -820,7 +828,7 @@ def test_readingPolicies_asAdminAndCustomer(clean, firebase):
                             acceptsReturns=True,
                             returnWindowDays=7,
                             deliveryOptions=['pickup'],
-                            acceptedPaymentMethods=['gcash'])
+                            authorizedPaymentMethods=[CASH])
     api.updateMyStorePolicy(OTHER_ADMIN, acceptsReturns=False)
 
     mine = api.getMyStorePolicy(ADMIN)
@@ -834,7 +842,7 @@ def test_readingPolicies_asAdminAndCustomer(clean, firebase):
     assert _answers(mine) == _expected(acceptsReturns=True,
                                        returnWindowDays=7,
                                        deliveryOptions=['pickup'],
-                                       acceptedPaymentMethods=['gcash'])
+                                       authorizedPaymentMethods=[CASH])
     # The other store's admin has their own policy, untouched by ours.
     assert api.getMyStorePolicy(OTHER_ADMIN)['acceptsReturns'] is False
     assert _answers(_policyDoc(other['_id'])) == _expected(
@@ -1134,3 +1142,119 @@ def test_signUp_partialFailure_withoutRollback_isMadeUpByCreateUserStore(
     assert db.read({}, 'Policies', countOnly=True) == 1
     assert _answers(_policyDoc(created['_id'])) == NONE_ANSWERS
     assert _answers(api.getMyStorePolicy(TOKEN_UID)) == NONE_ANSWERS
+
+
+# --------------------------- payment methods --------------------------- #
+
+
+def test_authorizedPaymentMethods_keepsEachMethodsDetails_stripped(clean):
+    store = _setUpStore()
+
+    saved = api.updateMyStorePolicy(ADMIN, authorizedPaymentMethods=[
+        {'method': 'eWallet', 'provider': 'demo', 'eWallets': [
+            {'ewalletName': ' GCash ', 'accountNumber': ' 09171234567 '},
+            {'ewalletName': 'Maya', 'accountNumber': '09181234567'}]},
+        {'method': 'bankTransfer', 'banks': [
+            {'bankName': 'BDO', 'accountName': 'Bakery A Inc.',
+             'accountNumber': '001234567890'}]},
+        {'method': 'check', 'checkPayees': ['  Bakery A Inc. ']},
+        {'method': 'crypto', 'provider': 'demo'}])
+
+    want = [
+        {**CASH, 'method': 'eWallet', 'provider': 'demo', 'eWallets': [
+            {'ewalletName': 'GCash', 'accountNumber': '09171234567'},
+            {'ewalletName': 'Maya', 'accountNumber': '09181234567'}]},
+        {**CASH, 'method': 'bankTransfer', 'banks': [
+            {'bankName': 'BDO', 'accountName': 'Bakery A Inc.',
+             'accountNumber': '001234567890'}]},
+        {**CASH, 'method': 'check', 'checkPayees': ['Bakery A Inc.']},
+        {**CASH, 'method': 'crypto', 'provider': 'demo'}]
+    assert saved['authorizedPaymentMethods'] == want
+    assert _policyDoc(store['_id'])['authorizedPaymentMethods'] == want
+
+
+@pytest.mark.parametrize('methods, message', [
+    ([{'method': 'gcash'}], 'Payment method 1: method is one of cash, card, '
+     'eWallet, bankTransfer, check, crypto'),
+    ([CASH, {'method': 'card'}], 'Payment method 2: card is paid through a '
+     'payment provider: send its provider'),
+    ([{'method': 'cash', 'provider': 'demo'}], 'Payment method 1: cash is '
+     'paid by hand to the store: it takes no provider'),
+    ([{'method': 'card', 'provider': 'ZZSENTINEL'}], 'Payment method 1: '
+     'provider is one of demo, or null for a method paid by hand to the '
+     'store'),
+    ([{'method': 'eWallet'}], 'Payment method 1: eWallet needs the e-wallet '
+     'accounts customers pay to (eWallets: ewalletName and accountNumber), '
+     'a provider, or both'),
+    ([{'method': 'bankTransfer'}], 'Payment method 1: bankTransfer needs the '
+     'bank accounts customers transfer to (banks: bankName, accountName and '
+     'accountNumber)'),
+    ([{'method': 'check', 'checkPayees': []}], 'Payment method 1: '
+     'checkPayees is a list of 1 to 10'),
+    ([{'method': 'check', 'checkPayees': ['ZZSENTINEL\x00']}],
+     'Payment method 1: check payee 1 cannot contain control characters'),
+    ([{'method': 'cash', 'banks': [
+        {'bankName': 'BDO', 'accountName': 'Bakery A Inc.',
+         'accountNumber': '1'}]}],
+     'Payment method 1: cash takes no banks'),
+    ([{'method': 'bankTransfer', 'banks': [
+        {'bankName': 'BDO', 'accountName': 'Bakery A Inc.',
+         'accountNumber': 'ZZSENTINEL' * 5}]}],
+     'Payment method 1: bank 1: accountNumber is 1 to 40 characters'),
+    ([{'method': 'bankTransfer', 'banks': [
+        {'bankName': 'BDO', 'accountNumber': '1'}]}],
+     'Payment method 1: bank 1: accountName must be text'),
+    ([{'method': 'eWallet', 'eWallets': [{'ewalletName': 'GCash'}]}],
+     'Payment method 1: e-wallet 1: accountNumber must be text'),
+    (['ZZSENTINEL'], 'Payment method 1: send it as an object'),
+])
+def test_authorizedPaymentMethods_refusesAMethod_byItsPosition_withoutQuotingIt(
+        clean, methods, message):
+    store = _setUpStore()
+    before = _policyDoc(store['_id'])
+
+    refused = _refusal(api.updateMyStorePolicy, ADMIN,
+                       authorizedPaymentMethods=methods)
+
+    assert refused == message
+    assert 'ZZSENTINEL' not in refused
+    _unchanged(store['_id'], before)
+
+
+def test_aSave_dropsTheRetiredAcceptedPaymentMethods(clean):
+    store = _setUpStore()
+    api.updateMyStorePolicy(ADMIN, acceptsReturns=True, returnWindowDays=7)
+    db.db['Policies'].update_one({'storeId': store['_id']}, {
+        '$set': {'acceptedPaymentMethods': ['gcash', 'card']}})
+
+    # Read past while it is stored: the store has not said under the new
+    # answer, so its checkout takes no order until the admin answers.
+    assert api.getMyStorePolicy(ADMIN)['authorizedPaymentMethods'] is None
+    api.updateMyStorePolicy(ADMIN, authorizedPaymentMethods=[CASH])
+
+    stored = _policyDoc(store['_id'])
+    assert 'acceptedPaymentMethods' not in stored
+    assert stored['authorizedPaymentMethods'] == [CASH]
+
+
+def test_e2e_theAdminSetsThePaymentMethods_overMcp(clean):
+    store = _setUpStore()
+
+    saved = callTool(_auth(ADMIN), 'updateMyStorePolicy', {
+        'authorizedPaymentMethods': [
+            {'method': 'cash'},
+            {'method': 'bankTransfer', 'banks': [
+                {'bankName': 'BPI', 'accountName': 'Bakery A Inc.',
+                 'accountNumber': '1234'}]}],
+    }, audience='admin')
+
+    assert not saved.is_error, _text(saved)
+    assert _policyDoc(store['_id'])['authorizedPaymentMethods'] == [
+        CASH, {**CASH, 'method': 'bankTransfer', 'banks': [
+            {'bankName': 'BPI', 'accountName': 'Bakery A Inc.',
+             'accountNumber': '1234'}]}]
+    refused = callTool(_auth(ADMIN), 'updateMyStorePolicy', {
+        'authorizedPaymentMethods': [{'method': 'ZZSENTINEL'}]},
+        audience='admin')
+    assert refused.is_error
+    assert 'ZZSENTINEL' not in _text(refused)
