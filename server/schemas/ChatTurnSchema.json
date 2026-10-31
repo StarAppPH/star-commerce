@@ -3474,6 +3474,34 @@
                         }
                     ],
                     "description": "Map location; null until pinned"
+                },
+                "primaryColor": {
+                    "anyOf": [
+                        {
+                            "pattern": "^#[0-9A-Fa-f]{6}$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Main brand color; null while unset",
+                    "title": "Primarycolor"
+                },
+                "secondaryColor": {
+                    "anyOf": [
+                        {
+                            "pattern": "^#[0-9A-Fa-f]{6}$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Second brand color; null while unset",
+                    "title": "Secondarycolor"
                 }
             },
             "required": [
@@ -3654,6 +3682,64 @@
             "title": "StoreReturnsCard",
             "type": "object",
             "additionalProperties": false
+        },
+        "StoreThemeCard": {
+            "description": "The store's look updateMyStoreTheme saved: its brand colors, which\nthe admin's screens are drawn in, and its photo style.",
+            "properties": {
+                "kind": {
+                    "const": "storeTheme",
+                    "description": "The card",
+                    "title": "Kind",
+                    "type": "string"
+                },
+                "primaryColor": {
+                    "anyOf": [
+                        {
+                            "pattern": "^#[0-9A-Fa-f]{6}$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Main brand color; null while unset",
+                    "title": "Primarycolor"
+                },
+                "secondaryColor": {
+                    "anyOf": [
+                        {
+                            "pattern": "^#[0-9A-Fa-f]{6}$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Second brand color; null while unset",
+                    "title": "Secondarycolor"
+                },
+                "photoStyle": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The look of the store's product photos; null while unset",
+                    "title": "Photostyle"
+                }
+            },
+            "required": [
+                "kind",
+                "primaryColor",
+                "secondaryColor",
+                "photoStyle"
+            ],
+            "title": "StoreThemeCard",
+            "type": "object",
+            "additionalProperties": false
         }
     },
     "description": "A ChatTurns document: one user message and the reply to it, with the\ntool steps in between. Replayed whole as the history of the next turns,\nso every tool_calls message is followed by its tool messages, as Meta\nrequires. Saved only once the turn succeeded. (conversationId, seq) is\nunique (mongoDb.ensureIndexes).",
@@ -3763,7 +3849,8 @@
                         "store": "#/$defs/StoreCard",
                         "storeOrders": "#/$defs/StoreOrdersCard",
                         "storeProducts": "#/$defs/StoreProductsCard",
-                        "storeReturns": "#/$defs/StoreReturnsCard"
+                        "storeReturns": "#/$defs/StoreReturnsCard",
+                        "storeTheme": "#/$defs/StoreThemeCard"
                     },
                     "propertyName": "kind"
                 },
@@ -3803,6 +3890,9 @@
                     },
                     {
                         "$ref": "#/$defs/StoreCard"
+                    },
+                    {
+                        "$ref": "#/$defs/StoreThemeCard"
                     },
                     {
                         "$ref": "#/$defs/LocationForm"

@@ -36,7 +36,8 @@ StoreCurrency = Literal['PHP', 'USD', 'EUR', 'GBP', 'JPY', 'SGD', 'AUD',
                         'VND', 'INR', 'AED']
 DEFAULT_STORE_CURRENCY = 'PHP'
 # The store's look for its product photos (imageModel): a style the admin
-# writes, and two brand colors as #RRGGBB, stored uppercase.
+# writes, and its brand colors as #RRGGBB, stored uppercase: a main one
+# and an optional second.
 PHOTO_STYLE_MAX_LENGTH = 300
 HEX_COLOR_PATTERN = r'^#[0-9A-Fa-f]{6}$'
 HEX_COLOR_EXAMPLE = '#1A73E8'

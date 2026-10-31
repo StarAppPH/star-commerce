@@ -1,0 +1,58 @@
+{
+    "description": "The store's look updateMyStoreTheme saved: its brand colors, which\nthe admin's screens are drawn in, and its photo style.",
+    "properties": {
+        "kind": {
+            "const": "storeTheme",
+            "description": "The card",
+            "title": "Kind",
+            "type": "string"
+        },
+        "primaryColor": {
+            "anyOf": [
+                {
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Main brand color; null while unset",
+            "title": "Primarycolor"
+        },
+        "secondaryColor": {
+            "anyOf": [
+                {
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Second brand color; null while unset",
+            "title": "Secondarycolor"
+        },
+        "photoStyle": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The look of the store's product photos; null while unset",
+            "title": "Photostyle"
+        }
+    },
+    "required": [
+        "kind",
+        "primaryColor",
+        "secondaryColor",
+        "photoStyle"
+    ],
+    "title": "StoreThemeCard",
+    "type": "object",
+    "additionalProperties": false
+}

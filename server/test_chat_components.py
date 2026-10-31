@@ -23,7 +23,7 @@ import mcpServer
 from actions import ChatActions
 from ApiRequests import ApiRequests
 import photoStorage
-from conftest import (TEST_GEOCODED_ADDRESS, TOKEN, addOrder, assertExactShape, createTestStore,
+from conftest import (BRAND_COLORS, TEST_GEOCODED_ADDRESS, TOKEN, addOrder, assertExactShape, createTestStore,
                       firebaseClaims, guestAt, storeWithProducts,
                       verifiedGuestAt, wipeCollections)
 from mongoDb import db
@@ -296,6 +296,12 @@ def test_theSetupPrompt_asksNoAddress_andOpensTheMapAfterCreating():
     admin = chatModel.CHAT_PROMPTS['admin']
     assert (admin.index('setUserStoreLocation')
             < admin.index('suggestStoreAddress'))
+
+
+def test_theSetupPrompt_letsTheOwnerSkipTheSecondColor():
+    setup = chatModel.CHAT_PROMPTS['adminSetup']
+    assert 'the second is optional' in setup and 'never insist' in setup
+    assert 'two brand colors' not in setup
 
 
 @pytest.mark.parametrize('toolset, name, content, setsUp', [
@@ -830,6 +836,46 @@ def test_aStorePin_isSaved_andItsAddressSavedOnlyOnAYes(wiped, model,
         TEST_GEOCODED_ADDRESS)
 
 
+
+def test_aStoreCard_showsTheBrandColors(wiped, model):
+    """getUserStore sends the store's brand colors; the other store tools
+    send none, so their store cards read the store's."""
+    createTestStore(ADMIN)
+    model(calls(('c1', 'getUserStore', '{}'),
+                ('c2', 'updateMyStoreDetails',
+                 json.dumps({'openingHours': 'Daily 8AM - 5PM'}))),
+          reply('Your store is open daily from 8 to 5.'))
+
+    res = adminSays('Open daily 8 to 5')
+
+    read, changed = res['components']
+    assert read['kind'] == changed['kind'] == 'store'
+    assert changed['openingHours'] == 'Daily 8AM - 5PM'
+    for card in (read, changed):
+        assert {key: card[key] for key in BRAND_COLORS} == BRAND_COLORS
+
+
+def test_aSavedTheme_showsTheColorsSaved(wiped, model):
+    """updateMyStoreTheme's card is the store's look as saved, and a store
+    card later in the turn has the new colors too."""
+    createTestStore(ADMIN)
+    model(calls(('c1', 'updateMyStoreTheme', json.dumps(
+              {'primaryColor': '#7ead66', 'secondaryColor': '#FFFFFF'})),
+                ('c2', 'updateMyStoreDetails',
+                 json.dumps({'openingHours': 'Daily 8AM - 5PM'}))),
+          reply('Your colors are saved.'))
+
+    res = adminSays('Use green and white')
+
+    theme, store = res['components']
+    assert theme == {'kind': 'storeTheme', 'primaryColor': '#7EAD66',
+                     'secondaryColor': '#FFFFFF', 'photoStyle': None}
+    assert store['kind'] == 'store'
+    assert (store['primaryColor'], store['secondaryColor']) == (
+        '#7EAD66', '#FFFFFF')
+    [saved] = turns(res['conversationId'])
+    assert saved['components'] == res['components']
+
 def test_aReturnAskedInChat_isRequestedByTheModel(wiped, firebase, model):
     """The customer names the items, the reason and a note in chat; the
     model confirms, then calls requestReturn with the order's item
@@ -942,6 +988,7 @@ def test_cards_fromEveryCardTool_fitTheirModels():
         'createUserStore': store,
         'setUserStoreLocation': store,
         'updateMyStoreDetails': store,
+        'updateMyStoreTheme': {'photoStyle': None, **BRAND_COLORS},
     }
     assert set(results) == set(chatCards.CARDS)
     for name, result in results.items():

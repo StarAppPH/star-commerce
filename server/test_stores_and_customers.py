@@ -225,8 +225,6 @@ def test_createUserStore_storesAndReturnsEveryDetail(clean):
      '#1A73E8$'),
     ('primaryColor', '  ', '^primaryColor is required: a hex color like '
      '#1A73E8$'),
-    ('secondaryColor', '', '^secondaryColor is required: a hex color like '
-     '#1A73E8$'),
     ('primaryColor', '#SECRET', '^primaryColor must be a hex color like '
      '#1A73E8$'),
     ('secondaryColor', 'red', '^secondaryColor must be a hex color like '
@@ -254,6 +252,27 @@ def test_createUserStore_storesTheBrandColorsUppercase(clean):
     mine = api.getUserStore(ADMIN)['store']
     assert (mine['primaryColor'], mine['secondaryColor']) == (
         '#1A73E8', '#FBBC04')
+
+
+@pytest.mark.parametrize('secondary', [{}, {'secondaryColor': None},
+                                       {'secondaryColor': ''},
+                                       {'secondaryColor': '  '}])
+def test_createUserStore_takesASecondaryColorOnlyWhenGiven(clean, secondary):
+    """The second brand color is optional: left out, null or empty, the
+    store has none, and getUserStore leaves it out."""
+    createTestUser(ADMIN)
+    details = {key: value for key, value in STORE_DETAILS.items()
+               if key != 'secondaryColor'}
+
+    created = api.createUserStore(ADMIN, 'Bakery A', **details, **secondary)
+
+    assertExactShape(StoreResponse, created)
+    [stored] = db.read({}, 'Stores')
+    StoreView.model_validate(stored)
+    assert (stored['primaryColor'], stored['secondaryColor']) == (
+        BRAND_COLORS['primaryColor'], None)
+    assert api.getUserStore(ADMIN) == {'store': {
+        **created, 'primaryColor': BRAND_COLORS['primaryColor']}}
 
 
 @pytest.mark.parametrize('field, label', [

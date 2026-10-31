@@ -2,7 +2,7 @@
 import { CheckoutCard } from './CheckoutCard';
 import { MyOrdersCard, StoreOrdersCard } from './OrderCards';
 import { MyReturnsCard, StoreReturnsCard } from './ReturnCards';
-import { PhotosCard, PolicyCard, StoreCard, StoreProductsCard } from './InfoCards';
+import { PhotosCard, PolicyCard, StoreCard, StoreProductsCard, StoreThemeCard } from './InfoCards';
 import { DeliveryPinForm, LocationForm } from './LocationForm';
 import { DeliveryZonesForm } from './DeliveryZonesForm';
 import { NewProductsForm } from './NewProductsForm';
@@ -61,6 +61,7 @@ export function ChatComponents({ components, place, answeredFormIds, busy, onAns
           case 'productPhotoChoice': return <ProductPhotoChoiceCard key={key} component={component} {...shared} />;
           case 'photoColors': return <PhotoColorsCard key={key} component={component} {...shared} />;
           case 'store': return <StoreCard key={key} component={component} {...shared} />;
+          case 'storeTheme': return <StoreThemeCard key={key} component={component} {...shared} />;
           case 'locationForm': return <LocationForm key={key} component={component} {...shared} />;
           case 'newProductsForm': return <NewProductsForm key={key} component={component} {...shared} />;
           case 'phoneVerificationForm': return <PhoneVerificationForm key={key} component={component} {...shared} />;

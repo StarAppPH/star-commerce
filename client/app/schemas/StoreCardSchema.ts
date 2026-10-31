@@ -62,6 +62,14 @@ export type Latitude = number;
  * Degrees east (negative: west)
  */
 export type Longitude = number;
+/**
+ * Main brand color; null while unset
+ */
+export type Primarycolor = string | null;
+/**
+ * Second brand color; null while unset
+ */
+export type Secondarycolor = string | null;
 
 /**
  * The admin's store a tool read, created or pinned.
@@ -79,6 +87,8 @@ export interface StoreCard {
    * Map location; null until pinned
    */
   location: StoreLocationResponse | null;
+  primaryColor?: Primarycolor;
+  secondaryColor?: Secondarycolor;
 }
 /**
  * A store's map location as a route sends it. Each field restates

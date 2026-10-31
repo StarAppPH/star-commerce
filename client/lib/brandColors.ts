@@ -20,10 +20,11 @@ export function readableOn(hex: string): string {
   return contrast(background, 1) >= contrast(background, luminance('#171717')) ? '#FFFFFF' : '#171717';
 }
 
-// The shop drawn in its store's main brand color (ShopStoreResponse's
-// primaryColor): buttons, the map pin and the store's mark take it, with a
-// readable text color on them. Set on the root element, so dialogs and
-// sheets (rendered outside the shop) take it too; none keeps the app's own.
+// The shop, and the admin's chat, drawn in the store's main brand color
+// (primaryColor): buttons, the user's messages, the map pin and the store's
+// mark take it, with a readable text color on them. Set on the root
+// element, so dialogs and sheets (rendered outside the shop) take it too;
+// none keeps the app's own.
 export function useBrandColor(primaryColor: string | null): void {
   useEffect(() => {
     if (!primaryColor) return;

@@ -141,6 +141,34 @@
                 }
             ],
             "description": "Map location; null until pinned"
+        },
+        "primaryColor": {
+            "anyOf": [
+                {
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Main brand color; null while unset",
+            "title": "Primarycolor"
+        },
+        "secondaryColor": {
+            "anyOf": [
+                {
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Second brand color; null while unset",
+            "title": "Secondarycolor"
         }
     },
     "required": [
