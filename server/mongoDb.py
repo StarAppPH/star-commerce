@@ -205,6 +205,11 @@ class mongoDb():
         # The spoken thinking texts, looked up by text when one is removed
         # (chatThinking.syncThinkingSpeech).
         self.db['ThinkingSpeech'].create_index('text')
+        # The warnings the admin's chat model was told lately
+        # (toolWarnings.py), deleted once their cooldown is over (a reset
+        # store's too: its new _id never reads them).
+        self.db['ToolWarningsShown'].create_index('expireAt',
+                                                  expireAfterSeconds=0)
 
     def create(self, data: dict, collection_name: str, session: Optional[ClientSession] = None) -> dict:
         """Insert a document into the collection and return the created data."""

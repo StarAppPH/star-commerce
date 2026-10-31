@@ -309,6 +309,7 @@ from objects.voice import (VoiceAudioFormat, VOICE_NAME_MAX_LENGTH,
                            VoiceListResponse)
 from objects.thinking import (TURN_KEY_PATTERN, ChatThinking, ThinkingSpeech,
                               ChatThinkingResponse, SpokenThinkingResponse)
+from objects.toolWarning import ToolWarningCode, ToolWarningShown
 
 
 # AppCreator (_classes_from_module) generates TS schemas only for classes

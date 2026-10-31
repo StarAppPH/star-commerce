@@ -86,6 +86,7 @@ import chatForms
 import chatModel
 import chatThinking
 import photoStorage
+import toolWarnings
 from actions.OrderActions import customerAtStore
 from actions.ProductActions import _validLimit
 from actions.callSlots import slot
@@ -823,10 +824,12 @@ def _runModel(toolset: str, userId: str, storeId: str,
     MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call without tools): a
     route tool through chatModel.runTool, a form tool through
     chatForms.runFormTool. Returns the reply, the steps, the forms opened
-    (by tool call id), the tools called (as the log names them) and the
-    usage. Sets progress['sent'] just before the
-    first model call and progress['answered'] once the model answered
-    (before any tool runs). Raises unavailable() past
+    (by tool call id), the tools called (as the log names them), the
+    usage and the warnings told (`warningsTold`: an admin's read tool
+    results carry what the store's data lacks, toolWarnings.TurnWarnings,
+    marked as told once the turn is saved). Sets progress['sent'] just
+    before the first model call and progress['answered'] once the model
+    answered (before any tool runs). Raises unavailable() past
     TURN_DEADLINE_SECONDS (or `deadline`). `refusal` is
     chatModel.complete's, on the first call only, logged at
     `refusalLevel`. Before each route tool runs, one of its thinking texts
@@ -838,6 +841,7 @@ def _runModel(toolset: str, userId: str, storeId: str,
         deadline = time.monotonic() + TURN_DEADLINE_SECONDS
     steps, toolNames, usage = [], [], _Usage()
     forms = {}
+    warnings = toolWarnings.TurnWarnings(storeId)
     formTools = chatForms.formToolNames(toolset)
     toolsAllowed = True
     while True:
@@ -875,9 +879,12 @@ def _runModel(toolset: str, userId: str, storeId: str,
                     chatModel.remainingSeconds(deadline)
                     chatThinking.note(userId, storeId, turnKey,
                                       call['name'])
-                    content = chatModel.runTool(toolset, call['name'],
-                                                call['arguments'], userId,
-                                                storeId)
+                    content = warnings.attach(
+                        toolset, call['name'],
+                        chatModel.runTool(toolset, call['name'],
+                                          call['arguments'], userId,
+                                          storeId),
+                        chatModel.CHAT_TOOL_RESULT_MAX_CHARS)
                     if chatForms.setsUpTheStore(toolset, call['name'],
                                                 content):
                         # The store exists now: the rest of the turn has
@@ -894,7 +901,8 @@ def _runModel(toolset: str, userId: str, storeId: str,
             reply = (TOO_LONG_REPLY if choice is not None
                      and choice.finish_reason == 'length' else NO_REPLY)
         return {'reply': reply, 'steps': steps, 'forms': forms,
-                'toolNames': toolNames, 'usage': usage.model()}
+                'toolNames': toolNames, 'usage': usage.model(),
+                'warningsTold': warnings.told}
 
 
 def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
@@ -1107,6 +1115,7 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
         _saveTurn(newConversation, conversationId, userId, storeId, seq,
                   userTurn, answer, components, busyUntil, sent)
         busyUntil = None  # cleared by the save
+        toolWarnings.markShown(storeId, answer['warningsTold'])
     finally:
         inFlight.release()
         chatThinking.clear(userId, turnKey)
