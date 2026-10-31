@@ -14,6 +14,11 @@ export interface ZoneShape {
 
 type Pair = readonly [number, number];
 
+// Whether two points are the same corner.
+export function samePoint(a: MapPoint, b: MapPoint): boolean {
+  return a.latitude === b.latitude && a.longitude === b.longitude;
+}
+
 function orientation(a: Pair, b: Pair, c: Pair): number {
   const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
   return Math.sign(cross);

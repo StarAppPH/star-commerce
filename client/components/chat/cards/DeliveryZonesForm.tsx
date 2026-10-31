@@ -14,7 +14,7 @@ import { useSnackbar } from '@/lib/SnackbarContext';
 import { cn } from '@/lib/utils';
 import { ChatCard, SentNote } from './ChatCard';
 import {
-  DELIVERY_ZONES_MAX, DELIVERY_ZONE_CORNERS_MAX, DELIVERY_ZONE_CORNERS_MIN, lineCrossesZone, strictlyInside, zoneProblem, zonesOverlap,
+  DELIVERY_ZONES_MAX, DELIVERY_ZONE_CORNERS_MAX, DELIVERY_ZONE_CORNERS_MIN, lineCrossesZone, samePoint, strictlyInside, zoneProblem, zonesOverlap,
 } from './deliveryZones';
 import { zoneRuleText } from './format';
 import { DEFAULT_MAP_START, MAPS_AVAILABLE, ZONE_STYLE, interaction, loadMaps, toLatLng, type MapPoint } from './MapPicker';
@@ -44,7 +44,7 @@ type PolicyField = 'name' | 'deliveryFee' | 'deliveryDays' | 'minimumOrder' | 'f
 const ZONE_COLORS = ['#2563EB', '#16A34A', '#D97706', '#9333EA', '#0891B2', '#DB2777', '#65A30D', '#EA580C', '#4F46E5', '#0D9488'];
 const DRAFT_COLOR = '#DC2626';
 // A tap this many pixels from another zone's corner lands on that corner, so
-// neighbouring zones share a border exactly.
+// neighbouring zones share a border exactly (and near the first corner, on it).
 const SNAP_PIXELS = 16;
 
 function zoneColor(index: number): string {
@@ -102,7 +102,7 @@ function metersBetween(a: MapPoint, b: MapPoint): number {
   return Math.hypot(dx, dy);
 }
 
-// The other zones' corner nearest the tap, when it is within SNAP_PIXELS.
+// The target corner nearest the tap, when it is within SNAP_PIXELS.
 function snapped(point: MapPoint, targets: Corners, zoom: number): MapPoint {
   const reach = SNAP_PIXELS * metersPerPixel(zoom, point.latitude);
   let best: MapPoint | null = null;
@@ -176,7 +176,8 @@ function ZoneMap({
   const [failed, setFailed] = useState(!MAPS_AVAILABLE);
 
   useEffect(() => { handlers.current = { onMapClick, onFirstCorner, onZoneClick }; }, [onMapClick, onFirstCorner, onZoneClick]);
-  useEffect(() => { snapTargets.current = zones.flat(); }, [zones]);
+  // The other zones' corners, and while drawing the first corner, so a tap near it closes the zone.
+  useEffect(() => { snapTargets.current = draft?.length ? [...zones.flat(), draft[0]] : zones.flat(); }, [zones, draft]);
 
   useEffect(() => {
     if (!MAPS_AVAILABLE) return;
@@ -373,6 +374,15 @@ export function DeliveryZonesForm({ component, answered, busy, onAnswer }: Compo
       setSelected(null);
       return;
     }
+    // The first corner again (also when shared with another zone's corner) closes the zone.
+    if (draft.length > 0 && samePoint(point, draft[0])) {
+      closeZone();
+      return;
+    }
+    if (draft.some((corner) => samePoint(corner, point))) {
+      refuse('That corner is already in this zone. Tap the first corner to close it.', null);
+      return;
+    }
     if (draft.length >= DELIVERY_ZONE_CORNERS_MAX) {
       refuse(`A zone has at most ${DELIVERY_ZONE_CORNERS_MAX} corners: close it.`, null);
       return;
@@ -497,7 +507,7 @@ export function DeliveryZonesForm({ component, answered, busy, onAnswer }: Compo
             selected={selected}
             conflict={conflict}
             onMapClick={placeCorner}
-            onFirstCorner={closeZone}
+            onFirstCorner={() => { if (draft?.length) placeCorner(draft[0]); }}
             onZoneClick={(index) => { if (!locked) setSelected(index === selected ? null : index); }}
             disabled={locked}
           />
