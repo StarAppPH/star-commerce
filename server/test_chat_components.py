@@ -1097,7 +1097,7 @@ def test_aNewProductsForm_prefillsOnlyTheOwnersOwnPhotos(wiped, photoBucket,
     [form] = adminSays('Add these')['components']
     # Only an image the owner uploaded, on one row: a photo on several rows
     # shows them all (a list, a screenshot).
-    assert form['photos'] == [mug, None, None, None, None, None, None]
+    assert form['rowPhotos'] == [mug, None, None, None, None, None, None]
     assert [p['name'] for p in form['products']] == [
         'Mug', 'Plate', 'Bowl', 'Cup', 'Tray', 'Box', 'Lid']
     tool = chatForms.FORM_TOOLS['showNewProductsForm']
@@ -1113,7 +1113,7 @@ def test_aNewProductsAnswer_takesAPrefilledPhoto(wiped, photoBucket, model):
           reply('Check the photo.'))
     res = adminSays('Add this mug')
     [form] = res['components']
-    assert form['photos'] == [f'users/{ADMIN}/chat-photos/mug.png']
+    assert form['rowPhotos'] == [f'users/{ADMIN}/chat-photos/mug.png']
     fake = model(reply('Adding it.'))
 
     adminSays(None, res['conversationId'], {

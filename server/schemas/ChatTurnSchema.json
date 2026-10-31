@@ -2229,7 +2229,7 @@
                     "title": "Products",
                     "type": "array"
                 },
-                "photos": {
+                "rowPhotos": {
                     "description": "Each prefilled row's photo (by position): the Storage path of an image the owner attached; null without one",
                     "items": {
                         "anyOf": [
@@ -2242,7 +2242,7 @@
                         ]
                     },
                     "maxItems": 50,
-                    "title": "Photos",
+                    "title": "Rowphotos",
                     "type": "array"
                 }
             },

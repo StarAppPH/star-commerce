@@ -263,7 +263,8 @@ export type Createdat = string;
  * How it is or was paid
  */
 export type Paymentmethod =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")
+  | null;
 /**
  * When it was paid
  */
@@ -375,7 +376,8 @@ export type Expiresat = string;
  * How it is or was paid
  */
 export type Paymentmethod1 =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")
+  | null;
 /**
  * When it was paid
  */
@@ -458,7 +460,8 @@ export type Checkpayees = string[] | null;
  * The ways the shopper could pay it, on a card saved before payment options
  */
 export type Paymentmethods =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[]
+  | null;
 /**
  * The card
  */
@@ -827,7 +830,8 @@ export type Checkpayees1 =
  * The ways a customer could pay, on a card saved before each method had its details
  */
 export type Acceptedpaymentmethods =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[]
+  | null;
 /**
  * Whether a customer can cancel a paid order
  */
@@ -1159,7 +1163,7 @@ export type Products2 = ChatProductDraft[];
  *
  * @maxItems 50
  */
-export type Photos2 = (string | null)[];
+export type Rowphotos = (string | null)[];
 /**
  * The form
  */
@@ -1816,7 +1820,7 @@ export interface NewProductsForm {
   formId: Formid7;
   currency: Currency8;
   products: Products2;
-  photos?: Photos2;
+  rowPhotos?: Rowphotos;
 }
 /**
  * A product the admin mentioned, prefilled on the new products

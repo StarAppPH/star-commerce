@@ -254,7 +254,7 @@ def _newProductsForm(userId: str, storeId: str,
     photos = [None if photos.count(path) > 1 else path for path in photos]
     return {'kind': 'newProductsForm', 'formId': newFormId(),
             'currency': store['currency'], 'products': drafts,
-            'photos': photos}
+            'rowPhotos': photos}
 
 
 def _photoRequestForm(userId: str, storeId: str,

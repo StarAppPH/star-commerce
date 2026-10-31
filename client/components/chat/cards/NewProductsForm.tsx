@@ -57,7 +57,7 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
       price: draft?.price != null ? String(draft.price) : '',
       inventory: draft?.inventory != null ? String(draft.inventory) : '',
       description: draft?.description ?? '',
-      photo: component.photos?.[index] ? { kind: 'attached', path: component.photos[index], url: null } : null,
+      photo: component.rowPhotos?.[index] ? { kind: 'attached', path: component.rowPhotos[index], url: null } : null,
     }));
   });
   const [nextKey, setNextKey] = useState(rows.length);

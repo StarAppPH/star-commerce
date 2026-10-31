@@ -61,7 +61,7 @@ export type Products = ChatProductDraft[];
  *
  * @maxItems 50
  */
-export type Photos = (string | null)[];
+export type Rowphotos = (string | null)[];
 
 /**
  * Asks the admin for new products. Answered with NewProductsAnswer.
@@ -71,7 +71,7 @@ export interface NewProductsForm {
   formId: Formid;
   currency: Currency;
   products: Products;
-  photos?: Photos;
+  rowPhotos?: Rowphotos;
 }
 /**
  * A product the admin mentioned, prefilled on the new products

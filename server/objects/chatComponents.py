@@ -368,8 +368,10 @@ class NewProductsForm(ResponseModel):
     products: list[ChatProductDraft] = Field(
         ..., max_length=PRODUCT_BATCH_MAX, description='Prefilled rows')
     # Beside the rows, not on them: a form saved before photos were
-    # prefilled has none.
-    photos: list[str | None] = Field(
+    # prefilled, or before they were named rowPhotos, has none. Not named
+    # photos: the photo cards' photos are objects, and one path both a
+    # value and a parent breaks the turns' projection.
+    rowPhotos: list[str | None] = Field(
         default_factory=list, max_length=PRODUCT_BATCH_MAX,
         description="Each prefilled row's photo (by position): the Storage "
                     "path of an image the owner attached; null without one")
