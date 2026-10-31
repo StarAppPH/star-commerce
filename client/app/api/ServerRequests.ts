@@ -224,7 +224,7 @@ import type { VoiceReplyResponse } from '../schemas/VoiceReplyResponseSchema';
         }
     }
 
-    async createUserStore(userId: string, name: string, description: string, contactNumber: string, primaryColor: string, secondaryColor: string, currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED', openingHours: string | null, address: string | null): Promise<ApiResponse<StoreResponse>> {
+    async createUserStore(userId: string, name: string, description: string, contactNumber: string, primaryColor: string, secondaryColor: string | null, currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED', openingHours: string | null, address: string | null): Promise<ApiResponse<StoreResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/createUserStore`, {
             method: 'POST',
@@ -1419,7 +1419,7 @@ export interface RouteRequestBodies {
     getUserRoleTypes: { userId: string };
     getUserStore: { userId: string };
     updateMyStoreTheme: { userId: string; photoStyle: string | null; primaryColor: string | null; secondaryColor: string | null; voiceId: string | null };
-    createUserStore: { userId: string; name: string; description: string; contactNumber: string; primaryColor: string; secondaryColor: string; currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED'; openingHours: string | null; address: string | null };
+    createUserStore: { userId: string; name: string; description: string; contactNumber: string; primaryColor: string; secondaryColor: string | null; currency: 'PHP' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'SGD' | 'AUD' | 'CAD' | 'HKD' | 'CNY' | 'KRW' | 'MYR' | 'THB' | 'IDR' | 'VND' | 'INR' | 'AED'; openingHours: string | null; address: string | null };
     updateMyStoreDetails: { userId: string; name: string | null; description: string | null; contactNumber: string | null; address: string | null; openingHours: string | null };
     suggestStoreAddress: { userId: string };
     setUserStoreLocation: { userId: string; latitude: number; longitude: number };

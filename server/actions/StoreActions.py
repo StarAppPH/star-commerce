@@ -548,15 +548,16 @@ class StoreActions():
         needs a photo style first). Ask the owner, in their own words, for
         the photo style: the background, lighting and mood they want (up
         to 300 characters, e.g. "white marble counter, soft morning light,
-        calm and airy"), and for the store's two brand colors as hex codes
-        like #1A73E8 (primaryColor and secondaryColor; the shop and the
-        admin's screens are drawn in them, and the photos use them only as
-        accents in the background and props). voiceId is the voice
+        calm and airy"), and for the store's brand colors as hex codes like
+        #1A73E8 (primaryColor and, only if the owner wants one,
+        secondaryColor; the shop and the admin's screens are drawn in them,
+        and the photos use them only as accents in the background and
+        props). voiceId is the voice
         the store's assistant speaks its replies with: only a voiceId
         listVoices returned, for the voice the owner chose ("" goes back to
         the default voice; getUserStore shows the voice saved). Never invent a style or a voice: use only
         what the owner said. If the owner asks you to pick the colors,
-        suggest two that suit the store; if they want them from a logo or
+        suggest colors that suit the store; if they want them from a logo or
         image they attached, read them with findColorsInPhoto first. Confirm
         every value with the owner before calling, unless they picked the
         colors on its color card. Send only the fields the owner wants changed: a field left
@@ -607,22 +608,24 @@ class StoreActions():
                         description: str,
                         contactNumber: str,
                         primaryColor: str,
-                        secondaryColor: str,
+                        secondaryColor: str | None = None,
                         currency: StoreCurrency = DEFAULT_STORE_CURRENCY,
                         openingHours: str | None = None,
                         address: str | None = None) -> dict:
         """Create the admin's store (an admin has one store). Before calling,
         ask the admin for each detail, one question at a time: the store's
         name, a short description of what it sells, its currency (default
-        PHP), its contact number, its two brand colors as hex codes like
-        #1A73E8 (primaryColor and secondaryColor: the shop and the admin's
-        screens are drawn in them) and, if the admin wants, its opening
-        hours. Do not ask for the address: the admin pins the store on the
-        map right after it is created, and the address is suggested from
-        the pin (pass address only when the admin already said it). Never
+        PHP), its contact number, its main brand color as a hex code like
+        #1A73E8 (primaryColor: the shop and the admin's screens are drawn
+        in it), a second brand color (secondaryColor) only if the admin
+        wants one (they may skip it: leave it out, never insist) and, if
+        the admin wants, its opening hours. Do not ask for the address: the
+        admin pins the store on the map right after it is created, and the
+        address is suggested from the pin (pass address only when the admin
+        already said it). Never
         invent or guess a value: use only what the admin said, except the
-        colors: if the admin asks you to pick them, suggest two that suit
-        the store and use them once the admin agrees; if the admin wants
+        colors: if the admin asks you to pick them, suggest colors that
+        suit the store and use them once the admin agrees; if the admin wants
         them from a logo or image they attached, read them with
         findColorsInPhoto first. Give the contact
         number in international format, e.g. +639171234567. Confirm all the
@@ -649,7 +652,8 @@ class StoreActions():
             address = _validText(address, 'An address',
                                  STORE_ADDRESS_MAX_LENGTH)
         primaryColor = _requiredColor(primaryColor, 'primaryColor')
-        secondaryColor = _requiredColor(secondaryColor, 'secondaryColor')
+        # Optional: left out, null or empty, the store has none.
+        secondaryColor = hexColor(secondaryColor, 'secondaryColor')
         openingHours = _validText(openingHours, 'The opening hours text',
                                   STORE_OPENING_HOURS_MAX_LENGTH,
                                   required=False)

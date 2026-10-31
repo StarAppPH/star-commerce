@@ -298,6 +298,12 @@ def test_theSetupPrompt_asksNoAddress_andOpensTheMapAfterCreating():
             < admin.index('suggestStoreAddress'))
 
 
+def test_theSetupPrompt_letsTheOwnerSkipTheSecondColor():
+    setup = chatModel.CHAT_PROMPTS['adminSetup']
+    assert 'the second is optional' in setup and 'never insist' in setup
+    assert 'two brand colors' not in setup
+
+
 @pytest.mark.parametrize('toolset, name, content, setsUp', [
     ('adminSetup', 'createUserStore', '{"name": "Kalye Coffee"}', True),
     ('adminSetup', 'createUserStore', '{"error": "Bad number"}', False),

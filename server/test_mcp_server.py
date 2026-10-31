@@ -132,8 +132,7 @@ def test_anAdminToolsArguments_leaveOutTheInjectedParams():
         'secondaryColor', 'currency', 'openingHours'
     }
     assert set(create['required']) == {
-        'name', 'description', 'contactNumber', 'primaryColor',
-        'secondaryColor'
+        'name', 'description', 'contactNumber', 'primaryColor'
     }
     assert 'PHP' in str(create['properties']['currency'])
     assert 'XYZ' not in str(create['properties']['currency'])
