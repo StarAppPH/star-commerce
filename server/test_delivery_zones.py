@@ -12,6 +12,7 @@ fixtures are imported here: the clock, the offline guard and the frozen now
 are autouse)."""
 
 import json
+import random
 import re
 
 import pytest
@@ -144,6 +145,65 @@ def test_noZoneWithAPolicy_holdsNoPin(zones):
 def test_zonesOverlap_unlessTheyOnlyShareABorder(first, second, overlap):
     assert zonesOverlap(pairs(first), pairs(second)) is overlap
     assert zonesOverlap(pairs(second), pairs(first)) is overlap
+
+
+def _turn(a, b, c) -> float:
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+
+def sharedSidePairs(seed: int, count: int, sameSide: bool):
+    """`count` random zones around Cebu that share their first side a-b
+    exactly (as the map snaps it), each with one or two more corners: on
+    opposite sides of the line a-b, or (sameSide) both on one side. The
+    second zone runs the shared side the other way, or the same way."""
+    rng = random.Random(seed)
+
+    def point():
+        return (rng.uniform(10.3, 10.5), rng.uniform(123.95, 124.05))
+
+    found = []
+    while len(found) < count:
+        a, b = point(), point()
+        first = [a, b, *(point() for _ in range(rng.randint(1, 2)))]
+        second = [b, a, *(point() for _ in range(rng.randint(1, 2)))]
+        if deliveryZoneProblem(first) or deliveryZoneProblem(second):
+            continue
+        firstSides = {_turn(a, b, c) > 0 for c in first[2:]}
+        secondSides = {_turn(a, b, c) > 0 for c in second[2:]}
+        if len(firstSides) != 1 or len(secondSides) != 1:
+            continue    # a zone that reaches across the line a-b
+        if (firstSides == secondSides) is not sameSide:
+            continue
+        if rng.random() < 0.5:
+            second = [a, b, *reversed(second[2:])]
+        found.append((first, second))
+    return found
+
+
+def test_zonesThatShareASideExactly_neverOverlap():
+    """The middle of a shared side is rarely exactly in line with it in
+    floating point: it counts as on the border, never inside."""
+    for first, second in sharedSidePairs(7, 1000, sameSide=False):
+        assert zonesOverlap(first, second) is False, (first, second)
+        assert zonesOverlap(second, first) is False, (first, second)
+
+
+def test_zonesThatShareASide_onTheSameSideOfIt_overlap():
+    for first, second in sharedSidePairs(8, 300, sameSide=True):
+        assert zonesOverlap(first, second) is True, (first, second)
+        assert zonesOverlap(second, first) is True, (first, second)
+
+
+def test_aPinOnASharedSide_fallsInTheFirstZoneListed():
+    """The first zone listed, whichever it is (deliveryZoneAt)."""
+    for first, second in sharedSidePairs(9, 300, sameSide=False):
+        a, b = first[0], first[1]
+        one = zone('One', corners(*first))
+        two = zone('Two', corners(*second))
+        for t in (0.5, 0.25, 0.9):
+            pin = (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
+            assert deliveryZoneAt(*pin, [one, two])['name'] == 'One', pin
+            assert deliveryZoneAt(*pin, [two, one])['name'] == 'Two', pin
 
 
 @pytest.mark.parametrize('shape, problem', [

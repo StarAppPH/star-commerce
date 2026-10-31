@@ -55,5 +55,11 @@ FIREBASE_PROJECT_ID = 'star-commerce-6797'
 # in every environment. The server is what enforces it.
 STORE_RESET_ENDS_AT = '2026-11-05T00:00:00+08:00'
 
+# How near a delivery zone's side, in degrees (about 0.1 mm), a point counts
+# as on it (objects/store.py, client deliveryZones.ts): the middle of a side
+# two zones share is rarely exactly in line with it in floating point, and
+# must not count as inside the other zone.
+DELIVERY_ZONE_BORDER_TOLERANCE = 1e-9
+
 # Everything above this line ships to every browser. No credentials, no API
 # keys, no bank details, no internal limits.

@@ -1,3 +1,4 @@
+import { DELIVERY_ZONE_BORDER_TOLERANCE } from '@/lib/generated/serverConstants';
 import type { MapPoint } from './MapPicker';
 
 // A store's delivery zones (server objects/store.py): up to 10 closed shapes
@@ -24,6 +25,8 @@ function orientation(a: Pair, b: Pair, c: Pair): number {
   return Math.sign(cross);
 }
 
+// The shape check (zoneProblem) stays exact on purpose; the border and overlap
+// checks use the tolerant nearSegment.
 function onSegment(a: Pair, b: Pair, c: Pair): boolean {
   return Math.min(a[0], b[0]) <= c[0] && c[0] <= Math.max(a[0], b[0])
     && Math.min(a[1], b[1]) <= c[1] && c[1] <= Math.max(a[1], b[1]);
@@ -72,16 +75,36 @@ function sides(corners: readonly MapPoint[]): [Pair, Pair][] {
   return corners.map((corner, i) => [pair(corner), pair(corners[(i + 1) % corners.length])]);
 }
 
+// Whether the point lies on the segment a-b, within
+// DELIVERY_ZONE_BORDER_TOLERANCE of it.
+function nearSegment(point: Pair, a: Pair, b: Pair): boolean {
+  const tolerance = DELIVERY_ZONE_BORDER_TOLERANCE;
+  // Beyond the segment's box widened by the tolerance: no need to measure.
+  if (!(Math.min(a[0], b[0]) - tolerance <= point[0] && point[0] <= Math.max(a[0], b[0]) + tolerance
+    && Math.min(a[1], b[1]) - tolerance <= point[1] && point[1] <= Math.max(a[1], b[1]) + tolerance)) {
+    return false;
+  }
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const length = dx * dx + dy * dy;
+  const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length));
+  const ex = point[0] - (a[0] + t * dx);
+  const ey = point[1] - (a[1] + t * dy);
+  return ex * ex + ey * ey <= tolerance * tolerance;
+}
+
 // Whether two segments cross through each other: touching at a corner or
-// running along each other (a shared border) is no crossing.
+// running along each other (a shared border) is no crossing, nor is an end
+// that lies on the other segment.
 function segmentsCross(p1: Pair, p2: Pair, q1: Pair, q2: Pair): boolean {
   const o = [orientation(p1, p2, q1), orientation(p1, p2, q2), orientation(q1, q2, p1), orientation(q1, q2, p2)];
-  return !o.includes(0) && o[0] !== o[1] && o[2] !== o[3];
+  if (o.includes(0) || o[0] === o[1] || o[2] === o[3]) return false;
+  return !(nearSegment(q1, p1, p2) || nearSegment(q2, p1, p2) || nearSegment(p1, q1, q2) || nearSegment(p2, q1, q2));
 }
 
 function onBorder(point: MapPoint, corners: readonly MapPoint[]): boolean {
   const p = pair(point);
-  return sides(corners).some(([a, b]) => orientation(a, b, p) === 0 && onSegment(a, b, p));
+  return sides(corners).some(([a, b]) => nearSegment(p, a, b));
 }
 
 // Whether the point lies inside the shape, its border excluded.

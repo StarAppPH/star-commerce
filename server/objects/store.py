@@ -10,6 +10,7 @@ from typing import Annotated, Literal
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
                           ResponseModel)
+from sharedConstants import DELIVERY_ZONE_BORDER_TOLERANCE
 
 
 # ──────────────────────────────────────────────
@@ -196,7 +197,9 @@ def _orientation(a: Corner, b: Corner, c: Corner) -> int:
 
 
 def _onSegment(a: Corner, b: Corner, c: Corner) -> bool:
-    """Whether c, in line with a and b, lies between them."""
+    """Whether c, in line with a and b, lies between them. The shape check
+    (deliveryZoneProblem) stays exact on purpose; the border and overlap
+    checks use the tolerant _nearSegment."""
     return (min(a[0], b[0]) <= c[0] <= max(a[0], b[0])
             and min(a[1], b[1]) <= c[1] <= max(a[1], b[1]))
 
@@ -213,12 +216,34 @@ def _segmentsMeet(p1, p2, q1, q2) -> bool:
             or (o4 == 0 and _onSegment(q1, q2, p2)))
 
 
+def _nearSegment(point: Corner, a: Corner, b: Corner) -> bool:
+    """Whether the point lies on the segment a-b, within
+    DELIVERY_ZONE_BORDER_TOLERANCE of it."""
+    tolerance = DELIVERY_ZONE_BORDER_TOLERANCE
+    # Beyond the segment's box widened by the tolerance: no need to measure.
+    if not (min(a[0], b[0]) - tolerance <= point[0]
+            <= max(a[0], b[0]) + tolerance
+            and min(a[1], b[1]) - tolerance <= point[1]
+            <= max(a[1], b[1]) + tolerance):
+        return False
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length = dx * dx + dy * dy
+    t = 0.0 if length == 0 else max(0.0, min(1.0, (
+        (point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length))
+    ex, ey = point[0] - (a[0] + t * dx), point[1] - (a[1] + t * dy)
+    return ex * ex + ey * ey <= tolerance * tolerance
+
+
 def _segmentsCross(p1, p2, q1, q2) -> bool:
     """Whether the segments cross through each other: touching at a corner
-    or running along each other (a shared border) is no crossing."""
+    or running along each other (a shared border) is no crossing, nor is
+    an end that lies on the other segment."""
     o1, o2 = _orientation(p1, p2, q1), _orientation(p1, p2, q2)
     o3, o4 = _orientation(q1, q2, p1), _orientation(q1, q2, p2)
-    return 0 not in (o1, o2, o3, o4) and o1 != o2 and o3 != o4
+    if 0 in (o1, o2, o3, o4) or o1 == o2 or o3 == o4:
+        return False
+    return not (_nearSegment(q1, p1, p2) or _nearSegment(q2, p1, p2)
+                or _nearSegment(p1, q1, q2) or _nearSegment(p2, q1, q2))
 
 
 def _sides(corners: list[Corner]) -> list[tuple[Corner, Corner]]:
@@ -253,8 +278,7 @@ def deliveryZoneProblem(corners: list[Corner]) -> str | None:
 
 
 def _onBorder(point: Corner, corners: list[Corner]) -> bool:
-    return any(_orientation(a, b, point) == 0 and _onSegment(a, b, point)
-               for a, b in _sides(corners))
+    return any(_nearSegment(point, a, b) for a, b in _sides(corners))
 
 
 def _rayInside(point: Corner, corners: list[Corner]) -> bool:
