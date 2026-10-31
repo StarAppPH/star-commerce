@@ -27,8 +27,8 @@ interface ChatMessagesProps {
 }
 
 // One chat's turns: the user's message on the right, the assistant's reply
-// as plain text below it, like a conversation with Claude, and the cards and
-// forms the reply brought.
+// as plain text below it, like a conversation with Claude, with the cards the
+// reply brought above its text and the forms that answer it below.
 export function ChatMessages({
   turns, variant, hasEarlier, loadingEarlier, onLoadEarlier, onRetry, answeredFormIds, busy, onAnswer,
 }: ChatMessagesProps) {
@@ -78,10 +78,20 @@ export function ChatMessages({
               {turn.thinkingText ?? 'Thinking'}
             </div>
           )}
+          {turn.status === 'done' && (
+            <ChatComponents
+              components={turn.components}
+              place="above"
+              answeredFormIds={answeredFormIds}
+              busy={busy}
+              onAnswer={onAnswer}
+            />
+          )}
           {turn.status === 'done' && turn.reply !== null && <AssistantText text={turn.reply} />}
           {turn.status === 'done' && (
             <ChatComponents
               components={turn.components}
+              place="below"
               answeredFormIds={answeredFormIds}
               busy={busy}
               onAnswer={onAnswer}
