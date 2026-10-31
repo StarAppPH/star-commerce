@@ -68,6 +68,14 @@ export function speak(text: string, lang: string): Promise<void> {
   });
 }
 
+// The browser's voice needs a tap on iOS too: an empty utterance spoken in
+// one primes it. Never on a tap that stops a live microphone.
+export function primeSpeaking(): void {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+  }
+}
+
 export function stopSpeaking(): void {
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     window.speechSynthesis.cancel();

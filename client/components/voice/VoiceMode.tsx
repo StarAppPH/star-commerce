@@ -7,7 +7,9 @@ import { cn } from '@/lib/utils';
 import { AssistantText } from '@/components/chat/AssistantText';
 import type { OnThinking, VoiceAnswer } from '@/components/chat/useChat';
 import { streamSpeech, type SpeechStream } from './elevenLabsStream';
+import { clipSource, closeVoiceAudio, setAudioSession, unlockVoiceAudio, voiceAudioContext } from './voiceAudio';
 import {
+  primeSpeaking,
   speak,
   speakableText,
   speechRecognitionConstructor,
@@ -68,19 +70,22 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
   const stateRef = useRef<VoiceState>(state);
   // The thinking text playing (ElevenLabs, in the store's voice), and
   // whether one is being fetched: one at a time, never over the reply.
-  const thinkingAudio = useRef<HTMLAudioElement | null>(null);
+  const thinkingAudio = useRef<AudioBufferSourceNode | null>(null);
   const fetchingThinking = useRef(false);
   // The reply streaming from ElevenLabs, and a count of what was stopped:
   // a reply whose stream ends after a stop is not spoken again.
   const replyStream = useRef<SpeechStream | null>(null);
   const stops = useRef(0);
+  // Bumped by closing: an answer or thinking text that arrives after it
+  // belongs to a closed voice mode and is never said.
+  const session = useRef(0);
   const lang = typeof navigator === 'undefined' ? 'en-US' : navigator.language || 'en-US';
 
   useEffect(() => { speakRef.current = speakReplies; }, [speakReplies]);
   useEffect(() => { stateRef.current = state; }, [state]);
 
   const stopThinkingAudio = useCallback(() => {
-    thinkingAudio.current?.pause();
+    thinkingAudio.current?.stop();
     thinkingAudio.current = null;
   }, []);
 
@@ -95,21 +100,23 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
   }, [stopThinkingAudio]);
 
   // Shows each thinking text and says it, unless one is already playing or
-  // being fetched, or the answer came first.
+  // being fetched, or the answer came first. It plays on the shared context
+  // (not an Audio element, which iOS refuses outside a tap).
   const onThinking = useCallback<OnThinking>(async (text, spoken) => {
     setThinkingText(text);
     if (!speakRef.current || thinkingAudio.current || fetchingThinking.current) return;
+    const current = session.current;
     fetchingThinking.current = true;
     const audio = await spoken();
+    const source = audio && session.current === current ? await clipSource(audio) : null;
+    if (session.current !== current) return;
     fetchingThinking.current = false;
-    if (!audio || !speakRef.current || stateRef.current !== 'thinking' || thinkingAudio.current) return;
-    const element = new Audio(`data:audio/mpeg;base64,${audio}`);
-    const done = () => {
-      if (thinkingAudio.current === element) thinkingAudio.current = null;
+    if (!source || !speakRef.current || stateRef.current !== 'thinking' || thinkingAudio.current) return;
+    source.onended = () => {
+      if (thinkingAudio.current === source) thinkingAudio.current = null;
     };
-    element.onended = done;
-    thinkingAudio.current = element;
-    element.play().catch(done);
+    thinkingAudio.current = source;
+    source.start();
   }, []);
 
   const finish = useCallback(async (text: string) => {
@@ -123,7 +130,17 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     setThinkingText(null);
     setState('thinking');
     stateRef.current = 'thinking';
-    const answer = await ask(spoken, onThinking);
+    // Done listening: play through the silent switch, and resume the
+    // context in time for the reply.
+    setAudioSession('playback');
+    voiceAudioContext();
+    const current = session.current;
+    // A turn polls its thinking texts until it ends: none reaches a newer
+    // session after a quick close and reopen.
+    const answer = await ask(spoken, (text, spokenText) => {
+      if (session.current === current) onThinking(text, spokenText);
+    });
+    if (session.current !== current) return;
     stateRef.current = 'answering';
     stopThinkingAudio();
     if (answer === null) {
@@ -141,11 +158,13 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
       spokenAloud = await stream.done;
       if (replyStream.current === stream) replyStream.current = null;
     }
+    if (session.current !== current) return;
     // No speech, or the stream failed before a word: the browser's voice.
     if (!spokenAloud && speakRef.current && stops.current === stopsBefore) {
       await speak(speakableText(answer.reply), lang);
     }
-    setState((current) => (current === 'answering' ? 'idle' : current));
+    if (session.current !== current) return;
+    setState((prev) => (prev === 'answering' ? 'idle' : prev));
   }, [ask, lang, onThinking, stopThinkingAudio]);
 
   const listen = useCallback(() => {
@@ -155,6 +174,7 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
       return;
     }
     stopVoice();
+    setAudioSession('auto');
     let finalText = '';
     const instance = new Recognition();
     instance.lang = lang;
@@ -195,9 +215,12 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
   }, [finish, lang, stopVoice]);
 
   const close = useCallback(() => {
+    session.current += 1;
+    fetchingThinking.current = false;
     recognition.current?.abort();
     recognition.current = null;
     stopVoice();
+    closeVoiceAudio();
     setState('idle');
     setHeard('');
     setInterim('');
@@ -215,6 +238,14 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     closeRef.current = close;
   }, [listen, close]);
 
+  // Unmounting while open says nothing more and gives the audio back.
+  useEffect(() => () => {
+    session.current += 1;
+    recognition.current?.abort();
+    stopVoice();
+    closeVoiceAudio();
+  }, [stopVoice]);
+
   useEffect(() => {
     if (!open) return;
     const start = window.setTimeout(() => listenRef.current(), 150);
@@ -228,7 +259,11 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     };
   }, [open]);
 
+  // Every orb tap unlocks audio again (iOS may have suspended it since);
+  // only ChatShell's open tap primes the browser's voice, never a tap that
+  // stops the microphone.
   const tapOrb = () => {
+    unlockVoiceAudio();
     if (state === 'listening') recognition.current?.stop();
     else if (state === 'answering') {
       stopVoice();
@@ -367,6 +402,11 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
           className="rounded-full"
           onClick={() => {
             if (speakReplies) stopVoice();
+            else {
+              // Turning it back on is a tap: unlock audio for the replies.
+              unlockVoiceAudio();
+              if (state !== 'listening') primeSpeaking();
+            }
             setSpeakReplies((value) => !value);
           }}
           aria-pressed={speakReplies}

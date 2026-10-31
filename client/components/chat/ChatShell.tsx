@@ -1,6 +1,8 @@
 'use client';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { VoiceMode } from '@/components/voice/VoiceMode';
+import { unlockVoiceAudio } from '@/components/voice/voiceAudio';
+import { primeSpeaking } from '@/components/voice/useSpeech';
 import type { ChatComponent } from './cards/types';
 import type { ChatTurnView, OnThinking, VoiceAnswer } from './useChat';
 
@@ -64,7 +66,12 @@ export function ChatShellProvider({ voice, onTurnSaved, children }: ChatShellPro
     turnSaved: (components) => savedRef.current(components),
     bindAsk: (next) => { askRef.current = next; },
     unbindAsk: (bound) => { if (askRef.current === bound) askRef.current = null; },
-    openVoice: () => setVoiceOpen(true),
+    // Runs in the voice button's tap: iOS plays audio only once unlocked by one.
+    openVoice: () => {
+      unlockVoiceAudio();
+      primeSpeaking();
+      setVoiceOpen(true);
+    },
   }), []);
 
   return (
