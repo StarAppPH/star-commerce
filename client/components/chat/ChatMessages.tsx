@@ -61,10 +61,9 @@ export function ChatMessages({
             {turn.userText !== '' && (
               <div
                 className={cn(
-                  'max-w-[85%] self-end whitespace-pre-wrap break-words px-3.5 py-2.5 text-[15px] leading-[22px] sm:text-base',
-                  variant === 'admin'
-                    ? 'rounded-2xl bg-muted'
-                    : 'rounded-[18px] rounded-br-md bg-primary text-primary-foreground',
+                  // In the store's main brand color, once it has one (useBrandColor).
+                  'max-w-[85%] self-end whitespace-pre-wrap break-words bg-primary px-3.5 py-2.5 text-[15px] text-primary-foreground leading-[22px] sm:text-base',
+                  variant === 'admin' ? 'rounded-2xl' : 'rounded-[18px] rounded-br-md',
                 )}
                 title={turn.createdAt ? formatStoreTime(turn.createdAt) : undefined}
               >

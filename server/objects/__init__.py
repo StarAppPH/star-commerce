@@ -273,7 +273,7 @@ from objects.chatComponents import (
     StoreProductsCard, ChatStoreOrderRow, StoreOrdersCard, ChatMyOrderRow,
     MyOrdersCard, CheckoutCard, ChatStoreReturnRow, StoreReturnsCard,
     ChatMyReturnRow, MyReturnsCard, PolicyCard, PhotosCard,
-    ProductPhotoChoiceCard, PhotoColorsCard, StoreCard,
+    ProductPhotoChoiceCard, PhotoColorsCard, StoreCard, StoreThemeCard,
     LocationForm, ChatProductDraft, NewProductsForm, PhoneVerificationForm,
     PhotoRequestForm, DeliveryPinForm, DeliveryZonesForm, ChatComponent, AnswerId,
     LocationAnswer, NewProductAnswerRow, NewProductsAnswer,

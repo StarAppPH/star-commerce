@@ -29,18 +29,19 @@ from actions.StoreActions import STORES
 from chatForms import newFormId
 from mongoDb import db
 from objects import (CHAT_CARD_ROWS_MAX, CHAT_COMPONENTS_PER_TURN_MAX,
-                     POLICY_ANSWER_FIELDS, ChatComponent)
+                     POLICY_ANSWER_FIELDS, STORE_THEME_FIELDS, ChatComponent)
 
 _COMPONENT = TypeAdapter(ChatComponent)
 
 
 class CardContext:
-    """What a card needs besides its tool's result: the store's currency,
-    read once, only when a card needs it."""
+    """What a card needs besides its tool's result: the store's currency
+    and brand colors, each read once, only when a card needs it."""
 
     def __init__(self, storeId: str):
         self.storeId = storeId
         self._currency = None
+        self._brandColors = None
 
     def currency(self) -> str:
         if self._currency is None:
@@ -48,6 +49,15 @@ class CardContext:
                             projection={'currency': 1}, findOne=True)
             self._currency = store['currency']
         return self._currency
+
+    def brandColors(self) -> dict:
+        """The store's primaryColor and secondaryColor, None while unset."""
+        if self._brandColors is None:
+            store = db.read({'_id': self.storeId}, STORES,
+                            projection={key: 1 for key in _BRAND_COLORS},
+                            findOne=True)
+            self._brandColors = _pick(store or {}, _BRAND_COLORS)
+        return self._brandColors
 
 
 def _pick(row: dict, keys: tuple[str, ...]) -> dict:
@@ -75,6 +85,7 @@ _STORE_RETURN = ('_id', 'orderId', 'status', 'reason', 'note',
                  'rejectReason', 'restocked')
 _MY_RETURN = ('_id', 'status', 'reason', 'refundAmount', 'currency',
               'createdAt', 'rejectReason', 'refundedAt')
+_BRAND_COLORS = ('primaryColor', 'secondaryColor')
 _STORE = ('name', 'slug', 'currency', 'description', 'contactNumber',
           'address', 'openingHours')
 
@@ -208,9 +219,17 @@ def _store(result: dict, context: CardContext) -> dict | None:
     if store is None:
         return None
     location = store.get('location')
-    return {'kind': 'store', **_pick(store, _STORE),
+    # getUserStore sends the brand colors (each once set); the other store
+    # tools send none, so their cards read the store's.
+    colors = (_pick(store, _BRAND_COLORS) if 'store' in result
+              else context.brandColors())
+    return {'kind': 'store', **_pick(store, _STORE), **colors,
             'location': (_pick(location, ('latitude', 'longitude'))
                          if location else None)}
+
+
+def _storeTheme(result: dict, context: CardContext) -> dict:
+    return {'kind': 'storeTheme', **_pick(result, STORE_THEME_FIELDS)}
 
 
 # The tools whose result makes a card, by tool name (the names are unique
@@ -248,6 +267,7 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'createUserStore': _store,
     'setUserStoreLocation': _store,
     'updateMyStoreDetails': _store,
+    'updateMyStoreTheme': _storeTheme,
 }
 
 # A card listing rows of one kind, and the key that lists them: a later

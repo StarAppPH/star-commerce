@@ -114,6 +114,7 @@ export type Components =
       | ProductPhotoChoiceCard
       | PhotoColorsCard
       | StoreCard
+      | StoreThemeCard
       | LocationForm
       | NewProductsForm
       | PhoneVerificationForm
@@ -135,6 +136,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -155,6 +157,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -177,6 +180,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -197,6 +201,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -217,6 +222,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -239,6 +245,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -259,6 +266,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -279,6 +287,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -299,6 +308,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -321,6 +331,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -341,6 +352,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -361,6 +373,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -381,6 +394,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -401,6 +415,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -423,6 +438,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -443,6 +459,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -463,6 +480,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -483,6 +501,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -503,6 +522,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -523,6 +543,7 @@ export type Components =
         | ProductPhotoChoiceCard
         | PhotoColorsCard
         | StoreCard
+        | StoreThemeCard
         | LocationForm
         | NewProductsForm
         | PhoneVerificationForm
@@ -1583,9 +1604,33 @@ export type Latitude = number;
  */
 export type Longitude = number;
 /**
+ * Main brand color; null while unset
+ */
+export type Primarycolor = string | null;
+/**
+ * Second brand color; null while unset
+ */
+export type Secondarycolor = string | null;
+/**
+ * The card
+ */
+export type Kind12 = "storeTheme";
+/**
+ * Main brand color; null while unset
+ */
+export type Primarycolor1 = string | null;
+/**
+ * Second brand color; null while unset
+ */
+export type Secondarycolor1 = string | null;
+/**
+ * The look of the store's product photos; null while unset
+ */
+export type Photostyle = string | null;
+/**
  * The form
  */
-export type Kind12 = "locationForm";
+export type Kind13 = "locationForm";
 /**
  * Answer it with this id
  */
@@ -1597,7 +1642,7 @@ export type Address1 = string | null;
 /**
  * The form
  */
-export type Kind13 = "newProductsForm";
+export type Kind14 = "newProductsForm";
 /**
  * Answer it with this id
  */
@@ -1654,7 +1699,7 @@ export type Photos2 = (string | null)[];
 /**
  * The form
  */
-export type Kind14 = "phoneVerificationForm";
+export type Kind15 = "phoneVerificationForm";
 /**
  * Answer it with this id
  */
@@ -1662,7 +1707,7 @@ export type Formid8 = string;
 /**
  * The form
  */
-export type Kind15 = "photoRequestForm";
+export type Kind16 = "photoRequestForm";
 /**
  * Answer it with this id
  */
@@ -1670,7 +1715,7 @@ export type Formid9 = string;
 /**
  * The form
  */
-export type Kind16 = "deliveryPinForm";
+export type Kind17 = "deliveryPinForm";
 /**
  * Answer it with this id
  */
@@ -1790,7 +1835,7 @@ export type Points = [StoreLocationResponse, StoreLocationResponse, StoreLocatio
 /**
  * The form
  */
-export type Kind17 = "deliveryZonesForm";
+export type Kind18 = "deliveryZonesForm";
 /**
  * Answer it with this id
  */
@@ -1900,7 +1945,7 @@ export type Formanswer =
 /**
  * The answer
  */
-export type Kind18 = "location";
+export type Kind19 = "location";
 /**
  * Answer it with this id
  */
@@ -1916,7 +1961,7 @@ export type Longitude1 = number;
 /**
  * The answer
  */
-export type Kind19 = "newProducts";
+export type Kind20 = "newProducts";
 /**
  * Answer it with this id
  */
@@ -1955,7 +2000,7 @@ export type Imageurl = string | null;
 /**
  * The answer
  */
-export type Kind20 = "phoneVerified";
+export type Kind21 = "phoneVerified";
 /**
  * Answer it with this id
  */
@@ -1963,7 +2008,7 @@ export type Formid14 = string;
 /**
  * The answer
  */
-export type Kind21 = "photoRequest";
+export type Kind22 = "photoRequest";
 /**
  * Answer it with this id
  */
@@ -1992,7 +2037,7 @@ export type Notes = string | null;
 /**
  * The answer
  */
-export type Kind22 = "orderItems";
+export type Kind23 = "orderItems";
 /**
  * Answer it with this id
  */
@@ -2015,7 +2060,7 @@ export type Quantity2 = number;
 /**
  * The answer
  */
-export type Kind23 = "payment";
+export type Kind24 = "payment";
 /**
  * Answer it with this id
  */
@@ -2031,7 +2076,7 @@ export type Paymentprovider = "demo" | null;
 /**
  * The answer
  */
-export type Kind24 = "handover";
+export type Kind25 = "handover";
 /**
  * Answer it with this id
  */
@@ -2046,7 +2091,7 @@ export type Orderids = [string, ...string[]];
 /**
  * The answer
  */
-export type Kind25 = "returnDecision";
+export type Kind26 = "returnDecision";
 /**
  * Answer it with this id
  */
@@ -2066,7 +2111,7 @@ export type Reason2 = string | null;
 /**
  * The answer
  */
-export type Kind26 = "deliveryPin";
+export type Kind27 = "deliveryPin";
 /**
  * Answer it with this id
  */
@@ -2082,7 +2127,7 @@ export type Longitude2 = number;
 /**
  * The answer
  */
-export type Kind27 = "deliveryZones";
+export type Kind28 = "deliveryZones";
 /**
  * Answer it with this id
  */
@@ -2090,7 +2135,7 @@ export type Formid21 = string;
 /**
  * The answer
  */
-export type Kind28 = "productPhoto";
+export type Kind29 = "productPhoto";
 /**
  * Answer it with this id
  */
@@ -2106,7 +2151,7 @@ export type Photoid = string;
 /**
  * The answer
  */
-export type Kind29 = "brandColors";
+export type Kind30 = "brandColors";
 /**
  * Answer it with this id
  */
@@ -2114,11 +2159,11 @@ export type Formid23 = string;
 /**
  * The primary color
  */
-export type Primarycolor = string | null;
+export type Primarycolor2 = string | null;
 /**
  * The secondary color
  */
-export type Secondarycolor = string | null;
+export type Secondarycolor2 = string | null;
 /**
  * Tool calls it ran
  */
@@ -2542,6 +2587,8 @@ export interface StoreCard {
    * Map location; null until pinned
    */
   location: StoreLocationResponse | null;
+  primaryColor?: Primarycolor;
+  secondaryColor?: Secondarycolor;
 }
 /**
  * A store's map location as a route sends it. Each field restates
@@ -2553,11 +2600,21 @@ export interface StoreLocationResponse {
   longitude: Longitude;
 }
 /**
+ * The store's look updateMyStoreTheme saved: its brand colors, which
+ * the admin's screens are drawn in, and its photo style.
+ */
+export interface StoreThemeCard {
+  kind: Kind12;
+  primaryColor: Primarycolor1;
+  secondaryColor: Secondarycolor1;
+  photoStyle: Photostyle;
+}
+/**
  * Asks the admin to pin the store on a map. Answered with
  * LocationAnswer.
  */
 export interface LocationForm {
-  kind: Kind12;
+  kind: Kind13;
   formId: Formid6;
   /**
    * The pin so far; null when there is none
@@ -2569,7 +2626,7 @@ export interface LocationForm {
  * Asks the admin for new products. Answered with NewProductsAnswer.
  */
 export interface NewProductsForm {
-  kind: Kind13;
+  kind: Kind14;
   formId: Formid7;
   currency: Currency8;
   products: Products2;
@@ -2591,7 +2648,7 @@ export interface ChatProductDraft {
  * stored it.
  */
 export interface PhoneVerificationForm {
-  kind: Kind14;
+  kind: Kind15;
   formId: Formid8;
 }
 /**
@@ -2599,7 +2656,7 @@ export interface PhoneVerificationForm {
  * Answered with PhotoRequestAnswer.
  */
 export interface PhotoRequestForm {
-  kind: Kind15;
+  kind: Kind16;
   formId: Formid9;
 }
 /**
@@ -2608,7 +2665,7 @@ export interface PhotoRequestForm {
  * Answered with DeliveryPinAnswer.
  */
 export interface DeliveryPinForm {
-  kind: Kind16;
+  kind: Kind17;
   formId: Formid10;
   /**
    * The store's pin, where the map opens; null until pinned
@@ -2635,7 +2692,7 @@ export interface DeliveryZoneResponse {
  * DeliveryZonesAnswer.
  */
 export interface DeliveryZonesForm {
-  kind: Kind17;
+  kind: Kind18;
   formId: Formid11;
   currency: Currency10;
   /**
@@ -2648,7 +2705,7 @@ export interface DeliveryZonesForm {
  * A LocationForm's pin.
  */
 export interface LocationAnswer {
-  kind: Kind18;
+  kind: Kind19;
   formId: Formid12;
   latitude: Latitude1;
   longitude: Longitude1;
@@ -2657,7 +2714,7 @@ export interface LocationAnswer {
  * A NewProductsForm, filled in.
  */
 export interface NewProductsAnswer {
-  kind: Kind19;
+  kind: Kind20;
   formId: Formid13;
   products: Products3;
 }
@@ -2677,14 +2734,14 @@ export interface NewProductAnswerRow {
  * A PhoneVerificationForm done: the number is verified.
  */
 export interface PhoneVerifiedAnswer {
-  kind: Kind20;
+  kind: Kind21;
   formId: Formid14;
 }
 /**
  * A PhotoRequestForm, filled in: the uploaded photos' URLs.
  */
 export interface PhotoRequestAnswer {
-  kind: Kind21;
+  kind: Kind22;
   formId: Formid15;
   imageUrls: Imageurls;
   notes?: Notes;
@@ -2693,7 +2750,7 @@ export interface PhotoRequestAnswer {
  * A ShopProductsCard's picks.
  */
 export interface OrderItemsAnswer {
-  kind: Kind22;
+  kind: Kind23;
   formId: Formid16;
   items: Items4;
 }
@@ -2710,7 +2767,7 @@ export interface NewOrderItem {
  * A CheckoutCard's payment method.
  */
 export interface PaymentAnswer {
-  kind: Kind23;
+  kind: Kind24;
   formId: Formid17;
   paymentMethod: Paymentmethod2;
   paymentProvider?: Paymentprovider;
@@ -2719,7 +2776,7 @@ export interface PaymentAnswer {
  * A StoreOrdersCard's orders handed over.
  */
 export interface HandoverAnswer {
-  kind: Kind24;
+  kind: Kind25;
   formId: Formid18;
   orderIds: Orderids;
 }
@@ -2727,7 +2784,7 @@ export interface HandoverAnswer {
  * A StoreReturnsCard's decision on one requested return.
  */
 export interface ReturnDecisionAnswer {
-  kind: Kind25;
+  kind: Kind26;
   formId: Formid19;
   returnId: Returnid;
   decision: Decision;
@@ -2737,7 +2794,7 @@ export interface ReturnDecisionAnswer {
  * A DeliveryPinForm's pin: where the delivery goes.
  */
 export interface DeliveryPinAnswer {
-  kind: Kind26;
+  kind: Kind27;
   formId: Formid20;
   latitude: Latitude2;
   longitude: Longitude2;
@@ -2746,14 +2803,14 @@ export interface DeliveryPinAnswer {
  * A DeliveryZonesForm done: the areas are saved.
  */
 export interface DeliveryZonesAnswer {
-  kind: Kind27;
+  kind: Kind28;
   formId: Formid21;
 }
 /**
  * A ProductPhotoChoiceCard's pick: the photo to put on the product.
  */
 export interface ProductPhotoAnswer {
-  kind: Kind28;
+  kind: Kind29;
   formId: Formid22;
   productId: Productid2;
   photoId: Photoid;
@@ -2763,10 +2820,10 @@ export interface ProductPhotoAnswer {
  * card's colors (null: keep the store's own).
  */
 export interface BrandColorsAnswer {
-  kind: Kind29;
+  kind: Kind30;
   formId: Formid23;
-  primaryColor?: Primarycolor;
-  secondaryColor?: Secondarycolor;
+  primaryColor?: Primarycolor2;
+  secondaryColor?: Secondarycolor2;
 }
 /**
  * The tokens a turn's model calls used, summed over its calls.

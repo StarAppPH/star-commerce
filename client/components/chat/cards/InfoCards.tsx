@@ -1,6 +1,6 @@
 'use client';
 import Image from 'next/image';
-import { ExternalLinkIcon, ImageIcon, MapPinIcon, PackageSearchIcon, ScrollTextIcon, StoreIcon, TriangleAlertIcon } from 'lucide-react';
+import { ExternalLinkIcon, ImageIcon, MapPinIcon, PackageSearchIcon, PaletteIcon, ScrollTextIcon, StoreIcon, TriangleAlertIcon } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -178,6 +178,34 @@ export function PhotosCard({ component }: ComponentProps<'photos'>) {
   );
 }
 
+interface BrandColorsProps {
+  primaryColor: string | null | undefined;
+  secondaryColor: string | null | undefined;
+  dataComponent: string;
+}
+
+// The store's brand colors, each a swatch with its hex code.
+function BrandColors({ primaryColor, secondaryColor, dataComponent }: BrandColorsProps) {
+  const colors = [
+    { label: 'Primary', hex: primaryColor },
+    { label: 'Secondary', hex: secondaryColor },
+  ].filter((color): color is { label: string; hex: string } => Boolean(color.hex));
+  if (colors.length === 0) {
+    return <span data-component={dataComponent} className="text-muted-foreground">No brand colors yet</span>;
+  }
+  return (
+    <ul data-component={dataComponent} aria-label="Brand colors" className="flex flex-wrap gap-x-4 gap-y-1">
+      {colors.map(({ label, hex }) => (
+        <li key={label} className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="size-4 shrink-0 rounded-sm border" style={{ backgroundColor: hex }} />
+          <span className="text-muted-foreground">{label}</span>
+          <span className="font-mono">{hex}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // The admin's store.
 export function StoreCard({ component }: ComponentProps<'store'>) {
   const lines = [component.description, component.address, component.openingHours, component.contactNumber].filter(Boolean);
@@ -201,6 +229,25 @@ export function StoreCard({ component }: ComponentProps<'store'>) {
           {component.location
             ? `Pinned at ${component.location.latitude.toFixed(5)}, ${component.location.longitude.toFixed(5)}`
             : 'Not pinned on the map yet'}
+        </span>
+        <span className="flex items-center gap-1.5 text-xs">
+          <PaletteIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+          <BrandColors dataComponent="storeCardColors" primaryColor={component.primaryColor} secondaryColor={component.secondaryColor} />
+        </span>
+      </div>
+    </ChatCard>
+  );
+}
+
+// The look updateMyStoreTheme saved: the brand colors the admin's screens
+// are drawn in, and the style of the product photos.
+export function StoreThemeCard({ component }: ComponentProps<'storeTheme'>) {
+  return (
+    <ChatCard dataComponent="storeThemeCard" icon={<PaletteIcon />} title="Your store’s look">
+      <div className="flex flex-col gap-2 px-4 py-3 text-sm">
+        <BrandColors dataComponent="storeThemeColors" primaryColor={component.primaryColor} secondaryColor={component.secondaryColor} />
+        <span className="text-muted-foreground text-xs">
+          {component.photoStyle ? `Photo style: ${component.photoStyle}` : 'No photo style yet'}
         </span>
       </div>
     </ChatCard>

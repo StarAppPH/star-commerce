@@ -335,6 +335,28 @@ class StoreCard(ResponseModel):
     openingHours: str | None = Field(..., description='Opening hours')
     location: StoreLocationResponse | None = Field(
         ..., description='Map location; null until pinned')
+    # A card saved before the store card showed the colors has none.
+    primaryColor: str | None = Field(None, pattern=HEX_COLOR_PATTERN,
+                                     description='Main brand color; null '
+                                     'while unset')
+    secondaryColor: str | None = Field(None, pattern=HEX_COLOR_PATTERN,
+                                       description='Second brand color; '
+                                       'null while unset')
+
+
+class StoreThemeCard(ResponseModel):
+    """The store's look updateMyStoreTheme saved: its brand colors, which
+    the admin's screens are drawn in, and its photo style."""
+    kind: Literal['storeTheme'] = Field(..., description='The card')
+    primaryColor: str | None = Field(..., pattern=HEX_COLOR_PATTERN,
+                                     description='Main brand color; null '
+                                     'while unset')
+    secondaryColor: str | None = Field(..., pattern=HEX_COLOR_PATTERN,
+                                       description='Second brand color; '
+                                       'null while unset')
+    photoStyle: str | None = Field(..., description="The look of the "
+                                   "store's product photos; null while "
+                                   'unset')
 
 
 # ──────────────────────────────────────────────
@@ -429,7 +451,7 @@ class DeliveryZonesForm(ResponseModel):
 ChatComponent = Annotated[Union[
     ShopProductsCard, StoreProductsCard, StoreOrdersCard, MyOrdersCard,
     CheckoutCard, StoreReturnsCard, MyReturnsCard, PolicyCard, PhotosCard,
-    ProductPhotoChoiceCard, PhotoColorsCard, StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
+    ProductPhotoChoiceCard, PhotoColorsCard, StoreCard, StoreThemeCard, LocationForm, NewProductsForm, PhoneVerificationForm,
     PhotoRequestForm, DeliveryPinForm, DeliveryZonesForm,
 ], Field(discriminator='kind')]
 
