@@ -4,6 +4,7 @@ sees them, best sellers first."""
 import pytest
 
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (addProduct, assertExactShape, assertRowKeys,
                       createTestStore, guestAt, storeWithProducts,
                       wipeCollections)
@@ -15,6 +16,7 @@ OTHER_ADMIN = 'pr-other-admin'
 GUEST = 'pr-guest-uid'
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 @pytest.fixture
@@ -28,7 +30,7 @@ def test_listStoreProducts_bestSellersFirst_availableOnly(clean, firebase):
     store = storeWithProducts(ADMIN)
     customerId = guestAt(firebase, store, GUEST)
 
-    res = api.listStoreProducts(customerId, store['_id'])
+    res = tools.listStoreProducts(customerId, store['_id'])
 
     assertExactShape(ProductListResponse, res)
     assertRowKeys(res['products'], ProductRow)
@@ -44,7 +46,7 @@ def test_listStoreProducts_sendsTheStoresCurrency(clean, firebase):
     store = storeWithProducts(ADMIN, name='Tokyo Ramen', currency='JPY')
     customerId = guestAt(firebase, store, GUEST)
 
-    assert api.listStoreProducts(customerId, store['_id'])['currency'] == 'JPY'
+    assert tools.listStoreProducts(customerId, store['_id'])['currency'] == 'JPY'
 
 
 def test_listStoreProducts_onlyThatStoresProducts(clean, firebase):
@@ -53,11 +55,11 @@ def test_listStoreProducts_onlyThatStoresProducts(clean, firebase):
     addProduct(other['_id'], 'Latte', 150, soldCount=5000)
     customerId = guestAt(firebase, store, GUEST)
 
-    names = [p['name'] for p in api.listStoreProducts(customerId,
+    names = [p['name'] for p in tools.listStoreProducts(customerId,
                                                       store['_id'])['products']]
 
     assert 'Latte' not in names
-    assert [p['name'] for p in api.listStoreProducts(
+    assert [p['name'] for p in tools.listStoreProducts(
         customerId, other['_id'])['products']] == ['Latte']
 
 
@@ -65,11 +67,11 @@ def test_listStoreProducts_searchAndLimit(clean, firebase):
     store = storeWithProducts(ADMIN)
     customerId = guestAt(firebase, store, GUEST)
 
-    assert [p['name'] for p in api.listStoreProducts(
+    assert [p['name'] for p in tools.listStoreProducts(
         customerId, store['_id'], search='  UBE ')['products']] == ['Ube Cake']
-    assert [p['name'] for p in api.listStoreProducts(
+    assert [p['name'] for p in tools.listStoreProducts(
         customerId, store['_id'], limit=1)['products']] == ['Pandesal']
-    assert api.listStoreProducts(customerId, store['_id'],
+    assert tools.listStoreProducts(customerId, store['_id'],
                                  search='')['products'][0]['name'] == 'Pandesal'
 
 
@@ -80,7 +82,7 @@ def test_listStoreProducts_aSearchIsMatchedLiterally(clean, firebase):
     addProduct(store['_id'], 'Cake.* Special', 99)
     customerId = guestAt(firebase, store, GUEST)
 
-    res = api.listStoreProducts(customerId, store['_id'], search='.*')
+    res = tools.listStoreProducts(customerId, store['_id'], search='.*')
 
     assert [p['name'] for p in res['products']] == ['Cake.* Special']
 
@@ -91,7 +93,7 @@ def test_listStoreProducts_refusesALimitOutOfRange(clean, firebase, limit):
     customerId = guestAt(firebase, store, GUEST)
 
     with pytest.raises(ValueError, match='^limit is a whole number'):
-        api.listStoreProducts(customerId, store['_id'], limit=limit)
+        tools.listStoreProducts(customerId, store['_id'], limit=limit)
 
 
 def test_listStoreProducts_refusesALongSearch(clean, firebase):
@@ -99,7 +101,7 @@ def test_listStoreProducts_refusesALongSearch(clean, firebase):
     customerId = guestAt(firebase, store, GUEST)
 
     with pytest.raises(ValueError, match='at most 80 characters$'):
-        api.listStoreProducts(customerId, store['_id'], search='x' * 81)
+        tools.listStoreProducts(customerId, store['_id'], search='x' * 81)
 
 
 def test_listStoreProducts_refusesAnUnknownStore(clean, firebase):
@@ -107,14 +109,14 @@ def test_listStoreProducts_refusesAnUnknownStore(clean, firebase):
     customerId = guestAt(firebase, store, GUEST)
 
     with pytest.raises(ValueError, match='^Store not found$'):
-        api.listStoreProducts(customerId, 'pr-no-such-store')
+        tools.listStoreProducts(customerId, 'pr-no-such-store')
 
 
 def test_listStoreProducts_refusesAnAdmin(clean):
     store = storeWithProducts(ADMIN)
 
     with pytest.raises(PermissionError, match='^Only a customer can do this$'):
-        api.listStoreProducts(ADMIN, store['_id'])
+        tools.listStoreProducts(ADMIN, store['_id'])
 
 
 def test_listStoreProducts_withoutALimit_returnsTheDefault(clean, firebase):
@@ -123,8 +125,8 @@ def test_listStoreProducts_withoutALimit_returnsTheDefault(clean, firebase):
         addProduct(store['_id'], f'Item {number:02d}', 10)
     customerId = guestAt(firebase, store, GUEST)
 
-    unset = api.listStoreProducts(customerId, store['_id'])
-    none = api.listStoreProducts(customerId, store['_id'], limit=None)
+    unset = tools.listStoreProducts(customerId, store['_id'])
+    none = tools.listStoreProducts(customerId, store['_id'], limit=None)
 
     assert len(unset['products']) == 10
     assert none == unset
@@ -140,7 +142,7 @@ def test_listStoreProducts_sendsInventory_andListsSoldOutProducts(
                isAvailable=False)
     customerId = guestAt(firebase, store, GUEST)
 
-    res = api.listStoreProducts(customerId, store['_id'])
+    res = tools.listStoreProducts(customerId, store['_id'])
 
     assertExactShape(ProductListResponse, res)
     assertRowKeys(res['products'], ProductRow)
@@ -157,4 +159,4 @@ def test_listStoreProducts_refusesANonTextSearch(clean, firebase, search):
     customerId = guestAt(firebase, store, GUEST)
 
     with pytest.raises(ValueError, match='^The search must be text$'):
-        api.listStoreProducts(customerId, store['_id'], search=search)
+        tools.listStoreProducts(customerId, store['_id'], search=search)

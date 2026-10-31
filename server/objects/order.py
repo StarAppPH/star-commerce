@@ -15,6 +15,7 @@ from objects.store import (DELIVERY_ZONE_NAME_MAX_LENGTH, LATITUDE_LIMIT,
 from objects.product import (PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
                              Product)
 from objects.payment import OrderPaymentMethod, PaymentOption, PaymentProvider
+from sharedConstants import WAITING_COUNT_CAP
 
 
 # ──────────────────────────────────────────────
@@ -327,6 +328,22 @@ class StoreOrderListResponse(ResponseModel):
 class MyOrderListResponse(ResponseModel):
     orders: list[MyOrderRow] = Field(...,
                                      description='The orders, newest first')
+
+
+class WaitingOnYouResponse(ResponseModel):
+    """What getWaitingOnYou sends the admin's new-chat screen: how many of
+    the store's orders and returns wait for the admin, each count capped at
+    WAITING_COUNT_CAP (a count at the cap means at least that many)."""
+    paymentsToConfirm: int = Field(
+        ..., ge=0, le=WAITING_COUNT_CAP,
+        description='Orders paid by hand waiting for the admin to confirm '
+        'the payment (awaitingPayment)')
+    ordersToHandOver: int = Field(
+        ..., ge=0, le=WAITING_COUNT_CAP,
+        description='Paid orders not handed over yet')
+    returnsToDecide: int = Field(
+        ..., ge=0, le=WAITING_COUNT_CAP,
+        description='Return requests waiting for a decision')
 
 
 class CreatedOrderResponse(ResponseModel):

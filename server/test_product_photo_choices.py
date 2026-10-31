@@ -12,6 +12,7 @@ import pytest
 import imageModel
 from actions import PhotoActions, usageCounters
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (addProduct, assertExactShape, createTestStore,
                       wipeCollections)
 from mongoDb import db
@@ -26,6 +27,7 @@ from test_photos import (ADMIN, FAR_EXPIRY, JPEG, OTHER, ScriptedImages,
 __all__ = ['clean', 'fakes', 'frozen', 'noSleep']
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 @pytest.fixture
@@ -43,7 +45,7 @@ def productWithPhoto(fakes, photoStyle='white marble', data=JPEG,
     download URL of the admin's photo of it."""
     store = createTestStore(ADMIN)
     if photoStyle is not None:
-        api.updateMyStoreTheme(ADMIN, photoStyle=photoStyle,
+        tools.updateMyStoreTheme(ADMIN, photoStyle=photoStyle,
                                primaryColor='#112233')
     product = addProduct(store['_id'], 'Mug', 250)
     url = putObject(fakes, f'users/{ADMIN}/chat-photos/mug.png', data,
@@ -61,7 +63,7 @@ def test_photoChoices_keepTheOriginal_andMake3WithTheirPrompts(
     store, product, url = productWithPhoto(fakes, data=PNG,
                                            contentType='image/png')
 
-    res = api.makeProductPhotoChoices(ADMIN, product['_id'], url)
+    res = tools.makeProductPhotoChoices(ADMIN, product['_id'], url)
 
     assertExactShape(ProductPhotoChoicesResponse, res)
     assert res['productId'] == product['_id'] and res['productName'] == 'Mug'
@@ -104,14 +106,14 @@ def test_photoChoices_keepTheOriginal_andMake3WithTheirPrompts(
     assert usageCounts() == [PHOTOS_PER_CALL, PHOTOS_PER_CALL]
     # The pick goes on the product, the original as well as a styled one.
     for photo in (res['photos'][0], res['photos'][2]):
-        row = api.setProductPhoto(ADMIN, product['_id'], photo['_id'])
+        row = tools.setProductPhoto(ADMIN, product['_id'], photo['_id'])
         assert row['photoUrl'] == photo['url']
 
 
 def test_photoChoices_thePromptNamesTheProduct(fakes, photoProducts):
     _, product, url = productWithPhoto(fakes)
 
-    api.makeProductPhotoChoices(ADMIN, product['_id'], url)
+    tools.makeProductPhotoChoices(ADMIN, product['_id'], url)
 
     for call in fakes.images.calls:
         assert call['prompt'].split('\n')[:2] == [
@@ -122,7 +124,7 @@ def test_photoChoices_notesAreTheSpecialRequest_ofEveryPrompt(fakes,
                                                              photoProducts):
     store, product, url = productWithPhoto(fakes)
 
-    api.makeProductPhotoChoices(ADMIN, product['_id'], url,
+    tools.makeProductPhotoChoices(ADMIN, product['_id'], url,
                                 notes='  on a desk ')
 
     assert len(fakes.images.calls) == 2
@@ -133,7 +135,7 @@ def test_photoChoices_notesAreTheSpecialRequest_ofEveryPrompt(fakes,
     for doc in storedPhotos(store)[1:]:
         assert doc['notes'] == 'on a desk'
     with pytest.raises(ValueError):
-        api.makeProductPhotoChoices(ADMIN, product['_id'], url,
+        tools.makeProductPhotoChoices(ADMIN, product['_id'], url,
                                     notes='n' * 301)
 
 
@@ -141,7 +143,7 @@ def test_photoChoices_withoutAPhotoStyle_offerTheOriginalAndTheGlobalPhoto(
         fakes, photoProducts):
     _, product, url = productWithPhoto(fakes, photoStyle=None)
 
-    res = api.makeProductPhotoChoices(ADMIN, product['_id'], url)
+    res = tools.makeProductPhotoChoices(ADMIN, product['_id'], url)
 
     assertExactShape(ProductPhotoChoicesResponse, res)
     assert [p['source'] for p in res['photos']] == ['original', 'generated']
@@ -160,7 +162,7 @@ def test_photoChoices_pastTheStoresDailyCap_sayTheLimitWasReached(
                             PhotoActions.STORE_DAILY_PHOTO_CAP, FAR_EXPIRY,
                             amount=PhotoActions.STORE_DAILY_PHOTO_CAP - 2)
 
-    res = api.makeProductPhotoChoices(ADMIN, product['_id'], url)
+    res = tools.makeProductPhotoChoices(ADMIN, product['_id'], url)
 
     assert [p['source'] for p in res['photos']] == ['original']
     assert res['photos'][0]['prompt'] is None
@@ -179,7 +181,7 @@ def test_photoChoices_whenTheModelFails_offerTheOriginal_andGiveAllBack(
     useImages(monkeypatch, ScriptedImages(
         *[sdkError(openai.InternalServerError, 500) for _ in range(4)]))
 
-    res = api.makeProductPhotoChoices(ADMIN, product['_id'], url)
+    res = tools.makeProductPhotoChoices(ADMIN, product['_id'], url)
 
     assert [p['source'] for p in res['photos']] == ['original']
     assert res['notGenerated'] == PhotoActions.UNAVAILABLE_ORIGINAL_ONLY
@@ -197,15 +199,15 @@ def test_photoChoices_takeOnlyTheStoresProduct_andTheAdminsOwnPhoto(
 
     for productId in (otherProduct['_id'], 'no-such-product', '', None):
         with pytest.raises(ValueError, match='^Product not found$'):
-            api.makeProductPhotoChoices(ADMIN, productId, url)
+            tools.makeProductPhotoChoices(ADMIN, productId, url)
     with pytest.raises(ValueError, match='^imageUrl must be a photo you '
                        'uploaded$') as error:
-        api.makeProductPhotoChoices(ADMIN, product['_id'], theirs)
+        tools.makeProductPhotoChoices(ADMIN, product['_id'], theirs)
     assert theirs not in str(error.value)
     for missing in (None, '', '  '):
         with pytest.raises(ValueError, match='^' + re.escape(
                 PhotoActions.IMAGE_URL_MISSING) + '$'):
-            api.makeProductPhotoChoices(ADMIN, product['_id'], missing)
+            tools.makeProductPhotoChoices(ADMIN, product['_id'], missing)
     assert db.read({}, 'GeneratedPhotos') == []
     assert fakes.images.calls == []
     assert usageCounts() == []
@@ -214,7 +216,7 @@ def test_photoChoices_takeOnlyTheStoresProduct_andTheAdminsOwnPhoto(
 def test_generateProductPhotos_returnsAndKeepsEachPhotosPrompt(fakes):
     store, url = themedStoreWithPhoto(fakes)
 
-    res = api.generateProductPhotos(ADMIN, [url], notes='on a desk')
+    res = tools.generateProductPhotos(ADMIN, [url], notes='on a desk')
 
     calls = fakes.images.byN()
     prompts = {p['_id']: p['prompt'] for p in res['photos']}

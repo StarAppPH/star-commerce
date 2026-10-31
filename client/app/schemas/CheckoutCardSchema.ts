@@ -106,7 +106,8 @@ export type Expiresat = string;
  * How it is or was paid
  */
 export type Paymentmethod =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")
+  | null;
 /**
  * When it was paid
  */
@@ -175,7 +176,8 @@ export type Checkpayees = string[] | null;
  * The ways the shopper could pay it, on a card saved before payment options
  */
 export type Paymentmethods =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[]
+  | null;
 
 /**
  * The order a shopper just placed, unpaid. Answered with PaymentAnswer:

@@ -688,10 +688,10 @@ def createTestStore(adminId: str, name: str = 'Bakery A',
                     currency: str = 'PHP') -> dict:
     """An admin (createTestUser) and its store, as createUserStore sends
     it."""
-    from ApiRequests import ApiRequests
+    from ToolRequests import ToolRequests
     createTestUser(adminId)
-    return ApiRequests().createUserStore(adminId, name, **STORE_DETAILS,
-                                         currency=currency)
+    return ToolRequests().createUserStore(adminId, name, **STORE_DETAILS,
+                                          currency=currency)
 
 
 def withoutBrandColors(store: dict) -> dict:

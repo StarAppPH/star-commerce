@@ -61,5 +61,10 @@ STORE_RESET_ENDS_AT = '2026-11-05T00:00:00+08:00'
 # must not count as inside the other zone.
 DELIVERY_ZONE_BORDER_TOLERANCE = 1e-9
 
+# The most items getWaitingOnYou counts in each of its counts (payments to
+# confirm, orders to hand over, returns to decide): the admin's new-chat
+# screen shows a count that reaches it as "50+".
+WAITING_COUNT_CAP = 50
+
 # Everything above this line ships to every browser. No credentials, no API
 # keys, no bank details, no internal limits.

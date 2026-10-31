@@ -18,6 +18,7 @@ from actions.ProductActions import (INVENTORY_WITH_RESERVED, NAME_TAKEN,
                                     PRODUCT_NOT_FOUND, _validProduct)
 from actions.StoreActions import ownerStore
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (addProduct, assertExactShape, assertRowKeys,
                       createTestStore, createTestUser, guestAt,
                       storeWithProducts, wipeCollections)
@@ -48,6 +49,7 @@ OUTDATED = 'Your data is outdated. Please refresh the page and try again.'
 LIMIT = 'limit is a whole number from 1 to 50'
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 def exactly(message: str) -> str:
@@ -62,7 +64,7 @@ def clean():
 
 
 def _add(userId: str = ADMIN, **fields) -> dict:
-    return api.addStoreProduct(
+    return tools.addStoreProduct(
         userId, **{'name': 'Pandesal', 'price': 5, 'inventory': 100, **fields})
 
 
@@ -190,11 +192,11 @@ def test_validProduct_anUpdate_stillChecksWhatItSends(field, value, message):
 # ----------------------------- shared refusals ----------------------------- #
 
 INVALID_CALLS = {
-    'addStoreProduct': lambda uid: api.addStoreProduct(uid, '', -1, 1.5),
-    'addStoreProducts': lambda uid: api.addStoreProducts(uid, [5] * 60),
-    'updateStoreProduct': lambda uid: api.updateStoreProduct(
+    'addStoreProduct': lambda uid: tools.addStoreProduct(uid, '', -1, 1.5),
+    'addStoreProducts': lambda uid: tools.addStoreProducts(uid, [5] * 60),
+    'updateStoreProduct': lambda uid: tools.updateStoreProduct(
         uid, 'no-such-product', price=-1),
-    'listMyStoreProducts': lambda uid: api.listMyStoreProducts(
+    'listMyStoreProducts': lambda uid: tools.listMyStoreProducts(
         uid, search=5, limit=0),
 }
 
@@ -346,7 +348,7 @@ def test_aRacingDuplicateName_isNameTaken(clean, monkeypatch, route):
         call = lambda: _add(name='New')  # noqa: E731
     else:
         monkeypatch.setattr(db, 'update', raiseDuplicate)
-        call = lambda: api.updateStoreProduct(  # noqa: E731
+        call = lambda: tools.updateStoreProduct(  # noqa: E731
             ADMIN, existing['_id'], name='New')
 
     with pytest.raises(ValueError, match=exactly(NAME_TAKEN)):
@@ -369,7 +371,7 @@ def test_productsIndex_refusesTheSameNameKeyInOneStore(clean):
 def test_addStoreProducts_addsAllInOrder(clean):
     createTestStore(ADMIN, currency='JPY')
 
-    res = api.addStoreProducts(ADMIN, [
+    res = tools.addStoreProducts(ADMIN, [
         _item('Tea', price=3, inventory=20, description='  Hot  ',
               extra='ignored'),
         NewProduct(name='Coffee', price=4.5, inventory=0, isAvailable=False),
@@ -399,10 +401,10 @@ def test_addStoreProducts_sizeLimits(clean, count, accepted):
     products = [_item(f'Item {number}') for number in range(count)]
 
     if accepted:
-        assert len(api.addStoreProducts(ADMIN, products)['products']) == count
+        assert len(tools.addStoreProducts(ADMIN, products)['products']) == count
     else:
         with pytest.raises(ValueError, match=exactly(BATCH_SIZE)):
-            api.addStoreProducts(ADMIN, products)
+            tools.addStoreProducts(ADMIN, products)
         assert _stored() == []
 
 
@@ -411,7 +413,7 @@ def test_addStoreProducts_refusesANonList(clean, products):
     createTestStore(ADMIN)
 
     with pytest.raises(ValueError, match=exactly(BATCH_SIZE)):
-        api.addStoreProducts(ADMIN, products)
+        tools.addStoreProducts(ADMIN, products)
 
 
 @pytest.mark.parametrize('items, message', [
@@ -440,7 +442,7 @@ def test_addStoreProducts_refusesAnItemWithItsPosition(clean, items, message):
     createTestStore(ADMIN)
 
     with pytest.raises(ValueError, match=exactly(message)):
-        api.addStoreProducts(ADMIN, items)
+        tools.addStoreProducts(ADMIN, items)
     assert _stored() == []  # valid items before the bad one are not added
 
 
@@ -448,7 +450,7 @@ def test_addStoreProducts_neverEchoesAValue(clean):
     createTestStore(ADMIN)
 
     with pytest.raises(ValueError) as error:
-        api.addStoreProducts(ADMIN, [_item(SECRET + 'x' * 81)])
+        tools.addStoreProducts(ADMIN, [_item(SECRET + 'x' * 81)])
 
     assert SECRET not in str(error.value)
 
@@ -465,7 +467,7 @@ def test_addStoreProducts_refusesDuplicatesInTheBatch(clean, items, message):
     createTestStore(ADMIN)
 
     with pytest.raises(ValueError, match=exactly(message)):
-        api.addStoreProducts(ADMIN, items)
+        tools.addStoreProducts(ADMIN, items)
     assert _stored() == []
 
 
@@ -475,10 +477,10 @@ def test_addStoreProducts_refusesANameTheStoreHas(clean):
     addProduct(store['_id'], 'Hidden Tea', 1, isAvailable=False)
 
     with pytest.raises(ValueError, match=exactly(NAME_TAKEN)):
-        api.addStoreProducts(ADMIN, [_item('Fresh'), _item('HIDDEN tea')])
+        tools.addStoreProducts(ADMIN, [_item('Fresh'), _item('HIDDEN tea')])
     assert len(_stored()) == 1
     # The same names in another store are fine.
-    api.addStoreProducts(OTHER_ADMIN, [_item('Hidden Tea')])
+    tools.addStoreProducts(OTHER_ADMIN, [_item('Hidden Tea')])
 
 
 def test_addStoreProducts_checkOrder(clean, monkeypatch):
@@ -488,23 +490,23 @@ def test_addStoreProducts_checkOrder(clean, monkeypatch):
 
     # The size comes before the items' contents.
     with pytest.raises(ValueError, match=exactly(BATCH_SIZE)):
-        api.addStoreProducts(ADMIN, [5] * 51)
+        tools.addStoreProducts(ADMIN, [5] * 51)
     # The first bad item is the one reported.
     with pytest.raises(ValueError, match=exactly(
             'Product 1: the price is a number from 0 to 10000000')):
-        api.addStoreProducts(ADMIN, [_item('A', price=-1), _item('')])
+        tools.addStoreProducts(ADMIN, [_item('A', price=-1), _item('')])
     # A field refusal beats a duplicate found earlier in the list.
     with pytest.raises(ValueError, match=exactly(
             'Product 3: the inventory is a whole number from 0 to 1000000')):
-        api.addStoreProducts(ADMIN, [_item('A'), _item('a'),
+        tools.addStoreProducts(ADMIN, [_item('A'), _item('a'),
                                      _item('C', inventory=-1)])
     # A duplicate in the list beats the cap; the cap beats a taken name.
     with pytest.raises(ValueError, match=exactly(
             'Product 2: another product in this list has the same name')):
-        api.addStoreProducts(ADMIN, [_item('A'), _item('a'), _item('B')])
+        tools.addStoreProducts(ADMIN, [_item('A'), _item('a'), _item('B')])
     with pytest.raises(ValueError, match=exactly(
             'A store has at most 2 products')):
-        api.addStoreProducts(ADMIN, [_item('Existing'), _item('B')])
+        tools.addStoreProducts(ADMIN, [_item('Existing'), _item('B')])
     assert len(_stored()) == 1
 
 
@@ -516,9 +518,9 @@ def test_addStoreProducts_theCap(clean, monkeypatch):
 
     with pytest.raises(ValueError, match=exactly(
             'A store has at most 3 products')):
-        api.addStoreProducts(ADMIN, [_item('A'), _item('B')])
+        tools.addStoreProducts(ADMIN, [_item('A'), _item('B')])
     assert len(_stored()) == 2
-    api.addStoreProducts(ADMIN, [_item('A')])
+    tools.addStoreProducts(ADMIN, [_item('A')])
     assert len(_stored()) == 3
 
 
@@ -533,10 +535,10 @@ def test_addStoreProducts_aRacingDuplicate(clean, monkeypatch, code, mapped):
 
     if mapped:
         with pytest.raises(ValueError, match=exactly(NAME_TAKEN)):
-            api.addStoreProducts(ADMIN, [_item('A')])
+            tools.addStoreProducts(ADMIN, [_item('A')])
     else:
         with pytest.raises(BulkWriteError):
-            api.addStoreProducts(ADMIN, [_item('A')])
+            tools.addStoreProducts(ADMIN, [_item('A')])
     assert _stored() == []
 
 
@@ -554,7 +556,7 @@ def test_addStoreProducts_aRacingDuplicateRollsBackTheWholeBatch(
                         lambda *args, **kwargs: None)
 
     with pytest.raises(ValueError, match=exactly(NAME_TAKEN)):
-        api.addStoreProducts(ADMIN, [_item('Fresh'), _item('Existing')])
+        tools.addStoreProducts(ADMIN, [_item('Fresh'), _item('Existing')])
 
     assert [d['name'] for d in _stored()] == ['Existing']
 
@@ -573,7 +575,7 @@ def test_updateStoreProduct_changesOnlyWhatIsSent_andKeepsTheReservations(
     productId = product['_id']
 
     def update(**fields) -> dict:
-        res = api.updateStoreProduct(ADMIN, productId, **fields)
+        res = tools.updateStoreProduct(ADMIN, productId, **fields)
         assertExactShape(AdminProductRow, res)
         assert res['reservedInventory'] == RESERVED
         assert res['soldCount'] == 7
@@ -618,7 +620,7 @@ def test_updateStoreProduct_needsAChange(clean, fields):
     product = addProduct(store['_id'], 'Pandesal', 5)
 
     with pytest.raises(ValueError, match=exactly(NO_CHANGE)):
-        api.updateStoreProduct(ADMIN, product['_id'], **fields)
+        tools.updateStoreProduct(ADMIN, product['_id'], **fields)
     assert _byName('Pandesal')['_version'] == 0
 
 
@@ -635,7 +637,7 @@ def test_updateStoreProduct_refusesAnInvalidField(clean, fields, message):
     product = addProduct(store['_id'], 'Pandesal', 5)
 
     with pytest.raises(ValueError, match=exactly(message)):
-        api.updateStoreProduct(ADMIN, product['_id'], **fields)
+        tools.updateStoreProduct(ADMIN, product['_id'], **fields)
     assert _byName('Pandesal')['_version'] == 0
 
 
@@ -645,7 +647,7 @@ def test_updateStoreProduct_productNotFound(clean, productId):
     addProduct(store['_id'], 'Pandesal', 5)
 
     with pytest.raises(ValueError, match=exactly(PRODUCT_NOT_FOUND)):
-        api.updateStoreProduct(ADMIN, productId, price=1)
+        tools.updateStoreProduct(ADMIN, productId, price=1)
 
 
 def test_updateStoreProduct_tenantBoundary(clean):
@@ -654,7 +656,7 @@ def test_updateStoreProduct_tenantBoundary(clean):
     product = addProduct(store['_id'], 'Pandesal', 5)
 
     with pytest.raises(ValueError, match=exactly(PRODUCT_NOT_FOUND)):
-        api.updateStoreProduct(OTHER_ADMIN, product['_id'], price=1,
+        tools.updateStoreProduct(OTHER_ADMIN, product['_id'], price=1,
                                name='Hijacked')
 
     stored = _byName('Pandesal')
@@ -672,16 +674,16 @@ def test_updateStoreProduct_nameRules(clean):
 
     for taken in ('Ube Cake', 'UBE CAKE', ' ube  cake '):
         with pytest.raises(ValueError, match=exactly(NAME_TAKEN)):
-            api.updateStoreProduct(ADMIN, pandesal['_id'], name=taken)
+            tools.updateStoreProduct(ADMIN, pandesal['_id'], name=taken)
 
     # A case-only change of its own name, and its exact name, are fine.
-    res = api.updateStoreProduct(ADMIN, pandesal['_id'], name='PANDESAL')
+    res = tools.updateStoreProduct(ADMIN, pandesal['_id'], name='PANDESAL')
     assert res['name'] == 'PANDESAL'
     assert db.read({'_id': pandesal['_id']}, 'Products',
                    findOne=True)['nameKey'] == 'pandesal'
-    api.updateStoreProduct(ADMIN, pandesal['_id'], name='PANDESAL')
+    tools.updateStoreProduct(ADMIN, pandesal['_id'], name='PANDESAL')
     # The same name as a product of another store is fine.
-    api.updateStoreProduct(ADMIN, pandesal['_id'], name='Roll')
+    tools.updateStoreProduct(ADMIN, pandesal['_id'], name='Roll')
     # A rename frees the old name.
     _add(name='Pandesal')
 
@@ -695,11 +697,11 @@ def test_updateStoreProduct_checkOrder(clean):
     addProduct(store['_id'], 'Pandesal', 5)
 
     with pytest.raises(ValueError, match=exactly(NO_CHANGE)):
-        api.updateStoreProduct(ADMIN, 'no-such-product')
+        tools.updateStoreProduct(ADMIN, 'no-such-product')
     with pytest.raises(ValueError, match=exactly(PRICE)):
-        api.updateStoreProduct(ADMIN, 'no-such-product', price=-1)
+        tools.updateStoreProduct(ADMIN, 'no-such-product', price=-1)
     with pytest.raises(ValueError, match=exactly(PRODUCT_NOT_FOUND)):
-        api.updateStoreProduct(ADMIN, 'no-such-product', name='Pandesal')
+        tools.updateStoreProduct(ADMIN, 'no-such-product', name='Pandesal')
 
 
 def test_updateStoreProduct_anOutdatedVersionIsRefused(clean, monkeypatch):
@@ -720,7 +722,7 @@ def test_updateStoreProduct_anOutdatedVersionIsRefused(clean, monkeypatch):
     monkeypatch.setattr(db, 'update', withAConcurrentReservation)
 
     with pytest.raises(OutdatedDataError, match=exactly(OUTDATED)):
-        api.updateStoreProduct(ADMIN, product['_id'], price=99, inventory=0)
+        tools.updateStoreProduct(ADMIN, product['_id'], price=99, inventory=0)
 
     stored = _byName('Pandesal')
     assert (stored['price'], stored['inventory']) == (5.0, 10)
@@ -733,7 +735,7 @@ def test_updateStoreProduct_anOutdatedVersionIsRefused(clean, monkeypatch):
 def test_listMyStoreProducts_includesHiddenProducts_sortedByName(clean):
     storeWithProducts(ADMIN)
 
-    res = api.listMyStoreProducts(ADMIN)
+    res = tools.listMyStoreProducts(ADMIN)
 
     assertExactShape(AdminProductListResponse, res)
     assertRowKeys(res['products'], AdminProductListRow)
@@ -751,7 +753,7 @@ def test_listMyStoreProducts_sortsWithoutRegardToCase(clean):
     addProduct(store['_id'], 'apple', 1)
     addProduct(store['_id'], 'Mango', 1)
 
-    names = [p['name'] for p in api.listMyStoreProducts(ADMIN)['products']]
+    names = [p['name'] for p in tools.listMyStoreProducts(ADMIN)['products']]
 
     assert names == ['apple', 'Mango', 'Zebra']
 
@@ -763,14 +765,14 @@ def test_listMyStoreProducts_sumsTheReservations(clean):
                reservedInventory=[{'orderId': 'o3', 'quantity': 4}])
     addProduct(store['_id'], 'C none', 5, inventory=0)
 
-    products = api.listMyStoreProducts(ADMIN)['products']
+    products = tools.listMyStoreProducts(ADMIN)['products']
 
     assert [(p['name'], p['reservedQuantity'], p['inventory'])
             for p in products] == [('A held', 5, 4), ('B one', 4, 9),
                                    ('C none', 0, 0)]
     assert all('reservedInventory' not in p for p in products)
     # The sum is per row even when a limit cuts the list.
-    [first] = api.listMyStoreProducts(ADMIN, limit=1)['products']
+    [first] = tools.listMyStoreProducts(ADMIN, limit=1)['products']
     assert first['reservedQuantity'] == 5
 
 
@@ -782,7 +784,7 @@ def test_listMyStoreProducts_searchAndLimit(clean):
 
     def names(**kwargs):
         return [p['name'] for p in
-                api.listMyStoreProducts(ADMIN, **kwargs)['products']]
+                tools.listMyStoreProducts(ADMIN, **kwargs)['products']]
 
     assert names(search='.*') == ['Cake.* Special']
     assert names(search='  CAKE ') == ['Cake.* Special']
@@ -808,7 +810,7 @@ def test_listMyStoreProducts_searchAndLimit(clean):
 def test_listMyStoreProducts_anEmptyStore(clean):
     createTestStore(ADMIN, currency='USD')
 
-    assert api.listMyStoreProducts(ADMIN) == {'currency': 'USD',
+    assert tools.listMyStoreProducts(ADMIN) == {'currency': 'USD',
                                               'products': []}
 
 
@@ -816,7 +818,7 @@ def test_listMyStoreProducts_checkOrder(clean):
     createTestStore(ADMIN)
 
     with pytest.raises(ValueError, match=exactly('The search must be text')):
-        api.listMyStoreProducts(ADMIN, search=5, limit=0)
+        tools.listMyStoreProducts(ADMIN, search=5, limit=0)
 
 
 def test_listMyStoreProducts_onlyTheCallersStore(clean):
@@ -825,8 +827,8 @@ def test_listMyStoreProducts_onlyTheCallersStore(clean):
     addProduct(store['_id'], 'Cake A', 1)
     addProduct(other['_id'], 'Cake B', 1)
 
-    mine = api.listMyStoreProducts(ADMIN, search='cake')['products']
-    theirs = api.listMyStoreProducts(OTHER_ADMIN, search='cake')['products']
+    mine = tools.listMyStoreProducts(ADMIN, search='cake')['products']
+    theirs = tools.listMyStoreProducts(OTHER_ADMIN, search='cake')['products']
 
     assert [p['name'] for p in mine] == ['Cake A']
     assert [p['name'] for p in theirs] == ['Cake B']
@@ -857,12 +859,12 @@ def test_updateStoreProduct_inventoryPlusReservedUnits_staysWithinTheMax(
     over = addProduct(store['_id'], 'Over', 5, inventory=3,
                       reservedInventory=held)
 
-    res = api.updateStoreProduct(ADMIN, ok['_id'],
+    res = tools.updateStoreProduct(ADMIN, ok['_id'],
                                  inventory=PRODUCT_INVENTORY_MAX - 10)
     assert res['inventory'] == PRODUCT_INVENTORY_MAX - 10
 
     with pytest.raises(ValueError, match=exactly(INVENTORY_WITH_RESERVED)):
-        api.updateStoreProduct(ADMIN, over['_id'],
+        tools.updateStoreProduct(ADMIN, over['_id'],
                                inventory=PRODUCT_INVENTORY_MAX - 5)
     stored = db.read({'_id': over['_id']}, 'Products', findOne=True)
     assert stored == over

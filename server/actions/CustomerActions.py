@@ -20,7 +20,7 @@ from AuthHandler import verifyFirebaseIdToken
 from actions.StoreActions import SET_UP, STORE_NOT_FOUND
 from mongoDb import db
 from objects import (FIREBASE_ID_TOKEN_MAX_LENGTH, PHONE_NUMBER_PATTERN,
-                     Customer, CustomerSessionResponse, PhoneVerifiedResponse,
+                     Customer, CustomerSessionResponse, NoContentResponse,
                      ShopStoreResponse)
 from route_config import route_config
 
@@ -117,7 +117,7 @@ class CustomerActions():
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Phone number verified',
-                  responseModel=PhoneVerifiedResponse)
+                  responseModel=NoContentResponse)
     def verifyCustomerPhone(self, userId: str, idToken: str) -> dict:
         """Store the number Firebase verified for this customer. The token
         must be this customer's own (the guest the phone was linked to):
@@ -133,4 +133,4 @@ class CustomerActions():
             '_id': userId,
             '_version': customer['_version']
         }, {'phoneNumber': phoneNumber}, CUSTOMERS)
-        return {'phoneNumber': phoneNumber}
+        return {}

@@ -22,6 +22,7 @@ from actions.OrderActions import (CHOOSE_FULFILLMENT, DELIVERY_FOR_PICKUP,
                                   INVALID_FULFILLMENT, NO_DELIVERY_ZONES_YET,
                                   NOT_OFFERED)
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (addOrder, addProduct, assertExactShape,
                       storeWithProducts, verifiedGuestAt, wipeCollections)
 from mongoDb import db
@@ -63,6 +64,7 @@ PICKUP_FIELDS = {'fulfillment': 'pickup', 'deliveryFee': 0,
                  'deliveryLongitude': None, 'deliveryNotes': None}
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 @pytest.fixture
@@ -84,10 +86,10 @@ def shop(firebase, pinned: bool = True, zones: list[dict] | None = None,
     by name)."""
     store = storeWithProducts(ADMIN)
     if pinned:
-        api.setUserStoreLocation(ADMIN, STORE_PIN['latitude'],
+        tools.setUserStoreLocation(ADMIN, STORE_PIN['latitude'],
                                  STORE_PIN['longitude'])
     if policy:
-        api.updateMyStorePolicy(ADMIN, **policy)
+        tools.updateMyStorePolicy(ADMIN, **policy)
     if zones is None and 'delivery' in policy.get('deliveryOptions', []):
         zones = [HOME_ZONE]
     if zones:
@@ -116,7 +118,7 @@ def deliveryOf(order: dict) -> dict:
 def test_aStoreThatHasNotSaid_takesPickupOrdersOnly(clean, firebase):
     store, customerId, products = shop(firebase)
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           items(products['Pandesal'], 2))
 
     assertExactShape(CreatedOrderResponse, res)
@@ -124,14 +126,14 @@ def test_aStoreThatHasNotSaid_takesPickupOrdersOnly(clean, firebase):
     assert res['order']['total'] == 10
     assert deliveryOf(stored(res['order']['_id'])) == PICKUP_FIELDS
     with pytest.raises(ValueError, match=exactly(NOT_OFFERED['delivery'])):
-        api.createOrder(customerId, store['_id'], items(products['Pandesal']),
+        tools.createOrder(customerId, store['_id'], items(products['Pandesal']),
                         'delivery', HOME)
 
 
 def test_aDelivery_addsTheFeeToTheTotal_andKeepsWhereItGoes(clean, firebase):
     store, customerId, products = shop(firebase, **DELIVERS)
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           items(products['Pandesal'], 2), 'delivery',
                           {**HOME, 'address': '  7 Mabini St, Makati  '})
 
@@ -155,9 +157,9 @@ def test_fromTheFreeDeliveryMinimum_deliveryIsFree(clean, firebase):
     store, customerId, products = shop(firebase, **DELIVERS)
     box = addProduct(store['_id'], 'Gift Box', 1000)
 
-    under = api.createOrder(customerId, store['_id'],
+    under = tools.createOrder(customerId, store['_id'],
                             items(products['Ube Cake']), 'delivery', HOME)
-    exact = api.createOrder(customerId, store['_id'], items(box), 'delivery',
+    exact = tools.createOrder(customerId, store['_id'], items(box), 'delivery',
                             HOME)
 
     assert (under['order']['deliveryFee'], under['order']['total']) == (
@@ -169,7 +171,7 @@ def test_fromTheFreeDeliveryMinimum_deliveryIsFree(clean, firebase):
 def test_aPickup_atAStoreThatDelivers_costsNoFee(clean, firebase):
     store, customerId, products = shop(firebase, **DELIVERS)
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           items(products['Pandesal']), 'pickup')
 
     assert deliveryOf(res['order']) == PICKUP_FIELDS
@@ -181,11 +183,11 @@ def test_aStoreOfferingBoth_needsTheCustomersChoice(clean, firebase):
     pandesal = products['Pandesal']
 
     with pytest.raises(ValueError, match=exactly(CHOOSE_FULFILLMENT)):
-        api.createOrder(customerId, store['_id'], items(pandesal))
+        tools.createOrder(customerId, store['_id'], items(pandesal))
     with pytest.raises(ValueError, match=exactly(DELIVERY_REQUIRED)):
-        api.createOrder(customerId, store['_id'], items(pandesal), 'delivery')
+        tools.createOrder(customerId, store['_id'], items(pandesal), 'delivery')
     with pytest.raises(ValueError, match=exactly(DELIVERY_FOR_PICKUP)):
-        api.createOrder(customerId, store['_id'], items(pandesal), 'pickup',
+        tools.createOrder(customerId, store['_id'], items(pandesal), 'pickup',
                         HOME)
     # A refused order reserves nothing.
     assert db.read({'_id': pandesal['_id']}, 'Products',
@@ -199,16 +201,16 @@ def test_aStoreThatOnlyDelivers_choosesDeliveryForTheCustomer(clean,
         firebase, deliveryOptions=['delivery'],
         zones=[{**HOME_ZONE, 'freeDeliveryFrom': None}])
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           items(products['Pandesal']), delivery=HOME)
 
     assert res['order']['fulfillment'] == 'delivery'
     assert res['order']['total'] == 98.09
     with pytest.raises(ValueError, match=exactly(NOT_OFFERED['pickup'])):
-        api.createOrder(customerId, store['_id'], items(products['Pandesal']),
+        tools.createOrder(customerId, store['_id'], items(products['Pandesal']),
                         'pickup')
     with pytest.raises(ValueError, match=exactly(DELIVERY_REQUIRED)):
-        api.createOrder(customerId, store['_id'], items(products['Pandesal']))
+        tools.createOrder(customerId, store['_id'], items(products['Pandesal']))
 
 
 def test_theChatsCreateOrder_needsNoFulfillment():
@@ -224,12 +226,12 @@ def test_theChatsCreateOrder_needsNoFulfillment():
 def test_aStoreThatOnlyOffersPickup_refusesADelivery(clean, firebase):
     store, customerId, products = shop(firebase, deliveryOptions=['pickup'])
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           items(products['Pandesal']))
 
     assert deliveryOf(res['order']) == PICKUP_FIELDS
     with pytest.raises(ValueError, match=exactly(NOT_OFFERED['delivery'])):
-        api.createOrder(customerId, store['_id'], items(products['Pandesal']),
+        tools.createOrder(customerId, store['_id'], items(products['Pandesal']),
                         'delivery', HOME)
 
 
@@ -264,7 +266,7 @@ def test_aDeliveryRefusal_namesTheField_neverTheValue(clean, firebase,
     store, customerId, products = shop(firebase, **DELIVERS)
 
     with pytest.raises(ValueError, match=exactly(message)) as error:
-        api.createOrder(customerId, store['_id'], items(products['Pandesal']),
+        tools.createOrder(customerId, store['_id'], items(products['Pandesal']),
                         fulfillment, delivery)
 
     assert SENTINEL not in str(error.value)
@@ -274,11 +276,11 @@ def test_aDeliveryRefusal_namesTheField_neverTheValue(clean, firebase,
 def test_emptyNotes_areNoNotes_andAModelDeliveryIsTaken(clean, firebase):
     store, customerId, products = shop(firebase, **DELIVERS)
 
-    blank = api.createOrder(customerId, store['_id'],
+    blank = tools.createOrder(customerId, store['_id'],
                             items(products['Pandesal']), 'delivery',
                             {**HOME, 'notes': '   '})
     # The MCP tool passes the model, HTTP a JSON object.
-    modelled = api.createOrder(customerId, store['_id'],
+    modelled = tools.createOrder(customerId, store['_id'],
                                items(products['Ensaymada']), 'delivery',
                                NewOrderDelivery(**{**HOME, 'notes': None}))
 
@@ -297,8 +299,8 @@ def test_anOrderStoredBeforeDelivery_readsAsAPickup(clean, firebase):
                                {'$unset': {key: '' for key in PICKUP_FIELDS}})
     assert not set(PICKUP_FIELDS) & set(stored(old['_id']))
 
-    mine = api.getMyOrders(customerId, store['_id'])
-    theirs = api.getStoreOrders(ADMIN)
+    mine = tools.getMyOrders(customerId, store['_id'])
+    theirs = tools.getStoreOrders(ADMIN)
 
     assertExactShape(MyOrderListResponse, mine)
     assertExactShape(StoreOrderListResponse, theirs)
@@ -312,11 +314,11 @@ def test_payOrder_chargesTheTotalWithTheFee(clean, firebase, monkeypatch):
     monkeypatch.setattr(paymentActions, 'chargeDemoPayment',
                         lambda *args: charged.append(args))
     store, customerId, products = shop(firebase, **DELIVERS)
-    order = api.createOrder(customerId, store['_id'],
+    order = tools.createOrder(customerId, store['_id'],
                             items(products['Pandesal']), 'delivery',
                             HOME)['order']
 
-    paid = api.payOrder(customerId, store['_id'], order['_id'], 'eWallet',
+    paid = tools.payOrder(customerId, store['_id'], order['_id'], 'eWallet',
                         'demo')
 
     assert paid['total'] == 98.09 and paid['deliveryFee'] == HOME_FEE
@@ -349,7 +351,7 @@ def test_theDeliveryPinForm_isTheMapOnly(clean, firebase, model):
     store, customerId, _ = shop(firebase, **DELIVERS,
                                 deliveryAreas='Makati and Taguig',
                                 handoverDays=2)
-    api.setUserStoreLocation(ADMIN, 14.55, 121.02)
+    tools.setUserStoreLocation(ADMIN, 14.55, 121.02)
 
     res = openPin(model, customerId, store)
 

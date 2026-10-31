@@ -1193,6 +1193,13 @@ def {name}():
         for kind, fileName in (('app', 'ApiRequests'),
                                ('appPubSub', 'PubSubRequests')):
             for name, func in self._get_user_defined_methods(kind).items():
+                if getattr(func, 'mcpAudiences', None):
+                    # A route serves a person, a tool the AI: never one
+                    # function (mcpTools.py refuses the other order).
+                    raise ValueError(
+                        f'{name} in {fileName} carries @mcp_tool: a tool is '
+                        'no route; give it its own method in a tool class '
+                        '(ToolRequests.py)')
                 self._validate_route_meta(name, self._route_meta(func),
                                           fileName)
                 if kind == 'app':
@@ -1394,12 +1401,14 @@ if __name__ == '__main__':
     # bad route found mid-run would leave the schemas regenerated but
     # app.py and ServerRequests.ts stale.
     creator.validateRoutes()
-    # The MCP tools (mcpCreator.py, the @mcp_tool routes): checked with the
-    # routes, before any file is rewritten; written after app.py below.
-    # The chat route's tools (chatToolsCreator.py) come from the same specs.
+    # The MCP tools (mcpCreator.py, the @mcp_tool methods of ToolRequests):
+    # checked with the routes, before any file is rewritten; written after
+    # app.py below. The chat route's tools (chatToolsCreator.py) come from
+    # the same specs.
     import chatToolsCreator
     import mcpCreator
-    toolSpecs = mcpCreator.toolSpecs(ApiRequests)
+    from ToolRequests import ToolRequests
+    toolSpecs = mcpCreator.toolSpecs(ToolRequests)
     mcpSource = mcpCreator.render(toolSpecs)
     chatToolsSource = chatToolsCreator.render(toolSpecs)
     # The payload model of every topic this repo publishes (pubSubModels.py;

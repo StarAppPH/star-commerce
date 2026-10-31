@@ -106,7 +106,8 @@ export type Createdat = string;
  * How it is or was paid
  */
 export type Paymentmethod =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")
+  | null;
 /**
  * When it was paid
  */

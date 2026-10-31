@@ -9,6 +9,7 @@ import pytest
 from actions.PhotoActions import PHOTO_NOT_FOUND
 from actions.ProductActions import PRODUCT_NOT_FOUND
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (TOKEN, addProduct, assertExactShape, createTestStore,
                       guestClaims, wipeCollections, withoutBrandColors)
 from mongoDb import db
@@ -24,6 +25,7 @@ OTHER_ADMIN = 'pp-other-admin'
 GUEST = 'pp-guest-uid'
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 @pytest.fixture
@@ -67,7 +69,7 @@ def test_setProductPhoto_showsTheStoresPhotoOnTheProduct(clean, firebase):
     mug = addProduct(store['_id'], 'Mug', 250)
     photo = addPhoto(store)
 
-    res = api.setProductPhoto(ADMIN, mug['_id'], photo['_id'])
+    res = tools.setProductPhoto(ADMIN, mug['_id'], photo['_id'])
 
     assertExactShape(AdminProductRow, res)
     assert res['photoUrl'] == photo['url']
@@ -75,10 +77,10 @@ def test_setProductPhoto_showsTheStoresPhotoOnTheProduct(clean, firebase):
     assert stored['photoUrl'] == photo['url']
     assert stored['_version'] == mug['_version'] + 1
     customerId = shopper(firebase, store)['_id']
-    shop = api.listStoreProducts(customerId, store['_id'])
+    shop = tools.listStoreProducts(customerId, store['_id'])
     assertExactShape(ProductListResponse, shop)
     assert shop['products'][0]['photoUrl'] == photo['url']
-    admin = api.listMyStoreProducts(ADMIN)
+    admin = tools.listMyStoreProducts(ADMIN)
     assertExactShape(AdminProductListResponse, admin)
     assert admin['products'][0]['photoUrl'] == photo['url']
 
@@ -87,9 +89,9 @@ def test_setProductPhoto_showsTheStoresPhotoOnTheProduct(clean, firebase):
 def test_setProductPhoto_withNoPhoto_takesItOff(clean, photoId):
     store = createTestStore(ADMIN)
     mug = addProduct(store['_id'], 'Mug', 250)
-    api.setProductPhoto(ADMIN, mug['_id'], addPhoto(store)['_id'])
+    tools.setProductPhoto(ADMIN, mug['_id'], addPhoto(store)['_id'])
 
-    res = api.setProductPhoto(ADMIN, mug['_id'], photoId)
+    res = tools.setProductPhoto(ADMIN, mug['_id'], photoId)
 
     assert res['photoUrl'] is None
     assert db.read({'_id': mug['_id']}, 'Products',
@@ -105,8 +107,8 @@ def test_aProductWithNoPhoto_sendsNone(clean, firebase):
                                  {'$unset': {'photoUrl': ''}})
     customerId = shopper(firebase, store)['_id']
 
-    shop = api.listStoreProducts(customerId, store['_id'])
-    admin = api.listMyStoreProducts(ADMIN)
+    shop = tools.listStoreProducts(customerId, store['_id'])
+    admin = tools.listMyStoreProducts(ADMIN)
 
     assertExactShape(ProductListResponse, shop)
     assertExactShape(AdminProductListResponse, admin)
@@ -131,7 +133,7 @@ def test_setProductPhoto_takesOnlyTheStoresOwnPhotoAndProduct(clean):
             ('no-such-product', photo['_id'], PRODUCT_NOT_FOUND),
             ('', photo['_id'], PRODUCT_NOT_FOUND)):
         with pytest.raises(ValueError, match=exactly(message)):
-            api.setProductPhoto(ADMIN, productId, photoId)
+            tools.setProductPhoto(ADMIN, productId, photoId)
 
     for product in (mug, theirMug):
         assert db.read({'_id': product['_id']}, 'Products',
@@ -143,7 +145,7 @@ def test_setProductPhoto_takesOnlyTheStoresOwnPhotoAndProduct(clean):
 
 def test_theShop_getsTheBrandColors_neverThePhotoStyle(clean, firebase):
     store = createTestStore(ADMIN)
-    api.updateMyStoreTheme(ADMIN, photoStyle='soft light',
+    tools.updateMyStoreTheme(ADMIN, photoStyle='soft light',
                            primaryColor='#1a73e8', secondaryColor='#fbbc04')
 
     res = shopper(firebase, store)
@@ -156,7 +158,7 @@ def test_theShop_getsTheBrandColors_neverThePhotoStyle(clean, firebase):
 
 def test_aColorNotSet_isLeftOut(clean, firebase):
     store = withoutBrandColors(createTestStore(ADMIN))
-    api.updateMyStoreTheme(ADMIN, primaryColor='#112233')
+    tools.updateMyStoreTheme(ADMIN, primaryColor='#112233')
 
     shop = shopper(firebase, store)['store']
 

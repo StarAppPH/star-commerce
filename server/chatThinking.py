@@ -1,11 +1,11 @@
 """chatThinking.py — what the assistant is doing while a chat turn runs.
 
-Every @mcp_tool route has thinking texts (mcpTools: at least
+Every @mcp_tool tool has thinking texts (mcpTools: at least
 MIN_THINKING_TEXTS, in chatTools.THINKING_TEXTS). A chat turn runs in one
 blocking request, so the client gives it a turnKey (a random id of its
 own) and asks while it waits:
 
-  - note(): just before the turn runs a route tool (ChatActions._runModel),
+  - note(): just before the turn runs a tool (ChatActions._runModel),
     one of the tool's texts, picked at random, is saved on the ChatThinking
     document "<userId>:<turnKey>" (a form tool saves none). clear() deletes
     it when the turn ends; a TTL index on expireAt deletes one left behind;
@@ -56,7 +56,7 @@ def _now() -> datetime.datetime:
 
 
 def thinkingTexts() -> dict[str, tuple[str, ...]]:
-    """Each route tool's thinking texts, by tool name."""
+    """Each tool's thinking texts, by tool name."""
     from chatTools import THINKING_TEXTS
     return THINKING_TEXTS
 

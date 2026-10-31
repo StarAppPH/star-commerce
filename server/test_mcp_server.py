@@ -33,9 +33,11 @@ import mcpCreator
 import mcpRuntime
 import mcpServer
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import NoContentResponse
+from responseModelCheck import assertResponseModel
 from conftest import (BRAND_COLORS, STORE_DETAILS, addOrder, addProduct, createTestStore,
                       createTestUser, guestAt, storeWithProducts,
                       verifiedGuestAt, wipeCollections)
@@ -50,6 +52,7 @@ OTHER_ADMIN = 'mc-other-admin'
 GUEST = 'mc-guest-uid'
 
 api = ApiRequests()
+tools = ToolRequests()
 # The address the real server binds: the SDK refuses any other Host header
 # (DNS rebinding protection).
 BASE_URL = f'http://{mcpRuntime.LOCAL_HOST}:{mcpRuntime.MCP_PORT}'
@@ -145,68 +148,54 @@ def test_anAdminToolsArguments_leaveOutTheInjectedParams():
 # ----------------------------- generator rules ----------------------------- #
 
 
-def _route(jwtRequired=True, createAccessToken=False, serviceOnly=False,
-           audiences=('customer',), responseModel=NoContentResponse):
-    """What @mcp_tool over @route_config leaves on a method, without the
-    route_config wrapper."""
+def _tool(audiences=('customer',)):
+    """A tool method of no route: @mcp_tool with its responseModel and no
+    twin."""
 
     def decorator(func):
-        func.jwtRequired = jwtRequired
-        func.createAccessToken = createAccessToken
-        func.serviceOnly = serviceOnly
-        func.responseModel = responseModel
-        return mcp_tool(*audiences, thinkingText=THINKING)(func)
+        return mcp_tool(*audiences, thinkingText=THINKING,
+                        responseModel=NoContentResponse, twinOf=None)(func)
 
     return decorator
 
 
-@_route()
+@_tool()
 def goodTool(self, userId: str, storeId: str,
              kind: Literal['a', 'b'] = 'a', note: str | None = None) -> dict:
     """A good tool."""
 
 
-@_route(jwtRequired=False)
-def publicTool(self, userId: str) -> dict:
-    """Public."""
+@_tool()
+def stackedTool(self, userId: str) -> dict:
+    """Stamped as a route after @mcp_tool."""
 
 
-@_route(createAccessToken=True)
-def tokenTool(self, userId: str) -> dict:
-    """Issues a token."""
+# What @route_config over @mcp_tool would leave (AppCreator refuses that
+# order in ApiRequests; mcpCreator refuses it on a tool too).
+stackedTool.httpMethod = 'POST'
 
 
-@_route(serviceOnly=True)
-def serviceTool(self, userId: str) -> dict:
-    """Service only."""
-
-
-@_route(responseModel=None)
-def noModelTool(self, userId: str) -> dict:
-    """No response model."""
-
-
-@_route()
+@_tool()
 def noUserTool(self, storeId: str) -> dict:
     """No userId."""
 
 
-@_route()
+@_tool()
 def undocumentedTool(self, userId: str) -> dict:
     pass
 
 
-@_route()
+@_tool()
 def ctxTool(self, userId: str, ctx: str) -> dict:
     """Shadows the context."""
 
 
-@_route()
+@_tool()
 def unannotatedTool(self, userId: str, search) -> dict:
     """Unannotated."""
 
 
-@_route()
+@_tool()
 def varArgsTool(self, userId: str, *rest: str) -> dict:
     """Var args."""
 
@@ -214,12 +203,12 @@ def varArgsTool(self, userId: str, *rest: str) -> dict:
 SENTINEL = object()
 
 
-@_route()
+@_tool()
 def objectDefaultTool(self, userId: str, value: str = SENTINEL) -> dict:
     """An object default."""
 
 
-@_route()
+@_tool()
 def dottedAnnotationTool(self, userId: str,
                          value: typing.Optional[str] = None) -> dict:
     """A dotted annotation."""
@@ -252,11 +241,8 @@ def test_render_callsTheRouteWithTheInjectedParams():
 
 
 @pytest.mark.parametrize('name, func, problem', [
-    ('publicTool', publicTool, 'needs jwtRequired=True'),
-    ('tokenTool', tokenTool, 'token-issuing or serviceOnly'),
-    ('serviceTool', serviceTool, 'token-issuing or serviceOnly'),
+    ('stackedTool', stackedTool, 'a tool is no route'),
     ('noUserTool', noUserTool, 'needs a userId param'),
-    ('noModelTool', noModelTool, 'needs a responseModel'),
     ('undocumentedTool', undocumentedTool, 'needs a docstring'),
     ('ctxTool', ctxTool, 'would shadow the MCP context'),
     ('unannotatedTool', unannotatedTool, 'needs a type annotation'),
@@ -277,7 +263,35 @@ def test_toolSpec_refusesARouteThatBreaksARule(name, func, problem):
 ])
 def test_mcpTool_refusesBadAudiences(audiences, problem):
     with pytest.raises(ValueError, match=problem):
-        mcp_tool(*audiences, thinkingText=THINKING)
+        mcp_tool(*audiences, thinkingText=THINKING,
+                 responseModel=NoContentResponse, twinOf=None)
+
+
+def test_mcpTool_needsAResponseModel():
+    """The responseModel is the tool's output schema: required."""
+    with pytest.raises(TypeError, match='responseModel'):
+        mcp_tool('customer', thinkingText=THINKING, twinOf=None)
+
+
+def test_aToolsResponse_isCheckedAgainstItsModel_onADirectCall():
+    """In localdev every call of a tool checks what it returns, as
+    route_config does for a route: the MCP server and the chat call the
+    same wrapper."""
+
+    @_tool()
+    def strayKeyTool(self, userId: str) -> dict:
+        """Sends a key its model does not declare."""
+        return {'stray': 1}
+
+    with pytest.raises(ValueError, match='does not match its responseModel'):
+        strayKeyTool(None, 'mc-someone')
+
+
+@pytest.mark.parametrize('name, tool',
+                         sorted(mcpCreator.mcpTools(ToolRequests).items()))
+def test_everyTool_isNoRoute_andSendsAResponseModelAllTheWayDown(name, tool):
+    assert not getattr(tool, 'httpMethod', None)
+    assertResponseModel(name, tool.responseModel)
 
 
 # ----------------------------- bearer token ----------------------------- #
@@ -309,12 +323,12 @@ def test_verifier_refusesAnExpiredOrRefreshToken():
     assert _verify(refresh) is None
 
 
-def test_callRoute_hidesAnUnexpectedErrorsText():
+def test_callTool_hidesAnUnexpectedErrorsText():
     def broken():
         raise RuntimeError('mc internal detail')
 
     with pytest.raises(mcpRuntime.ToolError) as error:
-        mcpRuntime.callRoute(broken)
+        mcpRuntime.callTool(broken)
 
     assert 'mc internal detail' not in str(error.value)
     assert 'Something went wrong on our side' in str(error.value)
@@ -371,7 +385,7 @@ def test_e2e_listStoreProducts_asTheCustomer_atTheConnectionsStore(
                       {'limit': 2})
 
     assert not result.is_error, _text(result)
-    assert result.structured_content == api.listStoreProducts(
+    assert result.structured_content == tools.listStoreProducts(
         customerId, store['_id'], limit=2)
     assert [p['name'] for p in result.structured_content['products']
             ] == ['Pandesal', 'Ensaymada']
@@ -452,7 +466,7 @@ def test_e2e_adminOnboarding_getUserStoreThenCreateUserStore(clean):
                        audience='admin')
 
     assert not created.is_error, _text(created)
-    store = api.getUserStore(ADMIN)['store']
+    store = tools.getUserStore(ADMIN)['store']
     assert {**created.structured_content, **BRAND_COLORS} == store
     assert store['currency'] == 'PHP'
     assert store['slug'] == 'bakery-a'
@@ -619,7 +633,7 @@ def test_e2e_adminProducts_addBatchListUpdate(clean, firebase):
     listed = callTool(headers, 'listMyStoreProducts', {}, audience='admin')
 
     assert not listed.is_error, _text(listed)
-    assert listed.structured_content == api.listMyStoreProducts(ADMIN)
+    assert listed.structured_content == tools.listMyStoreProducts(ADMIN)
     assert [p['name'] for p in listed.structured_content['products']
             ] == ['Cake', 'Pandesal', 'Tea']
 
@@ -767,7 +781,7 @@ def test_e2e_getStoreOrders_listsTheAdminsStoreOrders(clean, firebase):
     assert not everything.is_error, _text(everything)
     assert _orderIds(everything) == [newer, older]
     assert _withoutCreatedAt(everything.structured_content) == (
-        _withoutCreatedAt(api.getStoreOrders(ADMIN)))
+        _withoutCreatedAt(tools.getStoreOrders(ADMIN)))
     assert _orderIds(confirmed) == [newer]
     assert _orderIds(limited) == [newer]
 
@@ -837,7 +851,7 @@ def test_e2e_getMyOrders_listsTheCustomersOwnOrdersAtTheConnectionsStore(
     assert all('contactNumber' not in o
                for o in result.structured_content['orders'])
     assert _withoutCreatedAt(result.structured_content) == _withoutCreatedAt(
-        api.getMyOrders(customerId, store['_id']))
+        tools.getMyOrders(customerId, store['_id']))
     assert _orderIds(confirmed) == [newer]
 
 

@@ -352,7 +352,7 @@ def toolError(message: str) -> str:
 
 
 def toolLogName(toolset: str, name) -> str:
-    """`name` as a log line names it: a route tool of the toolset (an
+    """`name` as a log line names it: a tool of the toolset (an
     audience, or chatForms.SETUP_TOOLSET), else UNKNOWN_TOOL (the model's
     own text never reaches a log)."""
     from chatTools import TOOL_CALLS
@@ -423,7 +423,7 @@ def _toolContent(toolset: str, name, argumentsJson, userId: str,
 def runTool(toolset: str, name, argumentsJson, userId: str,
             storeId: str) -> str:
     """The tool message's content for the model's call of `name` with
-    `argumentsJson`, run as `userId` at `storeId`: the route's response as
+    `argumentsJson`, run as `userId` at `storeId`: the tool's result as
     JSON, or {"error": ...}. A refusal names the tool and the fields, never
     an argument's value; a content over CHAT_TOOL_RESULT_MAX_CHARS is
     refused (RESULT_TOO_LARGE), never cut."""

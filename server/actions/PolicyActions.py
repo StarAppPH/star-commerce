@@ -296,45 +296,139 @@ def _withZones(policy: dict, zones: list[dict] | None) -> dict:
         for zone in (ruledZones(zones) if delivers else [])]}
 
 
-def _storePolicy(store: dict) -> dict:
-    """The policy of `store` (POLICY_STORE_FIELDS) as StorePolicyResponse
-    sends it. A store with no Policies document (see
+def _storePolicy(model, store: dict) -> dict:
+    """The policy of `store` (POLICY_STORE_FIELDS) as `model` (a
+    StorePolicyResponse) sends it. A store with no Policies document (see
     StoreActions.ensurePolicy) has said nothing yet: emptyPolicy."""
     zones = store.get('deliveryZones')
     policy = db.readResponse(
-        StorePolicyResponse, {'storeId': store['_id']}, POLICIES,
+        model, {'storeId': store['_id']}, POLICIES,
         prepare=lambda stored: _withZones(stored, zones))
     if policy is None:
-        return projectedCopy(StorePolicyResponse, _withZones(
+        return projectedCopy(model, _withZones(
             emptyPolicy(store['_id'], store['createdAt']), zones))
     return policy
 
 
+def getMyStorePolicy(model, userId: str) -> dict:
+    """The policy of the admin's own store, as `model`."""
+    store = requireOwnerStore(userId, POLICY_STORE_FIELDS)
+    return _storePolicy(model, store)
+
+
+def getStorePolicy(model, userId: str, storeId: str) -> dict:
+    """The policy of the store a customer is at, as `model`."""
+    customerAtStore(userId, storeId)
+    return _storePolicy(model, setUpStore(storeId, POLICY_STORE_FIELDS))
+
+
+def updateMyStorePolicy(model,
+                        userId: str,
+                        acceptsReturns: bool | None = None,
+                        returnWindowDays: int | None = None,
+                        returnConditions: str | None = None,
+                        nonReturnableItems: str | None = None,
+                        refundMethod: str | None = None,
+                        returnShippingPaidBy: str | None = None,
+                        defectReportDays: int | None = None,
+                        deliveryOptions: list[str] | None = None,
+                        deliveryAreas: str | None = None,
+                        handoverDays: int | None = None,
+                        authorizedPaymentMethods:
+                        list[NewPaymentMethod] | None = None,
+                        paidOrderCancellation: str | None = None,
+                        paidOrderCancellationHours: int | None = None,
+                        additionalTerms: str | None = None,
+                        clear: list[str] | None = None) -> dict:
+    params = dict(locals())
+    store = requireOwnerStore(userId, POLICY_STORE_FIELDS)
+    cleared = _validClear(clear)
+    # The generated HTTP handler passes a missing body key as None, so
+    # None is "unchanged" and `clear` is how an answer is taken back.
+    sent = {}
+    for field in POLICY_ANSWER_FIELDS:
+        value = _validAnswer(field, params[field])
+        if value is not None:
+            sent[field] = value
+    if not sent and not cleared:
+        raise ValueError(NOTHING_SENT)
+    both = [field for field in POLICY_ANSWER_FIELDS
+            if field in sent and field in cleared]
+    if both:
+        raise ValueError(
+            f'{both[0]} is both cleared and given a value: send one')
+    ensurePolicy(store['_id'], store['createdAt'])
+    stored = db.read({'storeId': store['_id']}, POLICIES, findOne=True)
+    if stored is None:
+        raise ValueError(POLICY_CHANGED)  # deleted since ensurePolicy
+    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    policy = Policy.model_validate({
+        **stored,
+        **sent,
+        **dict.fromkeys(cleared),
+        'updatedAt': now,
+    }).normalized()
+    # An answer that no longer applies is cleared when it was stored,
+    # but one sent now is refused: never dropped without a word.
+    for field in sent:
+        if getattr(policy, field) is None:
+            raise ValueError(
+                f'{field} {_DROPPED[field]}: ask again')
+    problem = policy.problems()
+    if problem is not None:
+        raise ValueError(problem)
+    # Read whole, then cut by projectedCopy below: projection_of cannot
+    # read authorizedPaymentMethods, a list of models that may be null.
+    updated = db.findOneAndUpdate(
+        {'_id': stored['_id'], '_version': stored['_version']},
+        {
+            '$set': {
+                **policy.model_dump(include=set(POLICY_ANSWER_FIELDS)),
+                'updatedAt': now,
+            },
+            '$inc': {'_version': 1},
+            '$unset': dict.fromkeys(RETIRED_POLICY_FIELDS, ''),
+        },
+        POLICIES,
+        upsert=False)
+    if updated is None:
+        raise ValueError(POLICY_CHANGED)
+    return projectedCopy(model,
+                         _withZones(updated, store.get('deliveryZones')))
+
+
 class PolicyActions():
 
-    @mcp_tool('admin',
-              thinkingText=['Reading your store policy',
-                            'Checking your policy',
-                            'Looking up your policy'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Policy fetched',
                   responseModel=StorePolicyResponse)
     def getMyStorePolicy(self, userId: str) -> dict:
+        """The admin's store policy: every answer the admin has given, null
+        where none is given yet (the admin workspace's policy screen)."""
+        return getMyStorePolicy(StorePolicyResponse, userId)
+
+
+class PolicyTools():
+
+    @mcp_tool('admin',
+              thinkingText=['Reading your store policy',
+                            'Checking your policy',
+                            'Looking up your policy'],
+              responseModel=StorePolicyResponse,
+              twinOf=PolicyActions.getMyStorePolicy)
+    def getMyStorePolicy(self, userId: str) -> dict:
         """Get the policies of the admin's store: its answers on returns,
         delivery, payment and the rest. A null answer is one the admin has
         not given yet: use updateMyStorePolicy to set it."""
-        store = requireOwnerStore(userId, POLICY_STORE_FIELDS)
-        return _storePolicy(store)
+        return getMyStorePolicy(StorePolicyResponse, userId)
 
     @mcp_tool('customer',
               thinkingText=['Reading the store policy',
                             "Checking the store's rules",
-                            'Looking up the policy'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Policy fetched',
-                  responseModel=StorePolicyResponse)
+                            'Looking up the policy'],
+              responseModel=StorePolicyResponse,
+              twinOf=None)
     def getStorePolicy(self, userId: str, storeId: str) -> dict:
         """Get this store's policies: use it when the customer asks about
         returns, refunds, delivery, payment or cancelling. Answer only from
@@ -348,8 +442,7 @@ class PolicyActions():
         flat deliveryFee, deliveryDays, minimumOrder (null: none) and
         freeDeliveryFrom (null: never free); no zone: no delivery. Amounts
         are in the store's currency."""
-        customerAtStore(userId, storeId)
-        return _storePolicy(setUpStore(storeId, POLICY_STORE_FIELDS))
+        return getStorePolicy(StorePolicyResponse, userId, storeId)
 
     # The tool description is UPDATE_POLICY_DESCRIPTION. The choice
     # params are plain str (lists of str), not Literals: the MCP SDK's
@@ -360,11 +453,9 @@ class PolicyActions():
     @mcp_tool('admin', description=UPDATE_POLICY_DESCRIPTION,
               thinkingText=['Saving your policy',
                             'Updating your store policy',
-                            'Writing down your policy'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Policy saved',
-                  responseModel=StorePolicyResponse)
+                            'Writing down your policy'],
+              responseModel=StorePolicyResponse,
+              twinOf=None)
     def updateMyStorePolicy(self,
                             userId: str,
                             acceptsReturns: bool | None = None,
@@ -383,66 +474,23 @@ class PolicyActions():
                             paidOrderCancellationHours: int | None = None,
                             additionalTerms: str | None = None,
                             clear: list[str] | None = None) -> dict:
-        params = dict(locals())
-        store = requireOwnerStore(userId, POLICY_STORE_FIELDS)
-        cleared = _validClear(clear)
-        # The generated HTTP handler passes a missing body key as None, so
-        # None is "unchanged" and `clear` is how an answer is taken back.
-        sent = {}
-        for field in POLICY_ANSWER_FIELDS:
-            value = _validAnswer(field, params[field])
-            if value is not None:
-                sent[field] = value
-        if not sent and not cleared:
-            raise ValueError(NOTHING_SENT)
-        both = [field for field in POLICY_ANSWER_FIELDS
-                if field in sent and field in cleared]
-        if both:
-            raise ValueError(
-                f'{both[0]} is both cleared and given a value: send one')
-        ensurePolicy(store['_id'], store['createdAt'])
-        stored = db.read({'storeId': store['_id']}, POLICIES, findOne=True)
-        if stored is None:
-            raise ValueError(POLICY_CHANGED)  # deleted since ensurePolicy
-        now = datetime.datetime.now(tz=datetime.timezone.utc)
-        policy = Policy.model_validate({
-            **stored,
-            **sent,
-            **dict.fromkeys(cleared),
-            'updatedAt': now,
-        }).normalized()
-        # An answer that no longer applies is cleared when it was stored,
-        # but one sent now is refused: never dropped without a word.
-        for field in sent:
-            if getattr(policy, field) is None:
-                raise ValueError(
-                    f'{field} {_DROPPED[field]}: ask again')
-        problem = policy.problems()
-        if problem is not None:
-            raise ValueError(problem)
-        # Read whole, then cut by projectedCopy below: projection_of cannot
-        # read authorizedPaymentMethods, a list of models that may be null.
-        updated = db.findOneAndUpdate(
-            {'_id': stored['_id'], '_version': stored['_version']},
-            {
-                '$set': {
-                    **policy.model_dump(include=set(POLICY_ANSWER_FIELDS)),
-                    'updatedAt': now,
-                },
-                '$inc': {'_version': 1},
-                '$unset': dict.fromkeys(RETIRED_POLICY_FIELDS, ''),
-            },
-            POLICIES,
-            upsert=False)
-        if updated is None:
-            raise ValueError(POLICY_CHANGED)
-        return projectedCopy(StorePolicyResponse,
-                             _withZones(updated, store.get('deliveryZones')))
+        return updateMyStorePolicy(StorePolicyResponse, userId, acceptsReturns,
+                                   returnWindowDays, returnConditions,
+                                   nonReturnableItems, refundMethod,
+                                   returnShippingPaidBy, defectReportDays,
+                                   deliveryOptions, deliveryAreas,
+                                   handoverDays, authorizedPaymentMethods,
+                                   paidOrderCancellation,
+                                   paidOrderCancellationHours, additionalTerms,
+                                   clear)
 
 
-# updateMyStorePolicy takes exactly the answer fields, besides userId and
-# clear: an answer added to Policy needs its param too.
-if tuple(inspect.signature(PolicyActions.updateMyStorePolicy).parameters
-         )[2:-1] != POLICY_ANSWER_FIELDS:
+# updateMyStorePolicy (the tool and its action) takes exactly the answer
+# fields, besides userId and clear: an answer added to Policy needs its
+# param too.
+if any(tuple(inspect.signature(function).parameters)[2:-1]
+       != POLICY_ANSWER_FIELDS
+       for function in (PolicyTools.updateMyStorePolicy,
+                        updateMyStorePolicy)):
     raise TypeError('updateMyStorePolicy must take the answers of '
                     'POLICY_ANSWER_FIELDS, in order')

@@ -101,7 +101,8 @@ export type Createdat = string;
  * How the customer pays or paid
  */
 export type Paymentmethod =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")
+  | null;
 /**
  * The payment provider it was paid through; null: paid by hand to the store (or not chosen yet)
  */

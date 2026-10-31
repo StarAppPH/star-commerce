@@ -220,7 +220,6 @@ class ConversationRow(ResponseModel):
                               description='The first message, cut short')
     lastMessageAt: datetime.datetime = Field(
         ..., description='When its last turn was saved')
-    turnCount: int = Field(..., ge=0, description='How many turns it holds')
 
 
 class ConversationListResponse(ResponseModel):

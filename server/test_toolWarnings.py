@@ -14,6 +14,7 @@ import chatModel
 import chatTools
 import toolWarnings
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (addOrder, addProduct, createTestStore, takePayments,
                       wipeCollections)
 from mongoDb import db
@@ -32,6 +33,7 @@ COLLECTIONS = [
 DAY = datetime.timedelta(days=1)
 ITEM = {'productId': 'p-1', 'name': 'Pandesal', 'price': 5, 'quantity': 2}
 api = ApiRequests()
+tools = ToolRequests()
 
 
 def wipeDatabase() -> None:
@@ -111,7 +113,7 @@ def test_productWarnings_toldOnce_aNewItemBreaksThrough_backAfterCooldown(
         # The next turn: nothing to tell, so no warnings key at all.
         again = adminRuns(model, 'listMyStoreProducts')
         assert 'warnings' not in again
-        assert api.listMyStoreProducts(ADMIN).keys() == {'currency',
+        assert tools.listMyStoreProducts(ADMIN).keys() == {'currency',
                                                          'products'}
 
         # A new product with no photo is told at once; the count is all.
@@ -202,7 +204,7 @@ def test_policyAndStoreWarnings_comeFromTheResult_byFieldName(
                                        'photoStyle'])}
 
         takePayments(store)
-        api.updateMyStorePolicy(ADMIN, deliveryOptions=['pickup',
+        tools.updateMyStorePolicy(ADMIN, deliveryOptions=['pickup',
                                                         'delivery'])
         assert told(adminRuns(model, 'getMyStorePolicy')) == {
             'noDeliveryZones': (1, ['deliveryZones'])}

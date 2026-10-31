@@ -26,10 +26,12 @@ from actions.PaymentActions import (MANUAL_PAYMENT_REFERENCE_LABEL,
                                     NO_REFERENCE_NEEDED, NOT_CONFIRMABLE,
                                     NOT_PAYABLE, RECEIPT_GONE)
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (assertExactShape, createTestStore, takePayments,
                       verifiedGuestAt)
 from objects import (MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
                      MAX_PENDING_ORDERS_PER_STORE, MyOrderRow,
+                     NoContentResponse,
                      PaymentReceiptResponse, StoreOrderRow, projection_of)
 from test_checkout import (ADMIN, OTHER_ADMIN, OTHER_GUEST, SENTINEL, T0,
                            _fresh, _order, _place, _product, _shop,
@@ -38,6 +40,7 @@ from test_fulfillment import refunds
 from test_photos import BUCKET, FakeBlob, FakeBucket, downloadUrl
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 def _awaiting(firebase, method: str = 'bankTransfer', quantity: int = 2):
@@ -46,7 +49,7 @@ def _awaiting(firebase, method: str = 'bankTransfer', quantity: int = 2):
     store, customerId, products = _shop(firebase)
     pandesal = products['Pandesal']
     order = _place(customerId, store, (pandesal, quantity))
-    paid = api.payOrder(customerId, store['_id'], order['_id'], method)
+    paid = tools.payOrder(customerId, store['_id'], order['_id'], method)
     return store, customerId, paid, pandesal
 
 
@@ -61,7 +64,7 @@ def test_payOrder_byHand_awaitsTheStore_holdingTheUnits_withoutACharge(
     reserved = _product(pandesal['_id'])
     placed = _order(order['_id'])
 
-    res = api.payOrder(customerId, store['_id'], order['_id'],
+    res = tools.payOrder(customerId, store['_id'], order['_id'],
                        'bankTransfer', None)
 
     assertExactShape(MyOrderRow, res)
@@ -82,7 +85,7 @@ def test_payOrder_anOrderAwaitingPayment_cannotBePaidAgain(
 
     with pytest.raises(ValueError,
                        match=exactly(NOT_PAYABLE['awaitingPayment'])):
-        api.payOrder(customerId, store['_id'], paid['_id'], 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], paid['_id'], 'card', 'demo')
 
     assert _order(paid['_id']) == before
     assert charges.calls == []
@@ -112,11 +115,11 @@ def test_addPaymentReference_savesIt_stripped_andALaterOneReplacesIt(
         clean, firebase, clock):
     store, customerId, paid, _ = _awaiting(firebase)
 
-    res = api.addPaymentReference(customerId, store['_id'], paid['_id'],
+    res = tools.addPaymentReference(customerId, store['_id'], paid['_id'],
                                   '  BDO-REF-123  ')
     assertExactShape(MyOrderRow, res)
     assert res['manualPaymentReference'] == 'BDO-REF-123'
-    res = api.addPaymentReference(customerId, store['_id'], paid['_id'],
+    res = tools.addPaymentReference(customerId, store['_id'], paid['_id'],
                                   'BDO-REF-456')
 
     stored = _order(paid['_id'])
@@ -141,7 +144,7 @@ def test_addPaymentReference_refusesABadReference_withoutQuotingIt(
     before = _order(paid['_id'])
 
     with pytest.raises(ValueError, match=exactly(message)):
-        api.addPaymentReference(customerId, store['_id'], paid['_id'],
+        tools.addPaymentReference(customerId, store['_id'], paid['_id'],
                                 reference)
 
     assert _order(paid['_id']) == before
@@ -154,7 +157,7 @@ def test_addPaymentReference_aPendingOrder_mustChooseHowToPayFirst(
 
     with pytest.raises(ValueError,
                        match=exactly(NO_REFERENCE_NEEDED['pending'])):
-        api.addPaymentReference(customerId, store['_id'], order['_id'],
+        tools.addPaymentReference(customerId, store['_id'], order['_id'],
                                 'REF-1')
 
 
@@ -165,7 +168,7 @@ def test_addPaymentReference_anotherCustomersOrder_isNotFound(
     before = _order(paid['_id'])
 
     with pytest.raises(ValueError, match=exactly(ORDER_NOT_FOUND)):
-        api.addPaymentReference(anotherCustomer, store['_id'], paid['_id'],
+        tools.addPaymentReference(anotherCustomer, store['_id'], paid['_id'],
                                 'REF-1')
 
     assert _order(paid['_id']) == before
@@ -177,11 +180,11 @@ def test_addPaymentReference_anotherCustomersOrder_isNotFound(
 def test_confirmOrderPayment_makesItPaid_thenItCanBeCompleted(
         clean, firebase, clock):
     store, customerId, paid, pandesal = _awaiting(firebase)
-    api.addPaymentReference(customerId, store['_id'], paid['_id'], 'REF-9')
+    tools.addPaymentReference(customerId, store['_id'], paid['_id'], 'REF-9')
     reserved = _product(pandesal['_id'])
     clock.advance(hours=5)
 
-    res = api.confirmOrderPayment(ADMIN, paid['_id'])
+    res = tools.confirmOrderPayment(ADMIN, paid['_id'])
 
     assertExactShape(StoreOrderRow, res)
     stored = _order(paid['_id'])
@@ -192,7 +195,7 @@ def test_confirmOrderPayment_makesItPaid_thenItCanBeCompleted(
             res['manualPaymentReference'], res['paymentReference']) == (
                 'bankTransfer', None, 'REF-9', None)
     assert _product(pandesal['_id']) == reserved
-    completed = api.completeOrder(ADMIN, paid['_id'])
+    completed = tools.completeOrder(ADMIN, paid['_id'])
     assert completed['status'] == 'completed'
 
 
@@ -202,11 +205,11 @@ def test_confirmOrderPayment_refusesAnOrderNotAwaitingPayment(
     store, customerId, products = _shop(firebase)
     order = _place(customerId, store, (products['Pandesal'], 1))
     if status == 'paid':
-        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
     before = _order(order['_id'])
 
     with pytest.raises(ValueError, match=exactly(NOT_CONFIRMABLE[status])):
-        api.confirmOrderPayment(ADMIN, order['_id'])
+        tools.confirmOrderPayment(ADMIN, order['_id'])
 
     assert _order(order['_id']) == before
 
@@ -218,7 +221,7 @@ def test_confirmOrderPayment_anotherStoresOrder_isNotFound(
     before = _order(paid['_id'])
 
     with pytest.raises(ValueError, match=exactly(ORDER_NOT_FOUND)):
-        api.confirmOrderPayment(OTHER_ADMIN, paid['_id'])
+        tools.confirmOrderPayment(OTHER_ADMIN, paid['_id'])
 
     assert _order(paid['_id']) == before
 
@@ -228,7 +231,7 @@ def test_completeOrder_refusesAnOrderAwaitingPayment(clean, firebase, clock):
 
     with pytest.raises(ValueError,
                        match=exactly(NOT_MOVABLE['awaitingPayment'])):
-        api.completeOrder(ADMIN, paid['_id'])
+        tools.completeOrder(ADMIN, paid['_id'])
 
 
 # ------------------------------- cancelling ------------------------------- #
@@ -238,7 +241,7 @@ def test_cancelMyOrder_anOrderAwaitingPayment_isCancelled_withoutARefund(
         clean, firebase, clock, refunds):
     store, customerId, paid, pandesal = _awaiting(firebase)
 
-    res = api.cancelMyOrder(customerId, store['_id'], paid['_id'])
+    res = tools.cancelMyOrder(customerId, store['_id'], paid['_id'])
 
     assert (res['status'], res['cancelReason'], res['refundedAt']) == (
         'cancelled', 'byCustomer', None)
@@ -250,9 +253,9 @@ def test_cancelMyOrder_anOrderAwaitingPayment_isCancelled_withoutARefund(
 def test_cancelStoreOrder_aConfirmedPaymentByHand_isNotRefundedByTheApp(
         clean, firebase, clock, refunds):
     _, _, paid, pandesal = _awaiting(firebase, 'check')
-    api.confirmOrderPayment(ADMIN, paid['_id'])
+    tools.confirmOrderPayment(ADMIN, paid['_id'])
 
-    res = api.cancelStoreOrder(ADMIN, paid['_id'])
+    res = tools.cancelStoreOrder(ADMIN, paid['_id'])
 
     assert (res['status'], res['refundedAt'], res['refundReference']) == (
         'cancelled', None, None)
@@ -355,13 +358,12 @@ def test_addPaymentReceipt_aReceiptPhoto_isKeptWhereOnlyTheServerReadsIt(
 
     res = api.addPaymentReceipt(customerId, store['_id'], paid['_id'], url)
 
-    assertExactShape(MyOrderRow, res)
-    assert res['paymentReceiptAt'] == T0
-    assert res['manualPaymentReference'] is None
+    assertExactShape(NoContentResponse, res)
     stored = _order(paid['_id'])
+    assert stored['paymentReceiptAt'] == T0
+    assert stored['manualPaymentReference'] is None
     [(path, kept)] = _receipts(bucket, store).items()
     assert stored['paymentReceiptPath'] == path
-    assert 'paymentReceiptPath' not in res
     # A JPEG with no metadata and no download token, scaled to fit.
     assert kept['contentType'] == 'image/jpeg' and kept['metadata'] is None
     with Image.open(io.BytesIO(kept['data'])) as image:
@@ -381,11 +383,11 @@ def test_addPaymentReceipt_aLaterReceipt_replacesAndDeletesTheEarlierOne(
         clean, firebase, clock, bucket):
     store, customerId, paid, _ = _awaiting(firebase)
     first = _upload(bucket, customerId, 'one.png', _photo())
-    api.addPaymentReference(customerId, store['_id'], paid['_id'], 'REF-1')
+    tools.addPaymentReference(customerId, store['_id'], paid['_id'], 'REF-1')
     api.addPaymentReceipt(customerId, store['_id'], paid['_id'], first)
     [earlier] = _receipts(bucket, store)
 
-    res = api.addPaymentReceipt(
+    api.addPaymentReceipt(
         customerId, store['_id'], paid['_id'],
         _upload(bucket, customerId, 'two.webp', _photo(fmt='WEBP'),
                 'image/webp'))
@@ -395,7 +397,7 @@ def test_addPaymentReceipt_aLaterReceipt_replacesAndDeletesTheEarlierOne(
     assert _order(paid['_id'])['paymentReceiptPath'] == later
     assert earlier not in bucket.objects
     # The reference sent before is kept.
-    assert res['manualPaymentReference'] == 'REF-1'
+    assert _order(paid['_id'])['manualPaymentReference'] == 'REF-1'
 
 
 @pytest.mark.parametrize('url, message', [

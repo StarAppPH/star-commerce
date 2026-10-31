@@ -18,10 +18,6 @@ export type Title = string | null;
  */
 export type Lastmessageat = string;
 /**
- * How many turns it holds
- */
-export type Turncount = number;
-/**
  * The conversations, newest first
  */
 export type Conversations = ConversationRow[];
@@ -42,5 +38,4 @@ export interface ConversationRow {
   _id: Id;
   title: Title;
   lastMessageAt: Lastmessageat;
-  turnCount: Turncount;
 }

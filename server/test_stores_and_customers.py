@@ -11,13 +11,16 @@ from pymongo.errors import DuplicateKeyError
 
 from actions.StoreActions import SLUG_ATTEMPTS, _isOwnerCollision, storeSlug
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (BRAND_COLORS, STORE_DETAILS, TEST_GEOCODED_ADDRESS, TOKEN,
                       FakeGeocodingSession, assertExactShape, createTestStore,
-                      createTestUser, guestAt, guestClaims,
+                      createTestUser, guestAt, guestClaims, modelKeys,
                       wipeCollections)
 from mongoDb import db
-from objects import (AddressSuggestionResponse, CustomerSessionResponse, CustomerView, MyStoreResponse,
-                     PhoneVerifiedResponse, Store, StoreResponse, StoreView)
+from objects import (AddressSuggestionResponse, AdminStoreScreenRow,
+                     CustomerSessionResponse, CustomerView, MyStoreResponse,
+                     MyStoreScreenResponse, NoContentResponse,
+                     Store, StoreResponse, StoreView)
 
 COLLECTIONS = ['Users', 'Bootstrap', 'Stores', 'Customers']
 ADMIN = 'sc-admin'
@@ -29,6 +32,7 @@ SLUG = 'bakery-a'
 COFFEE = '☕'
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 @pytest.fixture
@@ -53,11 +57,11 @@ def _storedPhone(customerId=GUEST):
 
 def test_createUserStore_thenGetUserStore(clean):
     createTestUser(ADMIN)
-    before = api.getUserStore(ADMIN)
+    before = tools.getUserStore(ADMIN)
     assertExactShape(MyStoreResponse, before)
     assert before == {'store': None}
 
-    created = api.createUserStore(ADMIN, '  Bakery A  ', **STORE_DETAILS)
+    created = tools.createUserStore(ADMIN, '  Bakery A  ', **STORE_DETAILS)
 
     assertExactShape(StoreResponse, created)
     assert created['name'] == 'Bakery A'
@@ -66,13 +70,13 @@ def test_createUserStore_thenGetUserStore(clean):
     [stored] = db.read({}, 'Stores')
     StoreView.model_validate(stored)
     assert stored['ownerUserId'] == ADMIN
-    assert api.getUserStore(ADMIN) == {'store': {**created, **BRAND_COLORS}}
+    assert tools.getUserStore(ADMIN) == {'store': {**created, **BRAND_COLORS}}
 
 
 def test_createUserStore_inAnotherCurrency(clean):
     createTestUser(ADMIN)
 
-    created = api.createUserStore(ADMIN, 'Tokyo Ramen', **STORE_DETAILS,
+    created = tools.createUserStore(ADMIN, 'Tokyo Ramen', **STORE_DETAILS,
                               currency='JPY')
 
     assert created['currency'] == 'JPY'
@@ -83,7 +87,7 @@ def test_createUserStore_refusesAnUnsupportedCurrency(clean):
     createTestUser(ADMIN)
 
     with pytest.raises(ValueError, match='^That currency is not supported$'):
-        api.createUserStore(ADMIN, 'Bakery A', **STORE_DETAILS,
+        tools.createUserStore(ADMIN, 'Bakery A', **STORE_DETAILS,
                             currency='XYZ')
     assert db.read({}, 'Stores') == []
 
@@ -92,7 +96,7 @@ def test_createUserStore_aSecondStoreIsRefused(clean):
     createTestStore(ADMIN)
 
     with pytest.raises(ValueError, match='^You already have a store$'):
-        api.createUserStore(ADMIN, 'Bakery B', **STORE_DETAILS)
+        tools.createUserStore(ADMIN, 'Bakery B', **STORE_DETAILS)
     assert len(db.read({}, 'Stores')) == 1
 
 
@@ -116,7 +120,7 @@ def test_createUserStore_aTakenLinkNameGetsASuffix(clean):
     createTestStore(OTHER_ADMIN)
     createTestUser(ADMIN)
 
-    created = api.createUserStore(ADMIN, 'Bakery A!', **STORE_DETAILS)
+    created = tools.createUserStore(ADMIN, 'Bakery A!', **STORE_DETAILS)
 
     assert re.fullmatch(r'bakery-a-[0-9a-f]{4}', created['slug'])
     assert len(db.read({}, 'Stores')) == 2
@@ -128,7 +132,7 @@ def test_createUserStore_refusesAnEmptyOrLongName(clean, name):
 
     with pytest.raises(ValueError,
                        match='^A store name is 1 to 60 characters$'):
-        api.createUserStore(ADMIN, name, **STORE_DETAILS)
+        tools.createUserStore(ADMIN, name, **STORE_DETAILS)
     assert db.read({}, 'Stores') == []
 
 
@@ -153,10 +157,10 @@ def test_storeRoutes_refuseACustomer(clean, firebase):
 
     with pytest.raises(PermissionError,
                        match='^Only a store admin can do this$'):
-        api.getUserStore(GUEST)
+        tools.getUserStore(GUEST)
     with pytest.raises(PermissionError,
                        match='^Only a store admin can do this$'):
-        api.createUserStore(GUEST, 'Guest Store', **STORE_DETAILS)
+        tools.createUserStore(GUEST, 'Guest Store', **STORE_DETAILS)
     assert len(db.read({}, 'Stores')) == 1
 
 
@@ -167,14 +171,14 @@ CONTACT_FORMAT = '^The contact number must be in international format'
 
 
 def _storeWith(**changes) -> dict:
-    return api.createUserStore(ADMIN, 'Bakery A',
+    return tools.createUserStore(ADMIN, 'Bakery A',
                                **{**STORE_DETAILS, **changes})
 
 
 def test_createUserStore_storesAndReturnsEveryDetail(clean):
     createTestUser(ADMIN)
 
-    created = api.createUserStore(ADMIN,
+    created = tools.createUserStore(ADMIN,
                                   ' Bakery A ',
                                   description='  Fresh bread  ',
                                   contactNumber=' +639171234567 ',
@@ -195,7 +199,7 @@ def test_createUserStore_storesAndReturnsEveryDetail(clean):
             stored['openingHours'], stored['location']) == (
                 'Fresh bread', '+639171234567', '12 Rizal St',
                 'Mon-Sat 7am-7pm', None)
-    assert api.getUserStore(ADMIN) == {'store': {**created, **BRAND_COLORS}}
+    assert tools.getUserStore(ADMIN) == {'store': {**created, **BRAND_COLORS}}
 
 
 @pytest.mark.parametrize('field, value, message', [
@@ -251,7 +255,7 @@ def test_createUserStore_storesTheBrandColorsUppercase(clean):
     [stored] = db.read({}, 'Stores')
     assert (stored['primaryColor'], stored['secondaryColor']) == (
         '#1A73E8', '#FBBC04')
-    mine = api.getUserStore(ADMIN)['store']
+    mine = tools.getUserStore(ADMIN)['store']
     assert (mine['primaryColor'], mine['secondaryColor']) == (
         '#1A73E8', '#FBBC04')
 
@@ -270,7 +274,7 @@ def test_createUserStore_refusesAControlCharacter(clean, field, label, bad):
 
     with pytest.raises(ValueError,
                        match=f'^{label} cannot contain control characters$'):
-        api.createUserStore(ADMIN, details.pop('name'), **details)
+        tools.createUserStore(ADMIN, details.pop('name'), **details)
     assert db.read({}, 'Stores') == []
 
 
@@ -315,7 +319,7 @@ def test_createUserStore_checksTheAdminBeforeTheDetails(clean, firebase):
 
     with pytest.raises(PermissionError,
                        match='^Only a store admin can do this$'):
-        api.createUserStore(customerId, 'Guest Store',
+        tools.createUserStore(customerId, 'Guest Store',
                             **{**STORE_DETAILS, 'description': ''})
     assert len(db.read({}, 'Stores')) == 1
 
@@ -338,7 +342,7 @@ def test_createUserStore_aNewStoreHasNoLocation_andNoneCurrencyIsPHP(clean):
     assert created['currency'] == 'PHP'
     assert created['location'] is None
     assert db.read({}, 'Stores')[0]['location'] is None
-    assert api.getUserStore(ADMIN)['store']['location'] is None
+    assert tools.getUserStore(ADMIN)['store']['location'] is None
 
 
 def test_createUserStore_withoutAnAddress_storesNone(clean):
@@ -346,11 +350,11 @@ def test_createUserStore_withoutAnAddress_storesNone(clean):
     createTestUser(ADMIN)
     details = {k: v for k, v in STORE_DETAILS.items() if k != 'address'}
 
-    created = api.createUserStore(ADMIN, 'Bakery A', **details)
+    created = tools.createUserStore(ADMIN, 'Bakery A', **details)
 
     assert created['address'] is None
     assert db.read({}, 'Stores')[0]['address'] is None
-    assert api.getUserStore(ADMIN)['store']['address'] is None
+    assert tools.getUserStore(ADMIN)['store']['address'] is None
 
 
 def test_createUserStore_anOwnerIndexCollisionIsAlreadyHasAStore(
@@ -425,7 +429,7 @@ def test_isOwnerCollision(message, details, isOwner):
 def test_setUserStoreLocation_savesTheLocation(clean):
     created = createTestStore(ADMIN)
 
-    res = api.setUserStoreLocation(ADMIN, 14.5995, 120.9842)
+    res = tools.setUserStoreLocation(ADMIN, 14.5995, 120.9842)
 
     assertExactShape(StoreResponse, res)
     assert res['location'] == {'latitude': 14.5995, 'longitude': 120.9842}
@@ -435,9 +439,9 @@ def test_setUserStoreLocation_savesTheLocation(clean):
     StoreView.model_validate(stored)
     assert stored['location'] == res['location']
     assert stored['_version'] == 1
-    assert api.getUserStore(ADMIN) == {'store': {**res, **BRAND_COLORS}}
+    assert tools.getUserStore(ADMIN) == {'store': {**res, **BRAND_COLORS}}
 
-    again = api.setUserStoreLocation(ADMIN, 10, 20)
+    again = tools.setUserStoreLocation(ADMIN, 10, 20)
 
     assert again['location'] == {'latitude': 10.0, 'longitude': 20.0}
     assert db.read({}, 'Stores')[0]['_version'] == 2
@@ -448,7 +452,7 @@ def test_setUserStoreLocation_savesTheLocation(clean):
 def test_setUserStoreLocation_acceptsTheLimits(clean, latitude, longitude):
     createTestStore(ADMIN)
 
-    api.setUserStoreLocation(ADMIN, latitude, longitude)
+    tools.setUserStoreLocation(ADMIN, latitude, longitude)
 
     location = db.read({}, 'Stores')[0]['location']
     assert location == {'latitude': latitude, 'longitude': longitude}
@@ -464,12 +468,12 @@ def test_setUserStoreLocation_refusesABadValue(clean):
     for value in [90.1, -90.1, True, False, float('nan'), float('inf'),
                   float('-inf'), 10**400, '14.6', None]:
         with pytest.raises(ValueError, match=latitudeMessage):
-            api.setUserStoreLocation(ADMIN, value, 10)
+            tools.setUserStoreLocation(ADMIN, value, 10)
         assert db.read({}, 'Stores')[0]['location'] is None
     for value in [180.1, -180.1, True, float('nan'), float('inf'), 10**400,
                   '1', None]:
         with pytest.raises(ValueError, match=longitudeMessage):
-            api.setUserStoreLocation(ADMIN, 10, value)
+            tools.setUserStoreLocation(ADMIN, 10, value)
         assert db.read({}, 'Stores')[0]['location'] is None
     assert db.read({}, 'Stores')[0]['_version'] == 0
 
@@ -480,7 +484,7 @@ def test_setUserStoreLocation_refusesACustomer(clean, firebase):
 
     with pytest.raises(PermissionError,
                        match='^Only a store admin can do this$'):
-        api.setUserStoreLocation(customerId, 10, 20)
+        tools.setUserStoreLocation(customerId, 10, 20)
     assert db.read({}, 'Stores')[0]['location'] is None
 
 
@@ -488,7 +492,7 @@ def test_setUserStoreLocation_refusesAnAdminWithoutAStore(clean):
     createTestUser(ADMIN)
 
     with pytest.raises(ValueError, match='^Create your store first$'):
-        api.setUserStoreLocation(ADMIN, 10, 20)
+        tools.setUserStoreLocation(ADMIN, 10, 20)
     assert db.read({}, 'Stores') == []
 
 
@@ -496,7 +500,7 @@ def test_setUserStoreLocation_onlyTouchesTheCallersStore(clean):
     createTestStore(ADMIN)
     createTestStore(OTHER_ADMIN, 'Bakery B')
 
-    api.setUserStoreLocation(ADMIN, 10, 20)
+    tools.setUserStoreLocation(ADMIN, 10, 20)
 
     other = db.read({'ownerUserId': OTHER_ADMIN}, 'Stores', findOne=True)
     assert other['location'] is None
@@ -508,9 +512,9 @@ def test_setUserStoreLocation_onlyTouchesTheCallersStore(clean):
 
 def test_updateMyStoreDetails_changesOnlyWhatIsSent(clean):
     created = createTestStore(ADMIN)
-    api.setUserStoreLocation(ADMIN, 10, 20)
+    tools.setUserStoreLocation(ADMIN, 10, 20)
 
-    res = api.updateMyStoreDetails(ADMIN, address='  5 Mango Ave, Cebu City ',
+    res = tools.updateMyStoreDetails(ADMIN, address='  5 Mango Ave, Cebu City ',
                                    openingHours='9 to 5')
 
     assertExactShape(StoreResponse, res)
@@ -524,9 +528,9 @@ def test_updateMyStoreDetails_changesOnlyWhatIsSent(clean):
     [stored] = db.read({}, 'Stores')
     StoreView.model_validate(stored)
     assert stored['_version'] == 2
-    assert api.getUserStore(ADMIN) == {'store': {**res, **BRAND_COLORS}}
+    assert tools.getUserStore(ADMIN) == {'store': {**res, **BRAND_COLORS}}
 
-    renamed = api.updateMyStoreDetails(ADMIN, name='Bakery Z',
+    renamed = tools.updateMyStoreDetails(ADMIN, name='Bakery Z',
                                        contactNumber='+639181234567',
                                        description='Bread', openingHours='')
 
@@ -552,7 +556,7 @@ def test_updateMyStoreDetails_refusesABadOrMissingDetail(clean):
     ]
     for details, message in refusals:
         with pytest.raises(ValueError, match=message):
-            api.updateMyStoreDetails(ADMIN, **details)
+            tools.updateMyStoreDetails(ADMIN, **details)
     assert db.read({}, 'Stores')[0]['_version'] == 0
 
 
@@ -564,9 +568,9 @@ def test_updateMyStoreDetails_refusesACustomerAndAnAdminWithoutAStore(
 
     with pytest.raises(PermissionError,
                        match='^Only a store admin can do this$'):
-        api.updateMyStoreDetails(customerId, address='Somewhere')
+        tools.updateMyStoreDetails(customerId, address='Somewhere')
     with pytest.raises(ValueError, match='^Create your store first$'):
-        api.updateMyStoreDetails(OTHER_ADMIN, address='Somewhere')
+        tools.updateMyStoreDetails(OTHER_ADMIN, address='Somewhere')
     assert db.read({}, 'Stores')[0]['address'] == STORE_DETAILS['address']
 
 
@@ -574,7 +578,7 @@ def test_updateMyStoreDetails_onlyTouchesTheCallersStore(clean):
     createTestStore(ADMIN)
     createTestStore(OTHER_ADMIN, 'Bakery B')
 
-    api.updateMyStoreDetails(ADMIN, address='5 Mango Ave')
+    tools.updateMyStoreDetails(ADMIN, address='5 Mango Ave')
 
     other = db.read({'ownerUserId': OTHER_ADMIN}, 'Stores', findOne=True)
     assert other['address'] == STORE_DETAILS['address']
@@ -587,9 +591,9 @@ def test_updateMyStoreDetails_onlyTouchesTheCallersStore(clean):
 def test_suggestStoreAddress_isGooglesAddressForThePin(clean,
                                                        _fakeGeocoding):
     createTestStore(ADMIN)
-    api.setUserStoreLocation(ADMIN, 10.34344, 123.91151)
+    tools.setUserStoreLocation(ADMIN, 10.34344, 123.91151)
 
-    res = api.suggestStoreAddress(ADMIN)
+    res = tools.suggestStoreAddress(ADMIN)
 
     assertExactShape(AddressSuggestionResponse, res)
     # The plus code Google lists first is skipped.
@@ -609,7 +613,7 @@ def test_suggestStoreAddress_needsAPin(clean, _fakeGeocoding):
     createTestStore(ADMIN)
 
     with pytest.raises(ValueError, match='^Pin the store on the map first$'):
-        api.suggestStoreAddress(ADMIN)
+        tools.suggestStoreAddress(ADMIN)
     assert _fakeGeocoding.calls == []
 
 
@@ -631,9 +635,9 @@ def test_suggestStoreAddress_isNull_whenGoogleGivesNoAddress(
     session = FakeGeocodingSession(status, body, error)
     monkeypatch.setattr(geocoding, 'httpSession', lambda: session)
     createTestStore(ADMIN)
-    api.setUserStoreLocation(ADMIN, 10, 20)
+    tools.setUserStoreLocation(ADMIN, 10, 20)
 
-    assert api.suggestStoreAddress(ADMIN)['suggestedAddress'] is None
+    assert tools.suggestStoreAddress(ADMIN)['suggestedAddress'] is None
     assert len(session.calls) == 1
 
 
@@ -641,9 +645,9 @@ def test_suggestStoreAddress_isNull_withoutAKey(clean, monkeypatch,
                                                 _fakeGeocoding):
     monkeypatch.delenv('GOOGLE_MAPS_API_KEY')
     createTestStore(ADMIN)
-    api.setUserStoreLocation(ADMIN, 10, 20)
+    tools.setUserStoreLocation(ADMIN, 10, 20)
 
-    assert api.suggestStoreAddress(ADMIN)['suggestedAddress'] is None
+    assert tools.suggestStoreAddress(ADMIN)['suggestedAddress'] is None
     assert _fakeGeocoding.calls == []
 
 
@@ -653,14 +657,14 @@ def test_suggestStoreAddress_refusesACustomer(clean, firebase):
 
     with pytest.raises(PermissionError,
                        match='^Only a store admin can do this$'):
-        api.suggestStoreAddress(customerId)
+        tools.suggestStoreAddress(customerId)
 
 
 def test_startGuestSession_sendsTheStoresPublicDetails(clean, firebase):
     """A customer, an anonymous visitor included, sees the store's contact
     number, address and map location."""
     createTestStore(ADMIN)
-    pinned = api.setUserStoreLocation(ADMIN, 14.5, 121.0)
+    pinned = tools.setUserStoreLocation(ADMIN, 14.5, 121.0)
 
     store = _guestSession(firebase)['store']
 
@@ -747,8 +751,8 @@ def test_verifyCustomerPhone_storesTheVerifiedNumber(clean, firebase):
 
     res = api.verifyCustomerPhone(GUEST, TOKEN)
 
-    assertExactShape(PhoneVerifiedResponse, res)
-    assert res == {'phoneNumber': PHONE}
+    assertExactShape(NoContentResponse, res)
+    assert res == {}
     stored = db.read({'_id': GUEST}, 'Customers', findOne=True)
     assert stored['phoneNumber'] == PHONE
     assert stored['_version'] == 1
@@ -788,3 +792,41 @@ def test_verifyCustomerPhone_refusesAnAdmin(clean, firebase):
                        match='^Only a customer can do this$'):
         api.verifyCustomerPhone(ADMIN, TOKEN)
     assert db.read({}, 'Customers') == []
+
+
+# ------------------------- the getUserStore route ------------------------- #
+
+
+def test_getUserStoreRoute_sendsOnlyWhatTheWorkspaceReads(
+        clean):
+    """The route (the admin workspace) and the tool (the AI) share one
+    action; the route's model sends only the name, the link name and the
+    brand colors."""
+    createTestUser(ADMIN)
+    assert api.getUserStore(ADMIN) == {'store': None}
+    created = tools.createUserStore(ADMIN, 'Bakery A', **STORE_DETAILS)
+    db.update({'_id': created['_id']}, {'photoStyle': 'calm',
+                                        'voiceId': 'abcdefghij0123456789'},
+              'Stores', checkVersion=False)
+
+    screen = api.getUserStore(ADMIN)
+    tool = tools.getUserStore(ADMIN)
+
+    assertExactShape(MyStoreScreenResponse, screen)
+    assertExactShape(AdminStoreScreenRow, screen['store'])
+    assert set(screen['store']) == {'name', 'slug', 'primaryColor',
+                                    'secondaryColor'}
+    assert {'contactNumber', 'photoStyle', 'voiceId'} <= set(tool['store'])
+    assert screen['store'] == {
+        key: value for key, value in tool['store'].items()
+        if key in modelKeys(AdminStoreScreenRow)}
+    assert screen['store']['primaryColor'] == BRAND_COLORS['primaryColor']
+
+
+def test_getUserStoreRoute_refusesACustomer(clean, firebase):
+    createTestStore(ADMIN)
+    _guestSession(firebase)
+
+    with pytest.raises(PermissionError,
+                       match='^Only a store admin can do this$'):
+        api.getUserStore(GUEST)

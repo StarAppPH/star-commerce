@@ -20,6 +20,7 @@ import productFinder
 import samModel
 from actions import PhotoActions
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import assertExactShape, createTestStore, wipeCollections
 from mongoDb import db
 from objects import FoundProductsResponse
@@ -39,6 +40,7 @@ BOXES = {'red mug': '<0f>0<|box;x1=20;y1=40;x2=119;y2=159;w=400;h=200|>'
          'blue bowl': '<0f>0<|box;x1=250;y1=50;x2=349;y2=149;w=400;h=200|>'}
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 def groupPhoto() -> bytes:
@@ -106,7 +108,7 @@ def savedImage(bucket, imageUrl: str):
 
 
 def test_findProductsInPhoto_namesAndCutsOutEachProduct(fakes):
-    res = api.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+    res = tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
 
     assertExactShape(FoundProductsResponse, res)
     assert [p['name'] for p in res['products']] == ['Red Mug', 'Blue Bowl']
@@ -136,7 +138,7 @@ def test_findProductsInPhoto_namesAndCutsOutEachProduct(fakes):
 def test_aProductSamCannotLocate_isNotFound(fakes):
     fakes.meta.boxes['blue bowl'] = ''
 
-    res = api.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+    res = tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
 
     assert [p['name'] for p in res['products']] == ['Red Mug']
     assert res['notFound'] == ['Blue Bowl']
@@ -144,12 +146,12 @@ def test_aProductSamCannotLocate_isNotFound(fakes):
 
 def test_oneSamFailure_isNotFound_butAllFailing_isA503(fakes):
     fakes.meta.boxes['blue bowl'] = samModel.unavailable()
-    res = api.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+    res = tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
     assert res['notFound'] == ['Blue Bowl']
 
     fakes.meta.boxes['red mug'] = samModel.unavailable()
     with pytest.raises(ServiceUnavailable):
-        api.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+        tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
     # The failed find is given back; the one before it counts.
     assert findCounts() == [1, 1]
 
@@ -159,7 +161,7 @@ def test_oneProductNamedTwice_isKeptOnce(fakes):
         *LISTING['products'], {'name': 'Mug', 'phrase': 'mug'}]})
     fakes.meta.boxes['mug'] = BOXES['red mug']
 
-    res = api.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+    res = tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
 
     assert [p['name'] for p in res['products']] == ['Red Mug', 'Blue Bowl']
     assert res['notFound'] == []
@@ -168,7 +170,7 @@ def test_oneProductNamedTwice_isKeptOnce(fakes):
 def test_aPhotoWithNoProducts_findsNone(fakes):
     fakes.meta.listing = '{"products": []}'
 
-    res = api.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+    res = tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
 
     assert res == {'products': [], 'notFound': []}
     assert fakes.meta.samCalls == []
@@ -178,7 +180,7 @@ def test_anUnreadableListing_isA503_andGivesTheFindBack(fakes):
     fakes.meta.listing = 'Here are your products: a mug and a bowl.'
 
     with pytest.raises(ServiceUnavailable):
-        api.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+        tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
 
     assert findCounts() == [0, 0]
 
@@ -189,7 +191,7 @@ def test_anotherUsersPhoto_isRefused_beforeAnyCall(fakes):
 
     with pytest.raises(ValueError, match='^imageUrl must be a photo you '
                        'uploaded$'):
-        api.findProductsInPhoto(ADMIN, downloadUrl(theirs))
+        tools.findProductsInPhoto(ADMIN, downloadUrl(theirs))
 
     assert fakes.meta.chatCalls == [] and findCounts() == []
 
@@ -199,13 +201,13 @@ def test_theStoresDailyCap_refuses(fakes):
         PhotoActions._takeFindQuota(fakes.store['_id'])
 
     with pytest.raises(ValueError, match=f'^{PhotoActions.FIND_CAP_REACHED}$'):
-        api.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+        tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
 
     assert fakes.meta.chatCalls == []
 
 
 def test_aCutOut_isTheNewProductsRowsPhoto(fakes):
-    [found, _] = api.findProductsInPhoto(ADMIN, downloadUrl(GROUP))[
+    [found, _] = tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))[
         'products']
 
     path = photoStorage.objectPathFromUrl(found['imageUrl'], 'imageUrl')

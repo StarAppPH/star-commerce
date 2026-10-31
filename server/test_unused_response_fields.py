@@ -747,6 +747,12 @@ FIXTURE = {
         export interface Rested { restedKept: string; restedRest: string; }
         export interface Holder { holderShared: Shared; }
         """,
+    # A list with minItems is generated as a tuple: read through like an array.
+    'app/schemas/TupleSchema.ts': """\
+        export type TupleItems = [TupleItem, ...TupleItem[]];
+        export interface TupleList { tupleItems: TupleItems; }
+        export interface TupleItem { tupleRead: string; tupleSkip: string; }
+        """,
     'app/schemas/FlowSchema.ts': """\
         export interface CastList { castItems: CastItem[]; }
         export interface CastItem { castRead: string; castSkip: string; }
@@ -823,9 +829,11 @@ FIXTURE = {
         import type { Widget } from '../schemas/WidgetSchema';
         import type { Gadget, Gizmo, Keyed, Valued, Strung, Rested, Holder } from '../schemas/GadgetSchema';
         import type * as F from '../schemas/FlowSchema';
+        import type { TupleList } from '../schemas/TupleSchema';
         import type { ApiResponse, Pair } from './ApiResponse';
         export interface RouteResponseModels {
           getWidget: Widget;
+          getTupleList: TupleList;
           getGadget: Gadget;
           getGizmo: Gizmo;
           getKeyed: Keyed;
@@ -934,6 +942,13 @@ FIXTURE = {
           const strung = JSON.stringify(call('getStrung')); // MARK stringify
           const { restedKept, ...others } = call('getRested'); // MARK rest
           return `${counted}${keyed}${valued}${strung}${restedKept}${String(others)}`;
+        }
+        """,
+    'app/tuples.ts': """\
+        import { call } from './api/ServerRequests';
+
+        export function tupleLabels(): string {
+          return call('getTupleList').tupleItems.map((item) => item.tupleRead).join();
         }
         """,
     'app/flows.tsx': """\
@@ -1208,6 +1223,9 @@ def test_analyzerRulesBite(tmp_path):
     }
     assert result['routes']['getWidget']['unused'] == [
         'widgetNeverRead', 'widgetItems[].itemNeverRead', 'widgetSharedHolder']
+    # A tuple's elements, never its array methods.
+    assert status['getTupleList'] == {'tupleItems': 'used', 'tupleItems[].tupleRead': 'used',
+                                      'tupleItems[].tupleSkip': 'unused'}
     # Read through flows tsc cannot back up: a cast, a useState setter, a JSX
     # prop, nested pairing; by name through a DataGrid field and obj[key].
     assert status['getCastList'] == {'castItems': 'used', 'castItems[].castRead': 'used', 'castItems[].castSkip': 'unused'}

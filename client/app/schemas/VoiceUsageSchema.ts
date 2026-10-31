@@ -8,7 +8,7 @@
 export type Id = string;
 export type Version = number | null;
 /**
- * Seconds or characters used that day
+ * Characters used that day
  */
 export type Count = number;
 /**
@@ -17,11 +17,11 @@ export type Count = number;
 export type Expireat = string;
 
 /**
- * A VoiceUsage document: the seconds of speech transcribed, or the
- * characters spoken, of a customer at a store, a store, or all stores on
- * one day (UTC+8). Its _id is "<kind>:<owner>:<YYYY-MM-DD>"
- * (usageCounters.usageKey); a TTL index on expireAt deletes it once the
- * day is over.
+ * A VoiceUsage document: the characters spoken of a customer at a
+ * store, a store, or all stores on one day (UTC+8). Its _id is
+ * "<kind>:<owner>:<YYYY-MM-DD>" (usageCounters.usageKey); a TTL index on
+ * expireAt deletes it once the day is over. (The speech tokens' per-minute
+ * counters share the collection, keyed by the minute.)
  */
 export interface VoiceUsage {
   _id?: Id;

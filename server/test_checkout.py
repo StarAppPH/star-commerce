@@ -40,6 +40,7 @@ from actions.PaymentActions import (INVALID_PAYMENT_METHOD,
                                     OPTION_NOT_OFFERED, ORDER_EXPIRED,
                                     ORDER_NOT_FOUND, PAYMENT_FAILED)
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (ALL_PAYMENT_METHODS, addOrder, addProduct,
                       assertExactShape, createTestStore, guestAt,
                       storeWithProducts, takePayments, verifiedGuestAt,
@@ -68,6 +69,7 @@ WINDOW = datetime.timedelta(minutes=ORDER_PAYMENT_MINUTES)
 MS = datetime.timedelta(milliseconds=1)
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 def exactly(message: str) -> str:
@@ -163,7 +165,7 @@ def _items(*lines) -> list[dict]:
 
 def _place(customerId: str, store: dict, *lines) -> dict:
     """createOrder's order row."""
-    return api.createOrder(customerId, store['_id'],
+    return tools.createOrder(customerId, store['_id'],
                            _items(*lines))['order']
 
 
@@ -219,7 +221,7 @@ def test_createOrder_reservesExactly_andSnapshotsTheItems(
     ube, pandesal, ensaymada = (products['Ube Cake'], products['Pandesal'],
                                 products['Ensaymada'])
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           _items((ube, 3), (pandesal, 2)))
 
     orderId = res['order']['_id']
@@ -258,7 +260,7 @@ def test_createOrder_copiesTheStoresCurrency_theVerifiedPhone_andTheWindow(
     customerId = verifiedGuestAt(firebase, store, GUEST, '+639181112222')
     pandesal = _products(store)['Pandesal']
 
-    res = api.createOrder(customerId, store['_id'], _items((pandesal, 1)))
+    res = tools.createOrder(customerId, store['_id'], _items((pandesal, 1)))
 
     stored = _order(res['order']['_id'])
     assert stored['currency'] == res['order']['currency'] == 'USD'
@@ -272,7 +274,7 @@ def test_createOrder_answersTheOrderAndTheStoresPaymentOptions(
         clean, firebase, clock):
     store, customerId, products = _shop(firebase)
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           _items((products['Pandesal'], 1)))
 
     assertExactShape(CreatedOrderResponse, res)
@@ -298,9 +300,9 @@ def test_createOrder_takesDictItemsAndModelItems(clean, firebase, clock):
     store, customerId, products = _shop(firebase)
     pandesal, ensaymada = products['Pandesal'], products['Ensaymada']
 
-    api.createOrder(customerId, store['_id'],
+    tools.createOrder(customerId, store['_id'],
                     [{'productId': pandesal['_id'], 'quantity': 1}])
-    api.createOrder(customerId, store['_id'], [
+    tools.createOrder(customerId, store['_id'], [
         NewOrderItem(productId=ensaymada['_id'], quantity=2)])
 
     assert _product(pandesal['_id'])['inventory'] == 9
@@ -335,7 +337,7 @@ def test_createOrder_anUnknownStore_isRefused(clean, firebase, clock):
     store, customerId, products = _shop(firebase)
 
     with pytest.raises(ValueError, match=exactly('Store not found')):
-        api.createOrder(customerId, SENTINEL,
+        tools.createOrder(customerId, SENTINEL,
                         _items((products['Pandesal'], 1)))
 
 
@@ -343,7 +345,7 @@ def test_createOrder_aStoreIdThatIsNoText_isRefused(clean, firebase, clock):
     store, customerId, products = _shop(firebase)
 
     with pytest.raises(ValueError, match=exactly(STORE_ID_NOT_TEXT)):
-        api.createOrder(customerId, {'$ne': None},
+        tools.createOrder(customerId, {'$ne': None},
                         _items((products['Pandesal'], 1)))
 
 
@@ -353,9 +355,9 @@ def test_createOrder_refusesABadItemCount(clean, firebase, clock, count):
     item = {'productId': products['Pandesal']['_id'], 'quantity': 1}
 
     with pytest.raises(ValueError, match=exactly(ITEMS_COUNT)):
-        api.createOrder(customerId, store['_id'], [item] * count)
+        tools.createOrder(customerId, store['_id'], [item] * count)
     with pytest.raises(ValueError, match=exactly(ITEMS_COUNT)):
-        api.createOrder(customerId, store['_id'], SENTINEL)
+        tools.createOrder(customerId, store['_id'], SENTINEL)
 
     assert db.read({}, 'Orders') == []
 
@@ -382,7 +384,7 @@ def test_createOrder_refusesABadQuantity_withoutQuotingIt(
     pandesal = products['Pandesal']
 
     with pytest.raises(ValueError) as error:
-        api.createOrder(customerId, store['_id'],
+        tools.createOrder(customerId, store['_id'],
                         [{'productId': pandesal['_id'],
                           'quantity': quantity}])
 
@@ -397,7 +399,7 @@ def test_createOrder_refusesABadProductId(clean, firebase, clock, productId):
 
     with pytest.raises(ValueError,
                        match=exactly(atItem(1, PRODUCT_ID_NOT_TEXT))):
-        api.createOrder(customerId, store['_id'],
+        tools.createOrder(customerId, store['_id'],
                         [{'productId': productId, 'quantity': 1}])
 
 
@@ -420,7 +422,7 @@ def test_createOrder_aProductNoOneCanFill_getsOneMessage(
     quantity = 11 if which == 'short' else 1
 
     with pytest.raises(ValueError) as error:
-        api.createOrder(customerId, store['_id'],
+        tools.createOrder(customerId, store['_id'],
                         [{'productId': target['_id'], 'quantity': quantity}])
 
     assert str(error.value) == atItem(1, NOT_IN_STOCK)
@@ -467,24 +469,24 @@ def test_checkoutRoutes_refuseAnAdmin_andAnUnknownUser(
 
     with pytest.raises(PermissionError, match=exactly(NOT_CUSTOMER)):
         if route == 'createOrder':
-            api.createOrder(caller, store['_id'], _items((pandesal, 1)))
+            tools.createOrder(caller, store['_id'], _items((pandesal, 1)))
         else:
-            api.payOrder(caller, store['_id'], order['_id'], 'card', 'demo')
+            tools.payOrder(caller, store['_id'], order['_id'], 'card', 'demo')
 
     assert _product(pandesal['_id']) == before
     assert _order(order['_id'])['status'] == 'pending'
 
 
 @pytest.mark.parametrize('call', [
-    lambda api, c, s, o: api.createOrder(
+    lambda api, c, s, o: tools.createOrder(
         c, s, [{'productId': SENTINEL, 'quantity': 1}]),
-    lambda api, c, s, o: api.createOrder(
+    lambda api, c, s, o: tools.createOrder(
         c, s, [{'productId': o, 'quantity': SENTINEL}]),
-    lambda api, c, s, o: api.createOrder(c, SENTINEL, [{
+    lambda api, c, s, o: tools.createOrder(c, SENTINEL, [{
         'productId': o, 'quantity': 1}]),
-    lambda api, c, s, o: api.payOrder(c, s, SENTINEL, 'card', 'demo'),
-    lambda api, c, s, o: api.payOrder(c, s, o, SENTINEL),
-    lambda api, c, s, o: api.payOrder(c, SENTINEL, o, 'card', 'demo'),
+    lambda api, c, s, o: tools.payOrder(c, s, SENTINEL, 'card', 'demo'),
+    lambda api, c, s, o: tools.payOrder(c, s, o, SENTINEL),
+    lambda api, c, s, o: tools.payOrder(c, SENTINEL, o, 'card', 'demo'),
 ])
 def test_checkoutRefusals_neverQuoteWhatWasSent(clean, firebase, clock, call):
     store, customerId, products = _shop(firebase)
@@ -520,7 +522,7 @@ def test_createOrder_offersOnlyTheStoresOwnMethods(clean, firebase, clock):
     pandesal = addProduct(store['_id'], 'Pandesal', 5)
     customerId = verifiedGuestAt(firebase, store, GUEST)
 
-    res = api.createOrder(customerId, store['_id'], _items((pandesal, 1)))
+    res = tools.createOrder(customerId, store['_id'], _items((pandesal, 1)))
 
     assert res['paymentOptions'] == [
         {'method': 'bankTransfer', 'provider': None, 'eWallets': None,
@@ -528,7 +530,7 @@ def test_createOrder_offersOnlyTheStoresOwnMethods(clean, firebase, clock):
                     'accountNumber': '1234'}],
          'checkPayees': None}]
     with pytest.raises(ValueError, match=exactly(OPTION_NOT_OFFERED)):
-        api.payOrder(customerId, store['_id'], res['order']['_id'], 'card',
+        tools.payOrder(customerId, store['_id'], res['order']['_id'], 'card',
                      'demo')
     assert _order(res['order']['_id'])['status'] == 'pending'
 
@@ -666,7 +668,7 @@ def test_createOrder_racingCreates_neverPassTheCap(clean, firebase, clock):
     def race(index: int) -> None:
         barrier.wait()
         try:
-            outcomes[index] = api.createOrder(
+            outcomes[index] = tools.createOrder(
                 customerId, store['_id'], _items((stock[index], 1)))
         except Exception as error:  # noqa: BLE001 - asserted below
             outcomes[index] = error
@@ -706,7 +708,7 @@ def test_payOrder_marksThePendingOrderPaid_andChargesOnce(
     reserved = _product(ube['_id'])
     clock.advance(minutes=5)
 
-    res = api.payOrder(customerId, store['_id'], order['_id'], 'eWallet',
+    res = tools.payOrder(customerId, store['_id'], order['_id'], 'eWallet',
                        'demo')
 
     stored = _order(order['_id'])
@@ -738,7 +740,7 @@ def test_payOrder_everyOption_paysThroughItsProvider_orAwaitsTheStore(
     store, customerId, products = _shop(firebase)
     order = _place(customerId, store, (products['Pandesal'], 1))
 
-    res = api.payOrder(customerId, store['_id'], order['_id'],
+    res = tools.payOrder(customerId, store['_id'], order['_id'],
                        option['method'], option['provider'])
 
     stored = _order(order['_id'])
@@ -767,7 +769,7 @@ def test_payOrder_refusesABadMethod_withoutQuotingIt(
     before = _order(order['_id'])
 
     with pytest.raises(ValueError, match=exactly(INVALID_PAYMENT_METHOD)):
-        api.payOrder(customerId, store['_id'], order['_id'], method)
+        tools.payOrder(customerId, store['_id'], order['_id'], method)
 
     assert _order(order['_id']) == before
     assert charges.calls == []
@@ -786,7 +788,7 @@ def test_payOrder_refusesABadProvider_withoutQuotingIt(
     before = _order(order['_id'])
 
     with pytest.raises(ValueError, match=exactly(INVALID_PAYMENT_PROVIDER)):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card',
+        tools.payOrder(customerId, store['_id'], order['_id'], 'card',
                      provider)
 
     assert _order(order['_id']) == before
@@ -803,7 +805,7 @@ def test_payOrder_refusesAnOptionTheStoreDoesNotOffer(
     before = _order(order['_id'])
 
     with pytest.raises(ValueError, match=exactly(OPTION_NOT_OFFERED)):
-        api.payOrder(customerId, store['_id'], order['_id'], method,
+        tools.payOrder(customerId, store['_id'], order['_id'], method,
                      provider)
 
     assert _order(order['_id']) == before
@@ -830,7 +832,7 @@ def test_payOrder_anOrderThatIsNotTheCallers_isNotFound(
     before = _order(order['_id'])
 
     with pytest.raises(ValueError, match=exactly(ORDER_NOT_FOUND)):
-        api.payOrder(caller, storeId, orderId, 'card', 'demo')
+        tools.payOrder(caller, storeId, orderId, 'card', 'demo')
 
     assert _order(order['_id']) == before
     assert charges.calls == []
@@ -855,7 +857,7 @@ def test_payOrder_refusesAnOrderThatIsNotPending(
     before = _order(orderId)
 
     with pytest.raises(ValueError, match=exactly(NOT_PAYABLE[status])):
-        api.payOrder(customerId, store['_id'], orderId, 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], orderId, 'card', 'demo')
 
     assert _order(orderId) == before
     assert charges.calls == []
@@ -869,7 +871,7 @@ def test_payOrder_aCancelledExpiredOrder_saysItExpired(
                          cancelReason='expired', cancelledAt=T0)
 
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.payOrder(customerId, store['_id'], orderId, 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], orderId, 'card', 'demo')
 
     assert charges.calls == []
 
@@ -878,12 +880,12 @@ def test_payOrder_payingTwice_refusesTheSecond_andKeepsTheFirst(
         clean, firebase, clock, charges):
     store, customerId, products = _shop(firebase)
     order = _place(customerId, store, (products['Pandesal'], 1))
-    api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+    tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
     paid = _order(order['_id'])
     clock.advance(minutes=1)
 
     with pytest.raises(ValueError, match=exactly(NOT_PAYABLE['paid'])):
-        api.payOrder(customerId, store['_id'], order['_id'], 'eWallet',
+        tools.payOrder(customerId, store['_id'], order['_id'], 'eWallet',
                      'demo')
 
     assert _order(order['_id']) == paid
@@ -903,7 +905,7 @@ def test_payOrder_aFailedCharge_putsTheOrderBackToPending(
     clock.advance(minutes=1)
 
     with pytest.raises(ValueError) as error:
-        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     assert str(error.value) == PAYMENT_FAILED
     assert 'gateway-secret-detail' not in str(error.value)
@@ -926,17 +928,17 @@ def test_payOrder_aFailedCharge_canBeRetried_orExpires_once(
     order = _place(customerId, store, (ube, 2))
     charges.error = RuntimeError('boom')
     with pytest.raises(ValueError, match=exactly(PAYMENT_FAILED)):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     charges.error = None
-    paid = api.payOrder(customerId, store['_id'], order['_id'], 'card',
+    paid = tools.payOrder(customerId, store['_id'], order['_id'], 'card',
                         'demo')
     assert paid['status'] == 'paid'
 
     second = _place(customerId, store, (ube, 1))
     charges.error = RuntimeError('boom')
     with pytest.raises(ValueError, match=exactly(PAYMENT_FAILED)):
-        api.payOrder(customerId, store['_id'], second['_id'], 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], second['_id'], 'card', 'demo')
     # The reverted order keeps its original deadline: one sweep after it
     # cancels it exactly once, and the paid one stays.
     clock.advance(minutes=ORDER_PAYMENT_MINUTES)
@@ -975,7 +977,7 @@ def test_payOrder_aFailedCharge_andAFailedRevert_leavesTheOrderPaid(
     monkeypatch.setattr(paymentActions, 'db', FlakyDb())
 
     with pytest.raises(RuntimeError, match='revert-boom'):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     stored = _order(order['_id'])
     assert stored['status'] == 'paid'
@@ -991,7 +993,7 @@ def test_payOrder_untilTheLastSecond_pays(clean, firebase, clock, charges):
     order = _place(customerId, store, (products['Pandesal'], 1))
     clock.advance(minutes=29, seconds=59)
 
-    res = api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+    res = tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     assert res['status'] == 'paid'
 
@@ -1002,7 +1004,7 @@ def test_payOrder_anOrderExpiringInOneMillisecond_stillPays(
     orderId = _heldOrder(store, customerId, [(products['Pandesal'], 1)],
                          T0 - WINDOW + MS)
 
-    res = api.payOrder(customerId, store['_id'], orderId, 'card', 'demo')
+    res = tools.payOrder(customerId, store['_id'], orderId, 'card', 'demo')
 
     assert res['status'] == 'paid'
 
@@ -1015,7 +1017,7 @@ def test_payOrder_atTheDeadline_refusesExpired_cancels_andReleasesTheUnits(
     clock.advance(minutes=ORDER_PAYMENT_MINUTES)
 
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     stored = _order(order['_id'])
     assert stored['status'] == 'cancelled'
@@ -1140,7 +1142,7 @@ def test_orderLists_cancelTheirOwnStoresExpiredOrders_only(
     mine = _expired(store, customerId, [(products['Pandesal'], 1)])
     theirs = _expired(other, customerId, [(latte, 1)])
 
-    res = api.getMyOrders(customerId, store['_id'])
+    res = tools.getMyOrders(customerId, store['_id'])
 
     assert {o['_id']: o['status'] for o in res['orders']} == {
         mine: 'cancelled'}
@@ -1148,7 +1150,7 @@ def test_orderLists_cancelTheirOwnStoresExpiredOrders_only(
     assert _order(theirs)['status'] == 'pending'
     assert _product(latte['_id'])['inventory'] == 9
 
-    res = api.getStoreOrders(OTHER_ADMIN)
+    res = tools.getStoreOrders(OTHER_ADMIN)
 
     assert {o['_id']: o['status'] for o in res['orders']} == {
         theirs: 'cancelled'}
@@ -1187,7 +1189,7 @@ def test_payOrder_anotherPaymentWinsTheClaim_isNotChargedAndNotOverwritten(
     _betweenCheckAndClaim(monkeypatch, otherPays)
 
     with pytest.raises(ValueError, match=exactly(NOT_PAYABLE['paid'])):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     stored = _order(order['_id'])
     assert (stored['paymentMethod'], stored['paymentReference'],
@@ -1209,7 +1211,7 @@ def test_payOrder_anExpiryWinsTheClaim_isNotChargedAndReleasedOnce(
         lambda: orderActions._cancelExpiredOrder(order['_id'], later))
 
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     stored = _order(order['_id'])
     assert (stored['status'], stored['cancelReason'],
@@ -1258,7 +1260,7 @@ def test_expiry_payOrderThenTheSweep_releasesOnce(
     order = _place(customerId, store, (pandesal, 4))
     clock.advance(minutes=ORDER_PAYMENT_MINUTES)
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
     released = _product(pandesal['_id'])
 
     assert orderActions.cancelExpiredOrders() == 0
@@ -1277,7 +1279,7 @@ def test_expiry_theSweepThenPayOrder_releasesOnce(
     released = _product(pandesal['_id'])
 
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+        tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
 
     assert _product(pandesal['_id']) == released
     assert released['inventory'] == 10

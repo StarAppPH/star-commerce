@@ -1,17 +1,16 @@
-"""voiceModel.py — voice chat's speech: Meta's Muse Voice Transcribe in,
-ElevenLabs' text to speech out (hand-written, no database).
+"""voiceModel.py — the store's voice: ElevenLabs' text to speech
+(hand-written, no database).
 
-- transcribe(): a WAV recording (validWav) to its text, through
-  POST /v1/asr/transcribe with MODEL_API_KEY (chat's key).
-- speak(): a reply's text (spokenText) to MP3 bytes in the store's
+- speak(): a text (spokenText) to MP3 bytes in the store's
   ElevenLabs voice, else ELEVENLABS_DEFAULT_VOICE_ID, with
   ELEVENLABS_API_KEY. A store voice ElevenLabs refuses (deleted on their
   side) is retried once with the default voice.
 - listVoices() / voiceExists(): the voices a store may pick: ElevenLabs'
   default (premade) voices and those saved to the app's account, never a
   person's clone (only the premade and generated categories are offered).
+- speechToken(): a single-use token the browser streams a reply with.
 
-Every call is a plain HTTPS request (no SDK wraps either API) through one
+Every call is a plain HTTPS request (no SDK wraps the API) through one
 requests.Session, to a fixed URL (only a voice id that passed
 VOICE_ID_PATTERN goes into a path), with redirects off. Each attempt is
 given min(its attempt seconds, the time left before the call's deadline),
@@ -26,7 +25,7 @@ left after a RETRY_BACKOFF_SECONDS pause, never any other 4xx. A missing
 key, a passed deadline or a failed call is unavailable(), a 503 ("Voice is
 unavailable right now").
 
-Nothing here logs audio, a transcript, a reply, a voice's text or a key:
+Nothing here logs audio, a reply, a voice's text or a key:
 errors are logged by class and status only.
 
 The clock: deadlines and body reads read this module's `time`, the retry
@@ -34,14 +33,10 @@ loop (attempts, the backoff sleep) chatModel's, so a test replaces both;
 the HTTP layer is httpSession(), which a test replaces.
 """
 
-import base64
-import binascii
 import json
 import logging
-import math
 import os
 import re
-import struct
 import threading
 import time
 import unicodedata
@@ -58,12 +53,6 @@ from objects import (VOICE_DESCRIPTION_MAX_LENGTH, VOICE_ID_PATTERN,
                      VOICE_PREVIEW_URL_MAX_LENGTH)
 from services.__request import ServiceUnavailable
 
-# Meta's speech to text (MODEL_API_KEY, as chat).
-STT_URL = 'https://api.meta.ai/v1/asr/transcribe'
-STT_MODEL = 'muse-voice-transcribe-1.0'
-STT_MODE = 'PUSH_TO_TALK'
-STT_AUDIO_ENCODING = 'WAV'
-META_KEY_VARIABLE = chatModel.API_KEY_VARIABLE
 # ElevenLabs' text to speech and voices.
 TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech/{voiceId}'
 VOICES_URL = 'https://api.elevenlabs.io/v2/voices'
@@ -92,64 +81,26 @@ VOICES_PAGE_SIZE = 20
 # What routeErrors' 503 names: "Voice is unavailable right now".
 VOICE_SERVICE = 'voice'
 
-# The recording a voice route takes: RIFF/WAVE, mono, 16-bit PCM, 16 or 24
-# kHz, 0.3 to 60 seconds (Meta takes up to 10 minutes).
-WAV_SAMPLE_RATES = (16000, 24000)
-WAV_PCM_FORMAT = 1
-WAV_BYTES_PER_SAMPLE = 2
-VOICE_AUDIO_MIN_SECONDS = 0.3
-VOICE_AUDIO_MAX_SECONDS = 60
-# The header chunks a recorder may write besides the samples.
-WAV_HEADER_ALLOWANCE = 4096
-# The sizes a streaming recorder writes before it knows the length.
-WAV_UNSET_SIZES = (0, 0xFFFFFFFF)
-VOICE_AUDIO_MAX_BYTES = (VOICE_AUDIO_MAX_SECONDS * max(WAV_SAMPLE_RATES) *
-                         WAV_BYTES_PER_SAMPLE + WAV_HEADER_ALLOWANCE)
-VOICE_AUDIO_MAX_BASE64 = 4 * math.ceil(VOICE_AUDIO_MAX_BYTES / 3)
 # The most of a reply that is spoken (cut at a sentence end): the chat
 # keeps the whole text.
 SPOKEN_REPLY_MAX_CHARS = 2500
 
 # Each call's own deadline, and the most one attempt waits.
-STT_DEADLINE_SECONDS = STT_ATTEMPT_SECONDS = 15
 TTS_DEADLINE_SECONDS = TTS_ATTEMPT_SECONDS = 15
 VOICES_DEADLINE_SECONDS = 15
 SPEECH_TOKEN_DEADLINE_SECONDS = SPEECH_TOKEN_ATTEMPT_SECONDS = 5
 SPEECH_TOKEN_RESPONSE_MAX_BYTES = 16 * 1024
 VOICES_ATTEMPT_SECONDS = 10
 # The largest response body read: past it, the call failed.
-STT_RESPONSE_MAX_BYTES = 256 * 1024
 TTS_RESPONSE_MAX_BYTES = 4 * 1024 * 1024
 VOICES_RESPONSE_MAX_BYTES = 4 * 1024 * 1024
 READ_CHUNK_BYTES = 64 * 1024
 
-AUDIO_NOT_BASE64 = 'audio must be a WAV recording, base64 encoded'
-AUDIO_NOT_WAV = 'audio is not a WAV recording: record or convert it to WAV'
-AUDIO_FORMAT = ('audio must be mono, 16-bit PCM, at 16 or 24 kHz: convert '
-                'the recording')
-AUDIO_TOO_SHORT = 'audio is too short: hold to talk a little longer'
-AUDIO_TOO_LONG = (f'audio is too long: keep a message under '
-                  f'{VOICE_AUDIO_MAX_SECONDS} seconds')
-AUDIO_SIZES_UNSET = ("audio's header has no final length: write the RIFF "
-                     'and data sizes once the recording ends')
-AUDIO_HEADER_TOO_LONG = ('audio has too much before its samples: send a '
-                         'plain WAV header')
-NOTHING_HEARD = "I couldn't hear anything: try again closer to the mic"
-RECORDING_UNREADABLE = ("The recording couldn't be read: send a mono 16-bit "
-                        'WAV at 16 or 24 kHz')
 PAGE_TOKEN_INVALID = ('pageToken is not a page of listVoices: send '
                       'nextPageToken back as it came')
 
 _session = None
 _sessionLock = threading.Lock()
-
-
-class NothingHeard(ValueError):
-    """Meta transcribed the recording to nothing (a 400: NOTHING_HEARD).
-    Meta billed it."""
-
-    def __init__(self):
-        super().__init__(NOTHING_HEARD)
 
 
 class _Refused(Exception):
@@ -310,118 +261,6 @@ def _json(body: bytes, logEvent: str) -> dict:
         logging.warning({'event': logEvent, 'errorClass': 'BadBody'})
         raise unavailable()
     return data
-
-
-# ── Speech to text ──────────────────────────
-
-def _canonicalWav(rate: int, samples: bytes) -> bytes:
-    """`samples` (mono 16-bit PCM at `rate`) under the plain 44-byte
-    RIFF/WAVE header."""
-    fmt = struct.pack('<HHIIHH', WAV_PCM_FORMAT, 1, rate,
-                      rate * WAV_BYTES_PER_SAMPLE, WAV_BYTES_PER_SAMPLE, 16)
-    body = (b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt +
-            b'data' + struct.pack('<I', len(samples)) + samples)
-    return b'RIFF' + struct.pack('<I', len(body)) + body
-
-
-def validWav(audio) -> tuple[bytes, float]:
-    """The recording a voice route was sent, as the WAV sent on to Meta,
-    and its length in seconds: base64 (strict) of a RIFF/WAVE file of mono
-    16-bit PCM at 16 or 24 kHz, VOICE_AUDIO_MIN_SECONDS to
-    VOICE_AUDIO_MAX_SECONDS long, at most VOICE_AUDIO_MAX_BYTES (the base64
-    length is checked before decoding). Its chunks are walked, bounds
-    checked, to `fmt ` and `data`, whose samples must start within
-    WAV_HEADER_ALLOWANCE bytes of the header; the client must write the
-    final RIFF and data sizes (a streaming recorder's 0 or 0xFFFFFFFF is
-    refused). What is returned is those samples only, under a plain 44-byte
-    header (_canonicalWav), so what Meta gets is what is counted. Every
-    refusal names `audio` and the fix, never quoting it."""
-    if not isinstance(audio, str) or not audio:
-        raise ValueError(AUDIO_NOT_BASE64)
-    if len(audio) > VOICE_AUDIO_MAX_BASE64:
-        raise ValueError(AUDIO_TOO_LONG)
-    try:
-        wav = base64.b64decode(audio, validate=True)
-    except (binascii.Error, ValueError):
-        raise ValueError(AUDIO_NOT_BASE64) from None
-    if len(wav) > VOICE_AUDIO_MAX_BYTES:
-        raise ValueError(AUDIO_TOO_LONG)
-    if len(wav) < 12 or wav[:4] != b'RIFF' or wav[8:12] != b'WAVE':
-        raise ValueError(AUDIO_NOT_WAV)
-    if struct.unpack_from('<I', wav, 4)[0] in WAV_UNSET_SIZES:
-        raise ValueError(AUDIO_SIZES_UNSET)
-    fmt, offset = None, 12
-    while offset + 8 <= len(wav):
-        chunkId = wav[offset:offset + 4]
-        (size,) = struct.unpack_from('<I', wav, offset + 4)
-        start = offset + 8
-        end = start + size
-        if start > 12 + WAV_HEADER_ALLOWANCE:
-            raise ValueError(AUDIO_HEADER_TOO_LONG)
-        if chunkId == b'data':
-            if fmt is None:
-                raise ValueError(AUDIO_NOT_WAV)
-            if (size == 0xFFFFFFFF or end > len(wav)
-                    or (size == 0 and len(wav) > start)):
-                raise ValueError(AUDIO_SIZES_UNSET)
-            break
-        if end > len(wav):
-            raise ValueError(AUDIO_NOT_WAV)
-        if chunkId == b'fmt ':
-            if size < 16:
-                raise ValueError(AUDIO_NOT_WAV)
-            fmt = struct.unpack_from('<HHIIHH', wav, start)
-        offset = end + (size & 1)  # a chunk is padded to an even size
-    else:
-        raise ValueError(AUDIO_NOT_WAV)
-    audioFormat, channels, rate, byteRate, blockAlign, bits = fmt
-    if (audioFormat != WAV_PCM_FORMAT or channels != 1
-            or rate not in WAV_SAMPLE_RATES or bits != 16
-            or blockAlign != WAV_BYTES_PER_SAMPLE
-            or byteRate != rate * WAV_BYTES_PER_SAMPLE):
-        raise ValueError(AUDIO_FORMAT)
-    # Whole samples only: an odd last byte is no sample.
-    samples = wav[start:start + size - size % WAV_BYTES_PER_SAMPLE]
-    seconds = len(samples) / (rate * WAV_BYTES_PER_SAMPLE)
-    if seconds < VOICE_AUDIO_MIN_SECONDS:
-        raise ValueError(AUDIO_TOO_SHORT)
-    if seconds > VOICE_AUDIO_MAX_SECONDS:
-        raise ValueError(AUDIO_TOO_LONG)
-    return _canonicalWav(rate, samples), seconds
-
-
-def transcribe(wav: bytes, deadline: float) -> str:
-    """What the recording `wav` (validWav) says, stripped, done before
-    `deadline` (time.monotonic()). Nothing heard is NothingHeard (a 400);
-    a recording Meta refuses (its 400) is RECORDING_UNREADABLE (a 400); any
-    other failure is unavailable()."""
-    key = _key(META_KEY_VARIABLE)
-    settings = json.dumps({'model': STT_MODEL, 'mode': STT_MODE,
-                           'audioEncoding': STT_AUDIO_ENCODING})
-
-    def request(timeout: float):
-        return _send('POST', STT_URL, timeout, STT_RESPONSE_MAX_BYTES,
-                     headers={'Authorization': f'Bearer {key}',
-                              'Accept': 'application/json'},
-                     files={'request': (None, settings, 'application/json'),
-                            'audio': ('audio.wav', wav, 'audio/wav')})
-
-    try:
-        _, body = _call(request, deadline, STT_ATTEMPT_SECONDS,
-                        'voiceTranscribeError')
-    except _Refused as refused:
-        if refused.status == 400:
-            raise ValueError(RECORDING_UNREADABLE) from None
-        raise unavailable() from None
-    transcript = _json(body, 'voiceTranscribeError').get('transcript')
-    if not isinstance(transcript, str):
-        logging.warning({'event': 'voiceTranscribeError',
-                         'errorClass': 'BadBody'})
-        raise unavailable()
-    transcript = transcript.strip()
-    if not transcript:
-        raise NothingHeard()
-    return transcript
 
 
 # ── Text to speech ──────────────────────────

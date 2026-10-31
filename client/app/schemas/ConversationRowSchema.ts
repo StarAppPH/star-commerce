@@ -17,10 +17,6 @@ export type Title = string | null;
  * When its last turn was saved
  */
 export type Lastmessageat = string;
-/**
- * How many turns it holds
- */
-export type Turncount = number;
 
 /**
  * One conversation of listMyConversations. Each field restates
@@ -30,5 +26,4 @@ export interface ConversationRow {
   _id: Id;
   title: Title;
   lastMessageAt: Lastmessageat;
-  turnCount: Turncount;
 }

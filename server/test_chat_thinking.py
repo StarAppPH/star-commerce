@@ -12,11 +12,13 @@ import chatTools
 import voiceModel
 from actions import VoiceActions
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import assertExactShape, createTestStore, wipeCollections
 from mcpCreator import toolSpecs
 from mcpTools import MIN_THINKING_TEXTS, mcp_tool
 from mongoDb import db
-from objects import ChatThinkingResponse, SpokenThinkingResponse
+from objects import (ChatThinkingResponse, NoContentResponse,
+                     SpokenThinkingResponse)
 from test_chat import (ADMIN, DAY, FAR, OTHER_ADMIN, calls, clock, frozenNow,
                        model, offline, reply)
 
@@ -101,11 +103,12 @@ def test_mcpTool_needsThinkingText():
 ])
 def test_mcpTool_refusesBadThinkingText(thinkingText, problem):
     with pytest.raises(ValueError, match=problem):
-        mcp_tool('admin', thinkingText=thinkingText)
+        mcp_tool('admin', thinkingText=thinkingText,
+                 responseModel=NoContentResponse, twinOf=None)
 
 
 def test_everyTool_hasItsThinkingTexts_inChatTools():
-    specs = toolSpecs(ApiRequests)
+    specs = toolSpecs(ToolRequests)
 
     assert all(len(spec.thinkingText) >= MIN_THINKING_TEXTS
                for spec in specs)

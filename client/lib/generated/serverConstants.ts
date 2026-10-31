@@ -13,3 +13,5 @@ export const FIREBASE_PROJECT_ID = "star-commerce-6797" as const;
 export const STORE_RESET_ENDS_AT = "2026-11-05T00:00:00+08:00" as const;
 
 export const DELIVERY_ZONE_BORDER_TOLERANCE = 1e-09 as const;
+
+export const WAITING_COUNT_CAP = 50 as const;

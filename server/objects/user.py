@@ -143,19 +143,6 @@ class FirebaseUserObject(AppModel):
                                     description='Localdev only: display name')
 
 
-class DevUserRow(ResponseModel):
-    """One row of devGetUserList: the fields its projection reads
-    (projection_of(DevUserRow)). Each field restates User's, which
-    test_route_response_models.py's MIRRORS keeps in step."""
-    id: str = Field(..., alias='_id', description='Users _id')
-    name: str | None = Field(..., description='Username of the user')
-    userType: str | None = Field(None, description='User type')
-
-
-class DevUserListResponse(ResponseModel):
-    users: list[DevUserRow] = Field(..., description='Every user')
-
-
 # ──────────────────────────────────────────────
 # Roles
 # ──────────────────────────────────────────────

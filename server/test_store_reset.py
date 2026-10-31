@@ -38,12 +38,13 @@ import photoStorage
 import pubSub as pubSubModule
 from actions import ChatActions, PhotoActions, VoiceActions, usageCounters
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (BRAND_COLORS, STORE_DETAILS, TOKEN, addOrder,
                       addProduct, assertExactShape, createTestStore, createTestUser,
                       guestClaims, wipeCollections)
 from mongoDb import db
 from objects import (ChatAttachment, ChatTurn, Conversation, Customer,
-                     GeneratedPhoto, MyStoreResponse, Policy, Return)
+                     GeneratedPhoto, NoContentResponse, Policy, Return)
 from utils import generateRandomString
 
 storeModule = importlib.import_module('actions.StoreActions')
@@ -74,8 +75,7 @@ USAGE_COLLECTIONS = [CHAT_USAGE, PHOTO_USAGE, VOICE_USAGE]
 # dropped from the carry-over.
 STORE_KINDS = [(CHAT_USAGE, 'store'), (CHAT_USAGE, 'attachmentsStore'),
                (PHOTO_USAGE, 'photos'), (PHOTO_USAGE, 'productFinds'),
-               (PHOTO_USAGE, 'colorFinds'), (VOICE_USAGE, 'sttStore'),
-               (VOICE_USAGE, 'ttsStore')]
+               (PHOTO_USAGE, 'colorFinds'), (VOICE_USAGE, 'ttsStore')]
 # The collections the reset empties for the old store, as storeReset's
 # `deleted` names them.
 DELETED_COLLECTIONS = {'ChatTurns', 'Conversations', 'Products', 'Orders',
@@ -86,6 +86,7 @@ KEPT = ['Users', 'Customers', 'Bootstrap']
 COLLECTIONS = (['Stores'] + STORE_DATA + KEPT + USAGE_COLLECTIONS)
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 def wipeDatabase() -> None:
@@ -373,7 +374,7 @@ def test_oneSecondBeforeTheSunset_theResetWorks(monkeypatch, storage):
 
     res = api.resetMyStore(ADMIN_A, 'Bakery A')
 
-    assert res == {'store': None}
+    assert res == {}
 
 
 @pytest.mark.parametrize('now', [
@@ -473,7 +474,7 @@ def test_aWrongName_isRefused_andNothingIsDeleted(storage, typed):
 def test_theName_isMatchedFoldedAndTrimmed(storage, typed):
     createTestStore(ADMIN_A, 'Bakery A')
 
-    assert api.resetMyStore(ADMIN_A, typed) == {'store': None}
+    assert api.resetMyStore(ADMIN_A, typed) == {}
 
 
 def test_theName_isMatchedInAnyUnicodeForm(storage):
@@ -482,14 +483,14 @@ def test_theName_isMatchedInAnyUnicodeForm(storage):
     typed = unicodedata.normalize('NFD', composed)
     assert typed != composed
 
-    assert api.resetMyStore(ADMIN_A, typed) == {'store': None}
+    assert api.resetMyStore(ADMIN_A, typed) == {}
 
 
 @pytest.mark.parametrize('typed', ['reset', '  RESET ', 'Reset'])
 def test_aStoreNotSetUp_takesTheWordReset(storage, typed):
     old = emptyAdmin(ADMIN_A)
 
-    assert api.resetMyStore(ADMIN_A, typed) == {'store': None}
+    assert api.resetMyStore(ADMIN_A, typed) == {}
     assert ownStore(ADMIN_A)['_id'] != old['_id']
 
 
@@ -523,7 +524,7 @@ def test_aStoreChangedMeanwhile_isStoreChanged_andNothingIsCreated(
 
     def racing(update):
         # The admin changes the store after the route read it.
-        api.updateMyStoreTheme(ADMIN_A, primaryColor='#112233')
+        tools.updateMyStoreTheme(ADMIN_A, primaryColor='#112233')
         return realTransaction(update)
 
     monkeypatch.setattr(db, 'createTransaction', racing)
@@ -557,9 +558,9 @@ def test_aFullReset_deletesTheStoresData_andKeepsTheRest(storage, firebase):
 
     res = api.resetMyStore(ADMIN_A, 'Bakery A')
 
-    assertExactShape(MyStoreResponse, res)
-    assert res == {'store': None}
-    assert api.getUserStore(ADMIN_A) == {'store': None}
+    assertExactShape(NoContentResponse, res)
+    assert res == {}
+    assert tools.getUserStore(ADMIN_A) == {'store': None}
     gone = storeDocs(oldId)
     assert gone['Stores'] == []
     assert all(gone[collection] == [] for collection in STORE_DATA)
@@ -601,15 +602,15 @@ def test_afterAReset_theSameNameAndSlugCanBeUsedAgain(storage, firebase):
     api.resetMyStore(ADMIN_A, 'Bakery A')
     newId = ownStore(ADMIN_A)['_id']
 
-    created = api.createUserStore(ADMIN_A, 'Bakery A', **STORE_DETAILS)
+    created = tools.createUserStore(ADMIN_A, 'Bakery A', **STORE_DETAILS)
 
     assert created['_id'] == newId
     assert created['slug'] == 'bakery-a'
-    assert api.getUserStore(ADMIN_A) == {'store': {**created, **BRAND_COLORS}}
+    assert tools.getUserStore(ADMIN_A) == {'store': {**created, **BRAND_COLORS}}
     # A set-up store takes its name again, not the word.
     with pytest.raises(ValueError, match="^Type your store's name"):
         api.resetMyStore(ADMIN_A, 'reset')
-    assert api.resetMyStore(ADMIN_A, 'Bakery A') == {'store': None}
+    assert api.resetMyStore(ADMIN_A, 'Bakery A') == {}
 
 
 def test_aResetRightAfterAReset_takesTheWord(storage):
@@ -617,7 +618,7 @@ def test_aResetRightAfterAReset_takesTheWord(storage):
     api.resetMyStore(ADMIN_A, 'Bakery A')
     second = ownStore(ADMIN_A)['_id']
 
-    assert api.resetMyStore(ADMIN_A, 'reset') == {'store': None}
+    assert api.resetMyStore(ADMIN_A, 'reset') == {}
     assert ownStore(ADMIN_A)['_id'] != second
 
 
@@ -707,7 +708,7 @@ def test_aWriteToTheOldId_afterTheReset_isNeverSeenFromTheNewStore(storage):
     conversation = seedConversation(CUSTOMER, oldId, 'customer', 1)
     seedTurn(conversation, 0)
 
-    assert api.getUserStore(ADMIN_A) == {'store': None}
+    assert tools.getUserStore(ADMIN_A) == {'store': None}
     for collection in ('Products', 'Orders', 'Conversations', 'ChatTurns',
                        'Returns', 'GeneratedPhotos'):
         assert db.read({'storeId': newId}, collection) == []
@@ -720,14 +721,14 @@ def test_aWriteToTheOldId_afterTheReset_isNeverSeenFromTheNewStore(storage):
 
 def test_theCarriedKinds_areThePinnedOnes():
     assert usageCounters.usageKey('store', 'x', TODAY) == 'store:x:2026-10-30'
-    assert (VoiceActions.STT, VoiceActions.TTS) == ('stt', 'tts')
+    assert VoiceActions.TTS == 'tts'
     assert ChatActions.STORE_USAGE_KINDS[0] == CHAT_USAGE
     assert set(ChatActions.STORE_USAGE_KINDS[1]) == {'store',
                                                      'attachmentsStore'}
     assert PhotoActions.STORE_USAGE_KINDS == (
         PHOTO_USAGE, ('photos', 'productFinds', 'colorFinds'))
     assert VoiceActions.STORE_USAGE_KINDS[0] == VOICE_USAGE
-    assert set(VoiceActions.STORE_USAGE_KINDS[1]) == {'sttStore', 'ttsStore'}
+    assert set(VoiceActions.STORE_USAGE_KINDS[1]) == {'ttsStore'}
     assert sorted((collection, kind) for collection, kinds in (
         ChatActions.STORE_USAGE_KINDS, PhotoActions.STORE_USAGE_KINDS,
         VoiceActions.STORE_USAGE_KINDS) for kind in kinds) == sorted(
@@ -912,7 +913,7 @@ def test_aStorageFailure_stillAnswers200_andIsLoggedWithoutPaths(
 
     res = api.resetMyStore(ADMIN_A, 'Bakery A')
 
-    assert res == {'store': None}
+    assert res == {}
     assert storeDocs(world.a['_id'])['Stores'] == []
     [warning] = logRecords(caplog, 'storeResetStorageFailed')
     assert warning.levelno == logging.WARNING
@@ -934,7 +935,7 @@ def test_aBareException_isCountedWithItsClass(storage, caplog):
     createTestStore(ADMIN_A)
     storage.listFailure = lambda prefix: Exception('secret ' + prefix)
 
-    assert api.resetMyStore(ADMIN_A, 'Bakery A') == {'store': None}
+    assert api.resetMyStore(ADMIN_A, 'Bakery A') == {}
 
     warnings = logRecords(caplog, 'storeResetStorageFailed')
     assert [w.msg['errorClass'] for w in warnings] == ['Exception',
@@ -958,7 +959,7 @@ def test_aFileAlreadyGone_isNotCountedNorAnError(storage, caplog):
 
     storage.list_blobs = listThenLose
 
-    assert api.resetMyStore(ADMIN_A, 'Bakery A') == {'store': None}
+    assert api.resetMyStore(ADMIN_A, 'Bakery A') == {}
 
     [line] = logRecords(caplog, 'storeReset')
     assert line.msg['storageFailures'] == 0
@@ -977,7 +978,7 @@ def test_theStorageDeadline_countsEachStepThatNeededStorage(
         storage.put(chatFile(ADMIN_A, 'late.jpg'))
     monkeypatch.setattr(storeModule, 'RESET_STORAGE_SECONDS', 0)
 
-    assert api.resetMyStore(ADMIN_A, 'Bakery A') == {'store': None}
+    assert api.resetMyStore(ADMIN_A, 'Bakery A') == {}
 
     warnings = logRecords(caplog, 'storeResetStorageFailed')
     assert len(warnings) == failures
@@ -1075,7 +1076,7 @@ def test_afterAFailedDelete_aSecondResetWorks_andLeavesTheLeftovers(
     leftovers = db.read({'storeId': oldId}, 'Orders')
     assert leftovers
 
-    assert api.resetMyStore(ADMIN_A, 'reset') == {'store': None}
+    assert api.resetMyStore(ADMIN_A, 'reset') == {}
 
     assert db.read({'storeId': oldId}, 'Orders') == leftovers
 
@@ -1279,7 +1280,7 @@ def test_aSuccess_overHttp_logsOnlyTheRequestKeys(monkeypatch, storage,
 
     assert status == 200
     assert body['message'] == 'Store reset'
-    assert body['data'] == {'store': None}
+    assert body['data'] == {}
     [record] = [r for r in caplog.records if isinstance(r.msg, dict)
                 and r.msg.get('function') == 'resetMyStore']
     assert record.msg['requestKeys'] == ['confirmName', 'userId']

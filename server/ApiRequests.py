@@ -8,6 +8,10 @@ HOW IT WORKS:
   - A route another service calls over HTTP (a sibling repo, a job, a script)
     goes in actions/ServiceToServiceActions.py: its response is a contract
     with that service.
+  - A route serves a person (the client, or a sibling service); a tool serves
+    the AI and is never a route. The AI's tools are in ToolRequests.py: a route
+    and a tool doing the same job share one module-level action, and the
+    tool names its route in twinOf (test_route_tool_twins.py).
 
 WRITING AN ENDPOINT:
   1. Add a method to an existing action class, or create a new one.
@@ -72,18 +76,14 @@ from pydantic import ValidationError
 from route_config import route_config
 from actions.ChatActions import ChatActions
 from actions.CustomerActions import CustomerActions
-from actions.FulfillmentActions import FulfillmentActions
 from actions.OrderActions import OrderActions
 from actions.PaymentActions import PaymentActions
-from actions.PhotoActions import PhotoActions
 from actions.PolicyActions import PolicyActions
-from actions.ProductActions import ProductActions
-from actions.ReturnActions import ReturnActions
 from actions.ServiceToServiceActions import ServiceToServiceActions
 from actions.StoreActions import StoreActions
 from actions.VoiceActions import VoiceActions
-from objects import (DevUserListResponse, DevUserRow, FirebaseUserObject,
-                     NoContentResponse, RoleListResponse, UserResponse,
+from objects import (FirebaseUserObject, NoContentResponse,
+                     RoleListResponse, UserResponse,
                      projectedCopy)
 from mongoDb import db
 from AppConfig import Environment
@@ -141,19 +141,6 @@ class AuthActions():
                 signInIdentity(firebaseUser.uid, firebaseUser.email,
                                firebaseUser.displayName or ''))
         raise PermissionError('Firebase ID token is required')
-
-    @route_config(httpMethod='POST',
-                  jwtRequired=False,
-                  successMessage='Dev user list fetched successfully',
-                  responseModel=DevUserListResponse)
-    def devGetUserList(self) -> dict:
-        # localdev only: it hands every user's _id to anyone who asks, and
-        # devLogin signs in as any of them.
-        _requireLocalDev()
-        return {
-            'users':
-            db.readResponses(DevUserRow, {}, 'Users')
-        }
 
     @route_config(httpMethod='POST',
                   jwtRequired=False,
@@ -295,22 +282,16 @@ class RolesActions():
 
 
 class ApiRequests(AuthActions, RolesActions, StoreActions, CustomerActions,
-                  ProductActions, OrderActions, PaymentActions,
-                  FulfillmentActions, ReturnActions, PolicyActions,
-                  ChatActions, VoiceActions, PhotoActions,
-                  ServiceToServiceActions):
+                  OrderActions, PaymentActions, PolicyActions, ChatActions,
+                  VoiceActions, ServiceToServiceActions):
 
     def __init__(self):
         AuthActions.__init__(self)
         RolesActions.__init__(self)
         StoreActions.__init__(self)
         CustomerActions.__init__(self)
-        ProductActions.__init__(self)
         OrderActions.__init__(self)
         PaymentActions.__init__(self)
-        FulfillmentActions.__init__(self)
-        ReturnActions.__init__(self)
         PolicyActions.__init__(self)
         ChatActions.__init__(self)
         VoiceActions.__init__(self)
-        PhotoActions.__init__(self)

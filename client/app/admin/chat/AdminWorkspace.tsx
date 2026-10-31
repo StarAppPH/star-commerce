@@ -6,11 +6,11 @@ import { useServer } from '@/lib/ServerContext';
 import type { ChatTransport } from '@/components/chat/useChat';
 import { uploadChatFiles } from '@/components/chat/attachments';
 import { CONVERSATIONS_PAGE, useConversationList, type ConversationList } from '@/components/chat/useConversationList';
-import type { AdminStoreResponse } from '@/app/schemas/MyStoreResponseSchema';
+import type { AdminStoreScreenRow } from '@/app/schemas/MyStoreScreenResponseSchema';
 
 type StoreState =
   | { status: 'loading' }
-  | { status: 'ready'; store: AdminStoreResponse | null }
+  | { status: 'ready'; store: AdminStoreScreenRow | null }
   | { status: 'error'; message: string };
 
 interface AdminWorkspaceValue extends ConversationList {

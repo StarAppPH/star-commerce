@@ -1,0 +1,34 @@
+{
+    "description": "What getWaitingOnYou sends the admin's new-chat screen: how many of\nthe store's orders and returns wait for the admin, each count capped at\nWAITING_COUNT_CAP (a count at the cap means at least that many).",
+    "properties": {
+        "paymentsToConfirm": {
+            "description": "Orders paid by hand waiting for the admin to confirm the payment (awaitingPayment)",
+            "maximum": 50,
+            "minimum": 0,
+            "title": "Paymentstoconfirm",
+            "type": "integer"
+        },
+        "ordersToHandOver": {
+            "description": "Paid orders not handed over yet",
+            "maximum": 50,
+            "minimum": 0,
+            "title": "Orderstohandover",
+            "type": "integer"
+        },
+        "returnsToDecide": {
+            "description": "Return requests waiting for a decision",
+            "maximum": 50,
+            "minimum": 0,
+            "title": "Returnstodecide",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "paymentsToConfirm",
+        "ordersToHandOver",
+        "returnsToDecide"
+    ],
+    "title": "WaitingOnYouResponse",
+    "type": "object",
+    "additionalProperties": false
+}

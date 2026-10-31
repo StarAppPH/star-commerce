@@ -22,6 +22,7 @@ import photoStorage
 import samModel
 from actions import PhotoActions
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import assertExactShape, createTestStore, wipeCollections
 from mongoDb import db
 from objects import PHOTO_COLORS_MAX, ChatReplyResponse, PhotoColorsResponse
@@ -50,6 +51,7 @@ BOXES = {'green square logo':
          'blue cup': ''}
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 def photo(fmt: str = 'PNG') -> bytes:
@@ -198,7 +200,7 @@ def test_notAPhoto_isRefused():
 def test_findColorsInPhoto_wholePhoto_takesNoQuotaAndCallsNoModel(fakes):
     createTestStore(ADMIN)
 
-    res = api.findColorsInPhoto(ADMIN, downloadUrl(LOGO))
+    res = tools.findColorsInPhoto(ADMIN, downloadUrl(LOGO))
 
     assertExactShape(PhotoColorsResponse, res)
     assert hexes(res['colors']) == ['#FFFFFF', GREEN, RED]
@@ -209,7 +211,7 @@ def test_findColorsInPhoto_wholePhoto_takesNoQuotaAndCallsNoModel(fakes):
 def test_findColorsInPhoto_anEmptyFocus_isTheWholePhoto(fakes):
     createTestStore(ADMIN)
 
-    res = api.findColorsInPhoto(ADMIN, downloadUrl(LOGO), '  ')
+    res = tools.findColorsInPhoto(ADMIN, downloadUrl(LOGO), '  ')
 
     assert res['focus'] is None and fakes.meta.samCalls == []
 
@@ -217,7 +219,7 @@ def test_findColorsInPhoto_anEmptyFocus_isTheWholePhoto(fakes):
 def test_findColorsInPhoto_aFocus_isCountedOnce(fakes):
     createTestStore(ADMIN)
 
-    res = api.findColorsInPhoto(ADMIN, downloadUrl(LOGO),
+    res = tools.findColorsInPhoto(ADMIN, downloadUrl(LOGO),
                                 'green square logo')
 
     assertExactShape(PhotoColorsResponse, res)
@@ -232,7 +234,7 @@ def test_findColorsInPhoto_aFailedSamCall_givesTheQuotaBack(fakes):
     fakes.meta.boxes['green square logo'] = samModel.unavailable()
 
     with pytest.raises(ServiceUnavailable):
-        api.findColorsInPhoto(ADMIN, downloadUrl(LOGO), 'green square logo')
+        tools.findColorsInPhoto(ADMIN, downloadUrl(LOGO), 'green square logo')
 
     assert colorFindCounts() == [0, 0]
 
@@ -240,12 +242,12 @@ def test_findColorsInPhoto_aFailedSamCall_givesTheQuotaBack(fakes):
 def test_findColorsInPhoto_theStoreCap_refusesAFocusOnly(fakes, monkeypatch):
     createTestStore(ADMIN)
     monkeypatch.setattr(PhotoActions, 'STORE_DAILY_COLOR_FIND_CAP', 1)
-    api.findColorsInPhoto(ADMIN, downloadUrl(LOGO), 'green square logo')
+    tools.findColorsInPhoto(ADMIN, downloadUrl(LOGO), 'green square logo')
 
     with pytest.raises(ValueError, match='^' + PhotoActions
                        .COLOR_FIND_CAP_REACHED.replace('(', r'\(') + '$'):
-        api.findColorsInPhoto(ADMIN, downloadUrl(LOGO), 'green square logo')
-    assert api.findColorsInPhoto(ADMIN, downloadUrl(LOGO))['colors']
+        tools.findColorsInPhoto(ADMIN, downloadUrl(LOGO), 'green square logo')
+    assert tools.findColorsInPhoto(ADMIN, downloadUrl(LOGO))['colors']
 
 
 def test_findColorsInPhoto_turnedOff_refusesAFocus(fakes, monkeypatch):
@@ -254,7 +256,7 @@ def test_findColorsInPhoto_turnedOff_refusesAFocus(fakes, monkeypatch):
 
     with pytest.raises(ValueError, match=PhotoActions.COLOR_FINDS_TURNED_OFF
                        .split(':')[0]):
-        api.findColorsInPhoto(ADMIN, downloadUrl(LOGO), 'green square logo')
+        tools.findColorsInPhoto(ADMIN, downloadUrl(LOGO), 'green square logo')
 
 
 def test_findColorsInPhoto_readsOnlyTheCallersOwnPhotos(fakes):
@@ -264,19 +266,19 @@ def test_findColorsInPhoto_readsOnlyTheCallersOwnPhotos(fakes):
     fakes.bucket.objects[theirs] = fakes.bucket.objects[LOGO]
 
     with pytest.raises(ValueError):
-        api.findColorsInPhoto(ADMIN, downloadUrl(theirs))
+        tools.findColorsInPhoto(ADMIN, downloadUrl(theirs))
     with pytest.raises(ValueError):
-        api.findColorsInPhoto(ADMIN, downloadUrl(
+        tools.findColorsInPhoto(ADMIN, downloadUrl(
             f'users/{ADMIN}/chat/a/logo.heic'))
     with pytest.raises(ValueError, match=PhotoActions.IMAGE_URL_MISSING):
-        api.findColorsInPhoto(ADMIN, ' ')
+        tools.findColorsInPhoto(ADMIN, ' ')
 
 
 def test_findColorsInPhoto_aFocusTooLong_isRefused(fakes):
     createTestStore(ADMIN)
 
     with pytest.raises(ValueError, match=PhotoActions.COLOR_FOCUS_LABEL):
-        api.findColorsInPhoto(ADMIN, downloadUrl(LOGO), 'x' * 61)
+        tools.findColorsInPhoto(ADMIN, downloadUrl(LOGO), 'x' * 61)
 
 
 def test_findColorsInPhoto_answersAStoreNotSetUpYet(fakes, firebase):
@@ -284,7 +286,7 @@ def test_findColorsInPhoto_answersAStoreNotSetUpYet(fakes, firebase):
     path = f'users/{adminId}/chat/a/logo.png'
     fakes.bucket.objects[path] = fakes.bucket.objects[LOGO]
 
-    res = api.findColorsInPhoto(adminId, downloadUrl(path))
+    res = tools.findColorsInPhoto(adminId, downloadUrl(path))
 
     assert hexes(res['colors']) == ['#FFFFFF', GREEN, RED]
 

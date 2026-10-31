@@ -28,13 +28,15 @@ from actions.ProductActions import (PRODUCT_LIST_DEFAULT_LIMIT,
                                     PRODUCT_LIST_MAX_LIMIT)
 from AppConfig import Timezone
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (addOrder, appTime, assertExactShape, assertRowKeys,
                       createTestStore, createTestUser, guestAt, orderIds,
                       storeWithProducts, utcNow, wipeCollections)
 from mongoDb import db
 from objects import (ORDER_ITEMS_MAX, MyOrderListResponse, MyOrderRow,
                      Order, OrderItemRow, StoreOrderListResponse,
-                     StoreOrderRow)
+                     StoreOrderRow, WaitingOnYouResponse)
+from sharedConstants import WAITING_COUNT_CAP
 from utils import _ISO_DATE_MESSAGE
 
 COLLECTIONS = [
@@ -54,6 +56,7 @@ BASE = datetime.datetime(2026, 1, 15, 8, 0, tzinfo=UTC)
 ITEMS = [{'productId': 'p1', 'name': 'Ube Cake', 'price': 650, 'quantity': 2}]
 
 api = ApiRequests()
+tools = ToolRequests()
 # The real expiry sweep, kept for the one test the autouse stub below would
 # make vacuous.
 _REAL_SWEEP = orderActions.cancelExpiredOrders
@@ -189,10 +192,10 @@ def test_getStoreOrders_newestFirst_andOnlyThisStores(clean, firebase):
                       createdAt=_minute(0))['_id']
     addOrder(otherStore['_id'], customerId, ITEMS, createdAt=_minute(9))
 
-    res = api.getStoreOrders(ADMIN)
+    res = tools.getStoreOrders(ADMIN)
 
     assert orderIds(res) == [newest, middle, oldest]
-    assert orderIds(api.getStoreOrders(OTHER_ADMIN)) != orderIds(res)
+    assert orderIds(tools.getStoreOrders(OTHER_ADMIN)) != orderIds(res)
     assert len(db.read({}, 'Orders')) == 4
 
 
@@ -202,13 +205,13 @@ def test_getStoreOrders_seesEveryCustomersOrdersAtItsStore(clean, firebase):
     mine = addOrder(store['_id'], customerId, ITEMS)['_id']
     theirs = addOrder(store['_id'], otherCustomerId, ITEMS)['_id']
 
-    assert set(orderIds(api.getStoreOrders(ADMIN))) == {mine, theirs}
+    assert set(orderIds(tools.getStoreOrders(ADMIN))) == {mine, theirs}
 
 
 def test_getStoreOrders_aStoreWithoutOrders_isAnEmptyList(clean):
     createTestStore(ADMIN)
 
-    assert api.getStoreOrders(ADMIN) == {'orders': []}
+    assert tools.getStoreOrders(ADMIN) == {'orders': []}
 
 
 def test_getStoreOrders_statusFilter(clean, firebase):
@@ -220,9 +223,9 @@ def test_getStoreOrders_statusFilter(clean, firebase):
     }
 
     for status, orderId in byStatus.items():
-        assert orderIds(api.getStoreOrders(ADMIN, status=status)) == [orderId]
+        assert orderIds(tools.getStoreOrders(ADMIN, status=status)) == [orderId]
     for status in (None, ''):
-        assert set(orderIds(api.getStoreOrders(
+        assert set(orderIds(tools.getStoreOrders(
             ADMIN, status=status))) == set(byStatus.values())
 
 
@@ -236,7 +239,7 @@ def test_getStoreOrders_statusAndPeriod_combine(clean, firebase, monkeypatch):
     addOrder(store['_id'], customerId, ITEMS, 'paid',
              appTime(2026, 3, 9, 9))
 
-    res = api.getStoreOrders(ADMIN, status='paid', period='today')
+    res = tools.getStoreOrders(ADMIN, status='paid', period='today')
 
     assert orderIds(res) == [keep]
 
@@ -277,7 +280,7 @@ def test_getStoreOrders_refusesABadParam_withAFixedMessage(
     createTestStore(ADMIN)
 
     with pytest.raises(ValueError, match=exactly(message)) as error:
-        api.getStoreOrders(ADMIN, **kwargs)
+        tools.getStoreOrders(ADMIN, **kwargs)
 
     assert SENTINEL not in str(error.value)
 
@@ -298,7 +301,7 @@ def test_getStoreOrders_dateBounds_areWholeDaysInUtcPlus8(clean, firebase):
     ]
 
     def found(**kwargs) -> set:
-        return set(orderIds(api.getStoreOrders(ADMIN, **kwargs)))
+        return set(orderIds(tools.getStoreOrders(ADMIN, **kwargs)))
 
     assert found(startDate='2026-03-10', endDate='2026-03-10') == {
         ids[1], ids[2]}
@@ -327,7 +330,7 @@ def test_getStoreOrders_aDayRangeAcrossAMonthBoundary(clean, firebase):
     ]
 
     def found(start: str, end: str) -> set:
-        return set(orderIds(api.getStoreOrders(ADMIN, startDate=start,
+        return set(orderIds(tools.getStoreOrders(ADMIN, startDate=start,
                                                endDate=end)))
 
     assert found('2026-02-28', '2026-02-28') == {ids[0], ids[1]}
@@ -344,11 +347,11 @@ def test_getStoreOrders_periodDates_takeTheDatePath_whenPeriodIsEmpty(
     addOrder(store['_id'], customerId, ITEMS,
              createdAt=appTime(2026, 3, 11, 12))
 
-    res = api.getStoreOrders(ADMIN, period='', startDate='2026-03-10',
+    res = tools.getStoreOrders(ADMIN, period='', startDate='2026-03-10',
                              endDate='2026-03-10')
 
     assert orderIds(res) == [inside]
-    assert len(orderIds(api.getStoreOrders(ADMIN, period=''))) == 2
+    assert len(orderIds(tools.getStoreOrders(ADMIN, period=''))) == 2
 
 
 # 0 and 1 are the edges of 2026-02-09 .. 2026-03-10 etc.: each pair is the
@@ -389,13 +392,13 @@ def test_getStoreOrders_periods_areWholeLocalDays(clean, firebase,
     ]
     _freeze(monkeypatch, clock)
 
-    res = api.getStoreOrders(ADMIN, period=period)
+    res = tools.getStoreOrders(ADMIN, period=period)
 
     # Distinct createdAt: newest first is the reverse of the seed order.
     assert orderIds(res) == [
         ids[i] for i in reversed(PERIOD_INDEXES[period])
     ]
-    assert orderIds(api.getStoreOrders(ADMIN, period=period,
+    assert orderIds(tools.getStoreOrders(ADMIN, period=period,
                                        status='pending')) == orderIds(res)
 
 
@@ -406,8 +409,8 @@ def test_getStoreOrders_period_onTheRealClock(clean, firebase):
     addOrder(store['_id'], customerId, ITEMS,
              createdAt=utcNow() - datetime.timedelta(days=30))
 
-    assert orderIds(api.getStoreOrders(ADMIN, period='last7Days')) == [recent]
-    assert len(orderIds(api.getStoreOrders(ADMIN, period='last30Days'))) >= 1
+    assert orderIds(tools.getStoreOrders(ADMIN, period='last7Days')) == [recent]
+    assert len(orderIds(tools.getStoreOrders(ADMIN, period='last30Days'))) >= 1
 
 
 def test_getStoreOrders_limit(clean, firebase):
@@ -415,12 +418,12 @@ def test_getStoreOrders_limit(clean, firebase):
     ids = _seed(store['_id'], customerId, PRODUCT_LIST_MAX_LIMIT + 2)
     newestFirst = list(reversed(ids))
 
-    assert orderIds(api.getStoreOrders(ADMIN)) == newestFirst[
+    assert orderIds(tools.getStoreOrders(ADMIN)) == newestFirst[
         :PRODUCT_LIST_DEFAULT_LIMIT]
-    assert orderIds(api.getStoreOrders(ADMIN, limit=None)) == newestFirst[
+    assert orderIds(tools.getStoreOrders(ADMIN, limit=None)) == newestFirst[
         :PRODUCT_LIST_DEFAULT_LIMIT]
-    assert orderIds(api.getStoreOrders(ADMIN, limit=1)) == newestFirst[:1]
-    assert orderIds(api.getStoreOrders(
+    assert orderIds(tools.getStoreOrders(ADMIN, limit=1)) == newestFirst[:1]
+    assert orderIds(tools.getStoreOrders(
         ADMIN, limit=PRODUCT_LIST_MAX_LIMIT)) == newestFirst[
             :PRODUCT_LIST_MAX_LIMIT]
 
@@ -431,12 +434,12 @@ def test_getStoreOrders_refusesACustomer_andAnAdminWithoutAStore(
     createTestUser('or-no-store')
 
     with pytest.raises(PermissionError, match=exactly(NOT_ADMIN)):
-        api.getStoreOrders(customerId)
+        tools.getStoreOrders(customerId)
     with pytest.raises(PermissionError, match=exactly(NOT_ADMIN)):
-        api.getStoreOrders('or-nobody')
+        tools.getStoreOrders('or-nobody')
     with pytest.raises((ValueError, PermissionError),
                        match=exactly(NO_STORE)):
-        api.getStoreOrders('or-no-store')
+        tools.getStoreOrders('or-no-store')
 
 
 def test_getStoreOrders_rowShape_isTheItemSnapshot(clean, firebase):
@@ -446,7 +449,7 @@ def test_getStoreOrders_rowShape_isTheItemSnapshot(clean, firebase):
         {'productId': 'p2', 'name': 'Tea', 'price': 3, 'quantity': 1},
     ], 'paid', _minute(0), currency='PHP', contactNumber='+639179999999')
 
-    res = api.getStoreOrders(ADMIN)
+    res = tools.getStoreOrders(ADMIN)
 
     assertExactShape(StoreOrderListResponse, res)
     assertRowKeys(res['orders'], StoreOrderRow)
@@ -483,8 +486,8 @@ def test_orderRoutes_doNotWrite(clean, firebase, monkeypatch):
                  createdAt=utcNow() - datetime.timedelta(minutes=minutes))
     before = db.read({}, 'Orders')
 
-    api.getStoreOrders(ADMIN, period='last30Days')
-    api.getMyOrders(customerId, store['_id'])
+    tools.getStoreOrders(ADMIN, period='last30Days')
+    tools.getMyOrders(customerId, store['_id'])
 
     assert db.read({}, 'Orders') == before
     assert {o['_version'] for o in before} == {0}
@@ -507,11 +510,11 @@ def test_getMyOrders_onlyMineAtThisStore_newestFirst(clean, firebase):
     atOtherStore = addOrder(otherStore['_id'], customerId, ITEMS,
                             createdAt=_minute(4))['_id']
 
-    assert orderIds(api.getMyOrders(customerId, store['_id'])) == [
+    assert orderIds(tools.getMyOrders(customerId, store['_id'])) == [
         newer, older]
-    assert orderIds(api.getMyOrders(customerId, otherStore['_id'])) == [
+    assert orderIds(tools.getMyOrders(customerId, otherStore['_id'])) == [
         atOtherStore]
-    assert len(orderIds(api.getMyOrders(otherCustomerId, store['_id']))) == 1
+    assert len(orderIds(tools.getMyOrders(otherCustomerId, store['_id']))) == 1
 
 
 def test_getMyOrders_statusFilter(clean, firebase):
@@ -523,9 +526,9 @@ def test_getMyOrders_statusFilter(clean, firebase):
     }
 
     for status, orderId in byStatus.items():
-        assert orderIds(api.getMyOrders(customerId, store['_id'],
+        assert orderIds(tools.getMyOrders(customerId, store['_id'],
                                         status=status)) == [orderId]
-    assert set(orderIds(api.getMyOrders(customerId, store['_id'],
+    assert set(orderIds(tools.getMyOrders(customerId, store['_id'],
                                         status=''))) == set(byStatus.values())
 
 
@@ -542,7 +545,7 @@ def test_getMyOrders_refusesABadParam_withAFixedMessage(clean, firebase,
     store, customerId = _storeAndCustomer(firebase)
 
     with pytest.raises(ValueError, match=exactly(message)) as error:
-        api.getMyOrders(customerId, store['_id'], **kwargs)
+        tools.getMyOrders(customerId, store['_id'], **kwargs)
 
     assert SENTINEL not in str(error.value)
 
@@ -552,11 +555,11 @@ def test_getMyOrders_limit(clean, firebase):
     ids = _seed(store['_id'], customerId, PRODUCT_LIST_MAX_LIMIT + 2)
     newestFirst = list(reversed(ids))
 
-    assert orderIds(api.getMyOrders(customerId, store['_id'])) == newestFirst[
+    assert orderIds(tools.getMyOrders(customerId, store['_id'])) == newestFirst[
         :PRODUCT_LIST_DEFAULT_LIMIT]
-    assert orderIds(api.getMyOrders(customerId, store['_id'],
+    assert orderIds(tools.getMyOrders(customerId, store['_id'],
                                     limit=1)) == newestFirst[:1]
-    assert orderIds(api.getMyOrders(
+    assert orderIds(tools.getMyOrders(
         customerId, store['_id'],
         limit=PRODUCT_LIST_MAX_LIMIT)) == newestFirst[:PRODUCT_LIST_MAX_LIMIT]
 
@@ -566,7 +569,7 @@ def test_getMyOrders_anUnknownStore_isAnEmptyList(clean, firebase):
     addOrder(store['_id'], customerId, ITEMS)
 
     for storeId in ('or-no-such-store', ''):
-        assert api.getMyOrders(customerId, storeId) == {'orders': []}
+        assert tools.getMyOrders(customerId, storeId) == {'orders': []}
 
 
 def test_getMyOrders_refusesAnAdmin(clean, firebase):
@@ -574,16 +577,16 @@ def test_getMyOrders_refusesAnAdmin(clean, firebase):
     addOrder(store['_id'], customerId, ITEMS)
 
     with pytest.raises(PermissionError, match=exactly(NOT_CUSTOMER)):
-        api.getMyOrders(ADMIN, store['_id'])
+        tools.getMyOrders(ADMIN, store['_id'])
     with pytest.raises(PermissionError, match=exactly(NOT_CUSTOMER)):
-        api.getMyOrders('or-nobody', store['_id'])
+        tools.getMyOrders('or-nobody', store['_id'])
 
 
 def test_getMyOrders_rowShape_hasNoContactNumber(clean, firebase):
     store, customerId = _storeAndCustomer(firebase)
     addOrder(store['_id'], customerId, ITEMS, 'completed', _minute(0))
 
-    res = api.getMyOrders(customerId, store['_id'])
+    res = tools.getMyOrders(customerId, store['_id'])
 
     assertExactShape(MyOrderListResponse, res)
     assertRowKeys(res['orders'], MyOrderRow)
@@ -605,4 +608,71 @@ def test_getMyOrders_aStoreIdThatIsNoText_isRefused(clean, firebase, storeId):
     addOrder(store['_id'], customerId, ITEMS)
 
     with pytest.raises(ValueError, match=exactly('storeId must be text')):
-        api.getMyOrders(customerId, storeId)
+        tools.getMyOrders(customerId, storeId)
+
+
+# ----------------------------- getWaitingOnYou ----------------------------- #
+
+
+def test_getWaitingOnYou_countsWhatWaitsAtTheAdminsStoreOnly(clean, firebase):
+    wipeCollections(['Returns'])
+    try:
+        store, customerId = _storeAndCustomer(firebase)
+        other = createTestStore(OTHER_ADMIN, 'Coffee B')
+        _seed(store['_id'], customerId, 2, status='awaitingPayment')
+        _seed(store['_id'], customerId, 3, status='paid')
+        _seed(store['_id'], customerId, 1, status='pending')
+        _seed(store['_id'], customerId, 1, status='completed')
+        _seed(other['_id'], customerId, 4, status='paid')
+        for storeId, status in ((store['_id'], 'requested'),
+                                (store['_id'], 'approved'),
+                                (other['_id'], 'requested')):
+            db.create({'storeId': storeId, 'status': status, '_version': 0},
+                      'Returns')
+
+        res = api.getWaitingOnYou(ADMIN)
+
+        assertExactShape(WaitingOnYouResponse, res)
+        assert res == {'paymentsToConfirm': 2, 'ordersToHandOver': 3,
+                       'returnsToDecide': 1}
+    finally:
+        wipeCollections(['Returns'])
+
+
+def _seedWaiting(count: str, storeId: str, customerId: str, n: int):
+    """n of what `count` counts, at the store."""
+    if count == 'returnsToDecide':
+        db.createMany([
+            {'storeId': storeId, 'status': 'requested', '_version': 0}
+            for _ in range(n)], 'Returns')
+        return
+    status = {'paymentsToConfirm': 'awaitingPayment',
+              'ordersToHandOver': 'paid'}[count]
+    _seed(storeId, customerId, n, status=status)
+
+
+@pytest.mark.parametrize(
+    'count', ['paymentsToConfirm', 'ordersToHandOver', 'returnsToDecide'])
+def test_getWaitingOnYou_aCountStopsAtTheCap(clean, firebase, count):
+    wipeCollections(['Returns'])
+    try:
+        store, customerId = _storeAndCustomer(firebase)
+        _seedWaiting(count, store['_id'], customerId, WAITING_COUNT_CAP + 2)
+
+        res = api.getWaitingOnYou(ADMIN)
+
+        assert res[count] == WAITING_COUNT_CAP
+        assert all(value == 0 for key, value in res.items() if key != count)
+    finally:
+        wipeCollections(['Returns'])
+
+
+def test_getWaitingOnYou_refusesACustomer_andAnAdminWithoutAStore(
+        clean, firebase):
+    store, customerId = _storeAndCustomer(firebase)
+    createTestUser(OTHER_ADMIN)
+
+    with pytest.raises(PermissionError, match=exactly(NOT_ADMIN)):
+        api.getWaitingOnYou(customerId)
+    with pytest.raises(ValueError, match=exactly(NO_STORE)):
+        api.getWaitingOnYou(OTHER_ADMIN)

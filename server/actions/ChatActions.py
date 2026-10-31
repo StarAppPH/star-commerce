@@ -1,7 +1,7 @@
 """ChatActions: the chat with the store's assistant (Meta's Muse model).
 
 A message goes to the model with its toolset's tools (chatTools.py,
-generated from the @mcp_tool routes and chatForms.py's form tools), and the
+generated from the @mcp_tool tools and chatForms.py's form tools), and the
 model's tool calls run here, in-process, as the signed-in user at the
 conversation's store (chatModel.runTool, chatForms.runFormTool). The loop
 ends at the model's text reply, the turn's cards and forms are built from
@@ -542,36 +542,6 @@ def _lockConversation(conversationId: str, userId: str, storeId: str,
     raise ValueError(STILL_ANSWERING)
 
 
-def refuseTurnBeforeItStarts(audience: str, userId: str, storeId: str,
-                             conversationId) -> None:
-    """Refuse, reading only, a message _slottedTurn would refuse before the
-    model: a conversation that is not the caller's (or none), one still
-    answering, or (a customer) a daily cap already reached, with the same
-    messages. For a caller about to pay for something first (a voice
-    message's transcription): _slottedTurn still takes the lock and the
-    quota itself, atomically, so a racing message can still be refused
-    there."""
-    conversationId = _validConversationId(conversationId)
-    now = _now()
-    if conversationId is not None:
-        conversation = db.read(
-            {'_id': conversationId, 'userId': userId, 'storeId': storeId,
-             'audience': audience}, CONVERSATIONS,
-            projection={'busyUntil': 1}, findOne=True)
-        if conversation is None:
-            raise ValueError(CONVERSATION_NOT_FOUND)
-        busyUntil = conversation.get('busyUntil')
-        if busyUntil is not None and busyUntil > now:
-            raise ValueError(STILL_ANSWERING)
-    if audience == 'customer':
-        for key, cap, message in _customerCounters(userId, storeId,
-                                                   appDay(now)):
-            counter = db.read({'_id': key}, CHAT_USAGE,
-                              projection={'count': 1}, findOne=True)
-            if counter is not None and counter['count'] >= cap:
-                raise ValueError(message)
-
-
 def ownConversation(conversationId, userId: str, projection: dict) -> dict:
     """The caller's own conversation `conversationId` (with `projection`):
     anything else, or no id, is CONVERSATION_NOT_FOUND."""
@@ -822,7 +792,7 @@ def _runModel(toolset: str, userId: str, storeId: str,
     """Call the model with the tools of `toolset` (chatTools.TOOLS) until
     it replies in text, running its tool calls in between (at most
     MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call without tools): a
-    route tool through chatModel.runTool, a form tool through
+    tool through chatModel.runTool, a form tool through
     chatForms.runFormTool. Returns the reply, the steps, the forms opened
     (by tool call id), the tools called (as the log names them), the
     usage and the warnings told (`warningsTold`: an admin's read tool
@@ -832,7 +802,7 @@ def _runModel(toolset: str, userId: str, storeId: str,
     answered (before any tool runs). Raises unavailable() past
     TURN_DEADLINE_SECONDS (or `deadline`). `refusal` is
     chatModel.complete's, on the first call only, logged at
-    `refusalLevel`. Before each route tool runs, one of its thinking texts
+    `refusalLevel`. Before each tool runs, one of its thinking texts
     is saved as what the turn `turnKey` is doing (chatThinking.note).
     A setup turn whose createUserStore succeeded goes on with the admin's
     tools (chatForms.setsUpTheStore)."""
@@ -1006,8 +976,8 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
                  turnKey=None) -> dict:
     """The turn of _chatTurn, in its slot. `attachments` are the
     message's files, checked (_validAttachments: their labels and paths;
-    _chatTurn refuses them with a form answer); the voice route sends
-    none. What the turn `turnKey` is doing is cleared when it ends."""
+    _chatTurn refuses them with a form answer). What the turn `turnKey` is
+    doing is cleared when it ends."""
     turnKey = chatThinking.validTurnKey(turnKey)
     files = list(attachments)
     formAnswer = chatForms.validAnswer(form)

@@ -29,6 +29,7 @@ from actions.FulfillmentActions import ORDER_CHANGED, _refund
 from actions.OrderActions import (NOT_MOVABLE, ORDER_EXPIRED,
                                   ORDER_NOT_FOUND, ORDER_STATUSES)
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (addOrder, addProduct, assertExactShape, createTestStore,
                       verifiedGuestAt)
 from mongoDb import db
@@ -49,6 +50,7 @@ ALL_ROUTES = [*ADMIN_ROUTES, 'cancelMyOrder']
 BAD_ORDER_IDS = ['', 123, {'$ne': None}, [SENTINEL], None]
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 # ----------------------------- fixtures ----------------------------- #
@@ -108,8 +110,8 @@ def _run(route: str, store: dict, customerId: str, orderId):
     """A fulfillment route as its caller: the store's admin, or the
     customer for cancelMyOrder."""
     if route == 'cancelMyOrder':
-        return api.cancelMyOrder(customerId, store['_id'], orderId)
-    return getattr(api, route)(ADMIN, orderId)
+        return tools.cancelMyOrder(customerId, store['_id'], orderId)
+    return getattr(tools, route)(ADMIN, orderId)
 
 
 def _unchanged(store: dict, orderId: str):
@@ -132,7 +134,7 @@ def test_completeOrder_aPaidOrderBecomesCompleted(clean, firebase, clock):
     orderId = _paid(store, customerId, [(products['Pandesal'], 2)])
     before = _order(orderId)
 
-    res = api.completeOrder(ADMIN, orderId)
+    res = tools.completeOrder(ADMIN, orderId)
 
     assertExactShape(StoreOrderRow, res)
     stored = _order(orderId)
@@ -160,7 +162,7 @@ def test_completeOrder_countsTheUnitsAsSold_andKeepsInventory(
     orderId = _paid(store, customerId, [(products[n], q) for n, q in lines])
     before = _products(store)
 
-    api.completeOrder(ADMIN, orderId)
+    tools.completeOrder(ADMIN, orderId)
 
     after = _products(store)
     bought = dict(lines)
@@ -185,7 +187,7 @@ def test_completeOrder_refusesAnOrderThatIsNotPaid(
     check = _unchanged(store, orderId)
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE[status])):
-        api.completeOrder(ADMIN, orderId)
+        tools.completeOrder(ADMIN, orderId)
 
     check()
 
@@ -204,7 +206,7 @@ def test_cancelStoreOrder_aPendingOrderIsCancelled_andItsUnitsReleased(
                                          (products['Ube Cake'], 3)])
     before, productsBefore = _order(orderId), _products(store)
 
-    res = api.cancelStoreOrder(ADMIN, orderId)
+    res = tools.cancelStoreOrder(ADMIN, orderId)
 
     assertExactShape(StoreOrderRow, res)
     stored = _order(orderId)
@@ -232,7 +234,7 @@ def test_cancelStoreOrder_aPaidOrderIsCancelledAndRefunded(
     before = _order(orderId)
     productBefore = _product(products['Ensaymada']['_id'])
 
-    res = api.cancelStoreOrder(ADMIN, orderId)
+    res = tools.cancelStoreOrder(ADMIN, orderId)
 
     assertExactShape(StoreOrderRow, res)
     stored = _order(orderId)
@@ -269,7 +271,7 @@ def test_cancelStoreOrder_refusesACompletedOrAnAlreadyCancelledOne(
     check = _unchanged(store, orderId)
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE[status])):
-        api.cancelStoreOrder(ADMIN, orderId)
+        tools.cancelStoreOrder(ADMIN, orderId)
 
     check()
     assert refunds.calls == []
@@ -282,7 +284,7 @@ def test_cancelStoreOrder_anExpiredPendingOrder_isCancelledAsExpired_once(
     orderId = _expired(store, customerId, [(pandesal, 2)])
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE['cancelled'])):
-        api.cancelStoreOrder(ADMIN, orderId)
+        tools.cancelStoreOrder(ADMIN, orderId)
 
     stored = _order(orderId)
     assert (stored['status'], stored['cancelReason']) == (
@@ -300,7 +302,7 @@ def test_cancelStoreOrder_aRefundThatFails_leavesItCancelledWithoutRefundedAt(
     refunds.error = RuntimeError('gateway-secret-detail')
 
     with pytest.raises(RuntimeError):
-        api.cancelStoreOrder(ADMIN, orderId)
+        tools.cancelStoreOrder(ADMIN, orderId)
 
     stored = _order(orderId)
     assert (stored['status'], stored['cancelReason']) == (
@@ -354,7 +356,7 @@ def test_cancelMyOrder_aPendingOrderIsCancelled_andItsUnitsReleased(
                    (products['Ube Cake'], 3))
     productsBefore, placed = _products(store), _order(order['_id'])
 
-    res = api.cancelMyOrder(customerId, store['_id'], order['_id'])
+    res = tools.cancelMyOrder(customerId, store['_id'], order['_id'])
 
     assertExactShape(MyOrderRow, res)
     stored = _order(order['_id'])
@@ -381,7 +383,7 @@ def test_cancelMyOrder_refusesAnOrderThatIsNotPending(
     check = _unchanged(store, orderId)
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE[status])):
-        api.cancelMyOrder(customerId, store['_id'], orderId)
+        tools.cancelMyOrder(customerId, store['_id'], orderId)
 
     check()
 
@@ -399,7 +401,7 @@ def test_cancelMyOrder_anExpiredOrder_saysItExpired_andReleasesItsUnitsOnce(
     orderId = _expired(store, customerId, [(pandesal, 2)])
 
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.cancelMyOrder(customerId, store['_id'], orderId)
+        tools.cancelMyOrder(customerId, store['_id'], orderId)
 
     stored = _order(orderId)
     assert (stored['status'], stored['cancelReason']) == (
@@ -408,7 +410,7 @@ def test_cancelMyOrder_anExpiredOrder_saysItExpired_andReleasesItsUnitsOnce(
     assert (after['inventory'], after['reservedInventory']) == (10, [])
     # Already cancelled as expired: the same answer, nothing more released.
     with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-        api.cancelMyOrder(customerId, store['_id'], orderId)
+        tools.cancelMyOrder(customerId, store['_id'], orderId)
     assert _product(pandesal['_id']) == after
 
 
@@ -421,12 +423,12 @@ def test_cancelMyOrder_atTheDeadline_isExpired_oneMillisecondBefore_cancels(
                          T0 - WINDOW + expiresIn)
 
     if cancels:
-        res = api.cancelMyOrder(customerId, store['_id'], orderId)
+        res = tools.cancelMyOrder(customerId, store['_id'], orderId)
         assert (res['status'], res['cancelReason']) == (
             'cancelled', 'byCustomer')
     else:
         with pytest.raises(ValueError, match=exactly(ORDER_EXPIRED)):
-            api.cancelMyOrder(customerId, store['_id'], orderId)
+            tools.cancelMyOrder(customerId, store['_id'], orderId)
         assert _order(orderId)['cancelReason'] == 'expired'
 
 
@@ -443,7 +445,7 @@ def test_cancelMyOrder_anotherCustomersOrder_andAnotherStoresOrder_areNotFound(
 
     for orderId in (others, elsewhere, 'no-such-order'):
         with pytest.raises(ValueError, match=exactly(ORDER_NOT_FOUND)):
-            api.cancelMyOrder(customerId, store['_id'], orderId)
+            tools.cancelMyOrder(customerId, store['_id'], orderId)
 
     for check in checks:
         check()
@@ -458,7 +460,7 @@ def test_cancelMyOrder_afterCancelling_theCustomerCanPlaceAnotherOrder(
     with pytest.raises(ValueError, match=exactly(TOO_MANY_UNPAID)):
         _place(customerId, store, (pandesal, 1))
 
-    api.cancelMyOrder(customerId, store['_id'], orders[0]['_id'])
+    tools.cancelMyOrder(customerId, store['_id'], orders[0]['_id'])
 
     _place(customerId, store, (pandesal, 1))
     with pytest.raises(ValueError, match=exactly(TOO_MANY_UNPAID)):
@@ -467,7 +469,7 @@ def test_cancelMyOrder_afterCancelling_theCustomerCanPlaceAnotherOrder(
 
 def _paidCancellation(rule: str, hours: int | None = None) -> None:
     """The store's paidOrderCancellation answer (and its hours)."""
-    api.updateMyStorePolicy(ADMIN, paidOrderCancellation=rule,
+    tools.updateMyStorePolicy(ADMIN, paidOrderCancellation=rule,
                             paidOrderCancellationHours=hours)
 
 
@@ -490,7 +492,7 @@ def test_cancelMyOrder_aPaidOrder_theStoreLets_isCancelledAndRefunded(
                       T0 - datetime.timedelta(hours=1))
     reserved, placed = _product(pandesal['_id']), _order(orderId)
 
-    res = api.cancelMyOrder(customerId, store['_id'], orderId)
+    res = tools.cancelMyOrder(customerId, store['_id'], orderId)
 
     assertExactShape(MyOrderRow, res)
     assert (res['status'], res['cancelReason'], res['cancelledAt'],
@@ -516,14 +518,14 @@ def test_cancelMyOrder_withinHours_endsTheHoursAfterPayment(
                       T0 - paidBefore)
 
     if cancels:
-        res = api.cancelMyOrder(customerId, store['_id'], orderId)
+        res = tools.cancelMyOrder(customerId, store['_id'], orderId)
         assert (res['status'], res['refundedAt']) == ('cancelled', T0)
     else:
         check = _unchanged(store, orderId)
         with pytest.raises(ValueError, match=exactly(
                 'This store lets a paid order be cancelled only within 24 '
                 'hours of payment: ask the store to cancel it')):
-            api.cancelMyOrder(customerId, store['_id'], orderId)
+            tools.cancelMyOrder(customerId, store['_id'], orderId)
         check()
         assert refunds.calls == []
 
@@ -538,7 +540,7 @@ def test_cancelMyOrder_aPaidOrder_theStoreDoesNotLet_isRefused(
     check = _unchanged(store, orderId)
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE['paid'])):
-        api.cancelMyOrder(customerId, store['_id'], orderId)
+        tools.cancelMyOrder(customerId, store['_id'], orderId)
 
     check()
     assert refunds.calls == []
@@ -556,7 +558,7 @@ def test_cancelMyOrder_aHandedOverOrCancelledOrder_isRefused_whateverThePolicy(
     check = _unchanged(store, orderId)
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE[status])):
-        api.cancelMyOrder(customerId, store['_id'], orderId)
+        tools.cancelMyOrder(customerId, store['_id'], orderId)
 
     check()
     assert refunds.calls == []
@@ -567,10 +569,10 @@ def test_cancelMyOrderAgainstCompleteOrder_aHandoverThatWins_isNotCancelled(
     store, customerId, products = _shop(firebase)
     _paidCancellation('beforeHandover')
     orderId = _paidAt(store, customerId, [(products['Pandesal'], 1)], T0)
-    _beforeTheMove(monkeypatch, lambda: api.completeOrder(ADMIN, orderId))
+    _beforeTheMove(monkeypatch, lambda: tools.completeOrder(ADMIN, orderId))
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE['completed'])):
-        api.cancelMyOrder(customerId, store['_id'], orderId)
+        tools.cancelMyOrder(customerId, store['_id'], orderId)
 
     assert _order(orderId)['status'] == 'completed'
     assert refunds.calls == []
@@ -600,11 +602,11 @@ def test_cancelStoreOrder_aPaidOrderTwice_refundsOnce(
         clean, firebase, clock, refunds):
     store, customerId, products = _shop(firebase)
     orderId = _paid(store, customerId, [(products['Pandesal'], 2)])
-    api.cancelStoreOrder(ADMIN, orderId)
+    tools.cancelStoreOrder(ADMIN, orderId)
     check = _unchanged(store, orderId)
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE['cancelled'])):
-        api.cancelStoreOrder(ADMIN, orderId)
+        tools.cancelStoreOrder(ADMIN, orderId)
 
     check()
     assert len(refunds.calls) == 1
@@ -619,7 +621,7 @@ def test_adminRoutes_anotherStoresOrder_isNotFound(
     check = _unchanged(store, orderId)
 
     with pytest.raises(ValueError, match=exactly(ORDER_NOT_FOUND)):
-        getattr(api, route)(OTHER_ADMIN, orderId)
+        getattr(tools, route)(OTHER_ADMIN, orderId)
 
     check()
     assert refunds.calls == []
@@ -634,7 +636,7 @@ def test_adminRoutes_refuseACustomer_andAnUnknownUser(
     check = _unchanged(store, orderId)
 
     with pytest.raises(PermissionError, match=exactly(NOT_ADMIN)):
-        getattr(api, route)(customerId if caller == 'customer' else caller,
+        getattr(tools, route)(customerId if caller == 'customer' else caller,
                             orderId)
 
     check()
@@ -649,7 +651,7 @@ def test_cancelMyOrder_refusesAnAdmin_andAnUnknownUser(
     check = _unchanged(store, orderId)
 
     with pytest.raises(PermissionError, match=exactly(NOT_CUSTOMER)):
-        api.cancelMyOrder(caller, store['_id'], orderId)
+        tools.cancelMyOrder(caller, store['_id'], orderId)
 
     check()
 
@@ -699,14 +701,14 @@ def test_completeAgainstCancel_firstFlipWins_theOtherIsRefused(
     orderId = _paid(store, customerId, [(pandesal, 3)])
     reserved = _product(pandesal['_id'])
     if winner == 'cancel':
-        _beforeTheMove(monkeypatch, lambda: api.cancelStoreOrder(ADMIN, orderId))
+        _beforeTheMove(monkeypatch, lambda: tools.cancelStoreOrder(ADMIN, orderId))
         loser, refusal = 'completeOrder', NOT_MOVABLE['cancelled']
     else:
-        _beforeTheMove(monkeypatch, lambda: api.completeOrder(ADMIN, orderId))
+        _beforeTheMove(monkeypatch, lambda: tools.completeOrder(ADMIN, orderId))
         loser, refusal = 'cancelStoreOrder', NOT_MOVABLE['completed']
 
     with pytest.raises(ValueError, match=exactly(refusal)):
-        getattr(api, loser)(ADMIN, orderId)
+        getattr(tools, loser)(ADMIN, orderId)
 
     after = _product(pandesal['_id'])
     assert after['reservedInventory'] == []
@@ -728,11 +730,11 @@ def test_cancelMyOrderAgainstPayOrder_aPaymentThatWins_isNotCancelled(
     pandesal = products['Pandesal']
     order = _place(customerId, store, (pandesal, 2))
     reserved = _product(pandesal['_id'])
-    _beforeTheMove(monkeypatch, lambda: api.payOrder(
+    _beforeTheMove(monkeypatch, lambda: tools.payOrder(
         customerId, store['_id'], order['_id'], 'card', 'demo'))
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE['paid'])):
-        api.cancelMyOrder(customerId, store['_id'], order['_id'])
+        tools.cancelMyOrder(customerId, store['_id'], order['_id'])
 
     assert _order(order['_id'])['status'] == 'paid'
     assert _product(pandesal['_id']) == reserved
@@ -743,11 +745,11 @@ def test_cancelStoreOrderAgainstCancelMyOrder_releasesTheUnitsOnce(
     store, customerId, products = _shop(firebase)
     pandesal = products['Pandesal']
     order = _place(customerId, store, (pandesal, 2))
-    _beforeTheMove(monkeypatch, lambda: api.cancelMyOrder(
+    _beforeTheMove(monkeypatch, lambda: tools.cancelMyOrder(
         customerId, store['_id'], order['_id']))
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE['cancelled'])):
-        api.cancelStoreOrder(ADMIN, order['_id'])
+        tools.cancelStoreOrder(ADMIN, order['_id'])
 
     stored = _order(order['_id'])
     assert (stored['status'], stored['cancelReason']) == (
@@ -766,7 +768,7 @@ def test_aMoveThatMissesAnOrderInAnAcceptedStatus_saysItChanged(
     check = _unchanged(store, orderId)
 
     with pytest.raises(ValueError, match=exactly(ORDER_CHANGED)):
-        api.cancelStoreOrder(ADMIN, orderId)
+        tools.cancelStoreOrder(ADMIN, orderId)
 
     check()
 
@@ -788,7 +790,7 @@ def test_completeOrder_racingCompletes_countTheUnitsOnce(
     def race(index: int) -> None:
         barrier.wait()
         try:
-            outcomes[index] = api.completeOrder(ADMIN, orderId)
+            outcomes[index] = tools.completeOrder(ADMIN, orderId)
         except Exception as error:  # noqa: BLE001 - asserted below
             outcomes[index] = error
 

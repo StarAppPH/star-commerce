@@ -26,19 +26,12 @@
                     "format": "date-time",
                     "title": "Lastmessageat",
                     "type": "string"
-                },
-                "turnCount": {
-                    "description": "How many turns it holds",
-                    "minimum": 0,
-                    "title": "Turncount",
-                    "type": "integer"
                 }
             },
             "required": [
                 "_id",
                 "title",
-                "lastMessageAt",
-                "turnCount"
+                "lastMessageAt"
             ],
             "title": "ConversationRow",
             "type": "object",

@@ -11,6 +11,7 @@ import re
 
 import pytest
 import requests
+from flask_jwt_extended import create_access_token
 from pydantic import BaseModel, ValidationError
 
 import pubSub as pubSubModule
@@ -25,6 +26,8 @@ from services.__request import ServiceError, ServiceUnavailable
 SECRET = 'rte-secret@example.com'
 OUTER_SECRET = 'rte-outer-secret'
 _TEST_JWT_SECRET = 'route-errors-test-jwt-secret-0123456789abcdef'
+# The JWT identity _post signs in as, when the route it calls needs one.
+_TEST_USER = 'rte-user'
 _ERROR_ID = r' \(error id [0-9a-f]{12}\)'
 SERVER_FAULT_MESSAGE = (r'Something went wrong on our side\. Please try '
                         r'again\.' + _ERROR_ID)
@@ -291,16 +294,44 @@ def test_routeErrors_neverLogsItself():
     assert 'traceback.format_tb' in calls
 
 
+def _isPublic(meta: dict) -> bool:
+    return not meta['jwtRequired'] and not meta.get('jwtOptional')
+
+
 def _publicRoute():
-    """A public POST route of the real app (no token needed)."""
+    """A POST route of the real app, as (name, func): a public one (no
+    token needed) when the app has one, else a JWT route, which _post calls
+    with a token (a route only another service calls last). Never a sign-in
+    route (createAccessToken), whose handler logs no request data."""
     creator = AppCreator(apiRequests=None)
+    jwtRoutes = []
     for name, func in creator._get_user_defined_methods('app').items():
         meta = creator._route_meta(func)
-        if (meta['httpMethod'] == 'POST' and not meta['jwtRequired']
-                and not meta.get('jwtOptional')
-                and not meta['createAccessToken']):
+        if meta['httpMethod'] != 'POST' or meta['createAccessToken']:
+            continue
+        if _isPublic(meta):
             return name, func
-    pytest.skip('this app has no public POST route')
+        jwtRoutes.append((bool(meta['serviceOnly']), name, func))
+    if not jwtRoutes:
+        pytest.skip('this app has no POST route')
+    _, name, func = min(jwtRoutes, key=lambda route: route[0])
+    return name, func
+
+
+def _post(flaskApp, name: str, func):
+    """POST to the route `func` (as _publicRoute found it, before any
+    monkeypatch): an empty body to a public route; to a JWT route a token
+    minted under _TEST_JWT_SECRET for _TEST_USER, with that userId in the
+    body when the route takes one (the handler refuses any other)."""
+    creator = AppCreator(apiRequests=None)
+    if _isPublic(creator._route_meta(func)):
+        return flaskApp.test_client().post(f'/{name}', json={})
+    with flaskApp.app_context():
+        token = create_access_token(identity=_TEST_USER)
+    body = ({'userId': _TEST_USER}
+            if 'userId' in creator._parameters(func).names else {})
+    return flaskApp.test_client().post(
+        f'/{name}', json=body, headers={'Authorization': f'Bearer {token}'})
 
 
 def _pushRoute() -> str:
@@ -342,14 +373,14 @@ def test_http_theRealAppAnswersTheStatusOnTheWire(monkeypatch, caplog, error,
     there, not a 400 envelope, and it is logged once without its text."""
     caplog.set_level(logging.INFO)
     flaskApp = _flaskApp(monkeypatch)
-    name, _ = _publicRoute()
+    name, func = _publicRoute()
 
     def _raise(self, *args, **kwargs):
         raise error
 
     monkeypatch.setattr(ApiRequests, name, _raise)
 
-    res = flaskApp.test_client().post(f'/{name}', json={})
+    res = _post(flaskApp, name, func)
 
     body = res.get_json()
     assert res.status_code == body['status'] == status
@@ -528,11 +559,11 @@ def test_http_anErrorOutsideTheTry_isAnsweredAndLoggedOnce(
         monkeypatch, caplog):
     caplog.set_level(logging.INFO)
     flaskApp = _flaskApp(monkeypatch)
-    name, _ = _publicRoute()
+    name, func = _publicRoute()
     monkeypatch.setattr(ApiRequests, name,
                         lambda self, *a, **k: {'value': _Unserializable()})
 
-    res = flaskApp.test_client().post(f'/{name}', json={})
+    res = _post(flaskApp, name, func)
 
     body = res.get_json()
     assert res.status_code == body['status'] == STATUS_SERVER_ERROR
@@ -560,11 +591,11 @@ class _RefusesToRender:
 def test_http_aPermissionErrorOutsideTheTry_isA403(monkeypatch, caplog):
     caplog.set_level(logging.INFO)
     flaskApp = _flaskApp(monkeypatch)
-    name, _ = _publicRoute()
+    name, func = _publicRoute()
     monkeypatch.setattr(ApiRequests, name,
                         lambda self, *a, **k: {'value': _RefusesToRender()})
 
-    res = flaskApp.test_client().post(f'/{name}', json={})
+    res = _post(flaskApp, name, func)
 
     body = res.get_json()
     assert res.status_code == body['status'] == STATUS_FORBIDDEN

@@ -504,6 +504,33 @@ class MyStoreResponse(ResponseModel):
         ..., description="The admin's store; null until it is created")
 
 
+class AdminStoreScreenRow(ResponseModel):
+    """The admin's own store as the admin workspace shows it (the
+    getUserStore route): only what its screens read, the name (the title,
+    the sidebar, the reset dialog), the link name (Open my store) and the
+    brand colors the screens are drawn in. The AI's getUserStore tool sends
+    the whole AdminStoreResponse. A brand color is sent only once set. Each
+    field restates Store's (test_route_response_models.py's MIRRORS)."""
+    name: str | None = Field(None, min_length=1,
+                             max_length=STORE_NAME_MAX_LENGTH,
+                             description='Store name shown to customers')
+    slug: str | None = Field(None, max_length=STORE_SLUG_MAX_LENGTH,
+                             pattern=STORE_SLUG_PATTERN,
+                             description="The store's link name, e.g. bakery-a")
+    primaryColor: str | None = Field(None, pattern=HEX_COLOR_PATTERN,
+                                     exclude_if=_isNone,
+                                     description='Main brand color, #RRGGBB')
+    secondaryColor: str | None = Field(
+        None, pattern=HEX_COLOR_PATTERN, exclude_if=_isNone,
+        description='Second brand color, #RRGGBB')
+
+
+class MyStoreScreenResponse(ResponseModel):
+    """What the getUserStore route sends the admin workspace."""
+    store: AdminStoreScreenRow | None = Field(
+        ..., description="The admin's store; null until it is created")
+
+
 class StoreThemeResponse(ResponseModel):
     """What updateMyStoreTheme sends: the store's photo theme, each field
     null while unset (never the voice: getUserStore sends it). Each field
@@ -537,7 +564,3 @@ class CustomerSessionResponse(ResponseModel):
     store: ShopStoreResponse = Field(...,
                                      description='The store being visited')
 
-
-class PhoneVerifiedResponse(ResponseModel):
-    phoneNumber: str = Field(..., pattern=PHONE_NUMBER_PATTERN,
-                             description='The verified contact number')

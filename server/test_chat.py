@@ -37,6 +37,7 @@ from actions.ProductActions import (PRODUCT_LIST_DEFAULT_LIMIT,
                                     PRODUCT_LIST_MAX_LIMIT, _validLimit)
 from actions.StoreActions import NO_STORE_YET, STORE_NOT_FOUND
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (assertExactShape, createTestStore, createTestUser,
                       storeWithProducts, verifiedGuestAt, wipeCollections)
 from mcpCreator import toolSpecs
@@ -66,6 +67,7 @@ ERROR_TEXT = 'SENTINEL-SDK-ERROR-TEXT'
 REAL_CLIENT = chatModel.client
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 @pytest.fixture
@@ -433,7 +435,7 @@ def test_theGeneratedSource_isTheSameUnderAnyHashSeed():
 
 def test_render_isDeterministic_andPassesStoreIdOnlyWhereInjected(
         monkeypatch):
-    specs = toolSpecs(ApiRequests)
+    specs = toolSpecs(ToolRequests)
     source = chatToolsCreator.render(specs)
     assert source == chatToolsCreator.render(specs)
     for spec in specs:
@@ -448,7 +450,7 @@ def test_render_isDeterministic_andPassesStoreIdOnlyWhereInjected(
         sent.append((route.__name__, kwargs))
         return {}
 
-    monkeypatch.setattr(chatTools, 'callRoute', recorder)
+    monkeypatch.setattr(chatTools, 'callTool', recorder)
     chatTools._listStoreProducts('u1', 's1', chatTools.ListStoreProductsArgs())
     chatTools._getMyStorePolicy('u1', 's1', chatTools.GetMyStorePolicyArgs())
     assert sent[0][0] == 'listStoreProducts'
@@ -736,14 +738,14 @@ def test_routeGuards_runBeforeAnyModelCallLockOrQuota(clean, firebase, model):
 def test_toolErrors_reachTheModel_withoutLeakingInput(
         clean, model, monkeypatch):
     createTestStore(ADMIN)
-    api.addStoreProduct(ADMIN, 'Cake', 10, 1)
+    ToolRequests().addStoreProduct(ADMIN, 'Cake', 10, 1)
     with pytest.raises(ValueError) as taken:
-        api.addStoreProduct(ADMIN, 'Cake', 10, 1)
+        ToolRequests().addStoreProduct(ADMIN, 'Cake', 10, 1)
 
     def failing(self, userId):
         raise RuntimeError('SECRET-DETAIL')
 
-    monkeypatch.setattr(ApiRequests, 'getMyStorePolicy', failing)
+    monkeypatch.setattr(ToolRequests, 'getMyStorePolicy', failing)
     fake = model(
         calls(
             ('e1', 'addStoreProduct',
@@ -1912,7 +1914,7 @@ def test_listMyConversations_isScopedToTheCaller(clean, firebase):
     res = api.listMyConversations(customerA, store['_id'])
     assert [c['_id'] for c in res['conversations']] == [mine['_id']]
     assert set(res['conversations'][0]) == {
-        '_id', 'title', 'lastMessageAt', 'turnCount'
+        '_id', 'title', 'lastMessageAt'
     }
     for noStore in (None, ''):
         admin = api.listMyConversations(ADMIN, noStore)
@@ -2020,7 +2022,7 @@ def test_theChatListLimits_areTheirOwn_andTheProductLimitIsUnchanged(
         _validLimit(51)
     with pytest.raises(ValueError, match='^' + message + '$'):
         _validLimit(0)
-    assert len(api.listStoreProducts(customerId, store['_id'])[
+    assert len(tools.listStoreProducts(customerId, store['_id'])[
         'products']) <= 10
 
 

@@ -15,9 +15,10 @@ from pymongo.errors import DuplicateKeyError
 from actions.OrderActions import STORE_ID_NOT_TEXT
 from actions.PolicyActions import (ANSWER_RULES, CLEAR_FIELDS, NOT_APPLICABLE,
                                    NOTHING_SENT, POLICY_CHANGED, TEXT_LIMITS,
-                                   UPDATE_POLICY_DESCRIPTION, PolicyActions)
+                                   UPDATE_POLICY_DESCRIPTION, PolicyTools)
 from actions.StoreActions import ALREADY_HAS_A_STORE, NO_STORE_YET, SET_UP
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (BRAND_COLORS, STORE_DETAILS, TOKEN, TOKEN_UID, assertExactShape,
                       createTestStore, createTestUser, firebaseClaims,
                       guestAt, wipeCollections)
@@ -46,6 +47,7 @@ CASH = {'method': 'cash', 'provider': None, 'eWallets': None, 'banks': None,
 CARD = {**CASH, 'method': 'card', 'provider': 'demo'}
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 @pytest.fixture
@@ -189,22 +191,22 @@ def test_signUp_createsOneEmptyStoreAndPolicy_andStaysNotSetUp(
     assert _policyDoc(stored['_id']) == policy
 
     # The store is still "no store yet" to every reader.
-    assert api.getUserStore(TOKEN_UID) == {'store': None}
-    assert _refusal(api.getMyStorePolicy, TOKEN_UID) == NO_STORE_YET
-    assert _refusal(api.updateMyStorePolicy, TOKEN_UID,
+    assert tools.getUserStore(TOKEN_UID) == {'store': None}
+    assert _refusal(tools.getMyStorePolicy, TOKEN_UID) == NO_STORE_YET
+    assert _refusal(tools.updateMyStorePolicy, TOKEN_UID,
                     acceptsReturns=False) == NO_STORE_YET
     # Create your store first comes before "send at least one answer".
-    assert _refusal(api.updateMyStorePolicy, TOKEN_UID) == NO_STORE_YET
+    assert _refusal(tools.updateMyStorePolicy, TOKEN_UID) == NO_STORE_YET
     assert _policyDoc(stored['_id']) == policy
 
 
 def test_adminWithNoStoresDoc_isToldToCreateTheStoreFirst(clean):
     createTestUser(ADMIN)
 
-    assert _refusal(api.getMyStorePolicy, ADMIN) == NO_STORE_YET
-    assert _refusal(api.updateMyStorePolicy, ADMIN,
+    assert _refusal(tools.getMyStorePolicy, ADMIN) == NO_STORE_YET
+    assert _refusal(tools.updateMyStorePolicy, ADMIN,
                     acceptsReturns=True) == NO_STORE_YET
-    assert _refusal(api.updateMyStorePolicy, ADMIN) == NO_STORE_YET
+    assert _refusal(tools.updateMyStorePolicy, ADMIN) == NO_STORE_YET
     assert _storeDocs() == []
     assert db.read({}, 'Policies') == []
 
@@ -217,7 +219,7 @@ def test_createUserStore_fillsTheSignUpStore(clean, firebase, anotherUser):
     [empty] = [s for s in _storeDocs() if s['ownerUserId'] == TOKEN_UID]
     policyBefore = _policyDoc(empty['_id'])
 
-    created = api.createUserStore(TOKEN_UID, ' Bakery A ', **STORE_DETAILS)
+    created = tools.createUserStore(TOKEN_UID, ' Bakery A ', **STORE_DETAILS)
 
     assert created['_id'] == empty['_id']
     [stored] = [s for s in _storeDocs() if s['ownerUserId'] == TOKEN_UID]
@@ -226,14 +228,14 @@ def test_createUserStore_fillsTheSignUpStore(clean, firebase, anotherUser):
     assert stored['createdAt'] == empty['createdAt']
     assert stored['slug'] == 'bakery-a'
     assert stored['name'] == 'Bakery A'
-    assert api.getUserStore(TOKEN_UID) == {
+    assert tools.getUserStore(TOKEN_UID) == {
         'store': {**created, **BRAND_COLORS}}
     # The sign-up Policy stays the one policy of the store.
     assert db.read({}, 'Policies', countOnly=True) == 1
     assert _policyDoc(empty['_id']) == policyBefore
 
     # A second call is refused and changes nothing.
-    assert _refusal(api.createUserStore, TOKEN_UID, 'Bakery B',
+    assert _refusal(tools.createUserStore, TOKEN_UID, 'Bakery B',
                     **STORE_DETAILS) == ALREADY_HAS_A_STORE
     assert [s for s in _storeDocs() if s['ownerUserId'] == TOKEN_UID] == [
         stored
@@ -250,7 +252,7 @@ def test_createUserStore_forAnAdminWithNoStoreDoc_createsStoreAndPolicy(
     policy = _policyDoc(store['_id'])
     assert _answers(policy) == NONE_ANSWERS
     assert db.read({}, 'Policies', countOnly=True) == 1
-    assert _refusal(api.createUserStore, ADMIN, 'Again',
+    assert _refusal(tools.createUserStore, ADMIN, 'Again',
                     **STORE_DETAILS) == ALREADY_HAS_A_STORE
 
 
@@ -268,7 +270,7 @@ def test_createUserStore_losingTheRaceToASetUp_isAlreadyHasAStore(
 
     monkeypatch.setattr(db, 'findOneAndUpdate', racing)
 
-    assert _refusal(api.createUserStore, TOKEN_UID, 'Bakery A',
+    assert _refusal(tools.createUserStore, TOKEN_UID, 'Bakery A',
                     **STORE_DETAILS) == ALREADY_HAS_A_STORE
     stored = db.read({'_id': empty['_id']}, 'Stores', findOne=True)
     assert stored.get('slug') is None
@@ -288,8 +290,8 @@ def test_storesThatAreNotSetUp_coexist_underThePartialSlugIndex(
     }
 
     # Two of them set up under the same name get distinct slugs.
-    first = api.createUserStore('po-a', 'Bakery A', **STORE_DETAILS)
-    second = api.createUserStore('po-b', 'Bakery A', **STORE_DETAILS)
+    first = tools.createUserStore('po-a', 'Bakery A', **STORE_DETAILS)
+    second = tools.createUserStore('po-b', 'Bakery A', **STORE_DETAILS)
     assert first['slug'] == 'bakery-a'
     assert second['slug'].startswith('bakery-a-')
     slugs = [s['slug'] for s in _storeDocs() if s.get('slug')]
@@ -316,11 +318,11 @@ def test_aStoreThatIsNotSetUp_isNotFoundToCustomers(clean, firebase,
         assert _refusal(api.startGuestSession, TOKEN, slug) == 'Store not found'
     assert db.read({}, 'Customers', countOnly=True) == customers
 
-    assert _refusal(api.listStoreProducts, customerId,
+    assert _refusal(tools.listStoreProducts, customerId,
                     unset['_id']) == 'Store not found'
-    assert _refusal(api.getStorePolicy, customerId,
+    assert _refusal(tools.getStorePolicy, customerId,
                     unset['_id']) == 'Store not found'
-    assert _refusal(api.getStorePolicy, customerId,
+    assert _refusal(tools.getStorePolicy, customerId,
                     'no-such-store') == 'Store not found'
 
 
@@ -369,7 +371,7 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
 
     # Falsy but real values are applied, a text is stored stripped.
     time.sleep(0.01)
-    first = api.updateMyStorePolicy(ADMIN,
+    first = tools.updateMyStorePolicy(ADMIN,
                                     acceptsReturns=False,
                                     handoverDays=0,
                                     deliveryOptions=['pickup', 'delivery'],
@@ -393,7 +395,7 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
     # A second call changes only what it sends; "" on text and on a
     # Literal, and whitespace, mean unchanged.
     time.sleep(0.01)
-    second = api.updateMyStorePolicy(ADMIN,
+    second = tools.updateMyStorePolicy(ADMIN,
                                      refundMethod='',
                                      returnConditions='   ',
                                      deliveryAreas='',
@@ -418,7 +420,7 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
 
     # clear sets an answer back to not said, and only that one.
     time.sleep(0.01)
-    api.updateMyStorePolicy(ADMIN, clear=['acceptsReturns',
+    tools.updateMyStorePolicy(ADMIN, clear=['acceptsReturns',
                                           'handoverDays'])
     cleared = _policyDoc(storeId)
     want = {**want, 'acceptsReturns': None, 'handoverDays': None}
@@ -427,11 +429,11 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
     assert cleared['updatedAt'] > after['updatedAt']
 
     # Clearing an answer that is already unset still counts as an update.
-    api.updateMyStorePolicy(ADMIN, clear=['returnConditions'])
+    tools.updateMyStorePolicy(ADMIN, clear=['returnConditions'])
     assert _policyDoc(storeId)['_version'] == cleared['_version'] + 1
 
     # getMyStorePolicy and getStorePolicy send the same answer.
-    mine = api.getMyStorePolicy(ADMIN)
+    mine = tools.getMyStorePolicy(ADMIN)
     assertExactShape(StorePolicyResponse, mine)
     assert _answers(mine) == want
 
@@ -439,7 +441,7 @@ def test_updateMyStorePolicy_changesOnlyTheSentFields(clean):
 def test_updateMyStorePolicy_refusesClearMisuse_andAnEmptyUpdate(clean):
     store = _setUpStore()
     storeId = store['_id']
-    api.updateMyStorePolicy(ADMIN, acceptsReturns=False,
+    tools.updateMyStorePolicy(ADMIN, acceptsReturns=False,
                             handoverDays=2)
     before = _policyDoc(storeId)
 
@@ -449,10 +451,10 @@ def test_updateMyStorePolicy_refusesClearMisuse_andAnEmptyUpdate(clean):
                      ['acceptsReturns', None],
                      ['updatedAt'], ['storeId'], ['offersFreeDelivery'],
                      ['sendsMarketingMessages']):
-        assert _refusal(api.updateMyStorePolicy, ADMIN,
+        assert _refusal(tools.updateMyStorePolicy, ADMIN,
                         clear=badClear) == CLEAR_FIELDS
     # A field both cleared and given a value.
-    assert _refusal(api.updateMyStorePolicy, ADMIN,
+    assert _refusal(tools.updateMyStorePolicy, ADMIN,
                     acceptsReturns=True,
                     clear=['acceptsReturns']) == (
                         'acceptsReturns is both cleared and given a '
@@ -462,7 +464,7 @@ def test_updateMyStorePolicy_refusesClearMisuse_andAnEmptyUpdate(clean):
                                         'deliveryAreas': '   ',
                                         'refundMethod': '',
                                         'additionalTerms': '\t'}):
-        assert _refusal(api.updateMyStorePolicy, ADMIN,
+        assert _refusal(tools.updateMyStorePolicy, ADMIN,
                         **kwargs) == NOTHING_SENT
     _unchanged(storeId, before)
 
@@ -483,14 +485,14 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
                      authorizedPaymentMethods=[CASH],
                      paidOrderCancellation='beforeHandover',
                      additionalTerms='terms')
-    api.updateMyStorePolicy(ADMIN, **full)
+    tools.updateMyStorePolicy(ADMIN, **full)
     start = _policyDoc(storeId)
     assert _answers(start) == full
 
     # No returns: the stale return answers are cleared silently, but the
     # non-returnable items and the defect days stay.
     time.sleep(0.01)
-    res = api.updateMyStorePolicy(ADMIN, acceptsReturns=False)
+    res = tools.updateMyStorePolicy(ADMIN, acceptsReturns=False)
     returnsOff = _policyDoc(storeId)
     want = {
         **full, 'acceptsReturns': False,
@@ -506,7 +508,7 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
         assert returnsOff[key] == start[key]
 
     # Pickup only: the delivery answers are cleared silently.
-    api.updateMyStorePolicy(ADMIN, deliveryOptions=['pickup'])
+    tools.updateMyStorePolicy(ADMIN, deliveryOptions=['pickup'])
     pickup = _policyDoc(storeId)
     want = {
         **want, 'deliveryOptions': ['pickup'],
@@ -523,52 +525,52 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
                           ({'returnShippingPaidBy': 'store'},
                            'returnShippingPaidBy'),
                           ({'deliveryAreas': 'Manila'}, 'deliveryAreas')):
-        message = _refusal(api.updateMyStorePolicy, ADMIN, **kwargs)
+        message = _refusal(tools.updateMyStorePolicy, ADMIN, **kwargs)
         assert message == f'{field} {NOT_APPLICABLE[field]}: ask again'
         assert 'applies only' in message
     # Sent together with the flip that blanks them.
     assert 'returnWindowDays applies only when returns are accepted' in (
-        _refusal(api.updateMyStorePolicy, ADMIN, acceptsReturns=False,
+        _refusal(tools.updateMyStorePolicy, ADMIN, acceptsReturns=False,
                  returnWindowDays=7))
     assert 'deliveryAreas applies only with delivery' in _refusal(
-        api.updateMyStorePolicy, ADMIN, deliveryOptions=['pickup'],
+        tools.updateMyStorePolicy, ADMIN, deliveryOptions=['pickup'],
         deliveryAreas='Manila')
     _unchanged(storeId, pickup)
 
     # Delivery back on with its answers in the same call is fine; so is a
     # delivery answer while deliveryOptions is not said yet (None applies).
-    api.updateMyStorePolicy(ADMIN,
+    tools.updateMyStorePolicy(ADMIN,
                             deliveryOptions=['delivery'],
                             deliveryAreas='Makati')
     assert _policyDoc(storeId)['deliveryAreas'] == 'Makati'
-    api.updateMyStorePolicy(ADMIN, clear=['deliveryOptions'])
-    api.updateMyStorePolicy(ADMIN, deliveryAreas='Pasig')
+    tools.updateMyStorePolicy(ADMIN, clear=['deliveryOptions'])
+    tools.updateMyStorePolicy(ADMIN, deliveryAreas='Pasig')
     assert _policyDoc(storeId)['deliveryAreas'] == 'Pasig'
 
     # Returns on without a window is refused; with a stored window it is not.
-    assert 'returnWindowDays' in _refusal(api.updateMyStorePolicy, ADMIN,
+    assert 'returnWindowDays' in _refusal(tools.updateMyStorePolicy, ADMIN,
                                           acceptsReturns=True)
     _expectedAfter = _policyDoc(storeId)
-    api.updateMyStorePolicy(ADMIN, acceptsReturns=True, returnWindowDays=9)
+    tools.updateMyStorePolicy(ADMIN, acceptsReturns=True, returnWindowDays=9)
     assert _policyDoc(storeId)['returnWindowDays'] == 9
-    api.updateMyStorePolicy(ADMIN, acceptsReturns=True)
+    tools.updateMyStorePolicy(ADMIN, acceptsReturns=True)
     assert _policyDoc(storeId)['_version'] == _expectedAfter['_version'] + 2
     # Clearing the window of a store that accepts returns is refused.
-    assert 'returnWindowDays' in _refusal(api.updateMyStorePolicy, ADMIN,
+    assert 'returnWindowDays' in _refusal(tools.updateMyStorePolicy, ADMIN,
                                           clear=['returnWindowDays'])
 
     # Clearing acceptsReturns keeps the stored window; pickup plus clearing
     # a delivery answer is fine; a field sent as '' and cleared is cleared.
-    api.updateMyStorePolicy(ADMIN, clear=['acceptsReturns'])
+    tools.updateMyStorePolicy(ADMIN, clear=['acceptsReturns'])
     kept = _policyDoc(storeId)
     assert kept['acceptsReturns'] is None and kept['returnWindowDays'] == 9
-    api.updateMyStorePolicy(ADMIN, deliveryOptions=['pickup'],
+    tools.updateMyStorePolicy(ADMIN, deliveryOptions=['pickup'],
                             clear=['deliveryAreas'])
     assert _policyDoc(storeId)['deliveryAreas'] is None
-    api.updateMyStorePolicy(ADMIN, returnConditions='x')
-    api.updateMyStorePolicy(ADMIN, returnConditions='', clear=['returnConditions'])
+    tools.updateMyStorePolicy(ADMIN, returnConditions='x')
+    tools.updateMyStorePolicy(ADMIN, returnConditions='', clear=['returnConditions'])
     assert _policyDoc(storeId)['returnConditions'] is None
-    api.updateMyStorePolicy(ADMIN, acceptsReturns=True)
+    tools.updateMyStorePolicy(ADMIN, acceptsReturns=True)
 
     # Duplicates are refused.
     before = _policyDoc(storeId)
@@ -577,7 +579,7 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
                           ({'authorizedPaymentMethods': [CASH, CASH]},
                            'authorizedPaymentMethods')):
         assert f'{field} lists an option twice' in _refusal(
-            api.updateMyStorePolicy, ADMIN, **kwargs)
+            tools.updateMyStorePolicy, ADMIN, **kwargs)
     _unchanged(storeId, before)
 
 
@@ -587,25 +589,25 @@ def test_paidCancellationWithinHours_needsTheHours_andOtherAnswersDropThem(
     storeId = store['_id']
 
     # withinHours without hours asks for them.
-    assert _refusal(api.updateMyStorePolicy, ADMIN,
+    assert _refusal(tools.updateMyStorePolicy, ADMIN,
                     paidOrderCancellation='withinHours') == (
         'Paid orders can be cancelled within hours: ask how many hours '
         'after payment (paidOrderCancellationHours)')
     # Hours without withinHours are refused by name.
-    assert _refusal(api.updateMyStorePolicy, ADMIN,
+    assert _refusal(tools.updateMyStorePolicy, ADMIN,
                     paidOrderCancellationHours=24) == (
         'paidOrderCancellationHours applies only with paidOrderCancellation '
         'withinHours: ask again')
     # Out of 1 to 168 whole hours, refused.
     for hours in (0, 169, 1.5, '24', True):
-        assert _refusal(api.updateMyStorePolicy, ADMIN,
+        assert _refusal(tools.updateMyStorePolicy, ADMIN,
                         paidOrderCancellation='withinHours',
                         paidOrderCancellationHours=hours) == (
             'paidOrderCancellationHours is '
             f"{ANSWER_RULES['paidOrderCancellationHours']}")
     assert _answers(_policyDoc(storeId)) == NONE_ANSWERS
 
-    res = api.updateMyStorePolicy(ADMIN, paidOrderCancellation='withinHours',
+    res = tools.updateMyStorePolicy(ADMIN, paidOrderCancellation='withinHours',
                                   paidOrderCancellationHours=24)
     assert (res['paidOrderCancellation'],
             res['paidOrderCancellationHours']) == ('withinHours', 24)
@@ -613,16 +615,16 @@ def test_paidCancellationWithinHours_needsTheHours_andOtherAnswersDropThem(
         paidOrderCancellation='withinHours', paidOrderCancellationHours=24)
     # The hours change alone; the edges are accepted.
     for hours in (1, 168):
-        api.updateMyStorePolicy(ADMIN, paidOrderCancellationHours=hours)
+        tools.updateMyStorePolicy(ADMIN, paidOrderCancellationHours=hours)
         assert _policyDoc(storeId)['paidOrderCancellationHours'] == hours
 
     # Another answer, or none, drops the hours.
-    res = api.updateMyStorePolicy(ADMIN,
+    res = tools.updateMyStorePolicy(ADMIN,
                                   paidOrderCancellation='beforeHandover')
     assert res['paidOrderCancellationHours'] is None
-    api.updateMyStorePolicy(ADMIN, paidOrderCancellation='withinHours',
+    tools.updateMyStorePolicy(ADMIN, paidOrderCancellation='withinHours',
                             paidOrderCancellationHours=48)
-    api.updateMyStorePolicy(ADMIN, clear=['paidOrderCancellation'])
+    tools.updateMyStorePolicy(ADMIN, clear=['paidOrderCancellation'])
     assert _answers(_policyDoc(storeId)) == NONE_ANSWERS
 
 
@@ -664,7 +666,7 @@ def test_updateMyStorePolicy_refusesBadValues_withoutQuotingThem(clean):
         ('deliveryAreas', 5),
     ]
     for field, value in bad:
-        message = _refusal(api.updateMyStorePolicy, ADMIN, **{field: value})
+        message = _refusal(tools.updateMyStorePolicy, ADMIN, **{field: value})
         assert field in message, (field, value, message)
         assert sentinel not in message
         for echo in ('123456789', str(PRODUCT_PRICE_MAX + 1)):
@@ -680,7 +682,7 @@ def test_updateMyStorePolicy_refusesBadValues_withoutQuotingThem(clean):
     _unchanged(storeId, before)
 
     # The edges themselves are accepted.
-    api.updateMyStorePolicy(ADMIN,
+    tools.updateMyStorePolicy(ADMIN,
                             returnWindowDays=1,
                             defectReportDays=365,
                             handoverDays=365)
@@ -699,12 +701,12 @@ def test_updateMyStorePolicy_acceptsTextsAtTheirLimit(clean):
         'additionalTerms': 'd' * POLICY_TERMS_MAX_LENGTH,
     }
 
-    api.updateMyStorePolicy(ADMIN, **texts)
+    tools.updateMyStorePolicy(ADMIN, **texts)
 
     assert _answers(_policyDoc(store['_id'])) == _expected(**texts)
     for field, text in texts.items():
         before = _policyDoc(store['_id'])
-        message = _refusal(api.updateMyStorePolicy, ADMIN,
+        message = _refusal(tools.updateMyStorePolicy, ADMIN,
                            **{field: text + 'e'})
         assert str(len(text)) in message and field not in text
         _unchanged(store['_id'], before)
@@ -725,7 +727,7 @@ def test_updateMyStorePolicy_writesOneGuardedUpdate_afterEnsurePolicy(
 
     monkeypatch.setattr(db, 'findOneAndUpdate', spy)
 
-    api.updateMyStorePolicy(ADMIN, handoverDays=3)
+    tools.updateMyStorePolicy(ADMIN, handoverDays=3)
 
     [ensure, write] = calls
     assert ensure == ({'storeId': storeId}, True)
@@ -757,7 +759,7 @@ def test_updateMyStorePolicy_aLostVersionRace_isRefusedAndWritesNothing(
 
     monkeypatch.setattr(db, 'read', racing)
 
-    assert _refusal(api.updateMyStorePolicy, ADMIN,
+    assert _refusal(tools.updateMyStorePolicy, ADMIN,
                     handoverDays=3) == POLICY_CHANGED == (
                         'The policy just changed, try again')
     monkeypatch.undo()
@@ -770,7 +772,7 @@ def test_updateMyStorePolicy_aLostVersionRace_isRefusedAndWritesNothing(
     assert after['updatedAt'] == start['updatedAt']
 
     # Trying again works.
-    api.updateMyStorePolicy(ADMIN, handoverDays=3)
+    tools.updateMyStorePolicy(ADMIN, handoverDays=3)
     assert _answers(_policyDoc(storeId)) == _expected(
         acceptsReturns=True, returnWindowDays=7, handoverDays=3)
 
@@ -783,7 +785,7 @@ def test_updateMyStorePolicy_aLostVersionRace_isRefusedAndWritesNothing(
         return realRead2(query, collectionName, *args, **kwargs)
 
     monkeypatch.setattr(db, 'read', vanishing)
-    assert _refusal(api.updateMyStorePolicy, ADMIN,
+    assert _refusal(tools.updateMyStorePolicy, ADMIN,
                     handoverDays=4) == POLICY_CHANGED
     monkeypatch.undo()
     assert _policyDoc(storeId)['handoverDays'] == 3
@@ -797,20 +799,20 @@ def test_policyOfAStoreWithNoPolicyDocument(clean):
 
     # Reading sends all-null answers stamped with the store's creation, and
     # writes nothing.
-    empty = api.getMyStorePolicy(ADMIN)
+    empty = tools.getMyStorePolicy(ADMIN)
     assertExactShape(StorePolicyResponse, empty)
     assert {f: empty[f] for f in POLICY_ANSWER_FIELDS} == NONE_ANSWERS
     assert _naive(empty['updatedAt']) == _naive(created)
     assert _policyDoc(storeId) is None
 
     # An empty update and a refused answer create no document.
-    assert _refusal(api.updateMyStorePolicy, ADMIN) == NOTHING_SENT
-    assert _refusal(api.updateMyStorePolicy, ADMIN,
+    assert _refusal(tools.updateMyStorePolicy, ADMIN) == NOTHING_SENT
+    assert _refusal(tools.updateMyStorePolicy, ADMIN,
                     returnWindowDays=0).startswith('returnWindowDays')
     assert _policyDoc(storeId) is None
 
     # A real update creates exactly one, from the store's creation.
-    api.updateMyStorePolicy(ADMIN, handoverDays=1)
+    tools.updateMyStorePolicy(ADMIN, handoverDays=1)
     assert db.read({}, 'Policies', countOnly=True) == 1
     policy = _policyDoc(storeId)
     assert _naive(policy['createdAt']) == _naive(created)
@@ -826,15 +828,15 @@ def test_readingPolicies_asAdminAndCustomer(clean, firebase):
     other = _setUpStore(OTHER_ADMIN)
     # The same second name gives another slug, not a clash.
     customerId = guestAt(firebase, store, GUEST)
-    api.updateMyStorePolicy(ADMIN,
+    tools.updateMyStorePolicy(ADMIN,
                             acceptsReturns=True,
                             returnWindowDays=7,
                             deliveryOptions=['pickup'],
                             authorizedPaymentMethods=[CASH])
-    api.updateMyStorePolicy(OTHER_ADMIN, acceptsReturns=False)
+    tools.updateMyStorePolicy(OTHER_ADMIN, acceptsReturns=False)
 
-    mine = api.getMyStorePolicy(ADMIN)
-    theirs = api.getStorePolicy(customerId, store['_id'])
+    mine = tools.getMyStorePolicy(ADMIN)
+    theirs = tools.getStorePolicy(customerId, store['_id'])
 
     assertExactShape(StorePolicyResponse, mine)
     assertExactShape(StorePolicyResponse, theirs)
@@ -846,18 +848,18 @@ def test_readingPolicies_asAdminAndCustomer(clean, firebase):
                                        deliveryOptions=['pickup'],
                                        authorizedPaymentMethods=[CASH])
     # The other store's admin has their own policy, untouched by ours.
-    assert api.getMyStorePolicy(OTHER_ADMIN)['acceptsReturns'] is False
+    assert tools.getMyStorePolicy(OTHER_ADMIN)['acceptsReturns'] is False
     assert _answers(_policyDoc(other['_id'])) == _expected(
         acceptsReturns=False)
 
     # Roles: a customer on an admin route, an admin on a customer route.
     with pytest.raises(PermissionError, match='Only a store admin'):
-        api.getMyStorePolicy(customerId)
+        tools.getMyStorePolicy(customerId)
     with pytest.raises(PermissionError, match='Only a store admin'):
-        api.updateMyStorePolicy(customerId, acceptsReturns=True)
+        tools.updateMyStorePolicy(customerId, acceptsReturns=True)
     with pytest.raises(PermissionError, match='Only a customer'):
-        api.getStorePolicy(ADMIN, store['_id'])
-    assert _refusal(api.getStorePolicy, customerId,
+        tools.getStorePolicy(ADMIN, store['_id'])
+    assert _refusal(tools.getStorePolicy, customerId,
                     {'$ne': None}) == STORE_ID_NOT_TEXT
     assert _answers(_policyDoc(store['_id'])) == _answers(mine)
 
@@ -887,7 +889,7 @@ def test_e2e_theAdminSetsThePolicy_theCustomerReadsIt(clean, firebase):
         db.read({'ownerUserId': OTHER_ADMIN}, 'Stores',
                 findOne=True)['_id'])) == NONE_ANSWERS
     mine = callTool(_auth(ADMIN), 'getMyStorePolicy', {}, audience='admin')
-    direct = api.getMyStorePolicy(ADMIN)
+    direct = tools.getMyStorePolicy(ADMIN)
     assert _answers(mine.structured_content) == _answers(direct)
     assert mine.structured_content['updatedAt'].startswith(
         direct['updatedAt'].strftime('%Y-%m-%dT%H:%M:%S'))
@@ -1012,7 +1014,7 @@ def test_signUp_aThirdUidNeverGetsTheClaim(monkeypatch, firebase,
 def test_policyAnswerFields_areDeclaredOnceEverywhere():
     answers = set(POLICY_ANSWER_FIELDS)
     params = set(
-        inspect.signature(PolicyActions.updateMyStorePolicy).parameters
+        inspect.signature(PolicyTools.updateMyStorePolicy).parameters
     ) - {'self', 'userId', 'clear'}
 
     assert set(typing.get_args(PolicyField)) == answers
@@ -1134,16 +1136,16 @@ def test_signUp_partialFailure_withoutRollback_isMadeUpByCreateUserStore(
     retry = _signIn(firebase)
     assert retry['_id'] == TOKEN_UID
     assert db.read({}, 'Users', countOnly=True) == 1
-    assert api.getUserStore(TOKEN_UID) == {'store': None}
-    assert _refusal(api.getMyStorePolicy, TOKEN_UID) == NO_STORE_YET
+    assert tools.getUserStore(TOKEN_UID) == {'store': None}
+    assert _refusal(tools.getMyStorePolicy, TOKEN_UID) == NO_STORE_YET
 
     # createUserStore makes up for what the sign-up did not write.
-    created = api.createUserStore(TOKEN_UID, 'Bakery A', **STORE_DETAILS)
+    created = tools.createUserStore(TOKEN_UID, 'Bakery A', **STORE_DETAILS)
     assert db.read({'ownerUserId': TOKEN_UID}, 'Stores',
                    countOnly=True) == 1
     assert db.read({}, 'Policies', countOnly=True) == 1
     assert _answers(_policyDoc(created['_id'])) == NONE_ANSWERS
-    assert _answers(api.getMyStorePolicy(TOKEN_UID)) == NONE_ANSWERS
+    assert _answers(tools.getMyStorePolicy(TOKEN_UID)) == NONE_ANSWERS
 
 
 # --------------------------- payment methods --------------------------- #
@@ -1152,7 +1154,7 @@ def test_signUp_partialFailure_withoutRollback_isMadeUpByCreateUserStore(
 def test_authorizedPaymentMethods_keepsEachMethodsDetails_stripped(clean):
     store = _setUpStore()
 
-    saved = api.updateMyStorePolicy(ADMIN, authorizedPaymentMethods=[
+    saved = tools.updateMyStorePolicy(ADMIN, authorizedPaymentMethods=[
         {'method': 'eWallet', 'provider': 'demo', 'eWallets': [
             {'ewalletName': ' GCash ', 'accountNumber': ' 09171234567 '},
             {'ewalletName': 'Maya', 'accountNumber': '09181234567'}]},
@@ -1215,7 +1217,7 @@ def test_authorizedPaymentMethods_refusesAMethod_byItsPosition_withoutQuotingIt(
     store = _setUpStore()
     before = _policyDoc(store['_id'])
 
-    refused = _refusal(api.updateMyStorePolicy, ADMIN,
+    refused = _refusal(tools.updateMyStorePolicy, ADMIN,
                        authorizedPaymentMethods=methods)
 
     assert refused == message
@@ -1225,14 +1227,14 @@ def test_authorizedPaymentMethods_refusesAMethod_byItsPosition_withoutQuotingIt(
 
 def test_aSave_dropsTheRetiredAcceptedPaymentMethods(clean):
     store = _setUpStore()
-    api.updateMyStorePolicy(ADMIN, acceptsReturns=True, returnWindowDays=7)
+    tools.updateMyStorePolicy(ADMIN, acceptsReturns=True, returnWindowDays=7)
     db.db['Policies'].update_one({'storeId': store['_id']}, {
         '$set': {'acceptedPaymentMethods': ['gcash', 'card']}})
 
     # Read past while it is stored: the store has not said under the new
     # answer, so its checkout takes no order until the admin answers.
-    assert api.getMyStorePolicy(ADMIN)['authorizedPaymentMethods'] is None
-    api.updateMyStorePolicy(ADMIN, authorizedPaymentMethods=[CASH])
+    assert tools.getMyStorePolicy(ADMIN)['authorizedPaymentMethods'] is None
+    tools.updateMyStorePolicy(ADMIN, authorizedPaymentMethods=[CASH])
 
     stored = _policyDoc(store['_id'])
     assert 'acceptedPaymentMethods' not in stored
@@ -1260,3 +1262,25 @@ def test_e2e_theAdminSetsThePaymentMethods_overMcp(clean):
         audience='admin')
     assert refused.is_error
     assert 'ZZSENTINEL' not in _text(refused)
+
+
+# ----------------------- the getMyStorePolicy route ----------------------- #
+
+
+def test_getMyStorePolicyRoute_sendsWhatTheToolSends(clean):
+    """The route (the admin workspace) and the tool (the AI) share one
+    action and one model: the workspace reads every answer."""
+    _setUpStore()
+    tools.updateMyStorePolicy(ADMIN, acceptsReturns=True, returnWindowDays=7)
+
+    screen = api.getMyStorePolicy(ADMIN)
+
+    assertExactShape(StorePolicyResponse, screen)
+    assert screen == tools.getMyStorePolicy(ADMIN)
+    assert (screen['acceptsReturns'], screen['returnWindowDays']) == (True, 7)
+
+
+def test_getMyStorePolicyRoute_refusesAnAdminWithoutAStore(clean):
+    createTestUser(ADMIN)
+
+    assert _refusal(api.getMyStorePolicy, ADMIN) == NO_STORE_YET

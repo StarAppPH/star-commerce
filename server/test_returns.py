@@ -18,6 +18,7 @@ from actions.ReturnActions import (ALREADY_IN_RETURN, HANDOVER_UNKNOWN,
 from actions.OrderActions import ORDER_NOT_FOUND
 from actions.StoreActions import NO_STORE_YET
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import (addOrder, addProduct, assertExactShape, createTestStore,
                       createTestUser, verifiedGuestAt, wipeCollections)
 from mongoDb import db
@@ -32,6 +33,7 @@ from test_checkout import (ADMIN, COLLECTIONS, NOT_CUSTOMER, OTHER_ADMIN,
 from test_fulfillment import NOT_ADMIN, _orderIn, refunds
 
 api = ApiRequests()
+tools = ToolRequests()
 
 
 @pytest.fixture
@@ -45,20 +47,20 @@ def test_everyReturnRoute_runsTheWholeFlow(clean, firebase, clock):
     store, customerId, products = _shop(firebase)
     pandesal = products['Pandesal']
     orderId = _orderIn('completed', store, customerId, [(pandesal, 3)])
-    api.updateMyStorePolicy(ADMIN, defectReportDays=7)
+    tools.updateMyStorePolicy(ADMIN, defectReportDays=7)
 
-    requested = api.requestReturn(customerId, store['_id'], orderId,
+    requested = tools.requestReturn(customerId, store['_id'], orderId,
                                   [{'item': 1, 'quantity': 1}], 'defective')
     assertExactShape(MyReturnRow, requested)
     assert (requested['status'], requested['refundAmount']) == (
         'requested', pandesal['price'])
     assertExactShape(MyReturnListResponse,
-                     api.getMyReturns(customerId, store['_id']))
-    assertExactShape(StoreReturnListResponse, api.getStoreReturns(ADMIN))
+                     tools.getMyReturns(customerId, store['_id']))
+    assertExactShape(StoreReturnListResponse, tools.getStoreReturns(ADMIN))
 
-    approved = api.approveReturn(ADMIN, requested['_id'])
+    approved = tools.approveReturn(ADMIN, requested['_id'])
     assert approved['status'] == 'approved'
-    received = api.receiveReturn(ADMIN, requested['_id'], True)
+    received = tools.receiveReturn(ADMIN, requested['_id'], True)
     assertExactShape(StoreReturnRow, received)
     assert (received['status'], received['restocked']) == ('received', True)
     assert received['refundedAt'] == T0
@@ -66,13 +68,13 @@ def test_everyReturnRoute_runsTheWholeFlow(clean, firebase, clock):
     assert stored['inventory'] == pandesal['inventory'] + 1
     assert stored['_version'] == pandesal['_version'] + 1
 
-    second = api.requestReturn(customerId, store['_id'], orderId,
+    second = tools.requestReturn(customerId, store['_id'], orderId,
                                [{'item': 1, 'quantity': 1}], 'wrongItem')
-    assert api.rejectReturn(ADMIN, second['_id'],
+    assert tools.rejectReturn(ADMIN, second['_id'],
                             'Not what we sold')['status'] == 'rejected'
-    third = api.requestReturn(customerId, store['_id'], orderId,
+    third = tools.requestReturn(customerId, store['_id'], orderId,
                               [{'item': 1, 'quantity': 2}], 'defective')
-    assert api.cancelMyReturn(customerId, store['_id'],
+    assert tools.cancelMyReturn(customerId, store['_id'],
                               third['_id'])['status'] == 'cancelled'
 
 
@@ -83,9 +85,9 @@ def _product(productId: str) -> dict:
 def _approved(store: dict, customerId: str, orderId: str,
               items: list[dict]) -> str:
     """A return of `items` of the order, requested and approved."""
-    requested = api.requestReturn(customerId, store['_id'], orderId, items,
+    requested = tools.requestReturn(customerId, store['_id'], orderId, items,
                                   'defective')
-    api.approveReturn(ADMIN, requested['_id'])
+    tools.approveReturn(ADMIN, requested['_id'])
     return requested['_id']
 
 
@@ -94,17 +96,17 @@ def test_requestReturn_namesALeftoverRefusalByTheOrdersItemPosition(
     store, customerId, products = _shop(firebase)
     lines = [(product, 1) for product in list(products.values())[:2]]
     orderId = _orderIn('completed', store, customerId, lines)
-    api.updateMyStorePolicy(ADMIN, defectReportDays=7)
-    api.requestReturn(customerId, store['_id'], orderId,
+    tools.updateMyStorePolicy(ADMIN, defectReportDays=7)
+    tools.requestReturn(customerId, store['_id'], orderId,
                       [{'item': 2, 'quantity': 1}], 'defective')
 
     with pytest.raises(ValueError,
                        match=exactly('Order item 2: only 0 left to return')):
-        api.requestReturn(customerId, store['_id'], orderId,
+        tools.requestReturn(customerId, store['_id'], orderId,
                           [{'item': 1, 'quantity': 1},
                            {'item': 2, 'quantity': 1}], 'defective')
     with pytest.raises(ValueError, match=r'^Return item 2: '):
-        api.requestReturn(customerId, store['_id'], orderId,
+        tools.requestReturn(customerId, store['_id'], orderId,
                           [{'item': 1, 'quantity': 1},
                            {'item': 1, 'quantity': 1}], 'defective')
 
@@ -117,9 +119,9 @@ def test_requestReturn_capsTheRefundAtWhatTheOrderLeft(clean, firebase,
     pandesal = products['Pandesal']
     orderId = _orderIn('completed', store, customerId,
                        [({**pandesal, 'price': 0.336}, 3)])
-    api.updateMyStorePolicy(ADMIN, defectReportDays=7)
+    tools.updateMyStorePolicy(ADMIN, defectReportDays=7)
 
-    amounts = [api.requestReturn(customerId, store['_id'], orderId,
+    amounts = [tools.requestReturn(customerId, store['_id'], orderId,
                                  [{'item': 1, 'quantity': 1}],
                                  'defective')['refundAmount']
                for _ in range(3)]
@@ -136,10 +138,10 @@ def test_requestReturn_anOrderWithNoHandoverTime_isRefused(clean, firebase,
                        'price': pandesal['price'], 'quantity': 1}],
                      'completed', T0 - WINDOW, paymentMethod='card',
                      paymentReference='DEMO-seed', paidAt=T0 - WINDOW)
-    api.updateMyStorePolicy(ADMIN, defectReportDays=7)
+    tools.updateMyStorePolicy(ADMIN, defectReportDays=7)
 
     with pytest.raises(ValueError, match=exactly(HANDOVER_UNKNOWN)):
-        api.requestReturn(customerId, store['_id'], order['_id'],
+        tools.requestReturn(customerId, store['_id'], order['_id'],
                           [{'item': 1, 'quantity': 1}], 'defective')
 
 
@@ -149,7 +151,7 @@ def test_receiveReturn_pastTheStockLimit_isRefusedByOrderPosition(
     first, second = list(products.values())[:2]
     orderId = _orderIn('completed', store, customerId,
                        [(first, 1), (second, 1)])
-    api.updateMyStorePolicy(ADMIN, defectReportDays=7)
+    tools.updateMyStorePolicy(ADMIN, defectReportDays=7)
     returnId = _approved(store, customerId, orderId,
                          [{'item': 2, 'quantity': 1}])
     # Reserved units count against the limit too.
@@ -163,12 +165,12 @@ def test_receiveReturn_pastTheStockLimit_isRefusedByOrderPosition(
     with pytest.raises(ValueError,
                        match=exactly(atItem(2, PAST_STOCK_LIMIT).replace(
                            'Item', 'Order item', 1))):
-        api.receiveReturn(ADMIN, returnId, True)
+        tools.receiveReturn(ADMIN, returnId, True)
 
     assert _product(second['_id']) == before
     assert refunds.calls == []
     # Refused before the flip: it can be received without restocking.
-    received = api.receiveReturn(ADMIN, returnId, False)
+    received = tools.receiveReturn(ADMIN, returnId, False)
     assert (received['restocked'], received['refundedAt']) == (False, T0)
 
 
@@ -178,13 +180,13 @@ def test_receiveReturn_aDeletedProduct_recordsItNotRestocked(
     first, second = list(products.values())[:2]
     orderId = _orderIn('completed', store, customerId,
                        [(first, 1), (second, 1)])
-    api.updateMyStorePolicy(ADMIN, defectReportDays=7)
+    tools.updateMyStorePolicy(ADMIN, defectReportDays=7)
     returnId = _approved(store, customerId, orderId,
                          [{'item': 1, 'quantity': 1},
                           {'item': 2, 'quantity': 1}])
     db.delete({'_id': second['_id']}, 'Products')
 
-    received = api.receiveReturn(ADMIN, returnId, True)
+    received = tools.receiveReturn(ADMIN, returnId, True)
 
     assertExactShape(StoreReturnRow, received)
     assert (received['status'], received['restocked']) == ('received', False)
@@ -201,7 +203,7 @@ def test_receiveReturn_aProductChangedAtTheSameMoment_isNotRestocked(
     first, second = list(products.values())[:2]
     orderId = _orderIn('completed', store, customerId,
                        [(first, 1), (second, 1)])
-    api.updateMyStorePolicy(ADMIN, defectReportDays=7)
+    tools.updateMyStorePolicy(ADMIN, defectReportDays=7)
     returnId = _approved(store, customerId, orderId,
                          [{'item': 1, 'quantity': 1},
                           {'item': 2, 'quantity': 1}])
@@ -216,7 +218,7 @@ def test_receiveReturn_aProductChangedAtTheSameMoment_isNotRestocked(
 
     monkeypatch.setattr(returnActions, '_restockable', thenFilled)
 
-    received = api.receiveReturn(ADMIN, returnId, True)
+    received = tools.receiveReturn(ADMIN, returnId, True)
 
     assertExactShape(StoreReturnRow, received)
     assert (received['status'], received['restocked']) == ('received', False)
@@ -263,7 +265,7 @@ def _case(label):
 def _shopWithPolicy(firebase):
     """_shop, its store reporting defects for 7 days."""
     store, customerId, products = _shop(firebase)
-    api.updateMyStorePolicy(ADMIN, defectReportDays=7)
+    tools.updateMyStorePolicy(ADMIN, defectReportDays=7)
     return store, customerId, products
 
 
@@ -275,7 +277,7 @@ def _completed(store: dict, customerId: str, products: dict, quantity: int = 3,
 
 def _ask(store: dict, customerId: str, orderId: str, items=ONE,
          reason: str = 'defective', note: str | None = None) -> dict:
-    return api.requestReturn(customerId, store['_id'], orderId, items, reason,
+    return tools.requestReturn(customerId, store['_id'], orderId, items, reason,
                              note)
 
 
@@ -293,13 +295,13 @@ def _returnIn(status: str, store: dict, customerId: str,
     returnId = _ask(store, customerId,
                     _completed(store, customerId, products))['_id']
     if status == 'cancelled':
-        api.cancelMyReturn(customerId, store['_id'], returnId)
+        tools.cancelMyReturn(customerId, store['_id'], returnId)
     elif status == 'rejected':
-        api.rejectReturn(ADMIN, returnId, 'Not what we sold')
+        tools.rejectReturn(ADMIN, returnId, 'Not what we sold')
     elif status in ('approved', 'received'):
-        api.approveReturn(ADMIN, returnId)
+        tools.approveReturn(ADMIN, returnId)
         if status == 'received':
-            api.receiveReturn(ADMIN, returnId, True)
+            tools.receiveReturn(ADMIN, returnId, True)
     return returnId
 
 
@@ -311,7 +313,7 @@ def _setPolicy(store: dict, answers: dict | None) -> None:
         # stored policy can still hold (older data): written directly.
         noWindow = 'returnWindowDays' in answers and (
             answers['returnWindowDays'] is None)
-        api.updateMyStorePolicy(ADMIN, **{
+        tools.updateMyStorePolicy(ADMIN, **{
             **answers, **({'returnWindowDays': 1} if noWindow else {})})
         if noWindow:
             db.db['Policies'].update_one({'storeId': store['_id']},
@@ -362,14 +364,14 @@ def test_happyPath_requestApproveReceive_hasExactEffects(
     assert _order(orderId) == {**seeded, '_version': seeded['_version'] + 1}
 
     clock.advance(hours=1)
-    approved = api.approveReturn(ADMIN, returnId)
+    approved = tools.approveReturn(ADMIN, returnId)
     assertExactShape(StoreReturnRow, approved)
     assert (approved['status'], approved['decidedAt']) == ('approved',
                                                            clock.at)
     assert _doc(returnId)['_version'] == 1
 
     clock.advance(hours=1)
-    received = api.receiveReturn(ADMIN, returnId, True)
+    received = tools.receiveReturn(ADMIN, returnId, True)
 
     assertExactShape(StoreReturnRow, received)
     assert received['contactNumber'] == '+639171234567'
@@ -406,24 +408,24 @@ def test_returnLists_showEachSideItsOwn_newestFirst(
     third = _ask(store, secondId,
                  _completed(store, secondId, products))['_id']
 
-    mine = api.getMyReturns(customerId, store['_id'])
+    mine = tools.getMyReturns(customerId, store['_id'])
     assertExactShape(MyReturnListResponse, mine)
     assert [r['_id'] for r in mine['returns']] == [second, first]
-    assert [r['_id'] for r in api.getMyReturns(secondId, store['_id'])[
+    assert [r['_id'] for r in tools.getMyReturns(secondId, store['_id'])[
         'returns']] == [third]
-    assert api.getMyReturns(customerId, other['_id']) == {'returns': []}
-    assert len(api.getMyReturns(customerId, store['_id'], 1)['returns']) == 1
-    everything = api.getStoreReturns(ADMIN)
+    assert tools.getMyReturns(customerId, other['_id']) == {'returns': []}
+    assert len(tools.getMyReturns(customerId, store['_id'], 1)['returns']) == 1
+    everything = tools.getStoreReturns(ADMIN)
     assertExactShape(StoreReturnListResponse, everything)
     assert [r['_id'] for r in everything['returns']] == [third, second, first]
-    api.approveReturn(ADMIN, first)
-    assert [r['_id'] for r in api.getStoreReturns(ADMIN, 'approved')[
+    tools.approveReturn(ADMIN, first)
+    assert [r['_id'] for r in tools.getStoreReturns(ADMIN, 'approved')[
         'returns']] == [first]
-    assert [r['_id'] for r in api.getStoreReturns(ADMIN, None, 1)[
+    assert [r['_id'] for r in tools.getStoreReturns(ADMIN, None, 1)[
         'returns']] == [third]
     with pytest.raises(ValueError):
-        api.getStoreReturns(ADMIN, 'bogus')
-    assert api.getStoreReturns(OTHER_ADMIN) == {'returns': []}
+        tools.getStoreReturns(ADMIN, 'bogus')
+    assert tools.getStoreReturns(OTHER_ADMIN) == {'returns': []}
 
 
 # ----------------------------- quantities ----------------------------- #
@@ -457,14 +459,14 @@ def test_requestReturn_rejectedAndCancelledReturns_freeQuantityAndRefundCap(
 
     whole = _ask(store, customerId, orderId, everyUnit)
     assert whole['refundAmount'] == 1.01
-    api.rejectReturn(ADMIN, whole['_id'], 'No')
+    tools.rejectReturn(ADMIN, whole['_id'], 'No')
     whole = _ask(store, customerId, orderId, everyUnit)
     assert whole['refundAmount'] == 1.01
-    api.cancelMyReturn(customerId, store['_id'], whole['_id'])
+    tools.cancelMyReturn(customerId, store['_id'], whole['_id'])
 
     first = _ask(store, customerId, orderId)
-    api.approveReturn(ADMIN, first['_id'])
-    api.receiveReturn(ADMIN, first['_id'], False)
+    tools.approveReturn(ADMIN, first['_id'])
+    tools.receiveReturn(ADMIN, first['_id'], False)
     second = _ask(store, customerId, orderId)
     third = _ask(store, customerId, orderId)
     assert [r['refundAmount'] for r in (first, second, third)] == [
@@ -473,10 +475,10 @@ def test_requestReturn_rejectedAndCancelledReturns_freeQuantityAndRefundCap(
                        match=exactly('Order item 1: only 0 left to return')):
         _ask(store, customerId, orderId)
 
-    api.cancelMyReturn(customerId, store['_id'], second['_id'])
+    tools.cancelMyReturn(customerId, store['_id'], second['_id'])
     again = _ask(store, customerId, orderId)
     assert again['refundAmount'] == 0.34
-    api.rejectReturn(ADMIN, again['_id'], 'No')
+    tools.rejectReturn(ADMIN, again['_id'], 'No')
     assert _ask(store, customerId, orderId)['refundAmount'] == 0.34
     assert _count(orderId) == 7
 
@@ -618,9 +620,9 @@ def test_returnRoutes_refuseTheWrongCallers(clean, firebase, clock, refunds):
     createTestUser('ck-nostore')
     returnId = _returnIn('approved', store, customerId, products)
     forAdmin = {
-        'approveReturn': lambda who, r: api.approveReturn(who, r),
-        'rejectReturn': lambda who, r: api.rejectReturn(who, r, 'No'),
-        'receiveReturn': lambda who, r: api.receiveReturn(who, r, True),
+        'approveReturn': lambda who, r: tools.approveReturn(who, r),
+        'rejectReturn': lambda who, r: tools.rejectReturn(who, r, 'No'),
+        'receiveReturn': lambda who, r: tools.receiveReturn(who, r, True),
     }
     before = _doc(returnId)
     stock = _products(store)
@@ -630,7 +632,7 @@ def test_returnRoutes_refuseTheWrongCallers(clean, firebase, clock, refunds):
         with _case(name):
             with pytest.raises(ValueError, match=exactly(RETURN_NOT_FOUND)):
                 call(OTHER_ADMIN, returnId)
-    assert api.getStoreReturns(OTHER_ADMIN) == {'returns': []}
+    assert tools.getStoreReturns(OTHER_ADMIN) == {'returns': []}
     # A customer or an unknown user is no admin; an admin with no store.
     for name, call in forAdmin.items():
         with _case(name):
@@ -642,15 +644,15 @@ def test_returnRoutes_refuseTheWrongCallers(clean, firebase, clock, refunds):
                 call('ck-nostore', returnId)
     for caller in (customerId, 'ck-nobody'):
         with pytest.raises(PermissionError, match=exactly(NOT_ADMIN)):
-            api.getStoreReturns(caller)
+            tools.getStoreReturns(caller)
     with pytest.raises(ValueError, match=exactly(NO_STORE_YET)):
-        api.getStoreReturns('ck-nostore')
+        tools.getStoreReturns('ck-nostore')
     # Hostile return ids, on every route that takes one.
     for hostile in ('', 123, {'$ne': None}, [SENTINEL], None, 'no-such'):
-        calls = [lambda: api.approveReturn(ADMIN, hostile),
-                 lambda: api.rejectReturn(ADMIN, hostile, 'No'),
-                 lambda: api.receiveReturn(ADMIN, hostile, True),
-                 lambda: api.cancelMyReturn(customerId, store['_id'],
+        calls = [lambda: tools.approveReturn(ADMIN, hostile),
+                 lambda: tools.rejectReturn(ADMIN, hostile, 'No'),
+                 lambda: tools.receiveReturn(ADMIN, hostile, True),
+                 lambda: tools.cancelMyReturn(customerId, store['_id'],
                                             hostile)]
         for call in calls:
             with _case(repr(hostile)):
@@ -663,12 +665,12 @@ def test_returnRoutes_refuseTheWrongCallers(clean, firebase, clock, refunds):
     for caller, atStore in ((secondId, store['_id']),
                             (customerId, other['_id'])):
         with pytest.raises(ValueError, match=exactly(RETURN_NOT_FOUND)):
-            api.cancelMyReturn(caller, atStore, requested)
+            tools.cancelMyReturn(caller, atStore, requested)
     for caller in (OTHER_ADMIN, ADMIN, 'ck-nobody'):
         with pytest.raises(PermissionError, match=exactly(NOT_CUSTOMER)):
-            api.cancelMyReturn(caller, store['_id'], requested)
+            tools.cancelMyReturn(caller, store['_id'], requested)
         with pytest.raises(PermissionError, match=exactly(NOT_CUSTOMER)):
-            api.getMyReturns(caller, store['_id'])
+            tools.getMyReturns(caller, store['_id'])
     with pytest.raises(PermissionError, match=exactly(NOT_CUSTOMER)):
         _ask(store, ADMIN, 'x')
 
@@ -770,9 +772,9 @@ def test_requestReturn_theEleventhRequestOnOneOrder_isRefused(
            for _ in range(RETURN_REQUESTS_PER_ORDER_MAX)]
     # Cancelled and rejected requests count toward the limit too.
     for returnId in ids[:3]:
-        api.cancelMyReturn(customerId, store['_id'], returnId)
+        tools.cancelMyReturn(customerId, store['_id'], returnId)
     for returnId in ids[3:6]:
-        api.rejectReturn(ADMIN, returnId, 'No')
+        tools.rejectReturn(ADMIN, returnId, 'No')
 
     with pytest.raises(ValueError, match=exactly(TOO_MANY_REQUESTS)):
         _ask(store, customerId, orderId)
@@ -800,18 +802,18 @@ def test_rejectReturn_andReceiveReturn_badInput_changeNothing(
         for returnId in (requested, approved):
             with _case((given, returnId)):
                 with pytest.raises(ValueError, match=exactly(refusal)):
-                    api.rejectReturn(ADMIN, returnId, given)
+                    tools.rejectReturn(ADMIN, returnId, given)
                 assert _doc(returnId) == seeded[returnId]
 
     stock = _products(store)
     for restock in (1, 0, 'true', None, [True]):
         with pytest.raises(ValueError, match=exactly(RESTOCK_NOT_BOOL)):
-            api.receiveReturn(ADMIN, approved, restock)
+            tools.receiveReturn(ADMIN, approved, restock)
         assert _doc(approved) == seeded[approved]
     assert _products(store) == stock
     assert refunds.calls == []
 
-    rejected = api.rejectReturn(ADMIN, requested, ' ' + 'x' * 300 + ' ')
+    rejected = tools.rejectReturn(ADMIN, requested, ' ' + 'x' * 300 + ' ')
     assert rejected['rejectReason'] == 'x' * 300
     assert _doc(requested)['rejectReason'] == 'x' * 300
 
@@ -825,13 +827,13 @@ def test_moves_setTheirTimestamps_andBumpTheVersion(
     approveId = _ask(store, customerId,
                      _completed(store, customerId, products))['_id']
     clock.advance(minutes=5)
-    approved = api.approveReturn(ADMIN, approveId)
+    approved = tools.approveReturn(ADMIN, approveId)
     assert (approved['status'], approved['decidedAt'],
             approved['rejectReason']) == ('approved', clock.at, None)
     rejectId = _ask(store, customerId,
                     _completed(store, customerId, products))['_id']
     clock.advance(minutes=5)
-    rejected = api.rejectReturn(ADMIN, rejectId, 'Not what we sold')
+    rejected = tools.rejectReturn(ADMIN, rejectId, 'Not what we sold')
     assertExactShape(StoreReturnRow, rejected)
     assert (rejected['status'], rejected['decidedAt'],
             rejected['rejectReason']) == ('rejected', clock.at,
@@ -839,7 +841,7 @@ def test_moves_setTheirTimestamps_andBumpTheVersion(
     cancelId = _ask(store, customerId,
                     _completed(store, customerId, products))['_id']
     clock.advance(minutes=5)
-    cancelled = api.cancelMyReturn(customerId, store['_id'], cancelId)
+    cancelled = tools.cancelMyReturn(customerId, store['_id'], cancelId)
     assertExactShape(MyReturnRow, cancelled)
     assert (cancelled['status'], cancelled['cancelledAt'],
             cancelled['decidedAt']) == ('cancelled', clock.at, None)
@@ -854,15 +856,15 @@ def test_moves_fromEveryWrongStatus_changeNothing(
     everyDecided = ['approved', 'rejected', 'received', 'cancelled']
     notApproved = ['requested', 'rejected', 'received', 'cancelled']
     moves = {
-        'approve': (lambda r: api.approveReturn(ADMIN, r), everyDecided,
+        'approve': (lambda r: tools.approveReturn(ADMIN, r), everyDecided,
                     NOT_MOVABLE),
-        'reject': (lambda r: api.rejectReturn(ADMIN, r, 'No'), everyDecided,
+        'reject': (lambda r: tools.rejectReturn(ADMIN, r, 'No'), everyDecided,
                    NOT_MOVABLE),
-        'receive': (lambda r: api.receiveReturn(ADMIN, r, True), notApproved,
+        'receive': (lambda r: tools.receiveReturn(ADMIN, r, True), notApproved,
                     NOT_MOVABLE),
-        'receive, no restock': (lambda r: api.receiveReturn(ADMIN, r, False),
+        'receive, no restock': (lambda r: tools.receiveReturn(ADMIN, r, False),
                                 notApproved, NOT_MOVABLE),
-        'cancel': (lambda r: api.cancelMyReturn(customerId, store['_id'], r),
+        'cancel': (lambda r: tools.cancelMyReturn(customerId, store['_id'], r),
                    everyDecided, NOT_CANCELLABLE),
     }
 
@@ -887,11 +889,11 @@ def test_receiveReturn_twice_refundsAndRestocksOnce(
     store, customerId, products = _shopWithPolicy(firebase)
     pandesal = products['Pandesal']
     returnId = _returnIn('approved', store, customerId, products)
-    api.receiveReturn(ADMIN, returnId, True)
+    tools.receiveReturn(ADMIN, returnId, True)
     received = _doc(returnId)
 
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE['received'])):
-        api.receiveReturn(ADMIN, returnId, True)
+        tools.receiveReturn(ADMIN, returnId, True)
 
     assert _doc(returnId) == received
     assert len(refunds.calls) == 1
@@ -904,7 +906,7 @@ def test_receiveReturn_withoutRestock_leavesStockButRefunds(
     pandesal = products['Pandesal']
     returnId = _returnIn('approved', store, customerId, products)
 
-    received = api.receiveReturn(ADMIN, returnId, False)
+    received = tools.receiveReturn(ADMIN, returnId, False)
 
     assertExactShape(StoreReturnRow, received)
     assert (received['status'], received['restocked'],
@@ -924,7 +926,7 @@ def test_receiveReturn_aRefundThatRaises_leavesItReceivedUnrefunded(
     refunds.error = RuntimeError('gateway down')
 
     with pytest.raises(RuntimeError, match='gateway down'):
-        api.receiveReturn(ADMIN, returnId, True)
+        tools.receiveReturn(ADMIN, returnId, True)
 
     stored = _doc(returnId)
     assert (stored['status'], stored['restocked'], stored['refundedAt'],
@@ -933,10 +935,10 @@ def test_receiveReturn_aRefundThatRaises_leavesItReceivedUnrefunded(
     assert len(refunds.calls) == 1
     refunds.error = None
     with pytest.raises(ValueError, match=exactly(NOT_MOVABLE['received'])):
-        api.receiveReturn(ADMIN, returnId, True)
+        tools.receiveReturn(ADMIN, returnId, True)
     assert _doc(returnId) == stored
     assert len(refunds.calls) == 1
-    assert api.getStoreReturns(ADMIN)['returns'][0]['refundedAt'] is None
+    assert tools.getStoreReturns(ADMIN)['returns'][0]['refundedAt'] is None
 
 
 def test_receiveReturn_restockPastTheLimit_changesNothingOfAnyItem(
@@ -948,7 +950,7 @@ def test_receiveReturn_restockPastTheLimit_changesNothingOfAnyItem(
     returnId = _ask(store, customerId, orderId,
                     [{'item': 2, 'quantity': 1}, {'item': 1, 'quantity': 1}]
                     )['_id']
-    api.approveReturn(ADMIN, returnId)
+    tools.approveReturn(ADMIN, returnId)
     db.db['Products'].update_one(
         {'_id': second['_id']}, {'$set': {'inventory': PRODUCT_INVENTORY_MAX}})
     stock, before = _products(store), _doc(returnId)
@@ -956,7 +958,7 @@ def test_receiveReturn_restockPastTheLimit_changesNothingOfAnyItem(
     with pytest.raises(ValueError,
                        match=exactly(atItem(2, PAST_STOCK_LIMIT).replace(
                            'Item', 'Order item', 1))):
-        api.receiveReturn(ADMIN, returnId, True)
+        tools.receiveReturn(ADMIN, returnId, True)
 
     assert _products(store) == stock
     assert _doc(returnId) == before
@@ -988,9 +990,9 @@ def _competeFirst(monkeypatch, method: str, competitor, applies=None):
 def test_returnMoves_losingARace_getTheWinnersStatusMessage(
         clean, firebase, clock, refunds, monkeypatch):
     store, customerId, products = _shopWithPolicy(firebase)
-    approve = lambda r: api.approveReturn(ADMIN, r)
-    reject = lambda r: api.rejectReturn(ADMIN, r, 'No')
-    cancel = lambda r: api.cancelMyReturn(customerId, store['_id'], r)
+    approve = lambda r: tools.approveReturn(ADMIN, r)
+    reject = lambda r: tools.rejectReturn(ADMIN, r, 'No')
+    cancel = lambda r: tools.cancelMyReturn(customerId, store['_id'], r)
     inReturns = lambda *args, **kwargs: args[2] == 'Returns'
 
     for winner, loser, expected, final in [
@@ -1014,10 +1016,10 @@ def test_returnMoves_losingARace_getTheWinnersStatusMessage(
     stocked = _product(pandesal['_id'])
     calls = len(refunds.calls)
     with _competeFirst(monkeypatch, 'createTransaction',
-                       lambda: api.receiveReturn(ADMIN, returnId, True)):
+                       lambda: tools.receiveReturn(ADMIN, returnId, True)):
         with pytest.raises(ValueError,
                            match=exactly(NOT_MOVABLE['received'])):
-            api.receiveReturn(ADMIN, returnId, True)
+            tools.receiveReturn(ADMIN, returnId, True)
     assert len(refunds.calls) == calls + 1
     assert _product(pandesal['_id'])['inventory'] == stocked['inventory'] + 1
     assert _doc(returnId)['status'] == 'received'
@@ -1040,8 +1042,8 @@ def test_returnMove_thatMissesWhileTheReturnIsStillRequested_saysItChanged(
     with monkeypatch.context() as patched:
         patched.setattr(db, 'findOneAndUpdate', missesOnce)
         with pytest.raises(ValueError, match=exactly(RETURN_CHANGED)):
-            api.approveReturn(ADMIN, returnId)
+            tools.approveReturn(ADMIN, returnId)
 
     assert missed
     assert _doc(returnId) == before
-    assert api.approveReturn(ADMIN, returnId)['status'] == 'approved'
+    assert tools.approveReturn(ADMIN, returnId)['status'] == 'approved'

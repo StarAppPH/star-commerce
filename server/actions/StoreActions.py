@@ -36,12 +36,12 @@ from objects import (DEFAULT_STORE_CURRENCY, DELIVERY_ZONE_AMOUNT_MAX,
                      STORE_NAME_MAX_LENGTH, STORE_OPENING_HOURS_MAX_LENGTH,
                      STORE_SLUG_MAX_LENGTH, STORE_OWNER_ONLY_FIELDS,
                      STORE_THEME_FIELDS, STORE_VOICE_FIELD,
-                     AddressSuggestionResponse, AdminStoreResponse,
-                     DeliveryZonesResponse, MyStoreResponse,
-                     NewDeliveryZone, Policy, Store,
+                     AddressSuggestionResponse, DeliveryZonesResponse,
+                     MyStoreResponse, MyStoreScreenResponse,
+                     NewDeliveryZone, NoContentResponse, Policy, Store,
                      StoreCurrency, StoreLocation, StoreResponse,
                      StoreThemeResponse, deliveryZoneProblem, hexColor,
-                     zoneCorners, zonesOverlap,
+                     zoneCorners, zonesOverlap, fieldModel,
                      projectedCopy,
                      projection_of)
 from route_config import route_config
@@ -225,11 +225,12 @@ def requireOwnerStore(userId: str, projection: dict) -> dict:
     return ownerStore(userId, projection)
 
 
-def myStoreResponse(userId: str) -> dict:
-    """What getUserStore sends the admin `userId`: their store once set up,
+def myStoreResponse(model, userId: str) -> dict:
+    """What getUserStore sends the admin `userId`, as `model` (a
+    MyStoreResponse or a MyStoreScreenResponse): their store once set up,
     else null."""
-    store = db.readResponse(AdminStoreResponse, setUpOwnerQuery(userId),
-                            STORES)
+    store = db.readResponse(fieldModel(model, 'store'),
+                            setUpOwnerQuery(userId), STORES)
     if store is not None:
         # A theme field or the voice is sent only once set
         # (AdminStoreResponse).
@@ -513,306 +514,213 @@ def _validDeliveryZones(zones) -> list[dict]:
     return valid
 
 
+def getUserStore(model, userId: str) -> dict:
+    """The admin's own store, as `model`; null until it is set up."""
+    requireAdmin(userId)
+    return myStoreResponse(model, userId)
+
+
+def updateMyStoreTheme(model,
+                       userId: str,
+                       photoStyle: str | None = None,
+                       primaryColor: str | None = None,
+                       secondaryColor: str | None = None,
+                       voiceId: str | None = None) -> dict:
+    requireAdmin(userId)
+    # The generated HTTP handler passes a missing body key as None, so
+    # None is "unchanged" and "" is how a field is cleared.
+    changes = {}
+    if photoStyle is not None:
+        changes['photoStyle'] = _validText(photoStyle, PHOTO_STYLE_LABEL,
+                                           PHOTO_STYLE_MAX_LENGTH,
+                                           required=False)
+    for field, value in (('primaryColor', primaryColor),
+                         ('secondaryColor', secondaryColor)):
+        if value is not None:
+            changes[field] = hexColor(value, field)
+    if voiceId is not None:
+        # ElevenLabs is asked first: the store's _version is read
+        # after it, so the lookup never widens the write's race.
+        changes[STORE_VOICE_FIELD] = _validVoiceId(voiceId)
+    if not changes:
+        raise ValueError(NO_THEME_SENT)
+    store = ownerStore(userId, {'_id': 1, '_version': 1})
+    updated = db.findOneAndUpdate(
+        {'_id': store['_id'], '_version': store['_version']},
+        {'$set': changes, '$inc': {'_version': 1}},
+        STORES,
+        upsert=False,
+        projection=projection_of(model))
+    if updated is None:
+        raise ValueError(STORE_CHANGED)
+    # A store from before the theme has none of its fields stored. The
+    # voice is not sent back (getUserStore sends it).
+    return projectedCopy(model, {field: updated.get(field)
+                                 for field in STORE_THEME_FIELDS})
+
+
+def createUserStore(model,
+                    userId: str,
+                    name: str,
+                    description: str,
+                    contactNumber: str,
+                    primaryColor: str,
+                    secondaryColor: str,
+                    currency: StoreCurrency = DEFAULT_STORE_CURRENCY,
+                    openingHours: str | None = None,
+                    address: str | None = None) -> dict:
+    # This fills in the empty store sign-up created, or creates the
+    # store of an admin who has none (one from before that). The unique
+    # index on ownerUserId is what enforces "one store per admin" for a
+    # create, the not-set-up guard of the fill for a fill: of two racing
+    # calls only one wins. The read first gives the usual case a clear
+    # message without a write.
+    requireAdmin(userId)
+    name = _validText(name, 'A store name', STORE_NAME_MAX_LENGTH)
+    description = _validText(description, 'A description',
+                             STORE_DESCRIPTION_MAX_LENGTH)
+    contactNumber = _validContactNumber(contactNumber)
+    # Left out, the store has no address yet: the chat suggests one
+    # from the map pin after the store is created. One that is sent
+    # must be a real address.
+    if address is not None:
+        address = _validText(address, 'An address',
+                             STORE_ADDRESS_MAX_LENGTH)
+    primaryColor = _requiredColor(primaryColor, 'primaryColor')
+    secondaryColor = _requiredColor(secondaryColor, 'secondaryColor')
+    openingHours = _validText(openingHours, 'The opening hours text',
+                              STORE_OPENING_HOURS_MAX_LENGTH,
+                              required=False)
+    # The generated HTTP handler passes a missing body key as None, so
+    # the default above applies to direct and MCP calls only.
+    if currency is None:
+        currency = DEFAULT_STORE_CURRENCY
+    if currency not in typing.get_args(StoreCurrency):
+        raise ValueError('That currency is not supported')
+    existing = db.read(ownerQuery(userId), STORES,
+                       projection={'_id': 1, 'slug': 1}, findOne=True)
+    if existing is not None and isinstance(existing.get('slug'), str):
+        raise ValueError(ALREADY_HAS_A_STORE)
+    baseSlug = storeSlug(name)
+    createdAt = datetime.datetime.now(tz=datetime.timezone.utc)
+    for attempt in range(SLUG_ATTEMPTS):
+        slug = baseSlug if attempt == 0 else (
+            f'{baseSlug}-{secrets.token_hex(SLUG_SUFFIX_BYTES)}')
+        # Built whole, so the details are checked as a store's; a fill
+        # writes only the details over the empty store.
+        store = Store(ownerUserId=userId,
+                      name=name,
+                      slug=slug,
+                      currency=currency,
+                      description=description,
+                      contactNumber=contactNumber,
+                      address=address,
+                      openingHours=openingHours,
+                      primaryColor=primaryColor,
+                      secondaryColor=secondaryColor,
+                      location=None,
+                      createdAt=createdAt,
+                      _version=0).model_dump(by_alias=True)
+        try:
+            if existing is None:
+                saved = db.create(store, STORES)
+            else:
+                saved = db.findOneAndUpdate(
+                    {'_id': existing['_id'],
+                     'slug': {'$not': SET_UP['slug']}},
+                    {'$set': {key: store[key] for key in STORE_DETAILS},
+                     '$inc': {'_version': 1}},
+                    STORES,
+                    upsert=False)
+        except DuplicateKeyError as error:
+            if _isOwnerCollision(error):
+                raise ValueError(ALREADY_HAS_A_STORE) from None
+            continue  # the link name is taken: try one with a suffix
+        if saved is None:
+            # A racing call set the store up first.
+            raise ValueError(ALREADY_HAS_A_STORE)
+        ensurePolicy(saved['_id'], saved['createdAt'])
+        return projectedCopy(model, saved)
+    raise ValueError(
+        'Could not pick a link name for this store, try another name')
+
+
+def updateMyStoreDetails(model,
+                         userId: str,
+                         name: str | None = None,
+                         description: str | None = None,
+                         contactNumber: str | None = None,
+                         address: str | None = None,
+                         openingHours: str | None = None) -> dict:
+    requireAdmin(userId)
+    # The generated HTTP handler passes a missing body key as None, so
+    # None is "unchanged".
+    changes = {}
+    if name is not None:
+        changes['name'] = _validText(name, 'A store name',
+                                     STORE_NAME_MAX_LENGTH)
+    if description is not None:
+        changes['description'] = _validText(
+            description, 'A description', STORE_DESCRIPTION_MAX_LENGTH)
+    if contactNumber is not None:
+        changes['contactNumber'] = _validContactNumber(contactNumber)
+    if address is not None:
+        changes['address'] = _validText(address, 'An address',
+                                        STORE_ADDRESS_MAX_LENGTH)
+    if openingHours is not None:
+        changes['openingHours'] = _validText(
+            openingHours, 'The opening hours text',
+            STORE_OPENING_HOURS_MAX_LENGTH, required=False)
+    if not changes:
+        raise ValueError(NO_DETAILS_SENT)
+    store = ownerStore(userId, {'_id': 1, '_version': 1})
+    updated = db.findOneAndUpdate(
+        {'_id': store['_id'], '_version': store['_version']},
+        {'$set': changes, '$inc': {'_version': 1}},
+        STORES,
+        upsert=False)
+    if updated is None:
+        raise ValueError(STORE_CHANGED)
+    return projectedCopy(model, updated)
+
+
+def suggestStoreAddress(model, userId: str) -> dict:
+    requireAdmin(userId)
+    store = ownerStore(userId, {'address': 1, 'location': 1})
+    location = store.get('location')
+    if not isinstance(location, dict):
+        raise ValueError(NO_PIN_YET)
+    return projectedCopy(model, {
+        'suggestedAddress': geocoding.reverseGeocode(
+            location['latitude'], location['longitude']),
+        'address': store.get('address')})
+
+
+def setUserStoreLocation(model, userId: str, latitude: float,
+                         longitude: float) -> dict:
+    requireAdmin(userId)
+    location = StoreLocation(
+        latitude=_validCoordinate(latitude, 'The latitude',
+                                  LATITUDE_LIMIT),
+        longitude=_validCoordinate(longitude, 'The longitude',
+                                   LONGITUDE_LIMIT))
+    store = ownerStore(userId, {'_id': 1, '_version': 1})
+    updated = db.update(
+        {'_id': store['_id'], '_version': store['_version']},
+        {'location': location.model_dump()}, STORES)
+    return projectedCopy(model, updated)
+
+
 class StoreActions():
 
-    @mcp_tool('admin',
-              thinkingText=['Reading your business',
-                            'Accessing your business',
-                            'Getting your business'])
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Store fetched',
-                  responseModel=MyStoreResponse)
+                  responseModel=MyStoreScreenResponse)
     def getUserStore(self, userId: str) -> dict:
-        """Get the admin's store. Returns the store, or null when the admin
-        has not created one yet: then collect the store's details from the
-        admin and call createUserStore."""
-        requireAdmin(userId)
-        return myStoreResponse(userId)
-
-    @mcp_tool('admin',
-              thinkingText=["Saving your store's look",
-                            'Updating your theme',
-                            'Styling your store'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Store theme saved',
-                  responseModel=StoreThemeResponse)
-    def updateMyStoreTheme(self,
-                           userId: str,
-                           photoStyle: str | None = None,
-                           primaryColor: str | None = None,
-                           secondaryColor: str | None = None,
-                           voiceId: str | None = None) -> dict:
-        """Set the look of the store's product photos (generateProductPhotos
-        needs a photo style first). Ask the owner, in their own words, for
-        the photo style: the background, lighting and mood they want (up
-        to 300 characters, e.g. "white marble counter, soft morning light,
-        calm and airy"), and for the store's two brand colors as hex codes
-        like #1A73E8 (primaryColor and secondaryColor; the shop and the
-        admin's screens are drawn in them, and the photos use them only as
-        accents in the background and props). voiceId is the voice
-        the store's assistant speaks its replies with: only a voiceId
-        listVoices returned, for the voice the owner chose ("" goes back to
-        the default voice; getUserStore shows the voice saved). Never invent a style or a voice: use only
-        what the owner said. If the owner asks you to pick the colors,
-        suggest two that suit the store; if they want them from a logo or
-        image they attached, read them with findColorsInPhoto first. Confirm
-        every value with the owner before calling, unless they picked the
-        colors on its color card. Send only the fields the owner wants changed: a field left
-        out keeps its value, and an empty one ("") clears it. If this tool
-        refuses, relay its message to the owner and ask again."""
-        requireAdmin(userId)
-        # The generated HTTP handler passes a missing body key as None, so
-        # None is "unchanged" and "" is how a field is cleared.
-        changes = {}
-        if photoStyle is not None:
-            changes['photoStyle'] = _validText(photoStyle, PHOTO_STYLE_LABEL,
-                                               PHOTO_STYLE_MAX_LENGTH,
-                                               required=False)
-        for field, value in (('primaryColor', primaryColor),
-                             ('secondaryColor', secondaryColor)):
-            if value is not None:
-                changes[field] = hexColor(value, field)
-        if voiceId is not None:
-            # ElevenLabs is asked first: the store's _version is read
-            # after it, so the lookup never widens the write's race.
-            changes[STORE_VOICE_FIELD] = _validVoiceId(voiceId)
-        if not changes:
-            raise ValueError(NO_THEME_SENT)
-        store = ownerStore(userId, {'_id': 1, '_version': 1})
-        updated = db.findOneAndUpdate(
-            {'_id': store['_id'], '_version': store['_version']},
-            {'$set': changes, '$inc': {'_version': 1}},
-            STORES,
-            upsert=False,
-            projection=projection_of(StoreThemeResponse))
-        if updated is None:
-            raise ValueError(STORE_CHANGED)
-        # A store from before the theme has none of its fields stored. The
-        # voice is not sent back (getUserStore sends it).
-        return {field: updated.get(field) for field in STORE_THEME_FIELDS}
-
-    @mcp_tool('admin',
-              thinkingText=['Creating your store',
-                            'Setting up your business',
-                            'Opening your store'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Store created',
-                  responseModel=StoreResponse)
-    def createUserStore(self,
-                        userId: str,
-                        name: str,
-                        description: str,
-                        contactNumber: str,
-                        primaryColor: str,
-                        secondaryColor: str,
-                        currency: StoreCurrency = DEFAULT_STORE_CURRENCY,
-                        openingHours: str | None = None,
-                        address: str | None = None) -> dict:
-        """Create the admin's store (an admin has one store). Before calling,
-        ask the admin for each detail, one question at a time: the store's
-        name, a short description of what it sells, its currency (default
-        PHP), its contact number, its two brand colors as hex codes like
-        #1A73E8 (primaryColor and secondaryColor: the shop and the admin's
-        screens are drawn in them) and, if the admin wants, its opening
-        hours. Do not ask for the address: the admin pins the store on the
-        map right after it is created, and the address is suggested from
-        the pin (pass address only when the admin already said it). Never
-        invent or guess a value: use only what the admin said, except the
-        colors: if the admin asks you to pick them, suggest two that suit
-        the store and use them once the admin agrees; if the admin wants
-        them from a logo or image they attached, read them with
-        findColorsInPhoto first. Give the contact
-        number in international format, e.g. +639171234567. Confirm all the
-        details with the admin before calling. Before calling, tell the
-        admin that the contact number and the address are shown to every
-        customer, anonymous visitors included. If this tool refuses a
-        detail, relay its message to the admin so they can correct that
-        detail, then call again."""
-        # This fills in the empty store sign-up created, or creates the
-        # store of an admin who has none (one from before that). The unique
-        # index on ownerUserId is what enforces "one store per admin" for a
-        # create, the not-set-up guard of the fill for a fill: of two racing
-        # calls only one wins. The read first gives the usual case a clear
-        # message without a write.
-        requireAdmin(userId)
-        name = _validText(name, 'A store name', STORE_NAME_MAX_LENGTH)
-        description = _validText(description, 'A description',
-                                 STORE_DESCRIPTION_MAX_LENGTH)
-        contactNumber = _validContactNumber(contactNumber)
-        # Left out, the store has no address yet: the chat suggests one
-        # from the map pin after the store is created. One that is sent
-        # must be a real address.
-        if address is not None:
-            address = _validText(address, 'An address',
-                                 STORE_ADDRESS_MAX_LENGTH)
-        primaryColor = _requiredColor(primaryColor, 'primaryColor')
-        secondaryColor = _requiredColor(secondaryColor, 'secondaryColor')
-        openingHours = _validText(openingHours, 'The opening hours text',
-                                  STORE_OPENING_HOURS_MAX_LENGTH,
-                                  required=False)
-        # The generated HTTP handler passes a missing body key as None, so
-        # the default above applies to direct and MCP calls only.
-        if currency is None:
-            currency = DEFAULT_STORE_CURRENCY
-        if currency not in typing.get_args(StoreCurrency):
-            raise ValueError('That currency is not supported')
-        existing = db.read(ownerQuery(userId), STORES,
-                           projection={'_id': 1, 'slug': 1}, findOne=True)
-        if existing is not None and isinstance(existing.get('slug'), str):
-            raise ValueError(ALREADY_HAS_A_STORE)
-        baseSlug = storeSlug(name)
-        createdAt = datetime.datetime.now(tz=datetime.timezone.utc)
-        for attempt in range(SLUG_ATTEMPTS):
-            slug = baseSlug if attempt == 0 else (
-                f'{baseSlug}-{secrets.token_hex(SLUG_SUFFIX_BYTES)}')
-            # Built whole, so the details are checked as a store's; a fill
-            # writes only the details over the empty store.
-            store = Store(ownerUserId=userId,
-                          name=name,
-                          slug=slug,
-                          currency=currency,
-                          description=description,
-                          contactNumber=contactNumber,
-                          address=address,
-                          openingHours=openingHours,
-                          primaryColor=primaryColor,
-                          secondaryColor=secondaryColor,
-                          location=None,
-                          createdAt=createdAt,
-                          _version=0).model_dump(by_alias=True)
-            try:
-                if existing is None:
-                    saved = db.create(store, STORES)
-                else:
-                    saved = db.findOneAndUpdate(
-                        {'_id': existing['_id'],
-                         'slug': {'$not': SET_UP['slug']}},
-                        {'$set': {key: store[key] for key in STORE_DETAILS},
-                         '$inc': {'_version': 1}},
-                        STORES,
-                        upsert=False)
-            except DuplicateKeyError as error:
-                if _isOwnerCollision(error):
-                    raise ValueError(ALREADY_HAS_A_STORE) from None
-                continue  # the link name is taken: try one with a suffix
-            if saved is None:
-                # A racing call set the store up first.
-                raise ValueError(ALREADY_HAS_A_STORE)
-            ensurePolicy(saved['_id'], saved['createdAt'])
-            return projectedCopy(StoreResponse, saved)
-        raise ValueError(
-            'Could not pick a link name for this store, try another name')
-
-    @mcp_tool('admin',
-              thinkingText=['Saving your store details',
-                            'Updating your business',
-                            'Writing down your details'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Store details saved',
-                  responseModel=StoreResponse)
-    def updateMyStoreDetails(self,
-                             userId: str,
-                             name: str | None = None,
-                             description: str | None = None,
-                             contactNumber: str | None = None,
-                             address: str | None = None,
-                             openingHours: str | None = None) -> dict:
-        """Change the details of the admin's store: its name, description,
-        contact number (international format, e.g. +639171234567), address
-        or opening hours. The store's link and currency never change. Send
-        only the fields the owner wants changed: a field left out keeps its
-        value, and an empty openingHours ("") clears the hours. Never invent
-        or guess a value: use only what the owner said (or an address
-        suggestStoreAddress gave and the owner accepted), and confirm the
-        change with the owner before calling. If this tool refuses a detail,
-        relay its message to the owner and ask again."""
-        requireAdmin(userId)
-        # The generated HTTP handler passes a missing body key as None, so
-        # None is "unchanged".
-        changes = {}
-        if name is not None:
-            changes['name'] = _validText(name, 'A store name',
-                                         STORE_NAME_MAX_LENGTH)
-        if description is not None:
-            changes['description'] = _validText(
-                description, 'A description', STORE_DESCRIPTION_MAX_LENGTH)
-        if contactNumber is not None:
-            changes['contactNumber'] = _validContactNumber(contactNumber)
-        if address is not None:
-            changes['address'] = _validText(address, 'An address',
-                                            STORE_ADDRESS_MAX_LENGTH)
-        if openingHours is not None:
-            changes['openingHours'] = _validText(
-                openingHours, 'The opening hours text',
-                STORE_OPENING_HOURS_MAX_LENGTH, required=False)
-        if not changes:
-            raise ValueError(NO_DETAILS_SENT)
-        store = ownerStore(userId, {'_id': 1, '_version': 1})
-        updated = db.findOneAndUpdate(
-            {'_id': store['_id'], '_version': store['_version']},
-            {'$set': changes, '$inc': {'_version': 1}},
-            STORES,
-            upsert=False)
-        if updated is None:
-            raise ValueError(STORE_CHANGED)
-        return projectedCopy(StoreResponse, updated)
-
-    @mcp_tool('admin',
-              thinkingText=['Finding your address',
-                            'Looking up the address',
-                            'Reading the map pin'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Address suggested',
-                  responseModel=AddressSuggestionResponse)
-    def suggestStoreAddress(self, userId: str) -> dict:
-        """The street address Google Maps gives for the store's map pin,
-        and the store's address now. Call it right after
-        setUserStoreLocation saved a pin. When suggestedAddress is not null
-        and differs from address, ask the owner whether to use it as the
-        store's address, and save it with updateMyStoreDetails only once
-        they say yes; never change the address on your own. When it is
-        null, say nothing about it, unless the store has no address yet
-        (address is null): then ask the owner to type it."""
-        requireAdmin(userId)
-        store = ownerStore(userId, {'address': 1, 'location': 1})
-        location = store.get('location')
-        if not isinstance(location, dict):
-            raise ValueError(NO_PIN_YET)
-        return {'suggestedAddress': geocoding.reverseGeocode(
-                    location['latitude'], location['longitude']),
-                'address': store.get('address')}
-
-    @mcp_tool('admin',
-              thinkingText=['Saving your store pin',
-                            'Pinning your store',
-                            'Marking your location'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Store location saved',
-                  responseModel=StoreResponse)
-    def setUserStoreLocation(self, userId: str, latitude: float,
-                             longitude: float) -> dict:
-        """Pin the admin's store on the map, or move its pin: the latitude
-        and longitude of the pin the owner sent from showStoreLocationForm,
-        never coordinates you guessed or the owner typed. A store that
-        delivers prices each delivery from this pin. Then call
-        suggestStoreAddress."""
-        requireAdmin(userId)
-        location = StoreLocation(
-            latitude=_validCoordinate(latitude, 'The latitude',
-                                      LATITUDE_LIMIT),
-            longitude=_validCoordinate(longitude, 'The longitude',
-                                       LONGITUDE_LIMIT))
-        store = ownerStore(userId, {'_id': 1, '_version': 1})
-        updated = db.update(
-            {'_id': store['_id'], '_version': store['_version']},
-            {'location': location.model_dump()}, STORES)
-        return projectedCopy(StoreResponse, updated)
+        """The admin's store for the admin workspace, or null before the
+        admin has created one (the workspace then shows store setup)."""
+        return getUserStore(MyStoreScreenResponse, userId)
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,
@@ -839,7 +747,7 @@ class StoreActions():
     @route_config(httpMethod='POST',
                   jwtRequired=True,
                   successMessage='Store reset',
-                  responseModel=MyStoreResponse)
+                  responseModel=NoContentResponse)
     def resetMyStore(self, userId: str, confirmName: str) -> dict:
         """Delete the admin's store and everything in it (products, orders
         and returns, customers' included, the policy, photos and chats),
@@ -896,4 +804,149 @@ class StoreActions():
                       'deleted': deleted,
                       'files': files,
                       'storageFailures': storageFailures})
-        return myStoreResponse(userId)
+        return {}
+
+
+class StoreTools():
+
+    @mcp_tool('admin',
+              thinkingText=['Reading your business',
+                            'Accessing your business',
+                            'Getting your business'],
+              responseModel=MyStoreResponse,
+              twinOf=StoreActions.getUserStore)
+    def getUserStore(self, userId: str) -> dict:
+        """Get the admin's store. Returns the store, or null when the admin
+        has not created one yet: then collect the store's details from the
+        admin and call createUserStore."""
+        return getUserStore(MyStoreResponse, userId)
+
+    @mcp_tool('admin',
+              thinkingText=["Saving your store's look",
+                            'Updating your theme',
+                            'Styling your store'],
+              responseModel=StoreThemeResponse,
+              twinOf=None)
+    def updateMyStoreTheme(self,
+                           userId: str,
+                           photoStyle: str | None = None,
+                           primaryColor: str | None = None,
+                           secondaryColor: str | None = None,
+                           voiceId: str | None = None) -> dict:
+        """Set the look of the store's product photos (generateProductPhotos
+        needs a photo style first). Ask the owner, in their own words, for
+        the photo style: the background, lighting and mood they want (up
+        to 300 characters, e.g. "white marble counter, soft morning light,
+        calm and airy"), and for the store's two brand colors as hex codes
+        like #1A73E8 (primaryColor and secondaryColor; the shop and the
+        admin's screens are drawn in them, and the photos use them only as
+        accents in the background and props). voiceId is the voice
+        the store's assistant speaks its replies with: only a voiceId
+        listVoices returned, for the voice the owner chose ("" goes back to
+        the default voice; getUserStore shows the voice saved). Never invent a style or a voice: use only
+        what the owner said. If the owner asks you to pick the colors,
+        suggest two that suit the store; if they want them from a logo or
+        image they attached, read them with findColorsInPhoto first. Confirm
+        every value with the owner before calling, unless they picked the
+        colors on its color card. Send only the fields the owner wants changed: a field left
+        out keeps its value, and an empty one ("") clears it. If this tool
+        refuses, relay its message to the owner and ask again."""
+        return updateMyStoreTheme(StoreThemeResponse, userId, photoStyle,
+                                  primaryColor, secondaryColor, voiceId)
+
+    @mcp_tool('admin',
+              thinkingText=['Creating your store',
+                            'Setting up your business',
+                            'Opening your store'],
+              responseModel=StoreResponse,
+              twinOf=None)
+    def createUserStore(self,
+                        userId: str,
+                        name: str,
+                        description: str,
+                        contactNumber: str,
+                        primaryColor: str,
+                        secondaryColor: str,
+                        currency: StoreCurrency = DEFAULT_STORE_CURRENCY,
+                        openingHours: str | None = None,
+                        address: str | None = None) -> dict:
+        """Create the admin's store (an admin has one store). Before calling,
+        ask the admin for each detail, one question at a time: the store's
+        name, a short description of what it sells, its currency (default
+        PHP), its contact number, its two brand colors as hex codes like
+        #1A73E8 (primaryColor and secondaryColor: the shop and the admin's
+        screens are drawn in them) and, if the admin wants, its opening
+        hours. Do not ask for the address: the admin pins the store on the
+        map right after it is created, and the address is suggested from
+        the pin (pass address only when the admin already said it). Never
+        invent or guess a value: use only what the admin said, except the
+        colors: if the admin asks you to pick them, suggest two that suit
+        the store and use them once the admin agrees; if the admin wants
+        them from a logo or image they attached, read them with
+        findColorsInPhoto first. Give the contact
+        number in international format, e.g. +639171234567. Confirm all the
+        details with the admin before calling. Before calling, tell the
+        admin that the contact number and the address are shown to every
+        customer, anonymous visitors included. If this tool refuses a
+        detail, relay its message to the admin so they can correct that
+        detail, then call again."""
+        return createUserStore(StoreResponse, userId, name, description,
+                               contactNumber, primaryColor, secondaryColor,
+                               currency, openingHours, address)
+
+    @mcp_tool('admin',
+              thinkingText=['Saving your store details',
+                            'Updating your business',
+                            'Writing down your details'],
+              responseModel=StoreResponse,
+              twinOf=None)
+    def updateMyStoreDetails(self,
+                             userId: str,
+                             name: str | None = None,
+                             description: str | None = None,
+                             contactNumber: str | None = None,
+                             address: str | None = None,
+                             openingHours: str | None = None) -> dict:
+        """Change the details of the admin's store: its name, description,
+        contact number (international format, e.g. +639171234567), address
+        or opening hours. The store's link and currency never change. Send
+        only the fields the owner wants changed: a field left out keeps its
+        value, and an empty openingHours ("") clears the hours. Never invent
+        or guess a value: use only what the owner said (or an address
+        suggestStoreAddress gave and the owner accepted), and confirm the
+        change with the owner before calling. If this tool refuses a detail,
+        relay its message to the owner and ask again."""
+        return updateMyStoreDetails(StoreResponse, userId, name, description,
+                                    contactNumber, address, openingHours)
+
+    @mcp_tool('admin',
+              thinkingText=['Finding your address',
+                            'Looking up the address',
+                            'Reading the map pin'],
+              responseModel=AddressSuggestionResponse,
+              twinOf=None)
+    def suggestStoreAddress(self, userId: str) -> dict:
+        """The street address Google Maps gives for the store's map pin,
+        and the store's address now. Call it right after
+        setUserStoreLocation saved a pin. When suggestedAddress is not null
+        and differs from address, ask the owner whether to use it as the
+        store's address, and save it with updateMyStoreDetails only once
+        they say yes; never change the address on your own. When it is
+        null, say nothing about it, unless the store has no address yet
+        (address is null): then ask the owner to type it."""
+        return suggestStoreAddress(AddressSuggestionResponse, userId)
+
+    @mcp_tool('admin',
+              thinkingText=['Saving your store pin',
+                            'Pinning your store',
+                            'Marking your location'],
+              responseModel=StoreResponse,
+              twinOf=None)
+    def setUserStoreLocation(self, userId: str, latitude: float,
+                             longitude: float) -> dict:
+        """Pin the admin's store on the map, or move its pin: the latitude
+        and longitude of the pin the owner sent from showStoreLocationForm,
+        never coordinates you guessed or the owner typed. A store that
+        delivers prices each delivery from this pin. Then call
+        suggestStoreAddress."""
+        return setUserStoreLocation(StoreResponse, userId, latitude, longitude)

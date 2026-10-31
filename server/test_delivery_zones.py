@@ -23,6 +23,7 @@ from actions.OrderActions import (BELOW_ZONE_MINIMUM, NO_DELIVERY_ZONES_YET,
 from actions.StoreActions import (DELIVERY_ZONES_NOT_A_LIST,
                                   TOO_MANY_DELIVERY_ZONES, ZONES_OVERLAP)
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from conftest import addProduct, assertExactShape
 from mongoDb import db
 from objects import (DELIVERY_ZONES_MAX, ChatReplyResponse,
@@ -39,6 +40,7 @@ from test_delivery import (ADMIN, HOME, STORE_PIN, clean, customerSays,
 __all__ = ['clock', 'frozenNow', 'model', 'offline', 'clean']
 
 api = ApiRequests()
+tools = ToolRequests()
 
 BOTH = {'deliveryOptions': ['pickup', 'delivery']}
 
@@ -265,7 +267,7 @@ def test_noZone_clearsThem_soTheStoreTakesNoDelivery(clean, firebase):
 
     assert api.setMyDeliveryZones(ADMIN, []) == {'deliveryZones': []}
     with pytest.raises(ValueError, match=exactly(NO_DELIVERY_ZONES_YET)):
-        api.createOrder(customerId, store['_id'],
+        tools.createOrder(customerId, store['_id'],
                         items(products['Pandesal']), 'delivery', HOME)
 
 
@@ -331,10 +333,10 @@ def test_aStoreWithoutAZone_takesNoDelivery(clean, firebase):
     store, customerId, products = zonedShop(firebase, [])
 
     with pytest.raises(ValueError, match=exactly(NO_DELIVERY_ZONES_YET)):
-        api.createOrder(customerId, store['_id'],
+        tools.createOrder(customerId, store['_id'],
                         items(products['Pandesal']), 'delivery', HOME)
     # Pickup still works, and is chosen for the customer.
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           items(products['Pandesal']))
     assert res['order']['fulfillment'] == 'pickup'
 
@@ -345,7 +347,7 @@ def test_aZoneDrawnBeforePolicies_takesNoDelivery(clean, firebase):
               {'deliveryZones': [{'points': MAKATI_BOX}]}, 'Stores')
 
     with pytest.raises(ValueError, match=exactly(NO_DELIVERY_ZONES_YET)):
-        api.createOrder(customerId, store['_id'],
+        tools.createOrder(customerId, store['_id'],
                         items(products['Pandesal']), 'delivery', HOME)
 
 
@@ -356,7 +358,7 @@ def stored_store(store: dict) -> int:
 def test_theZoneUnderThePin_pricesTheOrder(clean, firebase):
     store, customerId, products = zonedShop(firebase, [MAKATI, TAGUIG])
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           items(products['Cookie Tin'], 12), 'delivery',
                           IN_TAGUIG)
 
@@ -370,7 +372,7 @@ def test_theZoneUnderThePin_pricesTheOrder(clean, firebase):
 def test_aPinOnASharedBorder_takesTheFirstZonesPolicy(clean, firebase):
     store, customerId, products = zonedShop(firebase, [MAKATI, TAGUIG])
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           items(products['Pandesal']), 'delivery',
                           ON_THE_BORDER)
 
@@ -381,7 +383,7 @@ def test_aPinOnASharedBorder_takesTheFirstZonesPolicy(clean, firebase):
 def test_fromAZonesFreeDeliveryTotal_deliveryIsFree(clean, firebase):
     store, customerId, products = zonedShop(firebase, [TAGUIG])
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           items(products['Cookie Tin'], 45), 'delivery',
                           IN_TAGUIG)
 
@@ -394,7 +396,7 @@ def test_belowAZonesMinimum_isRefused_andReservesNothing(clean, firebase):
 
     with pytest.raises(ValueError, match=exactly(BELOW_ZONE_MINIMUM.format(
             zone='Taguig', minimum=500, currency='PHP'))):
-        api.createOrder(customerId, store['_id'],
+        tools.createOrder(customerId, store['_id'],
                         items(products['Cookie Tin'], 11), 'delivery',
                         IN_TAGUIG)
     assert db.read({}, 'Orders') == []
@@ -407,7 +409,7 @@ def test_aDeliveryOutsideEveryZone_isRefused_andReservesNothing(
     store, customerId, products = zonedShop(firebase, [MAKATI])
 
     with pytest.raises(ValueError, match=exactly(OUTSIDE_DELIVERY_ZONES)):
-        api.createOrder(customerId, store['_id'],
+        tools.createOrder(customerId, store['_id'],
                         items(products['Pandesal']), 'delivery', FAR)
     assert db.read({}, 'Orders') == []
 
@@ -415,7 +417,7 @@ def test_aDeliveryOutsideEveryZone_isRefused_andReservesNothing(
 def test_aPickup_ignoresTheZones(clean, firebase):
     store, customerId, products = zonedShop(firebase, [TAGUIG])
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           items(products['Pandesal']), 'pickup')
 
     assert (res['order']['fulfillment'], res['order']['deliveryZone'],
@@ -428,7 +430,7 @@ def test_aStoreThatIsNotPinned_stillDeliversIntoItsZones(clean, firebase):
                                        **BOTH)
     api.setMyDeliveryZones(ADMIN, [MAKATI])
 
-    res = api.createOrder(customerId, store['_id'],
+    res = tools.createOrder(customerId, store['_id'],
                           items(products['Pandesal']), 'delivery', HOME)
 
     assert res['order']['deliveryZone'] == 'Makati'
@@ -558,19 +560,19 @@ def test_theZonesForm_isTheAdminsOnly(clean, firebase, model):
 def test_thePolicy_listsEachZonesRules_withoutItsShape(clean, firebase):
     store, customerId, _ = zonedShop(firebase, [MAKATI, TAGUIG])
 
-    res = api.getStorePolicy(customerId, store['_id'])
+    res = tools.getStorePolicy(customerId, store['_id'])
 
     assertExactShape(StorePolicyResponse, res)
     assert res['deliveryZones'] == [rules(MAKATI), rules(TAGUIG)]
-    assert api.getMyStorePolicy(ADMIN)['deliveryZones'] == [
+    assert tools.getMyStorePolicy(ADMIN)['deliveryZones'] == [
         rules(MAKATI), rules(TAGUIG)]
 
 
 def test_aStoreThatDoesNotDeliver_listsNoZone(clean, firebase):
     store, customerId, _ = zonedShop(firebase, [MAKATI])
-    api.updateMyStorePolicy(ADMIN, deliveryOptions=['pickup'])
+    tools.updateMyStorePolicy(ADMIN, deliveryOptions=['pickup'])
 
-    assert api.getStorePolicy(customerId,
+    assert tools.getStorePolicy(customerId,
                               store['_id'])['deliveryZones'] == []
 
 
@@ -584,7 +586,7 @@ def test_aSave_dropsTheRetiredFreeDeliveryAnswers(clean, firebase):
         {'offersFreeDelivery': True, 'freeDeliveryMinimum': 1000},
         'Policies')
 
-    res = api.updateMyStorePolicy(ADMIN, handoverDays=2)
+    res = tools.updateMyStorePolicy(ADMIN, handoverDays=2)
 
     assert 'offersFreeDelivery' not in res
     saved = db.read({'storeId': store['_id']}, 'Policies', findOne=True)

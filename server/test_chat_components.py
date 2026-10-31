@@ -2,7 +2,7 @@
 the setup chat of an admin whose store is not set up yet, the cards built
 from what the tools returned, the forms the form tools open, form answers,
 checked against what they answer and acted on by the model, and what the
-model asks in chat and then does with the route tools directly (the store's
+model asks in chat and then does with the tools directly (the store's
 details, a policy section, a return).
 
 No real Meta call: test_chat.py's FakeModel plays scripted completions (its
@@ -22,6 +22,7 @@ import chatTools
 import mcpServer
 from actions import ChatActions
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 import photoStorage
 from conftest import (TEST_GEOCODED_ADDRESS, TOKEN, addOrder, assertExactShape, createTestStore,
                       firebaseClaims, guestAt, storeWithProducts,
@@ -40,6 +41,7 @@ COLLECTIONS = [
     'Orders', 'Returns', 'Conversations', 'ChatTurns', 'ChatUsage'
 ]
 api = ApiRequests()
+tools = ToolRequests()
 
 # An order row's delivery fields for a pickup (OrderDeliveryRow).
 PICKUP = {'fulfillment': 'pickup', 'deliveryFee': 0,
@@ -279,7 +281,7 @@ def test_theStoreDetailsAskedInChat_createTheStore(wiped, firebase, model):
     [card] = res['components']
     assert card['kind'] == 'store' and card['name'] == 'Kalye Coffee'
     assert card['openingHours'] is None and isinstance(card['slug'], str)
-    assert api.getUserStore(adminId)['store']['address'] == '14 Maginhawa St'
+    assert tools.getUserStore(adminId)['store']['address'] == '14 Maginhawa St'
     # The store is set up now: the next message gets the admin's tools.
     fake = model(reply('What next?'))
     adminSays('Thanks', cid, userId=adminId)
@@ -336,7 +338,7 @@ def test_aStoreJustCreated_opensTheMapInTheSameTurn(wiped, firebase, model):
     assert store['kind'] == 'store' and store['address'] is None
     assert form['kind'] == 'locationForm'
     assert form['location'] is None and form['address'] is None
-    assert api.getUserStore(adminId)['store']['address'] is None
+    assert tools.getUserStore(adminId)['store']['address'] is None
 
     # The pin comes next: saved, then an address is suggested from it.
     pin = {'kind': 'location', 'formId': form['formId'],
@@ -346,7 +348,7 @@ def test_aStoreJustCreated_opensTheMapInTheSameTurn(wiped, firebase, model):
           calls(('c4', 'suggestStoreAddress', '{}')),
           reply(f'Use {TEST_GEOCODED_ADDRESS} as your address?'))
     adminSays(None, res['conversationId'], pin, userId=adminId)
-    stored = api.getUserStore(adminId)['store']
+    stored = tools.getUserStore(adminId)['store']
     assert stored['location'] == {'latitude': 14.6507, 'longitude': 121.0494}
     assert stored['address'] is None  # not before the owner's yes
 
@@ -382,7 +384,7 @@ def test_aRefusedStoreDetail_goesBackToTheModel(wiped, firebase, model):
     assert res['components'] == []
     tool = json.loads(fake.requests[1]['messages'][-1]['content'])
     assert set(tool) == {'error'} and 'call me' not in tool['error']
-    assert api.getUserStore(adminId)['store'] is None  # still not set up
+    assert tools.getUserStore(adminId)['store'] is None  # still not set up
 
 
 def test_aFormAnswer_isRefusedBeforeTheModelRuns(wiped, model):
@@ -753,7 +755,7 @@ def test_aPolicySectionAskedInChat_isSavedByTheModel(wiped, model):
     """The owner answers the payment section one question at a time; the
     model reads it back, then saves only those answers."""
     createTestStore(ADMIN)
-    api.updateMyStorePolicy(ADMIN, handoverDays=2)
+    tools.updateMyStorePolicy(ADMIN, handoverDays=2)
     model(reply('Which payment methods do you take?'))
     cid = adminSays('Let us do the policy')['conversationId']
     model(reply('Can a customer cancel a paid order?'))
@@ -782,7 +784,7 @@ def test_aPolicySectionAskedInChat_isSavedByTheModel(wiped, model):
     assert card['paidOrderCancellation'] == 'beforeHandover'
     # An answer of another section is kept.
     assert card['handoverDays'] == 2
-    assert api.getMyStorePolicy(ADMIN)['authorizedPaymentMethods'] == saved
+    assert tools.getMyStorePolicy(ADMIN)['authorizedPaymentMethods'] == saved
 
 
 def test_aStorePin_isSaved_andItsAddressSavedOnlyOnAYes(wiped, model,
@@ -826,7 +828,7 @@ def test_aStorePin_isSaved_andItsAddressSavedOnlyOnAYes(wiped, model,
     assert card['address'] == TEST_GEOCODED_ADDRESS
     assert card['location'] == {'latitude': 10.34344,
                                 'longitude': 123.91151}
-    assert api.getUserStore(ADMIN)['store']['address'] == (
+    assert tools.getUserStore(ADMIN)['store']['address'] == (
         TEST_GEOCODED_ADDRESS)
 
 
@@ -836,7 +838,7 @@ def test_aReturnAskedInChat_isRequestedByTheModel(wiped, firebase, model):
     positions."""
     import datetime
     store = storeWithProducts(ADMIN)
-    api.updateMyStorePolicy(ADMIN, defectReportDays=7)
+    tools.updateMyStorePolicy(ADMIN, defectReportDays=7)
     customerId = verifiedGuestAt(firebase, store, GUEST)
     pandesal = db.read({'storeId': store['_id'], 'name': 'Pandesal'},
                        'Products', findOne=True)

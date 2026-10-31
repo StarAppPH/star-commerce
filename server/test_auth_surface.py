@@ -15,7 +15,7 @@ Covers:
     one _id, not by reading the whole collection, through an atomic one-time
     claim that a racing second sign-in cannot also win.
   - The raw identity is honoured in localdev only (tests, local sign-in),
-    and so are devLogin and devGetUserList.
+    and so is devLogin.
   - Google's signing certs are cached; a fetch is attempted at most once a
     minute, a failed one keeps the last good certs for a grace period, and
     an answer of the wrong shape is refused. Only an RS256 token with a key
@@ -28,20 +28,25 @@ Covers:
     a cloud environment refuses them even with the variable set.
 """
 
+import ast
+import inspect
 import logging
 import os
+import textwrap
 
 import pytest
 
 import AuthHandler as AuthHandlerModule
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
+from actions.StoreActions import requireAdmin
+from mcpCreator import mcpTools
 from AuthHandler import DEFAULT_FIREBASE_PROJECT_ID, verifyFirebaseIdToken
 from conftest import (OTHER_UID, RAW_EMAIL, RAW_UID, TOKEN, TOKEN_EMAIL,
-                      TOKEN_UID, apiRoutes, assertExactShape,
-                      assertMatchesModel)
+                      TOKEN_UID, apiRoutes, assertMatchesModel)
 from conftest import firebaseClaims as _claims
 from mongoDb import db
-from objects import UserResponse, DevUserListResponse, FirebaseUserObject
+from objects import UserResponse, FirebaseUserObject
 from sharedConstants import FIREBASE_PROJECT_ID
 
 # Routes that answer a caller holding no JWT.
@@ -49,9 +54,7 @@ PUBLIC_ROUTES = {
     # Sign-in: a verified Firebase ID token, or a raw identity in localdev
     # only.
     'loginWithGoogle',
-    # localdev only (refused everywhere else): the dev user picker and
-    # signing in as one of its users.
-    'devGetUserList',
+    # localdev only (refused everywhere else): signing in as any user.
     'devLogin',
     # A customer opening a store link: a verified anonymous or phone
     # Firebase token, never a Google one (CustomerActions).
@@ -62,79 +65,23 @@ PUBLIC_ROUTES = {
 # new one is a decision, not an accident.
 JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     # Admin side: the caller must be a Users document (requireAdmin) and
-    # reaches only the store it owns.
+    # reaches only the store it owns. (The AI's tools are no routes:
+    # ToolRequests.py; each action checks its caller first.)
     'getUserStore',
-    'createUserStore',
-    # The admin's own store's photo theme (requireOwnerStore).
-    'updateMyStoreTheme',
-    # Product photos: requireOwnerStore, made from photos under the
-    # caller's own users/<uid>/ folder and saved under that store.
-    'generateProductPhotos',
-    # A product photo: requireOwnerStore, and only a photo and a product of
-    # that store.
-    'setProductPhoto',
-    # A new product's photo choices: requireOwnerStore, a product of that
-    # store, and a photo under the caller's own users/<uid>/ folder.
-    'makeProductPhotoChoices',
-    # Products in a group photo: requireOwnerStore, a photo under the
-    # caller's own users/<uid>/ folder, cut-outs saved back there.
-    'findProductsInPhoto',
-    # The map component pins the admin's store: requireAdmin, and only the
-    # store the caller owns.
-    'setUserStoreLocation',
     # The delivery areas map: requireAdmin, and only the store the caller
     # owns (ownerStore).
     'setMyDeliveryZones',
     # Store reset: requireAdmin, and only the store the caller owns
     # (ownerQuery), until STORE_RESET_ENDS_AT.
     'resetMyStore',
-    # The admin's own store's details and its pin's address
-    # (requireAdmin, ownerStore).
-    'updateMyStoreDetails',
-    'suggestStoreAddress',
+    # The new-chat screen's counts: requireOwnerStore, and only the orders
+    # and returns of the store the caller owns.
+    'getWaitingOnYou',
     # Customer side: the caller must be a Customers document
     # (requireCustomer).
     'verifyCustomerPhone',
-    'listStoreProducts',
-    # The admin's products: requireAdmin, and only the products of the
-    # store the caller owns (ownerQuery).
-    'addStoreProduct',
-    'addStoreProducts',
-    'updateStoreProduct',
-    'listMyStoreProducts',
-    # The admin's orders: requireAdmin, and only the orders of the store
-    # the caller owns (ownerStore).
-    'getStoreOrders',
-    # A customer's own orders: requireCustomer, and only orders whose
-    # customerId is the caller.
-    'getMyOrders',
-    # Checkout: requireCustomer at the connection's store; payOrder pays
-    # only an order whose customerId is the caller.
-    'createOrder',
-    'payOrder',
-    # Fulfillment: completeOrder and cancelStoreOrder reach only the
-    # orders of the store the caller owns (requireOwnerStore);
-    # cancelMyOrder only an order whose customerId is the caller.
-    'completeOrder',
-    'cancelStoreOrder',
-    'cancelMyOrder',
-    # Returns: requestReturn, getMyReturns and cancelMyReturn reach only
-    # the caller's own orders and returns at the connection's store
-    # (requireCustomer); the admin routes only the returns of the store
-    # the caller owns (requireOwnerStore).
-    'requestReturn',
-    'getMyReturns',
-    'cancelMyReturn',
-    'getStoreReturns',
-    'approveReturn',
-    'rejectReturn',
-    'receiveReturn',
-    # Policies: the admin's own store's policy (requireOwnerStore); a
-    # customer reads the policy of the connection's store
-    # (requireCustomer).
+    # Policies: the admin's own store's policy (requireOwnerStore).
     'getMyStorePolicy',
-    'updateMyStorePolicy',
-    'getStorePolicy',
     # Chat: an admin chats at the store they own (requireOwnerStore), a
     # customer at the store being visited (requireCustomer); a conversation
     # is reached only by its owner (its userId), and the tools run as the
@@ -143,29 +90,107 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     'sendStoreChatMessage',
     'listMyConversations',
     'getConversationTurns',
-    # Voice chat: the same checks as the chat routes; speakChatTurn speaks
-    # only a turn of the caller's own conversation (its userId), and
-    # listVoices is the admin's (requireOwnerStore).
-    'sendAdminVoiceMessage',
-    'sendStoreVoiceMessage',
-    'speakChatTurn',
-    'listVoices',
-    # Payments by hand: addPaymentReference and addPaymentReceipt reach
-    # only the caller's own order at the store (customerAtStore,
-    # _customerOrder); getPaymentReceipt and confirmOrderPayment only an
-    # order of the store the caller owns (ownerStoreScope).
-    'addPaymentReference',
+    # Payments by hand: addPaymentReceipt reaches only the caller's own
+    # order at the store (customerAtStore, _customerOrder);
+    # getPaymentReceipt only an order of the store the caller owns
+    # (ownerStoreScope).
     'addPaymentReceipt',
     'getPaymentReceipt',
-    'confirmOrderPayment',
-    # An image's colors: the store the caller owns, set up or not
-    # (requireAnyOwnerStore), and only an image under the caller's own
-    # users/<uid>/ folder (photoStorage.ownImagePath).
-    'findColorsInPhoto',
     # Thinking texts: only the caller's own chat turn (chatThinking.current
     # reads "<userId>:<turnKey>" with that userId).
     'getChatThinking',
     'speakChatThinking',
+}
+
+# Every AI tool and the permission check its action reaches first (the tools
+# are no routes, so no roleAccess guards them: ToolRequests.py). Pinned so a
+# new tool is a decision, not an accident; the AST test below checks that the
+# action, or a helper of its module, calls the check named here.
+TOOL_PERMISSION_CHECKS = {
+    # Admin side: the caller must be a Users document (requireAdmin) and
+    # reaches only the store it owns.
+    'getUserStore': 'requireAdmin',
+    'createUserStore': 'requireAdmin',
+    # The admin's own store's photo theme and voice.
+    'updateMyStoreTheme': 'requireAdmin',
+    # The map component pins the admin's store: only the store the caller
+    # owns.
+    'setUserStoreLocation': 'requireAdmin',
+    # The admin's own store's details and its pin's address (ownerStore).
+    'updateMyStoreDetails': 'requireAdmin',
+    'suggestStoreAddress': 'requireAdmin',
+    # Product photos: requireOwnerStore, made from photos under the
+    # caller's own users/<uid>/ folder and saved under that store.
+    'generateProductPhotos': 'requireOwnerStore',
+    # A product photo: requireOwnerStore, and only a photo and a product of
+    # that store.
+    'setProductPhoto': 'requireOwnerStore',
+    # A new product's photo choices: requireOwnerStore, a product of that
+    # store, and a photo under the caller's own users/<uid>/ folder.
+    'makeProductPhotoChoices': 'requireOwnerStore',
+    # Products in a group photo: requireOwnerStore, a photo under the
+    # caller's own users/<uid>/ folder, cut-outs saved back there.
+    'findProductsInPhoto': 'requireOwnerStore',
+    # An image's colors: the store the caller owns, set up or not
+    # (requireAnyOwnerStore), and only an image under the caller's own
+    # users/<uid>/ folder (photoStorage.ownImagePath).
+    'findColorsInPhoto': 'requireAnyOwnerStore',
+    # Customer side: the caller must be a Customers document
+    # (requireCustomer).
+    'listStoreProducts': 'requireCustomer',
+    # The admin's products: only the products of the store the caller owns
+    # (_adminStore, ownerQuery).
+    'addStoreProduct': '_adminStore',
+    'addStoreProducts': '_adminStore',
+    'updateStoreProduct': '_adminStore',
+    'listMyStoreProducts': '_adminStore',
+    # The admin's orders: only the orders of the store the caller owns.
+    'getStoreOrders': 'requireOwnerStore',
+    # A customer's own orders: customerAtStore, and only orders whose
+    # customerId is the caller.
+    'getMyOrders': 'customerAtStore',
+    # Checkout: the customer at the connection's store; payOrder pays only
+    # an order whose customerId is the caller.
+    'createOrder': 'customerAtStore',
+    'payOrder': 'customerAtStore',
+    # Fulfillment: completeOrder and cancelStoreOrder reach only the orders
+    # of the store the caller owns (ownerStoreScope); cancelMyOrder only an
+    # order whose customerId is the caller.
+    'completeOrder': 'ownerStoreScope',
+    'cancelStoreOrder': 'ownerStoreScope',
+    'cancelMyOrder': 'customerAtStore',
+    # Returns: requestReturn, getMyReturns and cancelMyReturn reach only
+    # the caller's own orders and returns at the connection's store
+    # (customerAtStore); the admin's only the returns of the store the
+    # caller owns.
+    'requestReturn': 'customerAtStore',
+    'getMyReturns': 'customerAtStore',
+    'cancelMyReturn': 'customerAtStore',
+    'getStoreReturns': 'requireOwnerStore',
+    'approveReturn': 'ownerStoreScope',
+    'rejectReturn': 'ownerStoreScope',
+    'receiveReturn': 'ownerStoreScope',
+    # Policies: the admin's own store's policy (requireOwnerStore); a
+    # customer reads the policy of the connection's store
+    # (customerAtStore).
+    'getMyStorePolicy': 'requireOwnerStore',
+    'updateMyStorePolicy': 'requireOwnerStore',
+    'getStorePolicy': 'customerAtStore',
+    # Voice: the admin's voice list (requireOwnerStore).
+    'listVoices': 'requireOwnerStore',
+    # Payments by hand: addPaymentReference reaches only the caller's own
+    # order at the store (customerAtStore, _customerOrder);
+    # confirmOrderPayment only an order of the store the caller owns
+    # (ownerStoreScope).
+    'addPaymentReference': 'customerAtStore',
+    'confirmOrderPayment': 'ownerStoreScope',
+}
+
+# The functions an action may reach first to check its caller.
+PERMISSION_CHECKS = {
+    'requireAdmin', 'requireCustomer', 'requireOwnerStore',
+    'requireAnyOwnerStore', 'customerAtStore', 'ownerStoreScope',
+    '_adminStore',
 }
 
 
@@ -568,24 +593,17 @@ def test_loginRoutes_areTheOnlyRoutesThatMintAToken():
 @pytest.mark.parametrize('environment', ['localprod', 'clouddev', 'cloudprod'])
 def test_devRoutes_areRefusedOutsideLocaldev(monkeypatch, anotherUser,
                                              environment):
-    """devGetUserList hands out every user's _id and devLogin signs in as
-    any of them without a credential: both answer in localdev only."""
+    """devLogin signs in as any user without a credential: it answers in
+    localdev only."""
     monkeypatch.setenv('ENVIRONMENT', environment)
 
-    with pytest.raises(PermissionError, match='only available in localdev'):
-        ApiRequests().devGetUserList()
     with pytest.raises(PermissionError, match='only available in localdev'):
         ApiRequests().devLogin(OTHER_UID)
 
 
-def test_devRoutes_inLocaldev_listAndSignInTheUsers(monkeypatch,
-                                                    anotherUser):
+def test_devLogin_inLocaldev_signsInTheUser(monkeypatch, anotherUser):
     monkeypatch.setenv('ENVIRONMENT', 'localdev')
 
-    res = ApiRequests().devGetUserList()
-
-    assertExactShape(DevUserListResponse, res)
-    assert [user['_id'] for user in res['users']] == [OTHER_UID]
     assert ApiRequests().devLogin(OTHER_UID)['_id'] == OTHER_UID
     with pytest.raises(ValueError, match='^User not found$'):
         ApiRequests().devLogin('aa-no-such-user')
@@ -608,6 +626,77 @@ def test_authSurface_jwtRoutesWithoutARoleCheck():
         for name, func in apiRoutes().items()
         if func.jwtRequired and not func.roleAccess
     } == JWT_ROUTES_WITHOUT_ROLE_ACCESS
+
+
+def _toolAction(tool):
+    """The module-level action a tool's one statement calls."""
+    plain = inspect.unwrap(tool)
+    function = ast.parse(textwrap.dedent(inspect.getsource(plain))).body[0]
+    calls = [node for statement in function.body
+             for node in ast.walk(statement)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)]
+    return plain.__globals__[calls[0].func.id]
+
+
+def _permissionChecksReached(function, seen=None):
+    """The permission checks a function calls, itself or through the
+    functions of its own module it calls."""
+    seen = set() if seen is None else seen
+    if function in seen:
+        return set()
+    seen.add(function)
+    found = set()
+    source = ast.parse(textwrap.dedent(inspect.getsource(function)))
+    for node in ast.walk(source):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+            continue
+        name = node.func.id
+        if name in PERMISSION_CHECKS:
+            found.add(name)
+            continue
+        called = function.__globals__.get(name)
+        if (inspect.isfunction(called)
+                and called.__module__ == function.__module__):
+            found |= _permissionChecksReached(called, seen)
+    return found
+
+
+def test_authSurface_everyToolNamesItsPermissionCheck():
+    """A new tool must be added to TOOL_PERMISSION_CHECKS on purpose."""
+    assert set(TOOL_PERMISSION_CHECKS) == set(mcpTools(ToolRequests))
+
+
+@pytest.mark.parametrize('name', sorted(TOOL_PERMISSION_CHECKS))
+def test_authSurface_everyToolsActionCallsItsPermissionCheck(name):
+    """No roleAccess guards a tool: its action (or a helper of its module)
+    must call the check the registry names."""
+    action = _toolAction(getattr(ToolRequests, name))
+
+    assert TOOL_PERMISSION_CHECKS[name] in _permissionChecksReached(action)
+
+
+def _fixtureActionCheckingThroughAHelper(userId):
+    return _fixtureHelper(userId)
+
+
+def _fixtureHelper(userId):
+    requireAdmin(userId)
+
+
+def _fixtureActionCheckingNobody(userId):
+    return _fixtureNoCheck(userId)
+
+
+def _fixtureNoCheck(userId):
+    return userId
+
+
+def test_authSurface_permissionCheckWalk_followsAHelper_andFindsNoneWhereNone():
+    """The walk finds a check a helper of the action's own module makes, and
+    nothing in an action (and its helpers) that checks nobody."""
+    assert _permissionChecksReached(_fixtureActionCheckingThroughAHelper) == {
+        'requireAdmin'}
+    assert _permissionChecksReached(_fixtureActionCheckingNobody) == set()
 
 
 # ----------------------------- Firebase cert cache ----------------------------- #
@@ -1026,7 +1115,7 @@ def test_everyJwtRouteWithAUserIdParam_refusesAnotherUsersId(monkeypatch):
         if func.jwtRequired and 'userId' in inspect.signature(
             getattr(ApiRequests, name)).parameters
     ]
-    assert {'getStoreOrders', 'getMyOrders'} <= set(routes)
+    assert {'getUserStore', 'getMyStorePolicy'} <= set(routes)
 
     for name in routes:
         # A required list param is type-checked before the identity.

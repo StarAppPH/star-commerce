@@ -13,7 +13,7 @@ the details the model acts on (userContent, "Form answer: {...}"). The
 model then calls the tool that does it.
 
 chatToolsCreator.py lists the form tools in chatTools.TOOLS next to the
-route tools, and adds the toolset an admin with no store yet chats with
+tools, and adds the toolset an admin with no store yet chats with
 (SETUP_TOOLSET: setting up the store only).
 
 Who and where come only from the chat route (its JWT userId, the
@@ -46,9 +46,9 @@ from utils import generateRandomString
 CHAT_TURNS = 'ChatTurns'
 # The toolset of an admin whose store is not set up yet: the store's
 # details, and its brand colors read from a logo (findColorsInPhoto, the one
-# route tool that needs no set-up store).
+# tool that needs no set-up store).
 SETUP_TOOLSET = 'adminSetup'
-# Its route tools (chatToolsCreator.py copies them from the admin's).
+# Its tools (chatToolsCreator.py copies them from the admin's).
 SETUP_ROUTE_TOOLS = ('createUserStore', 'getUserStore', 'findColorsInPhoto')
 # The setup tool that sets the store up: once it succeeds, the turn goes on
 # with the admin's tools (the map to pin the store among them).

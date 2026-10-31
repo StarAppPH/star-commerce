@@ -93,7 +93,6 @@ from objects import (PHOTO_NOTES_MAX_LENGTH, FoundProductsResponse,
                      AdminProductRow, GeneratedPhoto, GeneratedPhotosResponse,
                      ProductPhotoChoicesResponse, projectedCopy,
                      projection_of)
-from route_config import route_config
 from utils import generateRandomString
 
 GENERATED_PHOTOS = 'GeneratedPhotos'
@@ -459,16 +458,220 @@ def _saveImages(userId: str, store: dict, paths: list[str],
     return saved
 
 
-class PhotoActions():
+def generateProductPhotos(model,
+                          userId: str,
+                          imageUrls: list[str],
+                          notes: str | None = None,
+                          productName: str | None = None) -> dict:
+    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+    store = requireOwnerStore(userId, {'_id': 1, 'photoStyle': 1,
+                                       'primaryColor': 1,
+                                       'secondaryColor': 1})
+    paths = _validImageUrls(userId, imageUrls)
+    notes = _validText(notes, NOTES_LABEL, PHOTO_NOTES_MAX_LENGTH,
+                       required=False)
+    productName = _validText(productName, PRODUCT_NAME_LABEL,
+                             PRODUCT_NAME_MAX_LENGTH, required=False)
+    prompts = photoPrompts(store, notes, productName)
+    started = time.monotonic()
+    with slot(_photoSlots, imageModel.unavailable):
+        images = _makeImages(userId, store, paths, prompts, deadline)
+        photos = _saveImages(userId, store, paths, notes, images)
+    # Never the URLs, the paths, the prompts, the notes or the key.
+    logging.info({
+        'event': 'productPhotos',
+        'storeId': store['_id'],
+        'count': sum(n for _, n in prompts),
+        'returned': len(images),
+        'saved': len(photos),
+        'durationMs': round((time.monotonic() - started) * 1000),
+    })
+    return projectedCopy(model, {
+        'photos': photos,
+        'notGenerated': _notGenerated(store, len(photos))})
+
+
+def makeProductPhotoChoices(model,
+                            userId: str,
+                            productId: str,
+                            imageUrl: str,
+                            notes: str | None = None) -> dict:
+    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+    store = requireOwnerStore(userId, {'_id': 1, 'photoStyle': 1,
+                                       'primaryColor': 1,
+                                       'secondaryColor': 1})
+    product = None
+    if isinstance(productId, str) and productId:
+        product = db.read({'_id': productId, 'storeId': store['_id']},
+                          PRODUCTS, projection={'name': 1}, findOne=True)
+    if product is None:
+        raise ValueError(PRODUCT_NOT_FOUND)
+    if not isinstance(imageUrl, str) or not imageUrl.strip():
+        raise ValueError(IMAGE_URL_MISSING)
+    path = photoStorage.ownImagePath(
+        userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
+        'imageUrl')
+    paths = [path]
+    notes = _validText(notes, NOTES_LABEL, PHOTO_NOTES_MAX_LENGTH,
+                       required=False)
+    started = time.monotonic()
+    notGenerated = None
+    images: list[tuple[bytes, str]] = []
+    with slot(_photoSlots, imageModel.unavailable):
+        read = photoStorage.readOwnImages(userId, [('imageUrl', path)],
+                                          deadline)
+        [(data, contentType)] = read
+        original = _savePhoto(userId, store, paths, data,
+                              time.monotonic() + SAVE_SECONDS,
+                              contentType=contentType)
+        photos = [{**original, 'source': 'original', 'prompt': None}]
+        generated = []
+        try:
+            images = _makeImages(userId, store, paths,
+                                 photoPrompts(store, notes,
+                                              product['name']),
+                                 deadline, _references(read))
+            generated = _saveImages(userId, store, paths, notes, images)
+        except ValueError as refusal:
+            # A cap reached, photos turned off, or the model declining:
+            # the admin's to read.
+            notGenerated = CAPS_ORIGINAL_ONLY.get(str(refusal),
+                                                  str(refusal))
+        except ServiceUnavailable:
+            notGenerated = UNAVAILABLE_ORIGINAL_ONLY
+        photos += [{**photo, 'source': 'generated'}
+                   for photo in generated]
+        if generated:
+            notGenerated = _notGenerated(store, len(generated))
+    # Never the URL, the path, the prompts or the refusal's text.
+    logging.info({
+        'event': 'productPhotoChoices',
+        'storeId': store['_id'],
+        'returned': len(images),
+        'saved': len(photos) - 1,
+        'generated': notGenerated is None,
+        'durationMs': round((time.monotonic() - started) * 1000),
+    })
+    return projectedCopy(model, {
+        'productId': productId, 'productName': product['name'],
+        'photos': photos, 'notGenerated': notGenerated})
+
+
+def findProductsInPhoto(model,
+                        userId: str,
+                        imageUrl: str) -> dict:
+    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+    store = requireOwnerStore(userId, {'_id': 1})
+    if not isinstance(imageUrl, str) or not imageUrl.strip():
+        raise ValueError(IMAGE_URL_MISSING)
+    path = photoStorage.ownImagePath(
+        userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
+        'imageUrl')
+    started = time.monotonic()
+    with slot(_photoSlots, samModel.unavailable):
+        keys = _takeFindQuota(store['_id'])
+        try:
+            [(data, _)] = photoStorage.readOwnImages(
+                userId, [('imageUrl', path)], deadline)
+            finding = productFinder.findProducts(data, deadline)
+        except Exception:
+            # A find that failed is not counted.
+            giveBackQuotas(PHOTO_USAGE, keys)
+            raise
+        saveBy = time.monotonic() + SAVE_SECONDS
+        products = []
+        for product in finding.found:
+            saved = photoStorage.saveFoundPhoto(
+                userId, generateRandomString(), product.photo, saveBy)
+            products.append({'name': product.name,
+                             'imageUrl': photoStorage.publicPathUrl(
+                                 saved)})
+    # Never the URL, the path or the names.
+    logging.info({
+        'event': 'productsInPhoto',
+        'storeId': store['_id'],
+        'found': len(products),
+        'notFound': len(finding.notFound),
+        'durationMs': round((time.monotonic() - started) * 1000),
+    })
+    return projectedCopy(model, {'products': products,
+                                 'notFound': finding.notFound})
+
+
+def findColorsInPhoto(model,
+                      userId: str,
+                      imageUrl: str,
+                      focus: str | None = None) -> dict:
+    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+    # A store not set up yet reads colors too (its brand colors come
+    # from createUserStore).
+    store = requireAnyOwnerStore(userId, {'_id': 1})
+    if not isinstance(imageUrl, str) or not imageUrl.strip():
+        raise ValueError(IMAGE_URL_MISSING)
+    path = photoStorage.ownImagePath(
+        userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
+        'imageUrl')
+    focus = _validText(focus, COLOR_FOCUS_LABEL,
+                       PHOTO_COLOR_FOCUS_MAX_LENGTH, required=False)
+    started = time.monotonic()
+    [(data, _)] = photoStorage.readOwnImages(
+        userId, [('imageUrl', path)], deadline)
+    if focus is None:
+        reading = colorFinder.readColors(data, None, deadline)
+    else:
+        reading = _readFocusedColors(store['_id'], data, focus,
+                                     deadline)
+    # Never the URL, the path, the focus or the colors.
+    logging.info({
+        'event': 'photoColors',
+        'storeId': store['_id'],
+        'colors': len(reading.colors),
+        'focused': focus is not None,
+        'focusFound': reading.focusFound,
+        'durationMs': round((time.monotonic() - started) * 1000),
+    })
+    return projectedCopy(model, {
+        'colors': [{'hex': color.hex, 'share': color.share,
+                    'neutral': color.neutral}
+                   for color in reading.colors],
+        'focus': focus, 'focusFound': reading.focusFound})
+
+
+def setProductPhoto(model,
+                    userId: str,
+                    productId: str,
+                    photoId: str | None = None) -> dict:
+    store = requireOwnerStore(userId, {'_id': 1})
+    photoUrl = None
+    # An empty photoId is none: the photo comes off.
+    if photoId:
+        photo = db.read({'_id': photoId, 'storeId': store['_id']},
+                        GENERATED_PHOTOS, projection={'url': 1},
+                        findOne=True)
+        if photo is None:
+            raise ValueError(PHOTO_NOT_FOUND)
+        photoUrl = photo['url']
+    updated = None
+    if productId:
+        # The _version bump of every product write (Product).
+        updated = db.findOneAndUpdate(
+            {'_id': productId, 'storeId': store['_id']},
+            {'$set': {'photoUrl': photoUrl}, '$inc': {'_version': 1}},
+            PRODUCTS, upsert=False,
+            projection=projection_of(model))
+    if updated is None:
+        raise ValueError(PRODUCT_NOT_FOUND)
+    return projectedCopy(model, updated)
+
+
+class PhotoTools():
 
     @mcp_tool('admin',
               thinkingText=['Making your product photos',
                             'Styling your photos',
-                            'Creating new photos'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Photos created',
-                  responseModel=GeneratedPhotosResponse)
+                            'Creating new photos'],
+              responseModel=GeneratedPhotosResponse,
+              twinOf=None)
     def generateProductPhotos(self,
                               userId: str,
                               imageUrls: list[str],
@@ -491,40 +694,15 @@ class PhotoActions():
         the admin. To show one in the shop, put it on its product with
         setProductPhoto. If this tool refuses, relay its message to the
         admin."""
-        deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
-        store = requireOwnerStore(userId, {'_id': 1, 'photoStyle': 1,
-                                           'primaryColor': 1,
-                                           'secondaryColor': 1})
-        paths = _validImageUrls(userId, imageUrls)
-        notes = _validText(notes, NOTES_LABEL, PHOTO_NOTES_MAX_LENGTH,
-                           required=False)
-        productName = _validText(productName, PRODUCT_NAME_LABEL,
-                                 PRODUCT_NAME_MAX_LENGTH, required=False)
-        prompts = photoPrompts(store, notes, productName)
-        started = time.monotonic()
-        with slot(_photoSlots, imageModel.unavailable):
-            images = _makeImages(userId, store, paths, prompts, deadline)
-            photos = _saveImages(userId, store, paths, notes, images)
-        # Never the URLs, the paths, the prompts, the notes or the key.
-        logging.info({
-            'event': 'productPhotos',
-            'storeId': store['_id'],
-            'count': sum(n for _, n in prompts),
-            'returned': len(images),
-            'saved': len(photos),
-            'durationMs': round((time.monotonic() - started) * 1000),
-        })
-        return {'photos': photos,
-                'notGenerated': _notGenerated(store, len(photos))}
+        return generateProductPhotos(GeneratedPhotosResponse, userId,
+                                     imageUrls, notes, productName)
 
     @mcp_tool('admin',
               thinkingText=['Styling your product photo',
                             'Making photo choices for your product',
-                            'Preparing your photo options'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Photo choices ready',
-                  responseModel=ProductPhotoChoicesResponse)
+                            'Preparing your photo options'],
+              responseModel=ProductPhotoChoicesResponse,
+              twinOf=None)
     def makeProductPhotoChoices(self,
                                 userId: str,
                                 productId: str,
@@ -550,73 +728,15 @@ class PhotoActions():
         setProductPhoto with it, then call
         this for the next product with a photo. If this tool refuses, relay
         its message to the admin."""
-        deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
-        store = requireOwnerStore(userId, {'_id': 1, 'photoStyle': 1,
-                                           'primaryColor': 1,
-                                           'secondaryColor': 1})
-        product = None
-        if isinstance(productId, str) and productId:
-            product = db.read({'_id': productId, 'storeId': store['_id']},
-                              PRODUCTS, projection={'name': 1}, findOne=True)
-        if product is None:
-            raise ValueError(PRODUCT_NOT_FOUND)
-        if not isinstance(imageUrl, str) or not imageUrl.strip():
-            raise ValueError(IMAGE_URL_MISSING)
-        path = photoStorage.ownImagePath(
-            userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
-            'imageUrl')
-        paths = [path]
-        notes = _validText(notes, NOTES_LABEL, PHOTO_NOTES_MAX_LENGTH,
-                           required=False)
-        started = time.monotonic()
-        notGenerated = None
-        images: list[tuple[bytes, str]] = []
-        with slot(_photoSlots, imageModel.unavailable):
-            read = photoStorage.readOwnImages(userId, [('imageUrl', path)],
-                                              deadline)
-            [(data, contentType)] = read
-            original = _savePhoto(userId, store, paths, data,
-                                  time.monotonic() + SAVE_SECONDS,
-                                  contentType=contentType)
-            photos = [{**original, 'source': 'original', 'prompt': None}]
-            generated = []
-            try:
-                images = _makeImages(userId, store, paths,
-                                     photoPrompts(store, notes,
-                                                  product['name']),
-                                     deadline, _references(read))
-                generated = _saveImages(userId, store, paths, notes, images)
-            except ValueError as refusal:
-                # A cap reached, photos turned off, or the model declining:
-                # the admin's to read.
-                notGenerated = CAPS_ORIGINAL_ONLY.get(str(refusal),
-                                                      str(refusal))
-            except ServiceUnavailable:
-                notGenerated = UNAVAILABLE_ORIGINAL_ONLY
-            photos += [{**photo, 'source': 'generated'}
-                       for photo in generated]
-            if generated:
-                notGenerated = _notGenerated(store, len(generated))
-        # Never the URL, the path, the prompts or the refusal's text.
-        logging.info({
-            'event': 'productPhotoChoices',
-            'storeId': store['_id'],
-            'returned': len(images),
-            'saved': len(photos) - 1,
-            'generated': notGenerated is None,
-            'durationMs': round((time.monotonic() - started) * 1000),
-        })
-        return {'productId': productId, 'productName': product['name'],
-                'photos': photos, 'notGenerated': notGenerated}
+        return makeProductPhotoChoices(ProductPhotoChoicesResponse, userId,
+                                       productId, imageUrl, notes)
 
     @mcp_tool('admin',
               thinkingText=['Looking for products in your photo',
                             'Naming your products',
-                            'Cutting out each product'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Products found',
-                  responseModel=FoundProductsResponse)
+                            'Cutting out each product'],
+              responseModel=FoundProductsResponse,
+              twinOf=None)
     def findProductsInPhoto(self,
                             userId: str,
                             imageUrl: str) -> dict:
@@ -633,50 +753,14 @@ class PhotoActions():
         those rows themselves). A store looks through at most 20 group
         photos a day. If this tool refuses, relay its message to the
         admin."""
-        deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
-        store = requireOwnerStore(userId, {'_id': 1})
-        if not isinstance(imageUrl, str) or not imageUrl.strip():
-            raise ValueError(IMAGE_URL_MISSING)
-        path = photoStorage.ownImagePath(
-            userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
-            'imageUrl')
-        started = time.monotonic()
-        with slot(_photoSlots, samModel.unavailable):
-            keys = _takeFindQuota(store['_id'])
-            try:
-                [(data, _)] = photoStorage.readOwnImages(
-                    userId, [('imageUrl', path)], deadline)
-                finding = productFinder.findProducts(data, deadline)
-            except Exception:
-                # A find that failed is not counted.
-                giveBackQuotas(PHOTO_USAGE, keys)
-                raise
-            saveBy = time.monotonic() + SAVE_SECONDS
-            products = []
-            for product in finding.found:
-                saved = photoStorage.saveFoundPhoto(
-                    userId, generateRandomString(), product.photo, saveBy)
-                products.append({'name': product.name,
-                                 'imageUrl': photoStorage.publicPathUrl(
-                                     saved)})
-        # Never the URL, the path or the names.
-        logging.info({
-            'event': 'productsInPhoto',
-            'storeId': store['_id'],
-            'found': len(products),
-            'notFound': len(finding.notFound),
-            'durationMs': round((time.monotonic() - started) * 1000),
-        })
-        return {'products': products, 'notFound': finding.notFound}
+        return findProductsInPhoto(FoundProductsResponse, userId, imageUrl)
 
     @mcp_tool('admin',
               thinkingText=['Reading the colors in your photo',
                             'Matching your colors',
-                            'Picking out the main colors'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Colors read',
-                  responseModel=PhotoColorsResponse)
+                            'Picking out the main colors'],
+              responseModel=PhotoColorsResponse,
+              twinOf=None)
     def findColorsInPhoto(self,
                           userId: str,
                           imageUrl: str,
@@ -699,47 +783,14 @@ class PhotoActions():
         save it with updateMyStoreTheme (createUserStore while setting up
         the store). If this tool refuses, relay its message to the
         admin."""
-        deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
-        # A store not set up yet reads colors too (its brand colors come
-        # from createUserStore).
-        store = requireAnyOwnerStore(userId, {'_id': 1})
-        if not isinstance(imageUrl, str) or not imageUrl.strip():
-            raise ValueError(IMAGE_URL_MISSING)
-        path = photoStorage.ownImagePath(
-            userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
-            'imageUrl')
-        focus = _validText(focus, COLOR_FOCUS_LABEL,
-                           PHOTO_COLOR_FOCUS_MAX_LENGTH, required=False)
-        started = time.monotonic()
-        [(data, _)] = photoStorage.readOwnImages(
-            userId, [('imageUrl', path)], deadline)
-        if focus is None:
-            reading = colorFinder.readColors(data, None, deadline)
-        else:
-            reading = _readFocusedColors(store['_id'], data, focus,
-                                         deadline)
-        # Never the URL, the path, the focus or the colors.
-        logging.info({
-            'event': 'photoColors',
-            'storeId': store['_id'],
-            'colors': len(reading.colors),
-            'focused': focus is not None,
-            'focusFound': reading.focusFound,
-            'durationMs': round((time.monotonic() - started) * 1000),
-        })
-        return {'colors': [{'hex': color.hex, 'share': color.share,
-                            'neutral': color.neutral}
-                           for color in reading.colors],
-                'focus': focus, 'focusFound': reading.focusFound}
+        return findColorsInPhoto(PhotoColorsResponse, userId, imageUrl, focus)
 
     @mcp_tool('admin',
               thinkingText=['Setting the product photo',
                             'Updating the product photo',
-                            'Putting the photo on the product'])
-    @route_config(httpMethod='POST',
-                  jwtRequired=True,
-                  successMessage='Product photo set',
-                  responseModel=AdminProductRow)
+                            'Putting the photo on the product'],
+              responseModel=AdminProductRow,
+              twinOf=None)
     def setProductPhoto(self,
                         userId: str,
                         productId: str,
@@ -752,24 +803,4 @@ class PhotoActions():
         calling, unless they picked it on a photo choice card or named its
         number there. If it
         refuses, relay its message to the admin."""
-        store = requireOwnerStore(userId, {'_id': 1})
-        photoUrl = None
-        # An empty photoId is none: the photo comes off.
-        if photoId:
-            photo = db.read({'_id': photoId, 'storeId': store['_id']},
-                            GENERATED_PHOTOS, projection={'url': 1},
-                            findOne=True)
-            if photo is None:
-                raise ValueError(PHOTO_NOT_FOUND)
-            photoUrl = photo['url']
-        updated = None
-        if productId:
-            # The _version bump of every product write (Product).
-            updated = db.findOneAndUpdate(
-                {'_id': productId, 'storeId': store['_id']},
-                {'$set': {'photoUrl': photoUrl}, '$inc': {'_version': 1}},
-                PRODUCTS, upsert=False,
-                projection=projection_of(AdminProductRow))
-        if updated is None:
-            raise ValueError(PRODUCT_NOT_FOUND)
-        return projectedCopy(AdminProductRow, updated)
+        return setProductPhoto(AdminProductRow, userId, productId, photoId)

@@ -522,6 +522,24 @@ def projectedCopy(model: type[BaseModel], document):
     return copy
 
 
+def fieldModel(model: type[BaseModel], field: str) -> type[BaseModel]:
+    """The model of `model`'s field `field`, through a list and a null: the
+    row model an action reads a list answer's items with, so the answer
+    follows the model its caller passed (`{'orders': db.readResponses(
+    fieldModel(model, 'orders'), ...)}`). Raises ValueError when the field
+    holds no single model."""
+    info = model.model_fields.get(field)
+    members = () if info is None else _members(info.annotation)
+    members = [member for member in members if member is not type(None)]
+    if len(members) == 1 and typing.get_origin(members[0]) is list:
+        members = [member for member in _members(typing.get_args(members[0])[0])
+                   if member is not type(None)]
+    if len(members) != 1 or not (isinstance(members[0], type)
+                                 and issubclass(members[0], BaseModel)):
+        raise ValueError(f'{model.__name__}.{field} holds no single model')
+    return members[0]
+
+
 def _str_tag(discriminator):
     """A discriminator as the name of its tag field: a str, a
     Discriminator('kind') or a Field(discriminator=...) naming one; None for

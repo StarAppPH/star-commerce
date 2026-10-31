@@ -93,7 +93,7 @@ from AppCreator import (API_RESPONSE_TS, BASIC_PY_TO_TS, CLIENT_API_DIR,
                         _wrap_sibling_refs, py_annotation_to_ts)
 from conftest import (apiRoutes, lastPublishedPayload, publishedPayloads,
                       routeMeta)
-from objects import (RESPONSE_CHECK_CONTEXT_KEY, DevUserRow,
+from objects import (RESPONSE_CHECK_CONTEXT_KEY,
                      FirebaseUserObject, ResponseModel, SampleTodo,
                      SampleTodoListResponse, SampleTodoRow, SampleTodoView,
                      StoredDocumentKeys, User, UserResponse, UserView,
@@ -792,6 +792,24 @@ def _creator_with_routes(monkeypatch, app: dict,
     return AppCreator(apiRequests=None)
 
 
+@pytest.mark.parametrize('kind, fileName', [('app', 'ApiRequests'),
+                                             ('appPubSub', 'PubSubRequests')])
+def test_validateRoutes_refusesAMemberCarryingMcpTool(monkeypatch, kind,
+                                                      fileName):
+    """A route serves a person, a tool the AI: a tool mixed into ApiRequests
+    (or PubSubRequests) stops the run before anything is written (mcp_tool
+    refuses the other order, a tool over a route)."""
+    from ToolRequests import ToolRequests
+    routesByKind = {'app': {}, 'appPubSub': {}}
+    routesByKind[kind] = {'listVoices': ToolRequests.listVoices}
+    creator = _creator_with_routes(monkeypatch, **routesByKind)
+
+    with pytest.raises(ValueError,
+                       match=f'listVoices in {fileName} carries @mcp_tool: a '
+                       'tool is no route'):
+        creator.validateRoutes()
+
+
 def test_validateRoutes_rejectsAnApiRouteWithoutResponseModel(monkeypatch):
     creator = _creator_with_routes(monkeypatch,
                                    app={'fn': _UntypedRoutes.fn},
@@ -1224,7 +1242,6 @@ def test_isWholeDocument_isDerivedFromTheStoredModels():
     roles but under half of the scalars, or one whose roles are cut
     down."""
     assert _isWholeDocument(UserResponse)
-    assert not _isWholeDocument(DevUserRow)
     assert not _isWholeDocument(SampleTodoRow)
     assert not _isWholeDocument(User)
     rolesOnly = pydantic.create_model(
@@ -2458,11 +2475,6 @@ def test_projectionOf_theSampleRows():
         'title': 1,
         'completed': 1
     }
-    assert projection_of(DevUserRow) == {
-        '_id': 1,
-        'name': 1,
-        'userType': 1
-    }
     assert projection_of(UserResponse) == {
         '_id': 1,
         'name': 1,
@@ -2883,7 +2895,6 @@ def test_projectionOf_neverCollidesAPathWithItsParent(model):
 # field changed on the domain model must change on the row too.
 MIRRORS = [
     # A row is read, so its _id is a required str.
-    (ObjectsModule.DevUserRow, ObjectsModule.User, {'id'}),
     (ObjectsModule.SampleTodoRow, ObjectsModule.SampleTodo, {'id'}),
     # location is a StoreLocationResponse on the row, a StoreLocation on
     # the document: mirrored by the entry after this one.
@@ -2894,6 +2905,7 @@ MIRRORS = [
      {'id', 'location'}),
     (ObjectsModule.ShopStoreResponse, ObjectsModule.Store,
      {'id', 'location'}),
+    (ObjectsModule.AdminStoreScreenRow, ObjectsModule.Store, set()),
     (ObjectsModule.StoreThemeResponse, ObjectsModule.Store, set()),
     (ObjectsModule.CustomerSessionResponse, ObjectsModule.Customer, {'id'}),
     (ObjectsModule.ProductRow, ObjectsModule.Product, {'id'}),
@@ -3723,11 +3735,10 @@ def test_generatedServerRequests_listsRouteBodiesAndPublicRoutes():
         name for name, func in routes.items()
         if creator._is_public_route(creator._route_meta(func))
     ]
-    # POSTed to without a token: only the localdev-only dev user list (a
-    # sign-in route mints a token, so it does not count; test_auth_surface
-    # pins the whole public surface).
-    assert public == ['devGetUserList']
-    assert {'getRoles', 'getMyOrders', 'devLogin'} <= set(bodies)
+    # POSTed to without a token: none (a sign-in route mints a token, so it
+    # does not count; test_auth_surface pins the whole public surface).
+    assert public == []
+    assert {'getRoles', 'listMyConversations', 'devLogin'} <= set(bodies)
     stale = ('ServerRequests.ts is stale: run `cd server && python '
              'AppCreator.py`')
     assert creator._ts_route_request_bodies(bodies) in generated, stale

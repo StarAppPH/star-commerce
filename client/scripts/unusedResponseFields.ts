@@ -167,6 +167,10 @@ function analyze(options: Options): AnalyzerResult {
 
   // A union's or intersection's member types, else the type itself.
   const partsOf = (t: Type): Type[] => (t.isUnion() ? t.getUnionTypes() : t.isIntersection() ? t.getIntersectionTypes() : [t]);
+  // A list's element types: an array's one, or a tuple's (a list with
+  // minItems is generated as `[X, ...X[]]`), each once; null for anything else.
+  const elementsOf = (t: Type): Type[] | null =>
+    t.isArray() ? [t.getArrayElementTypeOrThrow()] : t.isTuple() ? [...new Set(t.getTupleElements())] : null;
 
   function propType(t: Type, name: string): Type | null {
     const p = t.getProperty(name);
@@ -188,7 +192,8 @@ function analyze(options: Options): AnalyzerResult {
   ): void {
     if (t.isUnion()) return t.getUnionTypes().forEach((u) => descend(u, prefix, stack, ctx, onProperty));
     if (t.isIntersection()) return t.getIntersectionTypes().forEach((u) => descend(u, prefix, stack, ctx, onProperty));
-    if (t.isArray()) return descend(t.getArrayElementType() as Type, `${prefix}[]`, stack, ctx, onProperty);
+    const elements = elementsOf(t);
+    if (elements) return elements.forEach((e) => descend(e, `${prefix}[]`, stack, ctx, onProperty));
     const iface = schemaKeyOf(t);
     if (!iface) {
       const idx = t.isObject() ? t.getStringIndexType() : undefined;
@@ -221,7 +226,11 @@ function analyze(options: Options): AnalyzerResult {
       t.getIntersectionTypes().forEach((u) => objKeysOfType(u, out, depth));
       return out;
     }
-    if (t.isArray()) return objKeysOfType(t.getArrayElementType(), out, depth + 1);
+    const elements = elementsOf(t);
+    if (elements) {
+      elements.forEach((e) => objKeysOfType(e, out, depth + 1));
+      return out;
+    }
     let key = schemaKeyOf(t);
     // A client alias of a library mapped type (`type Row = Pick<Order, 'a'>`):
     // its symbol is the library's, so key it by the alias; its properties keep
@@ -262,8 +271,9 @@ function analyze(options: Options): AnalyzerResult {
     seen.add(t);
     objKeysOfType(t).forEach((k) => out.add(k));
     for (const part of partsOf(t)) {
-      if (part.isArray()) {
-        objKeysDeep(part.getArrayElementType(), out, depth + 1, seen);
+      const elements = elementsOf(part);
+      if (elements) {
+        elements.forEach((e) => objKeysDeep(e, out, depth + 1, seen));
         continue;
       }
       if (!part.isObject() || part.getCallSignatures().length || schemaKeyOf(part)) continue;
@@ -296,7 +306,7 @@ function analyze(options: Options): AnalyzerResult {
     return Boolean(idx && (idx.isAny() || idx.isUnknown()));
   }
   const hasNamedFields = (t: Type): boolean =>
-    partsOf(t).some((u) => u.isObject() && !u.isArray() && !u.getCallSignatures().length && u.getProperties().length > 0);
+    partsOf(t).some((u) => u.isObject() && !elementsOf(u) && !u.getCallSignatures().length && u.getProperties().length > 0);
   // React's dependency arrays only compare identity.
   const isDependencyList = (t: Type | undefined): boolean => t?.getAliasSymbol()?.getName() === 'DependencyList';
 
@@ -305,7 +315,9 @@ function analyze(options: Options): AnalyzerResult {
   // type on both sides never is.
   function losesFields(from: Type, to: Type | undefined): boolean {
     if (!to || isDependencyList(to)) return false;
-    if (from.isArray() && to.isArray()) return losesFields(from.getArrayElementTypeOrThrow(), to.getArrayElementTypeOrThrow());
+    const fromElements = elementsOf(from);
+    const toElements = elementsOf(to);
+    if (fromElements && toElements) return fromElements.some((f) => toElements.some((e) => losesFields(f, e)));
     const toKeys = objKeysOfType(to);
     if ([...objKeysOfType(from)].some((k) => toKeys.has(k))) return false;
     if (isLoose(to)) return true;
@@ -408,7 +420,7 @@ function analyze(options: Options): AnalyzerResult {
   // A value's own named-field keys: what Object.keys and for...in enumerate.
   // Over an array or a record's data keys it is no field read.
   const namedFieldKeys = (t: Type): Set<string> =>
-    t.isArray() ? new Set() : new Set([...objKeysOfType(t)].filter((k) => (keyTypes.get(k) ?? []).some(hasNamedFields)));
+    elementsOf(t) ? new Set() : new Set([...objKeysOfType(t)].filter((k) => (keyTypes.get(k) ?? []).some(hasNamedFields)));
 
   // Parameters of client-declared generics that reach a dynamic sink, and the
   // call sites passing values to a generic's type-parameter parameter (judged
@@ -440,7 +452,7 @@ function analyze(options: Options): AnalyzerResult {
     }
     [
       ...(t.isUnion() || t.isIntersection() ? partsOf(t) : []),
-      ...(t.isArray() ? [t.getArrayElementTypeOrThrow()] : []),
+      ...(elementsOf(t) ?? []),
       ...t.getTypeArguments(),
       ...t.getAliasTypeArguments(),
       ...(t.getStringIndexType() ? [t.getStringIndexType() as Type] : []),

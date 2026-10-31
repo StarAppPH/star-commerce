@@ -3,12 +3,13 @@
 - OurJwtVerifier: the MCP servers accept OUR access token (the JWT app.py
   issues, Flask-JWT-Extended, HS256 with JWT_SECRET_KEY) as the bearer
   token. A missing, forged or expired one is a 401 before any tool runs.
-- callerUserId / sessionStoreId: the injected route params (mcpTools.
+- callerUserId / sessionStoreId: the injected tool params (mcpTools.
   INJECTED_PARAMS), read from the connection, never from the AI.
-- callRoute: runs the route method and turns its failure into a ToolError
-  the AI can read, with routeErrors' messages (a 500's text never leaks).
+- callTool: runs the tool method (ToolRequests) and turns its failure into
+  a ToolError the AI can read, with routeErrors' messages (a 500's text
+  never leaks).
 - ArgumentsHidingServer: the SDK checks a tool's arguments against its
-  signature before the route runs; its refusal names the argument and what
+  signature before the tool runs; its refusal names the argument and what
   it should be, never the value sent.
 - buildApp: one Starlette app serving each audience's server at
   /<audience>/mcp (streamable HTTP, stateless, JSON responses).
@@ -96,18 +97,18 @@ def sessionStoreId(ctx: Context) -> str:
     return storeId
 
 
-def callRoute(route, **kwargs) -> dict:
-    """Run the route method. A failure the caller can act on (ValueError,
+def callTool(tool, **kwargs) -> dict:
+    """Run the tool method. A failure the caller can act on (ValueError,
     PermissionError, ...) reaches the AI with its message; any other one
     with routeErrors' generic message and error id, logged once."""
     try:
-        return route(**kwargs)
+        return tool(**kwargs)
     except ToolError:
         raise
     except Exception as error:
         failure = routeFailure(error, status=400)
         logging.log(failure.level, {
-            'function': route.__name__,
+            'function': tool.__name__,
             'event': 'mcpToolError',
             'traceback': failure.traceback
         })
@@ -128,10 +129,9 @@ def _hidingInput(argModel: type) -> type:
 
 class ArgumentsHidingServer(MCPServer):
     """An MCPServer whose argument check never quotes a value. The SDK
-    validates a tool's arguments before the tool (and so the route) runs,
-    and its ToolError would otherwise carry each refused value, which may
-    be whatever the AI was told: the route's own checks never quote one
-    either. The SDK reads FuncMetadata.arg_model live on every call, so
+    validates a tool's arguments before the tool runs, and its ToolError
+    would otherwise carry each refused value, which may be whatever the AI
+    was told: the tool's own checks never quote one either. The SDK reads FuncMetadata.arg_model live on every call, so
     swapping it after registration is enough."""
 
     def add_tool(self, fn, name: str | None = None, **kwargs) -> None:
@@ -153,7 +153,7 @@ def newServer(audience: str) -> MCPServer:
         auth=AuthSettings(
             issuer_url=_baseUrl(FLASK_PORT),
             resource_server_url=f'{_baseUrl(MCP_PORT)}/{audience}{MCP_PATH}',
-            # Our JWT carries no audience: the routes themselves decide who
+            # Our JWT carries no audience: the tools' actions decide who
             # may call them (requireAdmin / requireCustomer).
             validate_token_resource=False,
         ),

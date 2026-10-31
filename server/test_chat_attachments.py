@@ -22,7 +22,7 @@ import pytest
 
 import chatModel
 import photoStorage
-from actions import ChatActions, VoiceActions, usageCounters
+from actions import ChatActions, usageCounters
 from ApiRequests import ApiRequests
 from conftest import createTestStore
 from mongoDb import db
@@ -1308,52 +1308,7 @@ def test_theFileCounters_useTheUtcPlus8Day(storage, model, monkeypatch):
         attachmentKey(ALL_ATTACHMENTS, usageCounters.ALL_STORES, day): 1}
 
 
-# ===================== G. voice, logs ===================== #
-
-
-def test_aVoiceTurn_passesNoAttachments_andStoresNone(storage, model,
-                                                      monkeypatch):
-    import struct
-
-    import voiceModel
-    store = createTestStore(ADMIN)
-    db.delete({}, 'VoiceUsage')
-    monkeypatch.setenv('MODEL_API_KEY', 'test-meta-key')
-    monkeypatch.setenv('ELEVENLABS_API_KEY', 'test-eleven-key')
-    monkeypatch.setenv('ELEVENLABS_DEFAULT_VOICE_ID', 'defaultVoice1')
-    monkeypatch.setattr(VoiceActions, '_now', lambda: FAR)
-    monkeypatch.setattr(voiceModel, 'transcribe',
-                        lambda data, deadline: 'hello there')
-    monkeypatch.setattr(voiceModel, 'speak',
-                        lambda text, voiceId, deadline: b'mp3')
-    samples = b'\0' * 16000  # 0.5 s of 16 kHz mono 16-bit silence
-    fmt = struct.pack('<HHIIHH', 1, 1, 16000, 32000, 2, 16)
-    body = (b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt + b'data' +
-            struct.pack('<I', len(samples)) + samples)
-    wav = b'RIFF' + struct.pack('<I', len(body)) + body
-    seen = []
-    real = ChatActions._slottedTurn
-
-    def spy(*args, **kwargs):
-        seen.append((args, kwargs))
-        return real(*args, **kwargs)
-
-    monkeypatch.setattr(ChatActions, '_slottedTurn', spy)
-    fake = model(reply('hi'))
-
-    res = api.sendAdminVoiceMessage(ADMIN, b64(wav), None)
-
-    [(args, kwargs)] = seen
-    assert 'attachments' not in kwargs and len(args) == 7
-    assert args[4] == 'hello there' and args[6] is None
-    assert userMessages(fake.requests[0])[-1] == {'role': 'user',
-                                                  'content': 'hello there'}
-    [turn] = turnDocs(res['conversationId'])
-    assert turn['attachments'] == []
-    assert not [k for k in chatCounts() if k.startswith('attachments')]
-    assert storage.lookups == []
-    db.delete({}, 'VoiceUsage')
-    assert store['_id']
+# ===================== G. logs ===================== #
 
 
 def test_logs_neverCarryAPathNameUrlOrContent(storage, firebase, model,

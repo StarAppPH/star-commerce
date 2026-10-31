@@ -1,23 +1,20 @@
-"""Voice chat (voiceModel.py, VoiceActions): smoke tests of each route and of
-the HTTP layer.
+"""The store's voice (voiceModel.py, VoiceActions): the daily speech caps,
+listVoices, the store's voice (updateMyStoreTheme), spokenText and the HTTP
+layer. Voice mode's streamed replies are test_voice_stream.py's, the
+thinking texts' clips test_chat_thinking.py's.
 
-No network: chatModel.client() is a fake playing one reply, the HTTP layer
-is voiceModel.httpSession() replaced by a FakeSession (recording each
-request, answering scripted FakeResponses), and the route tests replace
-voiceModel.transcribe / speak / voiceExists / listVoices where they only
-need the route. VoiceActions._now and ChatActions._now are frozen far in
-the future (2099), so no TTL monitor deletes a counter mid-test."""
+No network: the HTTP layer is voiceModel.httpSession() replaced by a
+FakeSession (recording each request, answering scripted FakeResponses),
+and the tool tests replace voiceModel.voiceExists / listVoices where they
+only need the tool. VoiceActions._now and ChatActions._now are frozen far
+in the future (2099), so no TTL monitor deletes a counter mid-test."""
 
 import base64
 import datetime
 import ipaddress
 import json
 import logging
-import math
 import socket
-import struct
-import threading
-from types import SimpleNamespace
 
 import pytest
 import requests
@@ -26,14 +23,14 @@ import chatModel
 import voiceModel
 from actions import ChatActions, VoiceActions
 from ApiRequests import ApiRequests
+from ToolRequests import ToolRequests
 from actions import StoreActions
 from actions.usageCounters import usageExpiry, usageKey
 from conftest import (assertExactShape, createTestStore, createTestUser,
                       storeWithProducts, verifiedGuestAt, wipeCollections)
 from mongoDb import db
-from objects import (ChatTurn, Conversation, SpokenReplyResponse,
-                     StoreThemeResponse, VoiceListResponse,
-                     VoiceReplyResponse, VoiceUsage)
+from objects import (Conversation, StoreThemeResponse,
+                     VoiceListResponse, VoiceUsage)
 from utils import generateRandomString
 from services.__request import ServiceUnavailable
 
@@ -50,22 +47,10 @@ UTC = datetime.timezone.utc
 FAR = datetime.datetime(2099, 6, 15, 12, 0, 0, tzinfo=UTC)
 DAY = datetime.date(2099, 6, 15)  # FAR in UTC+8
 MP3 = b'ID3-fake-mp3-bytes'
-SECRET_TRANSCRIPT = 'SENTINEL-TRANSCRIPT where is my order'
 SECRET_REPLY = 'SENTINEL-REPLY **Your order** ships tomorrow.'
 
 api = ApiRequests()
-
-
-def wav(seconds: float = 1.0, rate: int = 16000, channels: int = 1,
-        bits: int = 16, audioFormat: int = 1) -> bytes:
-    """A RIFF/WAVE file of silence."""
-    blockAlign = channels * bits // 8
-    data = b'\0' * (int(seconds * rate) * blockAlign)
-    fmt = struct.pack('<HHIIHH', audioFormat, channels, rate,
-                      rate * blockAlign, blockAlign, bits)
-    body = (b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt +
-            b'data' + struct.pack('<I', len(data)) + data)
-    return b'RIFF' + struct.pack('<I', len(body)) + body
+tools = ToolRequests()
 
 
 def b64(data: bytes) -> str:
@@ -196,88 +181,6 @@ def session(monkeypatch):
     return install
 
 
-@pytest.fixture
-def chatReply(monkeypatch):
-    """The chat model answers SECRET_REPLY once, recording the request."""
-    requests_ = []
-
-    def create(**kwargs):
-        requests_.append(kwargs)
-        return SimpleNamespace(
-            choices=[SimpleNamespace(
-                message=SimpleNamespace(content=SECRET_REPLY,
-                                        tool_calls=None),
-                finish_reason='stop')],
-            usage=None)
-
-    fake = SimpleNamespace(chat=SimpleNamespace(
-        completions=SimpleNamespace(create=create)))
-    monkeypatch.setattr(chatModel, 'client', lambda: fake)
-    return requests_
-
-
-@pytest.fixture
-def speech(monkeypatch):
-    """transcribe() hears SECRET_TRANSCRIPT and speak() returns MP3, both
-    recorded."""
-    calls = {'transcribe': [], 'speak': []}
-
-    def transcribe(data, deadline):
-        calls['transcribe'].append(data)
-        return SECRET_TRANSCRIPT
-
-    def speak(text, voiceId, deadline):
-        calls['speak'].append((text, voiceId))
-        return MP3
-
-    monkeypatch.setattr(voiceModel, 'transcribe', transcribe)
-    monkeypatch.setattr(voiceModel, 'speak', speak)
-    return calls
-
-
-def counter(kind: str, owner: str) -> int | None:
-    doc = db.read({'_id': VoiceActions.usageKey(kind, owner, DAY)},
-                  'VoiceUsage', findOne=True)
-    return None if doc is None else doc['count']
-
-
-# ------------------------------ validWav ------------------------------ #
-
-
-# ------------------------------ the routes ------------------------------ #
-
-
-def test_sendStoreVoiceMessage_answersTheTranscriptAndSpeaksTheReply(
-        clean, firebase, speech, chatReply):
-    store = storeWithProducts(ADMIN)
-    customerId = verifiedGuestAt(firebase, store, GUEST)
-
-    res = api.sendStoreVoiceMessage(customerId, store['_id'], b64(wav(1.5)))
-
-    assertExactShape(VoiceReplyResponse, res)
-    assert res['transcript'] == SECRET_TRANSCRIPT
-    assert res['reply'] == SECRET_REPLY
-    assert base64.b64decode(res['audio']) == MP3
-    assert chatReply[0]['messages'][-1] == {'role': 'user',
-                                            'content': SECRET_TRANSCRIPT}
-    assert speech['speak'] == [(voiceModel.spokenText(SECRET_REPLY), None)]
-    assert counter('sttCustomer', customerId) == 2
-    assert counter('ttsStore', store['_id']) == len(
-        voiceModel.spokenText(SECRET_REPLY))
-
-
-def test_speakChatTurn_speaksTheSavedReply(clean, speech, chatReply):
-    createTestStore(ADMIN)
-    sent = api.sendAdminVoiceMessage(ADMIN, b64(wav()))
-
-    res = api.speakChatTurn(ADMIN, sent['conversationId'], sent['turnSeq'])
-
-    assertExactShape(SpokenReplyResponse, res)
-    assert base64.b64decode(res['audio']) == MP3
-    with pytest.raises(ValueError, match='^Conversation not found$'):
-        api.speakChatTurn('someone-else', sent['conversationId'], 0)
-
-
 def test_listVoices_offersDefaultVoices_neverClones(clean, session):
     createTestStore(ADMIN)
     fake = session(jsonResponse({
@@ -289,7 +192,7 @@ def test_listVoices_offersDefaultVoices_neverClones(clean, session):
         ],
         'has_more': False, 'next_page_token': None}))
 
-    res = api.listVoices(ADMIN, search='warm')
+    res = tools.listVoices(ADMIN, search='warm')
 
     assertExactShape(VoiceListResponse, res)
     assert res == {'voices': [{'voiceId': 'abc123', 'name': 'Ana',
@@ -305,13 +208,8 @@ def test_listVoices_offersDefaultVoices_neverClones(clean, session):
     assert request['allow_redirects'] is False
 
 
-# ------------------------------ the HTTP layer ------------------------------ #
-
-
 # ------------------------------ more helpers ------------------------------ #
 
-SNAPSHOT_COLLECTIONS = ['Conversations', 'ChatTurns', 'ChatUsage',
-                        'VoiceUsage']
 ALL = VoiceActions.ALL_STORES
 
 
@@ -357,10 +255,6 @@ def mp3Response(body: bytes = MP3) -> FakeResponse:
     return FakeResponse(200, body, {'Content-Type': 'audio/mpeg'})
 
 
-def transcriptResponse(text: str = 'hello') -> FakeResponse:
-    return jsonResponse({'transcript': text})
-
-
 def voicesPage(*voices, hasMore: bool = False, token=None) -> FakeResponse:
     return jsonResponse({'voices': list(voices), 'has_more': hasMore,
                          'next_page_token': token})
@@ -369,25 +263,6 @@ def voicesPage(*voices, hasMore: bool = False, token=None) -> FakeResponse:
 def voice(voiceId='abc123', name='Ana', category='premade',
           **extra) -> dict:
     return {'voice_id': voiceId, 'name': name, 'category': category, **extra}
-
-
-@pytest.fixture
-def replySays(monkeypatch):
-    """replySays(text): the chat model answers `text` (every call)."""
-
-    def install(text: str) -> None:
-        def create(**kwargs):
-            return SimpleNamespace(
-                choices=[SimpleNamespace(
-                    message=SimpleNamespace(content=text, tool_calls=None),
-                    finish_reason='stop')],
-                usage=None)
-
-        fake = SimpleNamespace(chat=SimpleNamespace(
-            completions=SimpleNamespace(create=create)))
-        monkeypatch.setattr(chatModel, 'client', lambda: fake)
-
-    return install
 
 
 def customerCtx(firebase):
@@ -402,12 +277,6 @@ def seedCounter(kind: str, owner: str, count: int,
     db.create(doc.model_dump(by_alias=True), 'VoiceUsage')
 
 
-def seedChatCounter(key: str, count: int) -> None:
-    db.create({'_id': key, 'count': count,
-               'expireAt': FAR + datetime.timedelta(days=30), '_version': 0},
-              'ChatUsage')
-
-
 def voiceCounters() -> dict:
     return {doc['_id']: doc['count']
             for doc in db.read({}, 'VoiceUsage') or []}
@@ -417,11 +286,6 @@ def usedCounters() -> dict:
     """The counters holding something (a refused or refunded take leaves
     its document at 0)."""
     return {key: count for key, count in voiceCounters().items() if count}
-
-
-def snapshot() -> dict:
-    return {name: sorted(db.read({}, name) or [], key=lambda d: d['_id'])
-            for name in SNAPSHOT_COLLECTIONS}
 
 
 def seedConversation(userId: str, storeId: str, audience: str = 'customer',
@@ -434,22 +298,6 @@ def seedConversation(userId: str, storeId: str, audience: str = 'customer',
     return db.create(conversation.model_dump(by_alias=True), 'Conversations')
 
 
-def seedTurn(conversation: dict, seq: int, replyText: str) -> dict:
-    turn = ChatTurn(conversationId=conversation['_id'],
-                    userId=conversation['userId'],
-                    storeId=conversation['storeId'], seq=seq,
-                    userText=f'q{seq}', steps=[], replyText=replyText,
-                    toolCallCount=0,
-                    usage={'promptTokens': 0, 'completionTokens': 0,
-                           'cachedTokens': 0},
-                    model=chatModel.CHAT_MODEL, createdAt=FAR, _version=0)
-    return db.create(turn.model_dump(by_alias=True), 'ChatTurns')
-
-
-def turnRows(conversationId: str) -> list:
-    return db.read({'conversationId': conversationId}, 'ChatTurns') or []
-
-
 def aware(moment: datetime.datetime) -> datetime.datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
@@ -457,21 +305,6 @@ def aware(moment: datetime.datetime) -> datetime.datetime:
 def records(caplog, event: str) -> list:
     return [r for r in caplog.records
             if isinstance(r.msg, dict) and r.msg.get('event') == event]
-
-
-def freeSlots(slots: threading.BoundedSemaphore) -> int:
-    """How many slots are free (taken and given back)."""
-    taken = 0
-    while slots.acquire(blocking=False):
-        taken += 1
-    for _ in range(taken):
-        slots.release()
-    return taken
-
-
-def sendAdmin(audio: str | None = None, conversationId=None) -> dict:
-    return api.sendAdminVoiceMessage(ADMIN, audio or b64(wav()),
-                                     conversationId)
 
 
 # ------------------------------ no network ------------------------------ #
@@ -490,13 +323,12 @@ def test_theGuard_blocksANonLoopbackSocket_butNotTheDatabase(clean):
 
 def test_theCapTable():
     assert VoiceActions.VOICE_LIMITS == {
-        'stt': (1800, 6000, 'VOICE_DAILY_SECONDS_ALL', 30000),
         'tts': (20000, 100000, 'VOICE_DAILY_CHARS_ALL', 2000000),
     }
     assert VoiceActions.ALL_STORES == 'all'
 
 
-@pytest.mark.parametrize('direction', ['stt', 'tts'])
+@pytest.mark.parametrize('direction', ['tts'])
 @pytest.mark.parametrize('audience', ['customer', 'admin'])
 def test_takeVoiceQuota_countersAndTheirKeys(clean, direction, audience):
     expected = {usageKey(f'{direction}Store', 's1', DAY): 3,
@@ -524,7 +356,7 @@ def test_takeVoiceQuota_countersAndTheirKeys(clean, direction, audience):
         }
 
 
-@pytest.mark.parametrize('direction', ['stt', 'tts'])
+@pytest.mark.parametrize('direction', ['tts'])
 @pytest.mark.parametrize('level', ['Customer', 'Store', 'All'])
 def test_takeVoiceQuota_refusesPastEachCap_andCountsNothing(
         clean, monkeypatch, direction, level):
@@ -544,7 +376,7 @@ def test_takeVoiceQuota_refusesPastEachCap_andCountsNothing(
     assert voiceCounters()[seeded] == cap
 
 
-@pytest.mark.parametrize('direction', ['stt', 'tts'])
+@pytest.mark.parametrize('direction', ['tts'])
 @pytest.mark.parametrize('bad', ['zzz-secret', '-5', '1.5', '0x10'])
 def test_aBadEnvValue_fallsBackToTheDefault(clean, monkeypatch, caplog,
                                             direction, bad):
@@ -563,7 +395,7 @@ def test_aBadEnvValue_fallsBackToTheDefault(clean, monkeypatch, caplog,
     assert bad not in caplog.text or bad in ('-5', '1.5', '0x10')
 
 
-@pytest.mark.parametrize('direction', ['stt', 'tts'])
+@pytest.mark.parametrize('direction', ['tts'])
 def test_theAllCap_isReadAtEachCall(clean, monkeypatch, direction):
     variable = VoiceActions.VOICE_LIMITS[direction][2]
     monkeypatch.setenv(variable, '3')
@@ -575,680 +407,7 @@ def test_theAllCap_isReadAtEachCall(clean, monkeypatch, direction):
     assert voiceCounters()[usageKey(f'{direction}All', ALL, DAY)] == 10
 
 
-def test_aZeroSecondsCap_turnsTranscriptionOff(clean, firebase, speech,
-                                               monkeypatch):
-    store, customerId = customerCtx(firebase)
-    monkeypatch.setenv('VOICE_DAILY_SECONDS_ALL', '0')
-    before = snapshot()
-
-    with pytest.raises(ValueError) as error:
-        api.sendStoreVoiceMessage(customerId, store['_id'], b64(wav()))
-
-    assert str(error.value) == VoiceActions.VOICE_TURNED_OFF
-    assert speech['transcribe'] == []
-    assert snapshot() == before
-    assert voiceCounters() == {}
-
-
-def test_aZeroCharsCap_turnsSpeechOff(clean, speech, chatReply, monkeypatch,
-                                      caplog):
-    caplog.set_level(logging.INFO)
-    store = createTestStore(ADMIN)
-    sent = sendAdmin()
-    chars = len(voiceModel.spokenText(SECRET_REPLY))
-    monkeypatch.setenv('VOICE_DAILY_CHARS_ALL', '0')
-
-    with pytest.raises(ValueError) as error:
-        api.speakChatTurn(ADMIN, sent['conversationId'], sent['turnSeq'])
-    assert str(error.value) == VoiceActions.VOICE_TURNED_OFF
-    again = sendAdmin(conversationId=sent['conversationId'])
-
-    assertExactShape(VoiceReplyResponse, again)
-    assert again['audio'] is None
-    assert again['reply'] == SECRET_REPLY
-    assert len(turnRows(sent['conversationId'])) == 2
-    assert len(speech['speak']) == 1  # only the first message's
-    [skipped] = records(caplog, 'voiceSpeakFailed')
-    assert skipped.levelno == logging.INFO
-    assert voiceCounters()[usageKey('ttsStore', store['_id'], DAY)] == chars
-
-
-# --------------------- refusing a turn before it starts --------------------- #
-
-
-def refusalCase(case: str, firebase):
-    store, customerId = customerCtx(firebase)
-    sid = store['_id']
-    notFound = ChatActions.CONVERSATION_NOT_FOUND
-    conversationId, message = None, notFound
-    if case == 'badId':
-        conversationId = 'no-such-id'
-    elif case == 'notText':
-        conversationId = 123
-    elif case == 'bool':
-        conversationId = True
-    elif case == 'operator':
-        conversationId = {'$ne': None}
-    elif case == 'foreignUser':
-        conversationId = seedConversation('someone-else', sid)['_id']
-    elif case == 'foreignStore':
-        other = storeWithProducts(OTHER_ADMIN, 'Bakery B')
-        conversationId = seedConversation(customerId, other['_id'])['_id']
-    elif case == 'adminAudience':
-        conversationId = seedConversation(customerId, sid,
-                                          audience='admin')['_id']
-    elif case == 'busy':
-        conversationId = seedConversation(
-            customerId, sid,
-            busyUntil=FAR + datetime.timedelta(seconds=60))['_id']
-        message = ChatActions.STILL_ANSWERING
-    elif case == 'customerCap':
-        seedChatCounter(ChatActions.usageKey('customer', customerId, DAY),
-                        ChatActions.CUSTOMER_DAILY_CHAT_CAP)
-        message = ChatActions.CUSTOMER_CAP_REACHED
-    elif case == 'storeCap':
-        seedChatCounter(ChatActions.usageKey('store', sid, DAY),
-                        ChatActions.STORE_DAILY_CHAT_CAP)
-        message = ChatActions.STORE_CAP_REACHED
-    return sid, customerId, conversationId, message
-
-
-@pytest.mark.parametrize('case', [
-    'badId', 'notText', 'bool', 'operator', 'foreignUser', 'foreignStore',
-    'adminAudience', 'busy', 'customerCap', 'storeCap'])
-def test_aTurnThatWouldBeRefused_isRefusedBeforeAnythingIsBilled(
-        clean, firebase, speech, case):
-    sid, customerId, conversationId, message = refusalCase(case, firebase)
-    before = snapshot()
-
-    with pytest.raises(ValueError) as error:
-        api.sendStoreVoiceMessage(customerId, sid, b64(wav()),
-                                  conversationId)
-
-    assert str(error.value) == message
-    assert speech['transcribe'] == [] and speech['speak'] == []
-    assert snapshot() == before
-    assert voiceCounters() == {}
-
-
-def test_refuseTurnBeforeItStarts_readsOnly_andAdminsIgnoreChatCaps(clean):
-    store = createTestStore(ADMIN)
-    sid = store['_id']
-    seedChatCounter(ChatActions.usageKey('customer', ADMIN, DAY),
-                    ChatActions.CUSTOMER_DAILY_CHAT_CAP)
-    seedChatCounter(ChatActions.usageKey('store', sid, DAY),
-                    ChatActions.STORE_DAILY_CHAT_CAP)
-    idle = seedConversation(ADMIN, sid, audience='admin',
-                            busyUntil=FAR - datetime.timedelta(seconds=1))
-    before = snapshot()
-
-    assert ChatActions.refuseTurnBeforeItStarts('admin', ADMIN, sid,
-                                                None) is None
-    assert ChatActions.refuseTurnBeforeItStarts('admin', ADMIN, sid,
-                                                '') is None
-    assert ChatActions.refuseTurnBeforeItStarts('admin', ADMIN, sid,
-                                                idle['_id']) is None
-    with pytest.raises(ValueError):  # the same caps stop a customer
-        ChatActions.refuseTurnBeforeItStarts('customer', ADMIN, sid, None)
-
-    assert snapshot() == before
-
-
-@pytest.mark.parametrize('failure', ['racedRefusal', 'turnRaises'])
-def test_aTurnThatFailsAfterTranscribing_keepsTheSeconds(
-        clean, firebase, speech, monkeypatch, failure):
-    store, customerId = customerCtx(firebase)
-    error = (ValueError(ChatActions.STILL_ANSWERING)
-             if failure == 'racedRefusal' else RuntimeError('boom'))
-
-    def turn(*args, **kwargs):
-        raise error
-
-    monkeypatch.setattr(ChatActions, '_slottedTurn', turn)
-
-    with pytest.raises(type(error)):
-        api.sendStoreVoiceMessage(customerId, store['_id'], b64(wav(2.5)))
-
-    seconds = math.ceil(2.5)
-    assert voiceCounters() == {
-        usageKey('sttCustomer', customerId, DAY): seconds,
-        usageKey('sttStore', store['_id'], DAY): seconds,
-        usageKey('sttAll', ALL, DAY): seconds,
-    }
-    assert db.read({}, 'ChatTurns') in ([], None)
-    assert speech['speak'] == []
-
-
-# ------------------------------ canonical WAV ------------------------------ #
-
-
-def riff(chunks: bytes, sizeOverride: int | None = None) -> bytes:
-    body = b'WAVE' + chunks
-    return b'RIFF' + struct.pack(
-        '<I', len(body) if sizeOverride is None else sizeOverride) + body
-
-
-def fmtChunk(rate=16000, channels=1, bits=16, audioFormat=1,
-             byteRate=None, blockAlign=None, size=16) -> bytes:
-    blockAlign = blockAlign or channels * bits // 8
-    payload = struct.pack('<HHIIHH', audioFormat, channels, rate,
-                          byteRate or rate * blockAlign, blockAlign, bits)
-    return b'fmt ' + struct.pack('<I', size) + payload[:size]
-
-
-def dataChunk(samples: bytes, size: int | None = None) -> bytes:
-    return b'data' + struct.pack(
-        '<I', len(samples) if size is None else size) + samples
-
-
-def chunk(chunkId: bytes, payload: bytes) -> bytes:
-    return (chunkId + struct.pack('<I', len(payload)) + payload +
-            (b'\0' if len(payload) % 2 else b''))
-
-
-def silence(seconds: float, rate: int = 16000) -> bytes:
-    return b'\0' * (int(seconds * rate) * 2)
-
-
-def test_validWav_sendsACanonical44ByteHeader_withOnlyTheSamples():
-    samples = bytes(range(256)) * 125  # 32000 bytes: 1 second at 16 kHz
-    messy = riff(chunk(b'LIST', b'INFOabc') + fmtChunk() +
-                 chunk(b'junk', b'z' * 9) + dataChunk(samples) +
-                 b'TRAILING-JUNK-AFTER-THE-DATA')
-
-    sent, seconds = voiceModel.validWav(b64(messy))
-
-    assert seconds == 1.0
-    assert len(sent) == 44 + len(samples)
-    assert sent[:4] == b'RIFF'
-    assert struct.unpack_from('<I', sent, 4)[0] == len(sent) - 8
-    assert sent[8:16] == b'WAVEfmt '
-    assert struct.unpack_from('<IHHIIHH', sent, 16) == (
-        16, 1, 1, 16000, 32000, 2, 16)
-    assert sent[36:40] == b'data'
-    assert struct.unpack_from('<I', sent, 40)[0] == len(samples)
-    assert sent[44:] == samples
-    assert b'JUNK' not in sent and b'INFO' not in sent
-    # A plain file comes out byte for byte.
-    assert voiceModel.validWav(b64(wav(1.0)))[0] == wav(1.0)
-
-
-def test_validWav_dropsAnOddLastByte():
-    sent, seconds = voiceModel.validWav(
-        b64(riff(fmtChunk() + dataChunk(b'\0' * 16001))))
-
-    assert len(sent) == 44 + 16000
-    assert seconds == 0.5
-
-
-REFUSED_WAVS = {
-    'riffSizeZero': (riff(fmtChunk() + dataChunk(silence(1)), 0),
-                     voiceModel.AUDIO_SIZES_UNSET),
-    'riffSizeStreaming': (riff(fmtChunk() + dataChunk(silence(1)),
-                               0xFFFFFFFF), voiceModel.AUDIO_SIZES_UNSET),
-    'dataSizeStreaming': (riff(fmtChunk() +
-                               dataChunk(silence(1), 0xFFFFFFFF)),
-                          voiceModel.AUDIO_SIZES_UNSET),
-    'dataSizeZeroWithBytes': (riff(fmtChunk() + dataChunk(silence(1), 0)),
-                              voiceModel.AUDIO_SIZES_UNSET),
-    'dataSizePastTheFile': (riff(fmtChunk() +
-                                 dataChunk(silence(1), 40000)),
-                            voiceModel.AUDIO_SIZES_UNSET),
-    'headerOver4KB': (riff(chunk(b'LIST', b'x' * 5000) + fmtChunk() +
-                           dataChunk(silence(1))),
-                      voiceModel.AUDIO_HEADER_TOO_LONG),
-    'dataStartsPastTheAllowance': (
-        riff(fmtChunk() + chunk(b'LIST', b'x' * 4200) +
-             dataChunk(silence(1))), voiceModel.AUDIO_HEADER_TOO_LONG),
-    'chunkPastTheFile': (riff(chunk(b'LIST', b'x' * 10)[:-5]),
-                         voiceModel.AUDIO_NOT_WAV),
-    'dataBeforeFmt': (riff(dataChunk(silence(1)) + fmtChunk()),
-                      voiceModel.AUDIO_NOT_WAV),
-    'noData': (riff(fmtChunk()), voiceModel.AUDIO_NOT_WAV),
-    'shortFmt': (riff(fmtChunk(size=14) + dataChunk(silence(1))),
-                 voiceModel.AUDIO_NOT_WAV),
-    'stereo': (riff(fmtChunk(channels=2) + dataChunk(silence(1))),
-               voiceModel.AUDIO_FORMAT),
-    '8bit': (riff(fmtChunk(bits=8) + dataChunk(silence(1))),
-             voiceModel.AUDIO_FORMAT),
-    '44.1kHz': (riff(fmtChunk(rate=44100) + dataChunk(silence(1))),
-                voiceModel.AUDIO_FORMAT),
-    'float': (riff(fmtChunk(audioFormat=3) + dataChunk(silence(1))),
-              voiceModel.AUDIO_FORMAT),
-    'wrongByteRate': (riff(fmtChunk(byteRate=1) + dataChunk(silence(1))),
-                      voiceModel.AUDIO_FORMAT),
-    'wrongBlockAlign': (riff(fmtChunk(blockAlign=4) +
-                             dataChunk(silence(1))),
-                        voiceModel.AUDIO_FORMAT),
-    'tooShort': (riff(fmtChunk() + dataChunk(silence(0.29))),
-                 voiceModel.AUDIO_TOO_SHORT),
-    'noSamples': (riff(fmtChunk() + dataChunk(b'')),
-                  voiceModel.AUDIO_TOO_SHORT),
-    'over60s': (riff(fmtChunk() + dataChunk(silence(60.5))),
-                voiceModel.AUDIO_TOO_LONG),
-    'notWave': (b'RIFF\x04\0\0\0AVI ', voiceModel.AUDIO_NOT_WAV),
-    'tinyFile': (b'RIFF', voiceModel.AUDIO_NOT_WAV),
-}
-
-
-NOT_BASE64 = {
-    'symbols': '***', 'badPadding': 'AAA', 'leadingSpace': ' AAAA',
-    'trailingNewline': 'AAAA\n', 'empty': '', 'int': 123, 'none': None,
-    'bool': True, 'bytes': b'bytes', 'list': ['x'], 'dict': {'a': 1}}
-REFUSED_AUDIO = {
-    **{name: (b64(clip), message)
-       for name, (clip, message) in REFUSED_WAVS.items()},
-    'notWavText': (b64(b'not a wav at all'), voiceModel.AUDIO_NOT_WAV),
-    'moreBytesThanTheCap': (
-        b64(riff(fmtChunk() + dataChunk(b'\0' * 2) +
-                 b'x' * voiceModel.VOICE_AUDIO_MAX_BYTES)),
-        voiceModel.AUDIO_TOO_LONG),
-    **{f'notBase64-{name}': (audio, voiceModel.AUDIO_NOT_BASE64)
-       for name, audio in NOT_BASE64.items()},
-}
-
-
-@pytest.mark.parametrize('name', sorted(REFUSED_AUDIO))
-def test_validWav_refuses(name):
-    audio, message = REFUSED_AUDIO[name]
-
-    with pytest.raises(ValueError) as error:
-        voiceModel.validWav(audio)
-
-    assert str(error.value) == message
-
-
-def test_validWav_checksTheBase64LengthBeforeDecoding(monkeypatch):
-    def decode(*args, **kwargs):
-        raise AssertionError('decoded an oversized upload')
-
-    monkeypatch.setattr(voiceModel.base64, 'b64decode', decode)
-
-    with pytest.raises(ValueError) as error:
-        voiceModel.validWav('A' * (voiceModel.VOICE_AUDIO_MAX_BASE64 + 1))
-
-    assert str(error.value) == voiceModel.AUDIO_TOO_LONG
-
-
-@pytest.mark.parametrize('rate, seconds', [(16000, 2.0), (24000, 2.0),
-                                           (16000, 0.3), (16000, 60.0)])
-def test_validWav_acceptsMonoPcmAtBothRates_andTheLengthBoundaries(
-        rate, seconds):
-    sent, length = voiceModel.validWav(b64(wav(seconds, rate)))
-
-    assert length == seconds
-    assert sent == wav(seconds, rate)
-    assert len(sent) == 44 + int(seconds * rate) * 2
-
-
-def test_validWav_aRefusalNeverEchoesItsInput(clean, speech):
-    marker = 'SENTINEL-AUDIO-MARKER'
-    clips = [riff(chunk(b'LIST', marker.encode() * 600) + fmtChunk() +
-                  dataChunk(silence(1))),
-             riff(fmtChunk(channels=2) + dataChunk(marker.encode())),
-             marker.encode()]
-    for clip in clips:
-        with pytest.raises(ValueError) as error:
-            voiceModel.validWav(b64(clip))
-        assert marker not in str(error.value)
-        assert b64(clip) not in str(error.value)
-    with pytest.raises(ValueError) as error:
-        voiceModel.validWav(marker + '***')
-    assert marker not in str(error.value)
-    createTestStore(ADMIN)
-    with pytest.raises(ValueError) as error:
-        api.sendAdminVoiceMessage(ADMIN, b64(clips[2]))
-    assert marker not in str(error.value)
-    assert speech['transcribe'] == []
-
-
-# ------------------------- quota refunds and failures ------------------------- #
-
-
-def sttKeys(customerId: str, storeId: str) -> list[str]:
-    return [usageKey('sttCustomer', customerId, DAY),
-            usageKey('sttStore', storeId, DAY), usageKey('sttAll', ALL, DAY)]
-
-
-@pytest.mark.parametrize('failure, kept', [
-    (voiceModel.NothingHeard(), True),
-    (voiceModel.unavailable(), False),
-    (ValueError(voiceModel.RECORDING_UNREADABLE), False),
-    (RuntimeError('boom'), False)],
-    ids=['nothingHeard', 'unavailable', 'unreadable', 'runtime'])
-def test_aTranscriptionFailure_keepsTheSecondsOnlyWhenMetaBilledIt(
-        clean, firebase, monkeypatch, failure, kept):
-    store, customerId = customerCtx(firebase)
-
-    def transcribe(data, deadline):
-        raise failure
-
-    monkeypatch.setattr(voiceModel, 'transcribe', transcribe)
-
-    with pytest.raises(type(failure)):
-        api.sendStoreVoiceMessage(customerId, store['_id'], b64(wav(2.2)))
-
-    assert voiceCounters() == {
-        key: 3 if kept else 0
-        for key in sttKeys(customerId, store['_id'])}
-    assert db.read({}, 'ChatTurns') in ([], None)
-    assert db.read({}, 'ChatUsage') in ([], None)
-
-
-@pytest.mark.parametrize('failure, level', [
-    (voiceModel.unavailable(), logging.WARNING),
-    (ValueError('x'), logging.INFO),
-    (RuntimeError('boom'), logging.WARNING)],
-    ids=['unavailable', 'valueError', 'runtime'])
-def test_aSpeechFailure_givesTheCharactersBack_andKeepsTheReply(
-        clean, speech, chatReply, monkeypatch, caplog, failure, level):
-    caplog.set_level(logging.INFO)
-    store = createTestStore(ADMIN)
-
-    def fail(text, voiceId, deadline):
-        raise failure
-
-    monkeypatch.setattr(voiceModel, 'speak', fail)
-
-    res = sendAdmin()
-
-    assertExactShape(VoiceReplyResponse, res)
-    assert res['audio'] is None
-    assert res['transcript'] == SECRET_TRANSCRIPT
-    assert res['reply'] == SECRET_REPLY
-    [row] = turnRows(res['conversationId'])
-    assert row['replyText'] == SECRET_REPLY
-    assert voiceCounters()[usageKey('ttsStore', store['_id'], DAY)] == 0
-    assert voiceCounters()[usageKey('ttsAll', ALL, DAY)] == 0
-    assert voiceCounters()[usageKey('sttStore', store['_id'], DAY)] == 1
-    [failed] = records(caplog, 'voiceSpeakFailed')
-    assert failed.levelno == level
-    assert failed.msg['errorClass'] == type(failure).__name__
-    assert set(failed.msg) == {'event', 'conversationId', 'errorClass'}
-
-
-def test_aReachedSpeechCap_leavesTheAudioNull_forTheRestOfTheDay(
-        clean, speech, chatReply, caplog):
-    caplog.set_level(logging.INFO)
-    store = createTestStore(ADMIN)
-    seedCounter('ttsStore', store['_id'], 100000)
-
-    first = sendAdmin()
-    second = sendAdmin(conversationId=first['conversationId'])
-
-    assert first['audio'] is None and second['audio'] is None
-    assert second['turnSeq'] == 1
-    assert speech['speak'] == []
-    assert voiceCounters()[usageKey('ttsStore', store['_id'], DAY)] == 100000
-    assert [r.levelno for r in records(caplog, 'voiceSpeakFailed')] == [
-        logging.INFO, logging.INFO]
-
-
-def test_aReplyWithNothingToSay_isNotSpoken(clean, speech, replySays):
-    replySays('```python\nprint(1)\n```')
-    createTestStore(ADMIN)
-
-    res = sendAdmin()
-
-    assert res['audio'] is None
-    assert res['reply'] == '```python\nprint(1)\n```'
-    assert speech['speak'] == []
-    assert not [k for k in voiceCounters() if k.startswith('tts')]
-
-
-def test_aVoiceTurn_logsItsFieldsAndNoText(clean, speech, chatReply,
-                                           caplog):
-    caplog.set_level(logging.INFO)
-    createTestStore(ADMIN)
-
-    res = sendAdmin(b64(wav(1.5)))
-
-    [turn] = records(caplog, 'voiceTurn')
-    assert set(turn.msg) == {'event', 'conversationId', 'audience',
-                             'audioSeconds', 'spoken', 'durationMs'}
-    assert turn.msg['conversationId'] == res['conversationId']
-    assert turn.msg['audience'] == 'admin'
-    assert turn.msg['audioSeconds'] == 1.5
-    assert turn.msg['spoken'] is True
-    assert isinstance(turn.msg['durationMs'], int)
-
-
-def test_aConversationContinues_andEveryTurnIsSaved(clean, speech,
-                                                    chatReply):
-    store = createTestStore(ADMIN)
-
-    first = sendAdmin()
-    second = sendAdmin(conversationId=first['conversationId'])
-
-    assertExactShape(VoiceReplyResponse, second)
-    assert second['conversationId'] == first['conversationId']
-    assert (first['turnSeq'], second['turnSeq']) == (0, 1)
-    rows = sorted(turnRows(first['conversationId']), key=lambda r: r['seq'])
-    assert [r['userText'] for r in rows] == [SECRET_TRANSCRIPT] * 2
-    assert [r['replyText'] for r in rows] == [SECRET_REPLY] * 2
-    [conversation] = db.read({'_id': first['conversationId']},
-                             'Conversations')
-    assert conversation['turnCount'] == 2
-    assert conversation['busyUntil'] is None
-    assert conversation['storeId'] == store['_id']
-    assert chatReply[1]['messages'][-1]['content'] == SECRET_TRANSCRIPT
-    assert len(chatReply[1]['messages']) > len(chatReply[0]['messages'])
-    assert voiceCounters()[usageKey('sttStore', store['_id'], DAY)] == 2
-
-
-# ------------------------------ time limits ------------------------------ #
-
-
-@pytest.fixture
-def voiceClock(monkeypatch):
-    """VoiceActions' own time.monotonic() (it reads it directly)."""
-    fake = Clock(0.0)
-    monkeypatch.setattr(VoiceActions, 'time',
-                        SimpleNamespace(monotonic=fake.monotonic))
-    return fake
-
-
-@pytest.mark.parametrize('spent, speaks', [(115.0, True), (114.9, True),
-                                           (115.1, False), (119.0, False)])
-def test_speechIsSkippedUnderFiveSecondsLeft(clean, voiceClock, chatReply,
-                                             monkeypatch, caplog, spent,
-                                             speaks):
-    caplog.set_level(logging.INFO)
-    createTestStore(ADMIN)
-    spoken = []
-
-    def transcribe(data, deadline):
-        voiceClock.now += spent  # the transcription and turn took this long
-        return SECRET_TRANSCRIPT
-
-    def speak(text, voiceId, deadline):
-        spoken.append(deadline)
-        return MP3
-
-    monkeypatch.setattr(voiceModel, 'transcribe', transcribe)
-    monkeypatch.setattr(voiceModel, 'speak', speak)
-
-    res = sendAdmin()
-
-    assert (res['audio'] is not None) is speaks
-    assert (len(spoken) == 1) is speaks
-    assert bool(records(caplog, 'voiceSpeakSkipped')) is not speaks
-    assert res['reply'] == SECRET_REPLY
-    if not speaks:
-        assert not [k for k in voiceCounters() if k.startswith('tts')]
-
-
-def test_theDeadlines_followTheOneRequestBudget(clean, voiceClock,
-                                                chatReply, monkeypatch):
-    createTestStore(ADMIN)
-    assert VoiceActions.VOICE_REQUEST_SECONDS == 15 + 90 + 15
-    assert VoiceActions.TTS_MIN_SECONDS == 5
-    seen = {}
-
-    def transcribe(data, deadline):
-        seen['stt'] = deadline
-        voiceClock.now += seen['spent']
-        return SECRET_TRANSCRIPT
-
-    def speak(text, voiceId, deadline):
-        seen['tts'] = deadline
-        return MP3
-
-    monkeypatch.setattr(voiceModel, 'transcribe', transcribe)
-    monkeypatch.setattr(voiceModel, 'speak', speak)
-
-    seen['spent'] = 20.0  # plenty left: speech has its own 15 s
-    sendAdmin()
-    assert seen['stt'] == 15.0
-    assert seen['tts'] == 20.0 + voiceModel.TTS_DEADLINE_SECONDS
-
-    voiceClock.now = 0.0
-    seen['spent'] = 110.0  # 10 s left: speech gets what is left
-    sendAdmin()
-    assert seen['tts'] == 120.0
-
-
-# ------------------------------ slots ------------------------------ #
-
-
-def test_aVoiceTurnWithNoChatSlotFree_isRefusedBeforeAnythingIsBilled(
-        clean, speech, chatReply):
-    createTestStore(ADMIN)
-    taken = 0
-    try:
-        while ChatActions._turnSlots.acquire(blocking=False):
-            taken += 1
-        before = snapshot()
-        with pytest.raises(ServiceUnavailable):
-            sendAdmin()
-        assert snapshot() == before
-        assert speech['transcribe'] == []
-    finally:
-        for _ in range(taken):
-            ChatActions._turnSlots.release()
-    assert freeSlots(ChatActions._turnSlots) == ChatActions.CHAT_TURNS_AT_ONCE
-    sendAdmin()  # and it runs again once they are free
-    assert freeSlots(ChatActions._turnSlots) == ChatActions.CHAT_TURNS_AT_ONCE
-
-
-def test_aFailedVoiceTurn_releasesItsChatSlot(clean, monkeypatch):
-    createTestStore(ADMIN)
-
-    def transcribe(data, deadline):
-        raise voiceModel.unavailable()
-
-    monkeypatch.setattr(voiceModel, 'transcribe', transcribe)
-
-    with pytest.raises(ServiceUnavailable):
-        sendAdmin()
-
-    assert freeSlots(ChatActions._turnSlots) == ChatActions.CHAT_TURNS_AT_ONCE
-
-
-def test_speakChatTurn_hasItsOwnSlots(clean, speech, chatReply):
-    createTestStore(ADMIN)
-    sent = sendAdmin()
-    chars = len(voiceModel.spokenText(SECRET_REPLY))
-    taken = 0
-    try:
-        while VoiceActions._speakSlots.acquire(blocking=False):
-            taken += 1
-        assert taken == VoiceActions.SPEAK_CALLS_AT_ONCE
-        with pytest.raises(ServiceUnavailable):
-            api.speakChatTurn(ADMIN, sent['conversationId'],
-                              sent['turnSeq'])
-        assert len(speech['speak']) == 1  # only the voice message's
-        assert freeSlots(ChatActions._turnSlots) == (
-            ChatActions.CHAT_TURNS_AT_ONCE)
-        assert voiceCounters()[usageKey('ttsAll', ALL, DAY)] == chars
-    finally:
-        for _ in range(taken):
-            VoiceActions._speakSlots.release()
-    assert freeSlots(VoiceActions._speakSlots) == (
-        VoiceActions.SPEAK_CALLS_AT_ONCE)
-    assert api.speakChatTurn(ADMIN, sent['conversationId'],
-                             sent['turnSeq'])['audio']
-    assert freeSlots(VoiceActions._speakSlots) == (
-        VoiceActions.SPEAK_CALLS_AT_ONCE)
-
-
-# ------------------------------ speakChatTurn ------------------------------ #
-
-
-def test_speakChatTurn_anAdminWhoNoLongerOwnsTheStore_isRefused(
-        clean, speech, chatReply):
-    store = createTestStore(ADMIN)
-    other = createTestStore(OTHER_ADMIN, 'Bakery B')
-    sent = sendAdmin()
-    conversationId = sent['conversationId']
-    spoken = len(speech['speak'])
-    before = voiceCounters()
-
-    # The conversation belongs to another store than the admin's.
-    db.db['Conversations'].update_one(
-        {'_id': conversationId}, {'$set': {'storeId': other['_id']}})
-    with pytest.raises(ValueError) as error:
-        api.speakChatTurn(ADMIN, conversationId, 0)
-    assert str(error.value) == ChatActions.CONVERSATION_NOT_FOUND
-    db.db['Conversations'].update_one(
-        {'_id': conversationId}, {'$set': {'storeId': store['_id']}})
-
-    # The admin's store is gone, then the admin.
-    saved = db.db['Stores'].find_one({'_id': store['_id']})
-    db.db['Stores'].delete_one({'_id': store['_id']})
-    with pytest.raises(ValueError) as error:
-        api.speakChatTurn(ADMIN, conversationId, 0)
-    assert str(error.value) == StoreActions.NO_STORE_YET
-    db.db['Stores'].insert_one(saved)
-    db.db['Users'].delete_one({'_id': ADMIN})
-    with pytest.raises(PermissionError):
-        api.speakChatTurn(ADMIN, conversationId, 0)
-
-    assert len(speech['speak']) == spoken
-    assert voiceCounters() == before
-
-
-def test_speakChatTurn_aCustomerSpeaksTheirOwnTurn_inTheStoresVoice(
-        clean, firebase, speech, chatReply, monkeypatch):
-    store, customerId = customerCtx(firebase)
-    monkeypatch.setattr(voiceModel, 'voiceExists', lambda voiceId: True)
-    api.updateMyStoreTheme(ADMIN, voiceId='abc123')
-    sent = api.sendStoreVoiceMessage(customerId, store['_id'], b64(wav()))
-
-    res = api.speakChatTurn(customerId, sent['conversationId'],
-                            sent['turnSeq'])
-
-    assertExactShape(SpokenReplyResponse, res)
-    assert base64.b64decode(res['audio']) == MP3
-    assert speech['speak'][-1] == (voiceModel.spokenText(SECRET_REPLY),
-                                   'abc123')
-    chars = len(voiceModel.spokenText(SECRET_REPLY))
-    assert voiceCounters()[usageKey('ttsCustomer', customerId, DAY)] == (
-        2 * chars)
-
-
-def test_speakChatTurn_refusesWhoIsNotTheOwner(clean, firebase, speech,
-                                               chatReply):
-    store, customerId = customerCtx(firebase)
-    sent = api.sendStoreVoiceMessage(customerId, store['_id'], b64(wav()))
-    conversationId = sent['conversationId']
-    spoken = len(speech['speak'])
-    notFound = ChatActions.CONVERSATION_NOT_FOUND
-
-    for userId, conversation in [('someone-else', conversationId),
-                                 (ADMIN, conversationId),
-                                 (customerId, 'no-such-id'),
-                                 (customerId, 123), (customerId, None),
-                                 (customerId, {'$ne': None})]:
-        with pytest.raises(ValueError) as error:
-            api.speakChatTurn(userId, conversation, 0)
-        assert str(error.value) == notFound
-
-    # The customer, no longer a customer.
-    db.db['Customers'].delete_one({'_id': customerId})
-    with pytest.raises((ValueError, PermissionError)):
-        api.speakChatTurn(customerId, conversationId, 0)
-    assert len(speech['speak']) == spoken
+# ------------------------------ ownConversation ------------------------------ #
 
 
 def test_ownConversation_isTheCallersOwnOnly(clean):
@@ -1266,89 +425,6 @@ def test_ownConversation_isTheCallersOwnOnly(clean):
         assert str(error.value) == ChatActions.CONVERSATION_NOT_FOUND
 
 
-@pytest.mark.parametrize('turnSeq', [True, False, -1, 2 ** 31, 1.5, '0',
-                                     None, 5, [0]])
-def test_speakChatTurn_aBadOrMissingTurnSeq_isNotFound(clean, speech,
-                                                       chatReply, turnSeq):
-    createTestStore(ADMIN)
-    sent = sendAdmin()
-    spoken = len(speech['speak'])
-
-    with pytest.raises(ValueError) as error:
-        api.speakChatTurn(ADMIN, sent['conversationId'], turnSeq)
-
-    assert str(error.value) == ChatActions.CONVERSATION_NOT_FOUND
-    assert len(speech['speak']) == spoken
-
-
-def test_speakChatTurn_speaksTheRequestedTurn_notAnotherUsersTurn(
-        clean, speech):
-    store = createTestStore(ADMIN)
-    conversation = seedConversation(ADMIN, store['_id'], audience='admin')
-    seedTurn(conversation, 0, 'First reply.')
-    seedTurn(conversation, 1, 'Second reply.')
-    db.db['ChatTurns'].update_one(
-        {'conversationId': conversation['_id'], 'seq': 1},
-        {'$set': {'userId': 'someone-else'}})
-
-    api.speakChatTurn(ADMIN, conversation['_id'], 0)
-    with pytest.raises(ValueError) as error:
-        api.speakChatTurn(ADMIN, conversation['_id'], 1)
-
-    assert str(error.value) == ChatActions.CONVERSATION_NOT_FOUND
-    assert speech['speak'] == [('First reply.', None)]
-
-
-def test_speakChatTurn_aStoredReplyWithNothingToSay_isRefused(clean,
-                                                              speech):
-    store = createTestStore(ADMIN)
-    conversation = seedConversation(ADMIN, store['_id'], audience='admin')
-    seedTurn(conversation, 0, '```\ncode only\n```')
-
-    with pytest.raises(ValueError) as error:
-        api.speakChatTurn(ADMIN, conversation['_id'], 0)
-
-    assert str(error.value) == VoiceActions.NOTHING_TO_SAY
-    assert speech['speak'] == []
-    assert voiceCounters() == {}
-
-
-def test_speakChatTurn_aSpeechFailure_givesTheCharactersBack(
-        clean, monkeypatch):
-    store = createTestStore(ADMIN)
-    conversation = seedConversation(ADMIN, store['_id'], audience='admin')
-    seedTurn(conversation, 0, 'Hello there.')
-
-    def fail(text, voiceId, deadline):
-        raise voiceModel.unavailable()
-
-    monkeypatch.setattr(voiceModel, 'speak', fail)
-
-    with pytest.raises(ServiceUnavailable):
-        api.speakChatTurn(ADMIN, conversation['_id'], 0)
-
-    assert voiceCounters() == {
-        usageKey('ttsStore', store['_id'], DAY): 0,
-        usageKey('ttsAll', ALL, DAY): 0}
-    assert freeSlots(VoiceActions._speakSlots) == (
-        VoiceActions.SPEAK_CALLS_AT_ONCE)
-
-
-def test_speakChatTurn_logsItsFieldsAndNoText(clean, speech, chatReply,
-                                              caplog):
-    caplog.set_level(logging.INFO)
-    createTestStore(ADMIN)
-    sent = sendAdmin()
-
-    api.speakChatTurn(ADMIN, sent['conversationId'], sent['turnSeq'])
-
-    [spoken] = records(caplog, 'voiceSpokenTurn')
-    assert set(spoken.msg) == {'event', 'conversationId', 'audience',
-                               'durationMs'}
-    assert spoken.msg['audience'] == 'admin'
-    assert spoken.msg['conversationId'] == sent['conversationId']
-
-
 # ------------------------------ listVoices ------------------------------ #
 
 
@@ -1360,10 +436,10 @@ def test_listVoices_pagesTheDefaultListingThenTheSavedOne(clean, session):
         voicesPage(voice('s1'), hasMore=True, token='tok2'),
         voicesPage(voice('s2'), hasMore=False))
 
-    first = api.listVoices(ADMIN)
-    second = api.listVoices(ADMIN, pageToken=first['nextPageToken'])
-    third = api.listVoices(ADMIN, pageToken=second['nextPageToken'])
-    fourth = api.listVoices(ADMIN, pageToken=third['nextPageToken'])
+    first = tools.listVoices(ADMIN)
+    second = tools.listVoices(ADMIN, pageToken=first['nextPageToken'])
+    third = tools.listVoices(ADMIN, pageToken=second['nextPageToken'])
+    fourth = tools.listVoices(ADMIN, pageToken=third['nextPageToken'])
 
     assert [first['nextPageToken'], second['nextPageToken'],
             third['nextPageToken'], fourth['nextPageToken']] == [
@@ -1452,15 +528,15 @@ def test_listVoices_isForAdminsOnly_andValidatesBeforeCalling(clean,
     createTestUser('vo-nostore')
 
     with pytest.raises(PermissionError):
-        api.listVoices(customerId)
+        tools.listVoices(customerId)
     with pytest.raises(ValueError) as error:
-        api.listVoices('vo-nostore')
+        tools.listVoices('vo-nostore')
     assert str(error.value) == StoreActions.NO_STORE_YET
     # (no session installed: reaching ElevenLabs would fail the test)
     for kwargs in ({'search': 'x' * 101}, {'search': 7},
                    {'pageToken': 'x' * 513}, {'pageToken': 7}):
         with pytest.raises(ValueError):
-            api.listVoices(ADMIN, **kwargs)
+            tools.listVoices(ADMIN, **kwargs)
 
 
 @pytest.mark.parametrize('token', ['x', '2:abc', '0', ':abc', '0:ab cd',
@@ -1470,7 +546,7 @@ def test_listVoices_aTokenThatIsNotOurs_isRefused(clean, token):
     createTestStore(ADMIN)  # (no session installed: no call is made)
 
     with pytest.raises(ValueError) as error:
-        api.listVoices(ADMIN, pageToken=token)
+        tools.listVoices(ADMIN, pageToken=token)
 
     assert str(error.value) == voiceModel.PAGE_TOKEN_INVALID
 
@@ -1528,17 +604,17 @@ def test_updateMyStoreTheme_setsAndClearsTheVoice(clean, session):
                                                   category='generated')))
     version = storeVersion(store['_id'])
 
-    res = api.updateMyStoreTheme(ADMIN, voiceId=' abc123 ')
+    res = tools.updateMyStoreTheme(ADMIN, voiceId=' abc123 ')
 
     assertExactShape(StoreThemeResponse, res)
     assert [(r['params']['voice_type'], r['params']['voice_ids'])
             for r in fake.requests] == [('default', 'abc123'),
                                         ('saved', 'abc123')]
-    assert api.getUserStore(ADMIN)['store']['voiceId'] == 'abc123'
+    assert tools.getUserStore(ADMIN)['store']['voiceId'] == 'abc123'
     assert storeVersion(store['_id']) == version + 1
     for empty in ('', '   '):
-        api.updateMyStoreTheme(ADMIN, voiceId=empty)
-        assert 'voiceId' not in api.getUserStore(ADMIN)['store']
+        tools.updateMyStoreTheme(ADMIN, voiceId=empty)
+        assert 'voiceId' not in tools.getUserStore(ADMIN)['store']
     assert len(fake.requests) == 2  # clearing asks ElevenLabs nothing
     assert storeVersion(store['_id']) == version + 3
     assert db.read({'_id': store['_id']}, 'Stores',
@@ -1554,7 +630,7 @@ def test_updateMyStoreTheme_anUnavailableVoice_isRefused(clean, monkeypatch,
     version = storeVersion(store['_id'])
 
     with pytest.raises(ValueError) as error:
-        api.updateMyStoreTheme(ADMIN, voiceId=voiceId)
+        tools.updateMyStoreTheme(ADMIN, voiceId=voiceId)
 
     assert str(error.value) == StoreActions.VOICE_NOT_AVAILABLE
     assert storeVersion(store['_id']) == version
@@ -1566,7 +642,7 @@ def test_updateMyStoreTheme_aBadlyShapedVoice_neverReachesElevenLabs(
     createTestStore(ADMIN)  # (no session installed: a call fails the test)
 
     with pytest.raises(ValueError) as error:
-        api.updateMyStoreTheme(ADMIN, voiceId=voiceId)
+        tools.updateMyStoreTheme(ADMIN, voiceId=voiceId)
 
     assert str(error.value) == StoreActions.VOICE_NOT_AVAILABLE
 
@@ -1577,9 +653,9 @@ def test_updateMyStoreTheme_aVoiceAloneIsAChange_andNothingIsNot(
     monkeypatch.setattr(voiceModel, 'voiceExists', lambda value: True)
 
     with pytest.raises(ValueError) as error:
-        api.updateMyStoreTheme(ADMIN)
+        tools.updateMyStoreTheme(ADMIN)
     assert str(error.value) == StoreActions.NO_THEME_SENT
-    api.updateMyStoreTheme(ADMIN, voiceId='abc123')
+    tools.updateMyStoreTheme(ADMIN, voiceId='abc123')
 
 
 def test_updateMyStoreTheme_checksInOrder(clean, monkeypatch):
@@ -1593,16 +669,16 @@ def test_updateMyStoreTheme_checksInOrder(clean, monkeypatch):
     createTestUser('vo-nostore')
 
     with pytest.raises(PermissionError):  # no admin: before any lookup
-        api.updateMyStoreTheme('nobody', voiceId='good1')
+        tools.updateMyStoreTheme('nobody', voiceId='good1')
     assert calls == []
     with pytest.raises(ValueError) as error:  # the voice, before the store
-        api.updateMyStoreTheme('vo-nostore', voiceId='bad1')
+        tools.updateMyStoreTheme('vo-nostore', voiceId='bad1')
     assert str(error.value) == StoreActions.VOICE_NOT_AVAILABLE
     with pytest.raises(ValueError) as error:  # nothing to change
-        api.updateMyStoreTheme('vo-nostore')
+        tools.updateMyStoreTheme('vo-nostore')
     assert str(error.value) == StoreActions.NO_THEME_SENT
     with pytest.raises(ValueError) as error:  # then the store
-        api.updateMyStoreTheme('vo-nostore', voiceId='good1')
+        tools.updateMyStoreTheme('vo-nostore', voiceId='good1')
     assert str(error.value) == StoreActions.NO_STORE_YET
     assert calls == ['bad1', 'good1']
 
@@ -1618,9 +694,9 @@ def test_updateMyStoreTheme_readsTheVersionAfterTheLookup(clean,
 
     monkeypatch.setattr(voiceModel, 'voiceExists', exists)
 
-    api.updateMyStoreTheme(ADMIN, voiceId='abc123')
+    tools.updateMyStoreTheme(ADMIN, voiceId='abc123')
 
-    assert api.getUserStore(ADMIN)['store']['voiceId'] == 'abc123'
+    assert tools.getUserStore(ADMIN)['store']['voiceId'] == 'abc123'
 
 
 def test_voiceExists_usesOneDeadlineForBothListings(clean, session, clock,
@@ -1705,27 +781,6 @@ def test_httpSession_isOneSessionThatIgnoresTheEnvironment(monkeypatch):
         voiceModel._session = None
 
 
-def test_transcribe_requestShape(session, clock):
-    clip = wav()
-    fake = session(transcriptResponse(' hi \n'))
-
-    assert voiceModel.transcribe(clip, clock.now + 40) == 'hi'
-
-    [request] = fake.requests
-    assert (request['method'], request['url']) == ('POST',
-                                                   voiceModel.STT_URL)
-    assert request['headers'] == {'Authorization': 'Bearer test-meta-key',
-                                  'Accept': 'application/json'}
-    assert request['allow_redirects'] is False
-    assert request['stream'] is True
-    assert request['timeout'] == 15
-    assert request['files']['request'] == (
-        None, json.dumps({'model': 'muse-voice-transcribe-1.0',
-                          'mode': 'PUSH_TO_TALK', 'audioEncoding': 'WAV'}),
-        'application/json')
-    assert request['files']['audio'] == ('audio.wav', clip, 'audio/wav')
-
-
 def test_speak_requestShape(session, clock):
     fake = session(FakeResponse(200, MP3,
                                 {'Content-Type': 'Audio/MPEG; x=y'}))
@@ -1770,12 +825,10 @@ def test_speak_anAnswerThatIsNoMp3_isUnavailable(session, clock, caplog,
 
 
 CALLS = {
-    'transcribe': lambda deadline: voiceModel.transcribe(wav(), deadline),
     'speak': lambda deadline: voiceModel.speak('Hi.', None, deadline),
     'listVoices': lambda deadline: voiceModel.listVoices(None, None),
 }
 OK = {
-    'transcribe': transcriptResponse,
     'speak': mp3Response,
     'listVoices': lambda: voicesPage(voice()),
 }
@@ -1818,20 +871,6 @@ def test_aRefusedStatus_isNeverRetried(session, clock, call, status):
 
     assert len(fake.requests) == 1
     assert clock.sleeps == []
-
-
-@pytest.mark.parametrize('status, error', [
-    (400, ValueError), (401, ServiceUnavailable), (403, ServiceUnavailable),
-    (404, ServiceUnavailable), (413, ServiceUnavailable),
-    (301, ServiceUnavailable)])
-def test_transcribe_aRefusedStatus(session, clock, status, error):
-    session(FakeResponse(status))
-
-    with pytest.raises(error) as raised:
-        voiceModel.transcribe(wav(), clock.now + 40)
-
-    if status == 400:  # Meta refused the recording itself
-        assert str(raised.value) == voiceModel.RECORDING_UNREADABLE
 
 
 def test_aRetryNeedsTimeLeft(session, clock):
@@ -1916,31 +955,20 @@ def test_speak_withoutAUsableDefaultVoice_isUnavailable(session, clock,
         assert default not in caplog.text
 
 
-def padded(size: int) -> bytes:
-    """A transcript JSON object of exactly `size` bytes."""
-    empty = len(json.dumps({'transcript': 'hi', 'pad': ''}))
-    return json.dumps({'transcript': 'hi',
-                       'pad': 'x' * (size - empty)}).encode()
-
-
 @pytest.mark.parametrize('call, limit', [
-    ('transcribe', voiceModel.STT_RESPONSE_MAX_BYTES),
     ('speak', voiceModel.TTS_RESPONSE_MAX_BYTES),
     ('listVoices', voiceModel.VOICES_RESPONSE_MAX_BYTES)])
 def test_theBodyCap(session, clock, call, limit):
     def body(size: int) -> FakeResponse:
         if call == 'speak':
             return mp3Response(b'x' * size)
-        if call == 'listVoices':
-            empty = b'{"voices": []}'
-            return FakeResponse(200, empty + b' ' * (size - len(empty)),
-                                {'Content-Type': 'application/json'})
-        return FakeResponse(200, padded(size),
+        empty = b'{"voices": []}'
+        return FakeResponse(200, empty + b' ' * (size - len(empty)),
                             {'Content-Type': 'application/json'})
 
     session(body(limit))
     result = CALLS[call](clock.now + 40)
-    assert result == {'transcribe': 'hi', 'speak': b'x' * limit,
+    assert result == {'speak': b'x' * limit,
                       'listVoices': ([], '1:')}[call]
 
     fake = session(body(limit + 1), body(limit))
@@ -1987,8 +1015,7 @@ def test_everyResponseIsClosed(session, clock):
 
 
 @pytest.mark.parametrize('variable, call', [
-    ('MODEL_API_KEY', 'transcribe'), ('ELEVENLABS_API_KEY', 'speak'),
-    ('ELEVENLABS_API_KEY', 'listVoices')])
+    ('ELEVENLABS_API_KEY', 'speak'), ('ELEVENLABS_API_KEY', 'listVoices')])
 @pytest.mark.parametrize('key', ['', '   ', None, 'kéy-SECRETKEY',
                                  'with space', 'tab\there', 'new\nline'])
 def test_aKeyThatCannotBeUsed_is503WithoutACall(session, clock, monkeypatch,
@@ -2019,60 +1046,35 @@ def recordText(record: logging.LogRecord) -> str:
                      repr(record.exc_info)])
 
 
-def test_noLogLineHoldsATranscript_aReply_audio_orAKey(
-        clean, session, chatReply, monkeypatch, caplog):
+def test_noLogLineHoldsAReply_audio_orAKey(clean, session, clock,
+                                          monkeypatch, caplog):
     caplog.set_level(logging.INFO)
-    metaKey, elevenKey = 'META-KEY-SENTINEL', 'ELEVEN-KEY-SENTINEL'
-    monkeypatch.setenv('MODEL_API_KEY', metaKey)
+    elevenKey = 'ELEVEN-KEY-SENTINEL'
     monkeypatch.setenv('ELEVENLABS_API_KEY', elevenKey)
-    monkeypatch.setattr(voiceModel.time, 'sleep', lambda seconds: None)
     body = b'BODY-SENTINEL-FROM-THE-UPSTREAM'
-    clip = b64(wav())
-    store = createTestStore(ADMIN)
+    createTestStore(ADMIN)
 
     # success
-    session(transcriptResponse(SECRET_TRANSCRIPT), mp3Response())
-    ok = sendAdmin(clip)
-    assert ok['audio'] and ok['reply'] == SECRET_REPLY
-    # transcription failures
-    session(FakeResponse(400, body))
-    with pytest.raises(ValueError):
-        sendAdmin(clip)
-    session(FakeResponse(503, body), FakeResponse(500, body))
+    session(mp3Response())
+    assert voiceModel.speak(SECRET_REPLY, None, clock.now + 40) == MP3
+    # speech failures
+    session(FakeResponse(500, body), FakeResponse(500, body))
     with pytest.raises(ServiceUnavailable):
-        sendAdmin(clip)
+        voiceModel.speak(SECRET_REPLY, None, clock.now + 40)
     session(FakeResponse(200, body))
     with pytest.raises(ServiceUnavailable):
-        sendAdmin(clip)
-    # a chat failure
-    session(transcriptResponse(SECRET_TRANSCRIPT))
-
-    def turn(*args, **kwargs):
-        raise RuntimeError(SECRET_REPLY + SECRET_TRANSCRIPT)
-
-    with monkeypatch.context() as patch:
-        patch.setattr(ChatActions, '_slottedTurn', turn)
-        with pytest.raises(RuntimeError):
-            sendAdmin(clip)
-    # a speech failure
-    session(transcriptResponse(SECRET_TRANSCRIPT), FakeResponse(500, body),
-            FakeResponse(500, body))
-    assert sendAdmin(clip)['audio'] is None
+        voiceModel.speak(SECRET_REPLY, None, clock.now + 40)
     # the store voice fallback
-    db.db['Stores'].update_one({'_id': store['_id']},
-                               {'$set': {'voiceId': 'goneVoice9'}})
-    session(transcriptResponse(SECRET_TRANSCRIPT), FakeResponse(404, body),
-            mp3Response())
-    assert sendAdmin(clip)['audio']
+    session(FakeResponse(404, body), mp3Response())
+    assert voiceModel.speak(SECRET_REPLY, 'goneVoice9', clock.now + 40)
     # voices
     session(voicesPage(voice(name='SENTINEL-VOICE-NAME', description='d'),
                        hasMore=True, token='bad token'))
-    api.listVoices(ADMIN)
+    tools.listVoices(ADMIN)
 
-    assert records(caplog, 'voiceTurn') and records(caplog, 'voiceFallback')
-    forbidden = [SECRET_TRANSCRIPT, SECRET_REPLY, clip, b64(MP3), metaKey,
-                 elevenKey, body.decode(), 'SENTINEL-VOICE-NAME',
-                 'bad token']
+    assert records(caplog, 'voiceFallback')
+    forbidden = [SECRET_REPLY, b64(MP3), elevenKey, body.decode(),
+                 'SENTINEL-VOICE-NAME', 'bad token']
     for record in caplog.records:
         text = recordText(record)
         for secret in forbidden:
