@@ -150,6 +150,22 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     'sendStoreVoiceMessage',
     'speakChatTurn',
     'listVoices',
+    # Payments by hand: addPaymentReference and addPaymentReceipt reach
+    # only the caller's own order at the store (customerAtStore,
+    # _customerOrder); getPaymentReceipt and confirmOrderPayment only an
+    # order of the store the caller owns (ownerStoreScope).
+    'addPaymentReference',
+    'addPaymentReceipt',
+    'getPaymentReceipt',
+    'confirmOrderPayment',
+    # An image's colors: the store the caller owns, set up or not
+    # (requireAnyOwnerStore), and only an image under the caller's own
+    # users/<uid>/ folder (photoStorage.ownImagePath).
+    'findColorsInPhoto',
+    # Thinking texts: only the caller's own chat turn (chatThinking.current
+    # reads "<userId>:<turnKey>" with that userId).
+    'getChatThinking',
+    'speakChatThinking',
 }
 
 

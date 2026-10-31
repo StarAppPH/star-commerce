@@ -751,7 +751,8 @@ def test_updateMyStorePolicy_aLostVersionRace_isRefusedAndWritesNothing(
             db.db['Policies'].update_one(
                 {'storeId': storeId},
                 {'$inc': {'_version': 1},
-                 '$set': {'acceptsReturns': True}})
+                 '$set': {'acceptsReturns': True,
+                          'returnWindowDays': 7}})
         return found
 
     monkeypatch.setattr(db, 'read', racing)
@@ -763,14 +764,15 @@ def test_updateMyStorePolicy_aLostVersionRace_isRefusedAndWritesNothing(
 
     after = _policyDoc(storeId)
     # Only the racer's state is stored.
-    assert _answers(after) == _expected(acceptsReturns=True)
+    assert _answers(after) == _expected(acceptsReturns=True,
+                                        returnWindowDays=7)
     assert after['_version'] == start['_version'] + 1
     assert after['updatedAt'] == start['updatedAt']
 
     # Trying again works.
     api.updateMyStorePolicy(ADMIN, handoverDays=3)
     assert _answers(_policyDoc(storeId)) == _expected(
-        acceptsReturns=True, handoverDays=3)
+        acceptsReturns=True, returnWindowDays=7, handoverDays=3)
 
     # A policy deleted between ensurePolicy and the read is the same refusal.
     realRead2 = db.read

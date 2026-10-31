@@ -3723,17 +3723,16 @@ def test_generatedServerRequests_listsRouteBodiesAndPublicRoutes():
         name for name, func in routes.items()
         if creator._is_public_route(creator._route_meta(func))
     ]
-    # POSTed to without a token: the starter page's sample todo routes and
-    # the localdev-only dev user list (test_auth_surface pins the whole
-    # public surface).
-    assert set(public) == {
-        'devGetUserList', 'getTodos', 'createTodo', 'markTodoAsCompleted',
-        'markTodoAsUnfinished', 'deleteTodo'
-    }
+    # POSTed to without a token: only the localdev-only dev user list (a
+    # sign-in route mints a token, so it does not count; test_auth_surface
+    # pins the whole public surface).
+    assert public == ['devGetUserList']
+    assert {'getRoles', 'getMyOrders', 'devLogin'} <= set(bodies)
     stale = ('ServerRequests.ts is stale: run `cd server && python '
              'AppCreator.py`')
     assert creator._ts_route_request_bodies(bodies) in generated, stale
     assert creator._ts_public_routes(public) in generated, stale
+    assert '    getRoles: { userId: string };\n' in generated, stale
 
 
 def _withoutComments(source: str) -> str:
@@ -3781,18 +3780,6 @@ def test_generatedApp_loginNeverLogsTheFirebasePayload():
         for line in logged:
             assert 'data' not in line and 'firebaseUserObject' not in line
             assert 'requestKeys' not in line
-
-
-def test_generatedApp_otherRoutesLogRequestKeysOnly():
-    with open(os.path.join(str(SERVER_DIR), 'app.py'), encoding='utf-8') as f:
-        app = f.read()
-    assert 'request.is_json' not in app, (
-        'app.py is stale: run `cd server && python AppCreator.py`')
-    createTodo = _generated_route(app, 'createTodo')
-    assert createTodo.count(
-        "'requestKeys': sorted(key for key in data if key in ('title',))"
-    ) == 3
-    assert "'data': data" not in app
 
 
 # ----------------------------- conftest suite guard ----------------------------- #

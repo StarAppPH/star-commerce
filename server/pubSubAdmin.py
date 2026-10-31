@@ -202,34 +202,66 @@ def __ensure_binding(bindings, role, member):
             "Unexpected bindings container type; cannot add IAM binding")
 
 
+def __hasBinding(bindings, role, member) -> bool:
+    return any(getattr(b, "role", None) == role and member in b.members
+               for b in bindings)
+
+
+def __addRoleIfMissing(client, resource: str, role: str, member: str) -> bool:
+    """Give member the role on resource unless it has it already (then
+    nothing is written). True when the policy was written. A write whose
+    etag went stale (another run changed the policy between the read and the
+    write: ABORTED) is retried once on a fresh read."""
+    for attempt in (1, 2):
+        policy = client.get_iam_policy(request={"resource": resource})
+        if __hasBinding(policy.bindings, role, member):
+            return False
+        __ensure_binding(policy.bindings, role, member)
+        try:
+            client.set_iam_policy(request={"resource": resource, "policy": policy})
+            return True
+        except google.api_core.exceptions.Aborted:
+            if attempt == 2:
+                raise
+            print(f"  IAM policy of {resource} changed meanwhile; reading it again")
+    return False
+
+
+# One run's dead-letter grants (a run is one process): the Pub/Sub service
+# agent of each project, looked up once, and the dead-letter topics whose
+# publisher grant this run has already checked. Every subscription shares
+# one deadLetterTopic, so its policy is read once a run, not once per
+# subscription, and written only when the grant is missing.
+_PUBSUB_SERVICE_AGENTS: Dict[str, str] = {}
+_DEAD_LETTER_TOPICS_GRANTED: set = set()
+
+
+def __pubSubServiceAgent(project_id: str, credentials) -> str:
+    if project_id not in _PUBSUB_SERVICE_AGENTS:
+        from google.cloud import resourcemanager_v3
+
+        crm = resourcemanager_v3.ProjectsClient(credentials=credentials)
+        proj = crm.get_project(name=f"projects/{project_id}")
+        _PUBSUB_SERVICE_AGENTS[project_id] = (
+            f"service-{proj.name.split('/')[-1]}@gcp-sa-pubsub.iam.gserviceaccount.com")
+    return _PUBSUB_SERVICE_AGENTS[project_id]
+
+
 def __grant_dlq_permissions(sub_name: str, dead_letter_topic_name: str,
                             source_project_id: str, credentials):
     """The Pub/Sub service agent forwards a failed push: it must publish to
-    the DEAD-LETTER topic and subscribe to the source subscription."""
-    from google.cloud import resourcemanager_v3
+    the DEAD-LETTER topic (checked once a run per topic) and subscribe to the
+    source subscription. A grant that is already there is not written
+    again."""
+    member = f"serviceAccount:{__pubSubServiceAgent(source_project_id, credentials)}"
 
-    crm = resourcemanager_v3.ProjectsClient(credentials=credentials)
-    proj = crm.get_project(name=f"projects/{source_project_id}")
-    sa = f"service-{proj.name.split('/')[-1]}@gcp-sa-pubsub.iam.gserviceaccount.com"
+    if dead_letter_topic_name not in _DEAD_LETTER_TOPICS_GRANTED:
+        publisher = pubsub_v1.PublisherClient(credentials=credentials)
+        __addRoleIfMissing(publisher, dead_letter_topic_name, "roles/pubsub.publisher", member)
+        _DEAD_LETTER_TOPICS_GRANTED.add(dead_letter_topic_name)
 
     subscriber = pubsub_v1.SubscriberClient(credentials=credentials)
-    publisher = pubsub_v1.PublisherClient(credentials=credentials)
-
-    t_policy = publisher.get_iam_policy(request={"resource": dead_letter_topic_name})
-    __ensure_binding(t_policy.bindings, "roles/pubsub.publisher",
-                     f"serviceAccount:{sa}")
-    publisher.set_iam_policy(request={
-        "resource": dead_letter_topic_name,
-        "policy": t_policy
-    })
-
-    s_policy = subscriber.get_iam_policy(request={"resource": sub_name})
-    __ensure_binding(s_policy.bindings, "roles/pubsub.subscriber",
-                     f"serviceAccount:{sa}")
-    subscriber.set_iam_policy(request={
-        "resource": sub_name,
-        "policy": s_policy
-    })
+    __addRoleIfMissing(subscriber, sub_name, "roles/pubsub.subscriber", member)
 
 
 # ---------- Cloud Run URL fetching ----------
@@ -331,6 +363,17 @@ def __createPubSub(topicName: str, subscriptions: List[Subscription],
     print('_________________________________')
 
     return {"topic": topic_path, "subscriptions": sub_paths}
+
+
+# Folders under server/ that never hold this app's code: a virtualenv kept in
+# server/ (thousands of files, none of them ours), node_modules and caches.
+# Every dot-folder (.venv, .pytest_cache, .git, ...) is skipped too. Any other
+# subfolder is scanned, wherever a project keeps its pubSub functions.
+SKIPPED_SCAN_DIRS = {'venv', 'node_modules', '__pycache__'}
+
+
+def __isSkippedScanDir(name: str) -> bool:
+    return name in SKIPPED_SCAN_DIRS or name.startswith('.')
 
 
 def __getAllFunctionsThatHasPubSubDecorator() -> List[Tuple[str, str]]:
@@ -461,6 +504,8 @@ def __getAllFunctionsThatHasPubSubDecorator() -> List[Tuple[str, str]]:
     base_path = os.path.dirname(__file__)
     allFunctions = []
     for root, dirs, files in os.walk(base_path):
+        # Pruned in place, so os.walk never enters them.
+        dirs[:] = [d for d in dirs if not __isSkippedScanDir(d)]
         for f in files:
             if f.endswith(".py"):
                 full_path = os.path.join(root, f)
@@ -766,6 +811,16 @@ def __printPlan(plan, existingTopics, existingSubs, publisher, project_id,
 # of failing every subscription. The last-used cache is left alone.
 
 
+def __isProjectAccount(email: str, project_id: str) -> bool:
+    """A service account of project_id: one it created
+    (<name>@<project>.iam.gserviceaccount.com) or its App Engine default
+    account (<project>@appspot.gserviceaccount.com, the fleet's push
+    account). Any other project's account, App Engine default included, is
+    not."""
+    return (email.endswith(f"@{project_id}.iam.gserviceaccount.com")
+            or email == f"{project_id}@appspot.gserviceaccount.com")
+
+
 def __parseArgs(argv):
     """{'dryRun', 'project', 'service', 'yes'} from argv; flags it does not
     know are ignored, as before the flags existed. Both --flag VALUE and
@@ -832,8 +887,7 @@ def main(argv=None):
         print(f"\nEnabled PubSub env vars: {list(enabled_envs.keys())}")
 
         service_account_email = __pushServiceAccount()
-        if nonInteractive and not service_account_email.endswith(
-                f"@{project_id}.iam.gserviceaccount.com"):
+        if nonInteractive and not __isProjectAccount(service_account_email, project_id):
             sys.exit(f"callerAuth.PUSH_SERVICE_ACCOUNTS[0] is {service_account_email}, not an "
                      f"account of project {project_id}: set this service's own push account there "
                      "first (create-star-app cloud-setup --step local.edits).")

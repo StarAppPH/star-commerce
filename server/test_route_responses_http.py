@@ -4,18 +4,21 @@ Every other route test calls ApiRequests() directly, as DO_NOT_DO.md
 requires. These are the exception it allows: they test the generated
 TRANSPORT layer, which a direct call never reaches -
   - the ApiResponse envelope each kind of route answers with
-    (createAccessToken, jwtRequired, public, GET): the ApiSuccess /
-    ApiFailure the TS client is typed against, with status_code equal to
-    body.status and no key outside ApiResponse;
+    (createAccessToken, jwtRequired, public): the ApiSuccess / ApiFailure
+    the TS client is typed against, with status_code equal to body.status
+    and no key outside ApiResponse;
   - the status mapping: a ValueError the route raises, a failed role check
-    and a body userId that is not the JWT identity are 400 envelopes with
-    data null; a PermissionError (sign-in) is a 403;
-  - a POST whose body is not a JSON object is a 400 envelope, never a 500,
-    and an object or a list for a scalar param is refused (a {"$ne": null}
-    never reaches a query); a malformed Pub/Sub push is a 400 too;
+    (getRoles' roleAccess: the role's unauthorizedMessage) and a body
+    userId that is not the JWT identity are 400 envelopes with data null;
+    a PermissionError (sign-in, the other role's order routes) is a 403;
+  - a POST whose body is not a JSON object (empty, text/plain, a JSON
+    list) is a 400 envelope, never a 500, and an object or a list for a
+    scalar param is refused (a {"$ne": null} never reaches a query); a
+    malformed Pub/Sub push is a 400 too;
   - the JWT gate: a missing, expired or malformed token is turned away with
     a {msg}-only body before the route runs; a JWT route that succeeds hands
-    back a refreshed jwtToken, and a failed one hands back none;
+    back a refreshed jwtToken the next call is signed with, and a failed one
+    hands back none;
   - logging: a route logs which of its params it was sent, never the
     values; a push handler logs the messageId and the message's keys;
   - app.py's config: outside localdev a short or placeholder
@@ -43,7 +46,6 @@ Google call is made.
 
 import datetime
 import importlib
-import json
 import logging
 import os
 import subprocess
@@ -110,12 +112,6 @@ def _bearer(token) -> dict:
     return {'Authorization': f'Bearer {token}'}
 
 
-def _as_sent(flaskApp, value):
-    """`value` as the app's JSON provider puts it on the wire (datetimes
-    as RFC 1123 strings)."""
-    return json.loads(flaskApp.json.dumps(value))
-
-
 def _success_body(res, route) -> dict:
     """The ApiSuccess envelope: status 200 in both places, only ApiResponse
     keys, no traceback, and the route's own success message."""
@@ -144,91 +140,63 @@ def _routeLogs(caplog, route) -> list:
     ]
 
 
-def test_http_generatedRoutes_successEnvelopes(monkeypatch, caplog):
+def test_http_aJwtRouteThatSucceeds_handsBackARefreshedToken(monkeypatch,
+                                                             caplog):
+    """getRoles (jwtRequired, roleAccess): the caller rides along with a
+    refreshed jwtToken the next call is signed with, and the log carries
+    the route's own params it was sent, never their values."""
     caplog.set_level(logging.INFO)
     flaskApp = _flask_app(monkeypatch)
     client = flaskApp.test_client()
-    wipeCollections(['Users', 'SampleTodos'])
+    wipeCollections(['Users'])
     try:
         createTestUser(ADMIN)
-        headers = _bearer(_token(flaskApp, ADMIN))
 
-        # jwtRequired: the caller rides along, with a refreshed token.
-        res = client.post('/getRoles', json={'userId': ADMIN}, headers=headers)
+        res = client.post('/getRoles', json={'userId': ADMIN},
+                          headers=_bearer(_token(flaskApp, ADMIN)))
 
         body = _success_body(res, 'getRoles')
         assert TOKEN_KEYS & set(body) == {'current_user', 'jwtToken'}
         assert body['current_user'] == ADMIN
         assert _identity(flaskApp, body['jwtToken']) == ADMIN
-        assert body['data'] == _as_sent(flaskApp,
-                                        ApiRequests().getRoles(ADMIN))
+        assert body['data'] == ApiRequests().getRoles(ADMIN)
 
-        # The client signs its next call with the refreshed token.
-        res = client.post('/getRoles',
-                          json={'userId': ADMIN},
-                          headers=_bearer(body['jwtToken']))
-        _success_body(res, 'getRoles')
-
-        # GET, no token in or out.
-        res = client.get('/handshake')
-
-        body = _success_body(res, 'handshake')
-        assert not TOKEN_KEYS & set(body)
-        assert body['data'] == ApiRequests().handshake()
-
-        # Public POST; the log carries the body's keys, never its values.
-        res = client.post('/createTodo', json={'title': SECRET_TITLE})
-
-        body = _success_body(res, 'createTodo')
-        assert not TOKEN_KEYS & set(body)
-        # The page reads nothing from a mutation's answer: it sends nothing.
-        assert body['data'] == {}
-        assert db.read({'title': SECRET_TITLE}, 'SampleTodos', findOne=True)
-        assert _routeLogs(caplog, 'createTodo') == [{
-            'function': 'createTodo',
-            'event': 'success',
-            'requestKeys': ['title']
-        }]
-        # A key the route does not take is not logged either: the caller
-        # chose its name.
+        # The client signs its next call with the refreshed token; a key
+        # the route does not take is not logged (the caller chose its name).
         caplog.clear()
-        res = client.post('/createTodo',
-                          json={
-                              'title': 'Rrh second',
-                              SECRET_TITLE: 1
-                          })
-        _success_body(res, 'createTodo')
-        assert _routeLogs(caplog, 'createTodo')[0]['requestKeys'] == ['title']
-        assert all(SECRET_TITLE not in r.getMessage() for r in caplog.records)
-        db.delete({'title': 'Rrh second'}, 'SampleTodos')
-        assert all(SECRET_TITLE not in r.getMessage() for r in caplog.records)
+        res = client.post('/getRoles',
+                          json={'userId': ADMIN, SECRET_TITLE: 1},
+                          headers=_bearer(body['jwtToken']))
 
-        res = client.post('/getTodos')
-
-        body = _success_body(res, 'getTodos')
-        assert [todo['title'] for todo in body['data']['todos']
-                ] == [SECRET_TITLE]
+        _success_body(res, 'getRoles')
+        assert _routeLogs(caplog, 'getRoles') == [{
+            'function': 'getRoles',
+            'event': 'success',
+            'requestKeys': ['userId']
+        }]
+        assert all(SECRET_TITLE not in r.getMessage() for r in caplog.records)
     finally:
-        wipeCollections(['Users', 'SampleTodos'])
+        wipeCollections(['Users'])
 
 
-def test_http_generatedRoutes_failureEnvelopes(monkeypatch, caplog):
-    caplog.set_level(logging.INFO)
+def test_http_jwtGateAndRoleCheck_failureEnvelopes(monkeypatch):
+    """The JWT gate turns a missing, expired or garbage token away with a
+    {msg}-only body before the route runs (the generated client maps it to
+    its 401 ApiFailure); a token for someone other than the body's userId,
+    and a caller without the route's role, are 400 envelopes with data
+    null and no token."""
     flaskApp = _flask_app(monkeypatch)
     client = flaskApp.test_client()
-    wipeCollections(['Users', 'SampleTodos'])
+    wipeCollections(['Users'])
     try:
         createTestUser(ADMIN)
         createTestUser(NOBODY, userType='unauthorized')
 
-        # The JWT gate turns each of these away with a {msg}-only body,
-        # which the generated client maps to its 401 ApiFailure.
-        rejectedTokens = [
-            None,
-            _token(flaskApp, ADMIN, datetime.timedelta(seconds=-10)),
-            'not-a-jwt',
-        ]
-        for token in rejectedTokens:
+        for token in [
+                None,
+                _token(flaskApp, ADMIN, datetime.timedelta(seconds=-10)),
+                'not-a-jwt',
+        ]:
             res = client.post('/getRoles',
                               json={'userId': ADMIN},
                               headers=_bearer(token) if token else None)
@@ -239,8 +207,6 @@ def test_http_generatedRoutes_failureEnvelopes(monkeypatch, caplog):
             assert set(body) == {'msg'}
             assert body['msg']
 
-        # A token for someone other than the userId sent: the generated
-        # identity check answers 400 before the route runs.
         res = client.post('/getRoles',
                           json={'userId': ADMIN},
                           headers=_bearer(_token(flaskApp, NOBODY)))
@@ -251,7 +217,8 @@ def test_http_generatedRoutes_failureEnvelopes(monkeypatch, caplog):
             'data': None
         }
 
-        # The caller's own token, without the route's role: its message.
+        # The caller's own token, without the route's role (roleAccess):
+        # the role's own message.
         res = client.post('/getRoles',
                           json={'userId': NOBODY},
                           headers=_bearer(_token(flaskApp, NOBODY)))
@@ -262,38 +229,50 @@ def test_http_generatedRoutes_failureEnvelopes(monkeypatch, caplog):
             'status': STATUS_BAD_REQUEST,
             'data': None
         }
+    finally:
+        wipeCollections(['Users'])
 
-        # A ValueError the route raises: a 400 with data null.
-        res = client.post('/markTodoAsCompleted',
-                          json={'todoId': 'rrh-no-such-todo'})
 
-        assert _failure_body(res, STATUS_BAD_REQUEST) == {
-            'message': 'Todo not found',
-            'status': STATUS_BAD_REQUEST,
-            'data': None
-        }
+NOT_A_JSON_OBJECT = [{}, {'data': 'userId=x', 'content_type': 'text/plain'},
+                     {'json': ['rrh-a', 'json', 'list']}]
 
-        # A body that is not a JSON object reads as {}: the route runs with
-        # its params None and answers the 400 envelope, never a 500.
-        for kwargs in ({}, {
-                'data': 'todoId=x',
-                'content_type': 'text/plain'
-        }, {
-                'json': ['rrh-a', 'json', 'list']
-        }):
-            res = client.post('/markTodoAsCompleted', **kwargs)
+
+def test_http_aBodyThatIsNotAJsonObject_isA400Envelope(monkeypatch, caplog,
+                                                        firebase):
+    """An empty body, text/plain or a JSON list reads as {}: the route
+    runs with its params None and answers a 400 envelope, never a 500.
+    getMyOrders (a JWT route) refuses the missing userId as not the
+    caller's; devLogin (public) runs and finds no user."""
+    caplog.set_level(logging.INFO)
+    flaskApp = _flask_app(monkeypatch)
+    client = flaskApp.test_client()
+    wipeCollections(ORDER_COLLECTIONS)
+    try:
+        store = createTestStore(ADMIN)
+        headers = _bearer(_token(flaskApp, guestAt(firebase, store,
+                                                   'rrh-guest-body')))
+
+        for kwargs in NOT_A_JSON_OBJECT:
+            res = client.post('/getMyOrders', headers=headers, **kwargs)
 
             assert _failure_body(res, STATUS_BAD_REQUEST) == {
-                'message': 'Todo not found',
+                'message': 'Unauthorized access',
                 'status': STATUS_BAD_REQUEST,
                 'data': None
             }
-        errorLogs = _routeLogs(caplog, 'markTodoAsCompleted')
-        assert [log['requestKeys'] for log in errorLogs
-                ] == [['todoId'], [], [], []]
+
+            res = client.post('/devLogin', **kwargs)
+
+            assert _failure_body(res, STATUS_BAD_REQUEST) == {
+                'message': 'User not found',
+                'status': STATUS_BAD_REQUEST,
+                'data': None
+            }
+        errorLogs = _routeLogs(caplog, 'getMyOrders')
+        assert [log['requestKeys'] for log in errorLogs] == [[], [], []]
         assert {log['event'] for log in errorLogs} == {'error'}
     finally:
-        wipeCollections(['Users', 'SampleTodos'])
+        wipeCollections(ORDER_COLLECTIONS)
 
 
 def test_http_loginWithGoogle_envelopesAndNeverLogsTheSignInPayload(
@@ -385,37 +364,6 @@ def test_http_loginWithGoogle_envelopesAndNeverLogsTheSignInPayload(
         for record in caplog.records:
             assert sent not in record.getMessage()
         assert sent not in stderr
-
-
-def test_http_aScalarParamRefusesAnObjectOrAList(monkeypatch, caplog):
-    """deleteTodo's todoId is a str: {"$ne": null} would be a Mongo operator
-    matching every todo (a delete_many). The handler refuses an object or a
-    list for any scalar param with a 400 before the route runs."""
-    caplog.set_level(logging.INFO)
-    flaskApp = _flask_app(monkeypatch)
-    client = flaskApp.test_client()
-    wipeCollections(['SampleTodos'])
-    try:
-        for title in ('Rrh one', 'Rrh two'):
-            ApiRequests().createTodo(title)
-
-        for todoId in ({'$ne': None}, ['rrh-a'], {'$gt': ''}):
-            res = client.post('/deleteTodo', json={'todoId': todoId})
-
-            assert _failure_body(res, STATUS_BAD_REQUEST) == {
-                'message': 'Invalid todoId',
-                'status': STATUS_BAD_REQUEST,
-                'data': None
-            }
-        assert len(db.read({}, 'SampleTodos')) == 2
-
-        # A str still goes through, and a scalar of another type is the
-        # route's own business (no strict coercion).
-        res = client.post('/deleteTodo', json={'todoId': 'rrh-no-such-todo'})
-        assert _success_body(res, 'deleteTodo')['data'] == {}
-        assert len(db.read({}, 'SampleTodos')) == 2
-    finally:
-        wipeCollections(['SampleTodos'])
 
 
 def test_http_aMalformedPubSubPush_isA400(monkeypatch, caplog):

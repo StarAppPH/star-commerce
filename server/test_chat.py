@@ -358,12 +358,12 @@ ADMIN_TOOLS = {
     'setProductPhoto', 'getStoreReturns', 'approveReturn', 'rejectReturn',
     'receiveReturn', 'listVoices', 'setUserStoreLocation',
     'suggestStoreAddress', 'updateMyStoreDetails', 'makeProductPhotoChoices',
-    'findProductsInPhoto'
+    'findProductsInPhoto', 'findColorsInPhoto', 'confirmOrderPayment'
 }
 CUSTOMER_TOOLS = {
     'listStoreProducts', 'getMyOrders', 'createOrder', 'payOrder',
     'cancelMyOrder', 'getStorePolicy', 'requestReturn', 'getMyReturns',
-    'cancelMyReturn'
+    'cancelMyReturn', 'addPaymentReference'
 }
 # The chat-only form tools (chatForms.py), never on the MCP servers.
 ADMIN_FORM_TOOLS = {
@@ -383,7 +383,7 @@ def test_toolLists_haveExactlyTheAudiencesTools():
     }
     assert set(names['admin']) == ADMIN_TOOLS | ADMIN_FORM_TOOLS
     assert set(names['customer']) == CUSTOMER_TOOLS | CUSTOMER_FORM_TOOLS
-    assert len(names['admin']) == 27 and len(names['customer']) == 11
+    assert len(names['admin']) == 30 and len(names['customer']) == 12
     for audience, tools in chatTools.TOOLS.items():
         assert [t['function']['name'] for t in tools] == sorted(names[audience])
         for tool in tools:

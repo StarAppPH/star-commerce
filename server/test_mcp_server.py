@@ -97,7 +97,8 @@ def test_eachAudienceListsOnlyItsTools():
                                               'payOrder', 'cancelMyOrder',
                                               'getStorePolicy',
                                               'requestReturn', 'getMyReturns',
-                                              'cancelMyReturn'}
+                                              'cancelMyReturn',
+                                              'addPaymentReference'}
     assert asyncio.run(names('admin')) == {
         'getUserStore', 'createUserStore', 'addStoreProduct',
         'addStoreProducts', 'updateStoreProduct', 'listMyStoreProducts',
@@ -106,7 +107,8 @@ def test_eachAudienceListsOnlyItsTools():
         'generateProductPhotos', 'setProductPhoto', 'getStoreReturns',
         'approveReturn', 'rejectReturn', 'receiveReturn', 'listVoices',
         'setUserStoreLocation', 'suggestStoreAddress', 'updateMyStoreDetails',
-        'makeProductPhotoChoices'
+        'makeProductPhotoChoices', 'confirmOrderPayment', 'findColorsInPhoto',
+        'findProductsInPhoto'
     }
 
 

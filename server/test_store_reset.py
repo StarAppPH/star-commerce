@@ -73,7 +73,8 @@ USAGE_COLLECTIONS = [CHAT_USAGE, PHOTO_USAGE, VOICE_USAGE]
 # kind renamed or added in a module fails here instead of silently being
 # dropped from the carry-over.
 STORE_KINDS = [(CHAT_USAGE, 'store'), (CHAT_USAGE, 'attachmentsStore'),
-               (PHOTO_USAGE, 'photos'), (VOICE_USAGE, 'sttStore'),
+               (PHOTO_USAGE, 'photos'), (PHOTO_USAGE, 'productFinds'),
+               (PHOTO_USAGE, 'colorFinds'), (VOICE_USAGE, 'sttStore'),
                (VOICE_USAGE, 'ttsStore')]
 # The collections the reset empties for the old store, as storeReset's
 # `deleted` names them.
@@ -723,7 +724,8 @@ def test_theCarriedKinds_areThePinnedOnes():
     assert ChatActions.STORE_USAGE_KINDS[0] == CHAT_USAGE
     assert set(ChatActions.STORE_USAGE_KINDS[1]) == {'store',
                                                      'attachmentsStore'}
-    assert PhotoActions.STORE_USAGE_KINDS == (PHOTO_USAGE, ('photos', ))
+    assert PhotoActions.STORE_USAGE_KINDS == (
+        PHOTO_USAGE, ('photos', 'productFinds', 'colorFinds'))
     assert VoiceActions.STORE_USAGE_KINDS[0] == VOICE_USAGE
     assert set(VoiceActions.STORE_USAGE_KINDS[1]) == {'sttStore', 'ttsStore'}
     assert sorted((collection, kind) for collection, kinds in (

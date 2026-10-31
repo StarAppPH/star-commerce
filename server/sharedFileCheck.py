@@ -700,10 +700,19 @@ def scanMarkers(lines: list[str]) -> tuple[list[Block], list[str]]:
 
 # Per-repo blocks whose contents are validated, not only masked: the job .ps1
 # tools are run against production, so their region block may hold nothing
-# but the one $Region line (no other code can hide in a masked block).
+# but the one $Region line, and create_or_update_job.ps1's scheduler block
+# nothing but the one $SchedulerServiceAccount line: empty, the project's App
+# Engine default account, or an account the project created (no other code
+# can hide in a masked block).
 VALIDATED_BLOCKS = {
     'region': (re.compile(r'^\$Region = "[a-z]+-[a-z]+[0-9]+"\r?$'),
                'exactly one line $Region = "<gcp region>", e.g. $Region = "asia-east1"'),
+    'scheduler service account': (
+        re.compile(r'^\$SchedulerServiceAccount = "(?:'
+                   r'|\$Project@appspot\.gserviceaccount\.com'
+                   r'|[a-z][a-z0-9-]*@[a-z][a-z0-9-]*\.iam\.gserviceaccount\.com)"\r?$'),
+        'exactly one line $SchedulerServiceAccount = "<account>": empty, '
+        '"$Project@appspot.gserviceaccount.com" or "<name>@<project>.iam.gserviceaccount.com"'),
 }
 
 

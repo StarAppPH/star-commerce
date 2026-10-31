@@ -243,7 +243,7 @@ def test_generate_aStoreWithNoPhotoStyle_getsTheGlobalPhotoOnly(fakes):
     [call] = fakes.images.calls
     assert call['n'] == 1 and 'Style:' not in call['prompt']
     assert 'Special request: on a desk' in call['prompt']
-    assert 'primary #112233' in call['prompt']
+    assert 'primary brand color #112233' in call['prompt']
     [photo] = res['photos']
     assert photo['prompt'] == call['prompt']
     assert res['notGenerated'] == PhotoActions.NO_STYLE_GLOBAL_ONLY

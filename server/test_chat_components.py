@@ -96,7 +96,7 @@ def formAnswerDetails(content: str) -> dict:
 
 def test_setupToolset_isTheStoreSetupOnly():
     names = [t['function']['name'] for t in chatTools.TOOLS['adminSetup']]
-    assert names == ['createUserStore', 'getUserStore']
+    assert names == ['createUserStore', 'findColorsInPhoto', 'getUserStore']
     assert set(chatTools.TOOL_CALLS['adminSetup']) == set(
         chatForms.SETUP_ROUTE_TOOLS)
     assert chatForms.formToolNames('adminSetup') == set()
@@ -448,7 +448,7 @@ def test_aRetiredComponentKind_isLeftOutOfTheTurnsPage(wiped, model):
         'checkout', 'storeReturns', 'myReturns', 'policy', 'photos',
         'productPhotoChoice', 'store', 'locationForm', 'newProductsForm',
         'phoneVerificationForm', 'photoRequestForm', 'deliveryPinForm',
-        'deliveryZonesForm'}
+        'deliveryZonesForm', 'photoColors'}
     # The retired form cannot be answered with a kind of today.
     fake = model()
     with pytest.raises(ValueError, match='^' + re.escape(
@@ -938,6 +938,9 @@ def test_cards_fromEveryCardTool_fitTheirModels():
                 {'_id': 'o1', 'url': 'https://x', 'source': 'original'},
                 {'_id': 'g1', 'url': 'https://y', 'source': 'generated'}],
             'prompt': 'p', 'notGenerated': None},
+        'findColorsInPhoto': {
+            'colors': [{'hex': '#112233', 'share': 0.6, 'neutral': False}],
+            'focus': None, 'focusFound': True},
         'getUserStore': {'store': store},
         'createUserStore': store,
         'setUserStoreLocation': store,
@@ -1125,10 +1128,13 @@ def test_aNewProductsAnswer_takesAPrefilledPhoto(wiped, photoBucket, model):
 
 
 CHOICES = {'productId': 'p-mug', 'productName': 'Mug', 'photos': [
-    {'_id': 'ph-original', 'url': 'https://x/o.png', 'source': 'original'},
-    {'_id': 'ph-styled-1', 'url': 'https://x/1.jpg', 'source': 'generated'},
-    {'_id': 'ph-styled-2', 'url': 'https://x/2.jpg', 'source': 'generated'}],
-    'prompt': 'Create a professional photo', 'notGenerated': None}
+    {'_id': 'ph-original', 'url': 'https://x/o.png', 'source': 'original',
+     'prompt': None},
+    {'_id': 'ph-styled-1', 'url': 'https://x/1.jpg', 'source': 'generated',
+     'prompt': 'Create a professional photo'},
+    {'_id': 'ph-styled-2', 'url': 'https://x/2.jpg', 'source': 'generated',
+     'prompt': 'Create a professional photo'}],
+    'notGenerated': None}
 
 
 def test_aPhotoChoiceCard_isAnsweredWithOneOfItsPhotos(wiped, model,
@@ -1157,7 +1163,8 @@ def test_aPhotoChoiceCard_isAnsweredWithOneOfItsPhotos(wiped, model,
 
     for photoId, said in (('ph-styled-2', 'Use styled photo 2 for Mug'),
                           ('ph-original', 'Use the original photo for Mug')):
-        model(calls(('c1', 'makeProductPhotoChoices', '{}')),
+        model(calls(('c1', 'makeProductPhotoChoices',
+                     json.dumps({'productId': 'p-mug', 'imageUrl': 'u'}))),
               reply('Pick one.'))
         again = adminSays('Photos for the mug')
         [choice] = again['components']
