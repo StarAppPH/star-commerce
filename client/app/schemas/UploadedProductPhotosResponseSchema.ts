@@ -49,6 +49,20 @@ export type Reason = string;
  * @maxItems 50
  */
 export type Notsaved = PhotoNotSavedRow[];
+/**
+ * The shots better photos are made in, one per photo, for the card
+ *
+ * @maxItems 3
+ */
+export type Shots = [] | [PhotoShotRow] | [PhotoShotRow, PhotoShotRow] | [PhotoShotRow, PhotoShotRow, PhotoShotRow];
+/**
+ * The shot's short name
+ */
+export type Label = string;
+/**
+ * The shot's line, added to the base prompt for its photo
+ */
+export type Line = string;
 
 /**
  * What setUploadedProductPhotos sends: the products whose uploaded
@@ -57,6 +71,7 @@ export type Notsaved = PhotoNotSavedRow[];
 export interface UploadedProductPhotosResponse {
   products: Products;
   notSaved: Notsaved;
+  shots: Shots;
 }
 /**
  * A product whose uploaded photo is now on it: the original, kept as
@@ -77,4 +92,13 @@ export interface PhotoNotSavedRow {
   productId: Productid1;
   productName: Productname1;
   reason: Reason;
+}
+/**
+ * One of the fixed shots every photo call makes (PhotoActions.PHOTO_SHOTS),
+ * its line as the store's brand colors write it: the edit box shows it
+ * read-only under the base prompt.
+ */
+export interface PhotoShotRow {
+  label: Label;
+  line: Line;
 }

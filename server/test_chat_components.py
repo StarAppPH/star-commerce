@@ -777,13 +777,16 @@ def test_formTools_openTheirForms(wiped, firebase, model):
     res = adminSays('Set up delivery and add products')
     kinds = [c['kind'] for c in res['components']]
     # No photo style yet: the photo form opens too (its call makes 3 from
-    # the global prompt), asks no count, and offers the default prompt to
+    # its default base and 3 shots), asks no count, and offers the default prompt to
     # edit.
     assert kinds == ['newProductsForm', 'locationForm', 'photoRequestForm']
     productsForm, locationForm, photoForm = res['components']
-    assert set(photoForm) == {'kind', 'formId', 'defaultPrompt'}
+    # It also carries the shots, shown read-only under the edit box.
+    assert set(photoForm) == {'kind', 'formId', 'defaultPrompt', 'shots'}
+    stored = db.read({'_id': store['_id']}, 'Stores', findOne=True)
     assert photoForm['defaultPrompt'] == PhotoActions.defaultPhotoPrompt(
-        db.read({'_id': store['_id']}, 'Stores', findOne=True))
+        stored)
+    assert photoForm['shots'] == PhotoActions.cardShots(stored)
     assert productsForm['products'][0] == {
         'name': 'Barako', 'price': 520, 'inventory': None,
         'description': None}
@@ -1013,7 +1016,7 @@ def test_cards_fromEveryCardTool_fitTheirModels():
             'products': [{'productId': 'p1', 'productName': 'A',
                           'photoId': 'o1', 'photoUrl': 'https://x',
                           'defaultPrompt': 'p'}],
-            'notSaved': []},
+            'notSaved': [], 'shots': SHOTS},
         'getUserStore': {'store': store},
         'createUserStore': store,
         'setUserStoreLocation': store,
@@ -1392,12 +1395,13 @@ def test_aPhotoChoiceCard_isAnsweredWithOneOfItsPhotos(wiped, model,
                    'productId': 'p-mug', 'photoId': 'ph-original'})
 
 
+SHOTS = [{'label': 'Catalog', 'line': 'Shot: one'}, {'label': 'In use', 'line': 'Shot: two'}, {'label': 'Hero', 'line': 'Shot: three'}]
 OFFER = {'products': [
     {'productId': 'p-mug', 'productName': 'Mug', 'photoId': 'ph-mug',
      'photoUrl': 'https://x/mug.png', 'defaultPrompt': 'Default mug prompt'},
     {'productId': 'p-cup', 'productName': 'Cup', 'photoId': 'ph-cup',
      'photoUrl': 'https://x/cup.png', 'defaultPrompt': 'Default cup prompt'}],
-    'notSaved': []}
+    'notSaved': [], 'shots': SHOTS}
 
 
 def offerCard(model, monkeypatch) -> tuple[dict, dict]:
@@ -1428,6 +1432,8 @@ def test_thePhotoOfferCard_listsEachProduct_withItsOwnFormId(
                            'defaultPrompt')} for p in OFFER['products']]
     formIds = [row['formId'] for row in card['products']]
     assert all(formIds) and len(set(formIds)) == 2
+    # The shots, once for the card, shown under every row's edit box.
+    assert card['shots'] == SHOTS
 
 
 def test_thePhotoOffer_putsTheNewPhotosOnTheTurnsProductCard():
@@ -1461,7 +1467,8 @@ def test_thePhotoOffer_putsTheNewPhotosOnTheTurnsProductCard():
                                   'products': [],
                                   'notSaved': [{'productId': 'p-mug',
                                                 'productName': 'Mug',
-                                                'reason': 'x'}]})}]
+                                                'reason': 'x'}],
+                                  'shots': SHOTS})}]
     assert [c['kind'] for c in chatCards.build(noneSaved, {}, context)] == [
         'storeProducts']
 

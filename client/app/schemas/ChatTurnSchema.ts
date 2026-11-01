@@ -1654,6 +1654,20 @@ export type Photourl2 = string;
  */
 export type Defaultprompt = string;
 /**
+ * The fixed shot each of the photos adds to the prompt, shown read-only under every edit box
+ *
+ * @maxItems 3
+ */
+export type Shots = [] | [PhotoShotRow] | [PhotoShotRow, PhotoShotRow] | [PhotoShotRow, PhotoShotRow, PhotoShotRow];
+/**
+ * The shot's short name
+ */
+export type Label = string;
+/**
+ * The shot's line, added to the base prompt for its photo
+ */
+export type Line = string;
+/**
  * The card
  */
 export type Kind12 = "photoColors";
@@ -1840,6 +1854,12 @@ export type Formid11 = string;
  * The prompt the edit box starts with
  */
 export type Defaultprompt1 = string | null;
+/**
+ * The fixed shot each of the photos adds to the prompt, shown read-only under the edit box
+ *
+ * @maxItems 3
+ */
+export type Shots1 = [] | [PhotoShotRow] | [PhotoShotRow, PhotoShotRow] | [PhotoShotRow, PhotoShotRow, PhotoShotRow];
 /**
  * The form
  */
@@ -2746,6 +2766,7 @@ export interface PhotoChoiceRow {
 export interface ProductPhotoOfferCard {
   kind: Kind11;
   products: Products2;
+  shots?: Shots;
 }
 /**
  * A product on the photo offer card: its uploaded photo, now on it,
@@ -2758,6 +2779,15 @@ export interface PhotoOfferRow {
   productName: Productname1;
   photoUrl: Photourl2;
   defaultPrompt: Defaultprompt;
+}
+/**
+ * One of the fixed shots every photo call makes (PhotoActions.PHOTO_SHOTS),
+ * its line as the store's brand colors write it: the edit box shows it
+ * read-only under the base prompt.
+ */
+export interface PhotoShotRow {
+  label: Label;
+  line: Line;
 }
 /**
  * The main colors findColorsInPhoto read from a photo the admin
@@ -2856,6 +2886,7 @@ export interface PhotoRequestForm {
   kind: Kind17;
   formId: Formid11;
   defaultPrompt?: Defaultprompt1;
+  shots?: Shots1;
 }
 /**
  * Asks the shopper to pin where their delivery goes: a map and "use

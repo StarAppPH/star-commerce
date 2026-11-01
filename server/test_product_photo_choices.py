@@ -27,6 +27,7 @@ from objects import (PHOTO_NOTES_MAX_LENGTH, PHOTO_PROMPT_MAX_LENGTH,
                      UploadedProductPhotosResponse)
 from services.__request import ServiceUnavailable
 from test_photos import (ADMIN, FAR_DAY, FAR_EXPIRY, OTHER, ScriptedImages,
+                         callsByShot, expectedPrompts,
                          clean, counterKey, counterValue, fakes, frozen,
                          noSleep, putObject, sdkError, slotsFree,
                          storedTheme, themedStoreWithPhoto, useImages, webp)
@@ -175,6 +176,11 @@ def test_uploadedPhotos_areOnTheProducts_asReencodedOriginals_withNoPhotoQuota(
         stored = storedProduct(product)
         assert stored['photoUrl'] == doc['url']
         assert stored['_version'] == product['_version'] + 1
+    # The shots better photos are made in, for the offer card; the default
+    # base holds none of them.
+    assert res['shots'] == PhotoActions.cardShots(storedTheme(store))
+    assert all(shot['line'] not in row['defaultPrompt']
+               for shot in res['shots'] for row in res['products'])
     # No photo quota, its own originals counters: the store's and all
     # stores'.
     assert usageCounts() == []
@@ -490,11 +496,10 @@ def test_uploadedPhotos_noneSaved_raisesTheFirstFailure(fakes, photoProducts):
 # ------------------------- makeProductPhotoChoices ------------------------- #
 
 
-def test_photoChoices_make3FromTheOriginal_andTheDefaultPrompt_inOneCall(
+def test_photoChoices_make3FromTheOriginal_oneCallPerShot(
         fakes, photoProducts):
-    """Replaces "keep the original and make 3 from two prompts": the
-    original was kept by setUploadedProductPhotos, and one prompt makes
-    all 3."""
+    """Replaces "one prompt makes all 3 in one call": each photo is its own
+    call, from the default base and its own shot."""
     store, product, row = uploadedProduct(fakes, data=PNG,
                                           contentType='image/png')
 
@@ -505,25 +510,27 @@ def test_photoChoices_make3FromTheOriginal_andTheDefaultPrompt_inOneCall(
     assert [p['source'] for p in res['photos']] == [
         'original', 'generated', 'generated', 'generated']
     assert res['notGenerated'] is None
-    call = fakes.images.only()
-    assert call['n'] == PHOTOS_PER_CALL
-    # Made from the original the store kept, a PNG sent as it is.
-    assert call['image'] == [kept(PNG, 'image/png')]
-    assert call['prompt'] == row['defaultPrompt']
-    assert call['prompt'].endswith('\nStyle: white marble')
-    assert 'primary #112233' in call['prompt']
-    # The original has no prompt; the 3 made carry the one prompt.
+    calls = fakes.images.byShot()
+    prompts = expectedPrompts(store, productName='Mug')
+    assert [call['prompt'] for call in calls] == prompts
+    for i, call in enumerate(calls):
+        # Made from the original the store kept, a PNG sent as it is.
+        assert call['image'] == [kept(PNG, 'image/png')]
+        assert call['prompt'].startswith(row['defaultPrompt'] + '\n')
+        assert ('\nStyle: white marble\n' in call['prompt']) is (i > 0)
+        assert 'primary #112233' in call['prompt']
+    # The original has no prompt; each one made carries its own.
     assert res['photos'][0] == {'_id': row['photoId'],
                                 'url': row['photoUrl'],
                                 'source': 'original', 'prompt': None}
-    assert [p['prompt'] for p in res['photos'][1:]] == [call['prompt']] * 3
+    assert [p['prompt'] for p in res['photos'][1:]] == prompts
     original, *styled = storedPhotos(store)
     assert original['_id'] == row['photoId']
     assert len(styled) == PHOTOS_PER_CALL
     for doc in styled:
         assert doc['source'] == 'generated'
         assert doc['model'] == imageModel.IMAGE_MODEL
-        assert doc['prompt'] == call['prompt']
+        assert doc['prompt'] in prompts
         assert doc['productId'] == product['_id']
         assert doc['sourcePaths'] == original['sourcePaths']
         assert doc['path'].endswith('.jpg')
@@ -539,26 +546,27 @@ def test_photoChoices_theDefaultPromptNamesTheProduct(fakes, photoProducts):
 
     tools.makeProductPhotoChoices(ADMIN, product['_id'])
 
-    assert fakes.images.only()['prompt'].split('\n')[:2] == [
-        PhotoActions.PHOTO_INSTRUCTION, 'Product: Mug']
+    for call in fakes.images.byShot():
+        assert call['prompt'].split('\n')[:6] == [
+            *PhotoActions.PHOTO_BASE_LINES, 'Product: Mug']
 
 
-def test_photoChoices_theAdminsPrompt_makesAll3(fakes, photoProducts):
-    """Replaces "notes are the special request of every prompt": the
-    admin's prompt is the whole prompt, stripped, and blank is the
-    default."""
+def test_photoChoices_theAdminsPrompt_isTheBaseOfAll3(fakes, photoProducts):
+    """Replaces "the admin's prompt is the whole prompt": it is the base of
+    each shot, stripped, and blank is the default base."""
     store, product, row = uploadedProduct(fakes)
 
     res = tools.makeProductPhotoChoices(ADMIN, product['_id'],
                                         prompt='  The mug on a desk \n')
 
-    assert fakes.images.only()['prompt'] == 'The mug on a desk'
-    assert [p['prompt'] for p in res['photos'][1:]] == [
-        'The mug on a desk'] * 3
+    prompts = expectedPrompts(store, 'The mug on a desk')
+    assert [c['prompt'] for c in fakes.images.byShot()] == prompts
+    assert [p['prompt'] for p in res['photos'][1:]] == prompts
     for doc in storedPhotos(store)[1:]:
-        assert doc['prompt'] == 'The mug on a desk'
+        assert doc['prompt'] in prompts
     tools.makeProductPhotoChoices(ADMIN, product['_id'], prompt='  ')
-    assert fakes.images.calls[-1]['prompt'] == row['defaultPrompt']
+    assert [c['prompt'] for c in callsByShot(fakes.images.calls[3:])] == (
+        expectedPrompts(store, row['defaultPrompt']))
     calls = len(fakes.images.calls)
     with pytest.raises(ValueError) as error:
         tools.makeProductPhotoChoices(
@@ -574,29 +582,36 @@ def test_photoChoices_notesAreTheLastLine_ofTheDefaultPrompt(
     tools.makeProductPhotoChoices(ADMIN, product['_id'],
                                   notes='  on a wooden table \n')
 
-    prompt = fakes.images.only()['prompt']
-    assert prompt == row['defaultPrompt'] + '\nSpecial request: on a wooden table'
+    prompts = [c['prompt'] for c in fakes.images.byShot()]
+    assert prompts == expectedPrompts(store, row['defaultPrompt'],
+                                      'on a wooden table')
+    assert all(p.endswith('\nSpecial request: on a wooden table')
+               for p in prompts)
     for doc in storedPhotos(store)[1:]:
         assert doc['notes'] == 'on a wooden table'
-        assert doc['prompt'] == prompt
+        assert doc['prompt'] in prompts
 
 
 def test_photoChoices_notesAreTheLastLine_ofTheAdminsPrompt(
         fakes, photoProducts):
-    _, product, _ = uploadedProduct(fakes)
+    store, product, _ = uploadedProduct(fakes)
 
     tools.makeProductPhotoChoices(ADMIN, product['_id'],
                                   prompt='The mug on a desk', notes='brighter')
     tools.makeProductPhotoChoices(ADMIN, product['_id'],
                                   prompt='The mug on a desk', notes='   ')
 
-    assert [call['prompt'] for call in fakes.images.calls] == [
-        'The mug on a desk\nSpecial request: brighter', 'The mug on a desk']
+    first = [c['prompt'] for c in callsByShot(fakes.images.calls[:3])]
+    second = [c['prompt'] for c in callsByShot(fakes.images.calls[3:])]
+    assert first == expectedPrompts(store, 'The mug on a desk', 'brighter')
+    assert all(p.startswith('The mug on a desk\n')
+               and p.endswith('\nSpecial request: brighter') for p in first)
+    assert second == expectedPrompts(store, 'The mug on a desk')
 
 
 def test_photoPromptAndNotes_atTheExactLimit_areAccepted(
         fakes, photoProducts):
-    _, product, _ = uploadedProduct(fakes)
+    store, product, _ = uploadedProduct(fakes)
     prompt = 'p' * PHOTO_PROMPT_MAX_LENGTH
     notes = 'n' * PHOTO_NOTES_MAX_LENGTH
 
@@ -604,8 +619,8 @@ def test_photoPromptAndNotes_atTheExactLimit_areAccepted(
                                         notes=notes)
 
     assert len(res['photos']) == PHOTOS_PER_CALL + 1
-    assert fakes.images.calls[-1]['prompt'] == (
-        prompt + '\nSpecial request: ' + notes)
+    assert [c['prompt'] for c in fakes.images.byShot()] == expectedPrompts(
+        store, prompt, notes)
 
 
 def test_photoNotes_overTheLimit_areRefusedBeforeAnyQuota(
@@ -633,26 +648,26 @@ def test_generateProductPhotos_notesAreTheLastLine_andKept(fakes):
     tools.generateProductPhotos(ADMIN, [url], prompt='on a desk',
                                 notes='with a spoon')
 
-    assert fakes.images.only()['prompt'] == (
-        'on a desk\nSpecial request: with a spoon')
+    assert [c['prompt'] for c in fakes.images.byShot()] == expectedPrompts(
+        store, 'on a desk', 'with a spoon')
     for doc in db.read({'storeId': store['_id']}, 'GeneratedPhotos'):
         assert doc['notes'] == 'with a spoon'
 
 
-def test_photoChoices_withoutAPhotoStyle_make3FromTheGlobalPrompt(
+def test_photoChoices_withoutAPhotoStyle_make3Shots_withNoStyleLine(
         fakes, photoProducts):
-    """Replaces "without a photo style, offer the original and the global
-    photo": all 3 are made, from the global prompt."""
-    _, product, row = uploadedProduct(fakes, photoStyle=None)
+    """Replaces "make 3 from the global prompt": all 3 shots are made, with
+    no style line."""
+    store, product, row = uploadedProduct(fakes, photoStyle=None)
 
     res = tools.makeProductPhotoChoices(ADMIN, product['_id'])
 
     assertExactShape(ProductPhotoChoicesResponse, res)
     assert [p['source'] for p in res['photos']] == [
         'original', 'generated', 'generated', 'generated']
-    call = fakes.images.only()
-    assert call['n'] == PHOTOS_PER_CALL and 'Style:' not in call['prompt']
-    assert call['prompt'] == row['defaultPrompt']
+    prompts = [c['prompt'] for c in fakes.images.byShot()]
+    assert prompts == expectedPrompts(store, row['defaultPrompt'])
+    assert all('Style:' not in p for p in prompts)
     assert res['notGenerated'] is None
     assert usageCounts() == [PHOTOS_PER_CALL, PHOTOS_PER_CALL]
 
@@ -680,9 +695,10 @@ def test_photoChoices_pastTheStoresDailyCap_sayTheLimitWasReached(
 def test_photoChoices_whenTheModelFails_offerTheOriginal_andGiveAllBack(
         fakes, monkeypatch, noSleep, photoProducts):
     store, product, _ = uploadedProduct(fakes)
-    # The call fails, after its one retry.
-    useImages(monkeypatch, ScriptedImages(
-        *[sdkError(openai.InternalServerError, 500) for _ in range(2)]))
+    # Every call fails, after its one retry.
+    useImages(monkeypatch, ScriptedImages(perShot=[
+        [sdkError(openai.InternalServerError, 500) for _ in range(2)]
+        for _ in range(PHOTOS_PER_CALL)]))
 
     res = tools.makeProductPhotoChoices(ADMIN, product['_id'])
 
@@ -726,7 +742,8 @@ def test_photoChoices_withoutAKeptOriginal_useThePhotoOnTheProduct(
     res = tools.makeProductPhotoChoices(ADMIN, product['_id'])
 
     assert res['photos'][0]['_id'] == row['photoId']
-    assert fakes.images.only()['image'] == [kept(JPEG, 'image/jpeg')]
+    assert [c['image'] for c in fakes.images.byShot()] == [
+        [kept(JPEG, 'image/jpeg')]] * PHOTOS_PER_CALL
     # A photo URL that is no store photo of this store is no reference.
     db.db['GeneratedPhotos'].update_many({'storeId': store['_id']},
                                          {'$unset': {'productId': ''}})
@@ -749,7 +766,8 @@ def test_photoChoices_theLatestOriginal_isTheReference(fakes, photoProducts):
 
     assert second['photoId'] != first['photoId']
     assert res['photos'][0]['_id'] == second['photoId']
-    assert fakes.images.only()['image'] == [kept(PNG, 'image/png')]
+    assert [c['image'] for c in fakes.images.byShot()] == [
+        [kept(PNG, 'image/png')]] * PHOTOS_PER_CALL
 
 
 def test_photoChoices_theOriginalGoneFromStorage_isRefused(fakes,
@@ -781,9 +799,11 @@ def test_generateProductPhotos_returnsAndKeepsEachPhotosPrompt(fakes):
 
     res = tools.generateProductPhotos(ADMIN, [url], prompt='on a desk')
 
-    assert fakes.images.only()['prompt'] == 'on a desk'
+    expected = expectedPrompts(store, 'on a desk')
+    assert [c['prompt'] for c in fakes.images.byShot()] == expected
     prompts = {p['_id']: p['prompt'] for p in res['photos']}
-    assert list(prompts.values()) == ['on a desk'] * PHOTOS_PER_CALL
+    # Each photo its own full prompt (the "Prompt used" of each).
+    assert list(prompts.values()) == expected
     for doc in db.read({'storeId': store['_id']}, 'GeneratedPhotos'):
         assert doc['prompt'] == prompts[doc['_id']]
         assert doc['source'] == 'generated'
@@ -803,3 +823,60 @@ def test_theOriginalLookup_usesTheProductIndex(fakes, photoProducts):
 
     assert ('storeId_1_productId_1_source_1_createdAt_-1__id_-1'
             in _indexNames(plan))
+
+
+# ------------------------ the decode cap's refusals ------------------------ #
+
+
+def overCapPng() -> bytes:
+    """A PNG over the decode cap the tests below set (1000 pixels)."""
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new('RGBA', (40, 40), (10, 20, 30, 200)).save(out, 'PNG')
+    return out.getvalue()
+
+
+def test_decodeCap_aReferenceOverIt_isRefused_andGivesThePhotoQuotaBack(
+        fakes, frozen, monkeypatch):
+    monkeypatch.setattr(photoStorage, 'DECODE_MAX_PIXELS', 1000)
+    monkeypatch.setattr(photoStorage, 'MODEL_REFERENCE_MAX_SIDE', 20)
+    store = createTestStore(ADMIN)
+    url = putObject(fakes, f'users/{ADMIN}/big.png', overCapPng(),
+                    contentType='image/png')
+
+    with pytest.raises(ValueError, match=r'^imageUrls\[0\] ' + re.escape(
+            photoStorage.DECODE_TOO_LARGE) + '$'):
+        tools.generateProductPhotos(ADMIN, [url])
+
+    # Taken before the read, and all given back.
+    assert counterValue(store['_id']) == 0
+    assert counterValue(PhotoActions.ALL_STORES) == 0
+    assert fakes.images.calls == []
+    assert db.read({}, 'GeneratedPhotos') == []
+    assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
+
+
+def test_decodeCap_anUploadOverIt_isRefused_andGivesTheOriginalsQuotaBack(
+        fakes, photoProducts, monkeypatch):
+    monkeypatch.setattr(photoStorage, 'DECODE_MAX_PIXELS', 1000)
+    store, mug, url = productWithPhoto(fakes, data=overCapPng(),
+                                       contentType='image/png')
+    _, cup, cupUrl = productWithPhoto(fakes, name='Cup', store=store)
+
+    res = tools.setUploadedProductPhotos(
+        ADMIN, [{'productId': mug['_id'], 'imageUrl': url},
+                {'productId': cup['_id'], 'imageUrl': cupUrl}])
+
+    # The one over the cap is not saved, with why; the other is.
+    assert res['notSaved'] == [{
+        'productId': mug['_id'], 'productName': 'Mug',
+        'reason': f'imageUrl {photoStorage.DECODE_TOO_LARGE}'}]
+    assert [row['productId'] for row in res['products']] == [cup['_id']]
+    assert originalCounts() == [1, 1]
+    # Alone, it is raised, and its count given back.
+    with pytest.raises(ValueError, match=re.escape(
+            photoStorage.DECODE_TOO_LARGE)):
+        tools.setUploadedProductPhotos(
+            ADMIN, [{'productId': mug['_id'], 'imageUrl': url}])
+    assert originalCounts() == [1, 1]
+    assert storedProduct(mug)['photoUrl'] is None

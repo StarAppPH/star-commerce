@@ -11,6 +11,8 @@ import datetime
 import io
 import json
 import logging
+import re
+import threading
 import time
 from types import SimpleNamespace
 from urllib.parse import quote
@@ -44,7 +46,16 @@ COLLECTIONS = ['Users', 'Bootstrap', 'Stores', 'Policies', 'GeneratedPhotos',
                'PhotoUsage']
 ADMIN = 'ph-admin'
 BUCKET = 'ph-test-bucket.firebasestorage.app'
-JPEG = b'\xff\xd8\xff' + b'jpeg-bytes'
+def tinyJpeg() -> bytes:
+    """A real 4 x 3 JPEG: references are read by Pillow before the model
+    (photoStorage.modelReference)."""
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new('RGB', (4, 3), (120, 80, 40)).save(out, 'JPEG')
+    return out.getvalue()
+
+
+JPEG = tinyJpeg()
 # Far ahead, so no TTL monitor deletes a counter mid-test.
 FAR_EXPIRY = datetime.datetime(2099, 1, 1, tzinfo=datetime.timezone.utc)
 
@@ -116,11 +127,41 @@ class FakeImages:
         return SimpleNamespace(data=[SimpleNamespace(b64_json=encoded)
                                      for _ in range(returned)])
 
-    def only(self) -> dict:
-        """The one call a photo call makes (all its photos from one
-        prompt)."""
-        [call] = self.calls
-        return call
+    def byShot(self) -> list[dict]:
+        """The calls one photo call made, one per shot (n=1 each), in
+        PHOTO_SHOTS' order (they run at once, so in any order)."""
+        return callsByShot(self.calls)
+
+
+# A phrase of each shot's line (PhotoActions.PHOTO_SHOTS), whatever the
+# store's colors.
+SHOT_MARKERS = ('three-quarter front view', 'where it is actually used',
+                'low or slightly top-down')
+
+
+def shotOf(prompt: str) -> int:
+    """Which shot of PHOTO_SHOTS `prompt` is."""
+    [shot] = [i for i, marker in enumerate(SHOT_MARKERS) if marker in prompt]
+    return shot
+
+
+def callsByShot(calls: list[dict]) -> list[dict]:
+    ordered = sorted(calls, key=lambda call: shotOf(call['prompt']))
+    assert [shotOf(call['prompt']) for call in ordered] == [0, 1, 2]
+    assert [call['n'] for call in ordered] == [1] * PHOTOS_PER_CALL
+    return ordered
+
+
+def expectedPrompts(store: dict, base: str | None = None,
+                    notes: str | None = None,
+                    productName: str | None = None) -> list[str]:
+    """The prompts of a photo call of `store` (its stored theme), in shot
+    order: `base` (else the default one), its style and shot lines, and
+    `notes` last."""
+    theme = storedTheme(store)
+    if base is None:
+        base = PhotoActions.defaultPhotoPrompt(theme, productName)
+    return PhotoActions.shotPrompts(theme, base, notes)
 
 
 def dataUrlImage(dataUrl: str) -> tuple[bytes, str]:
@@ -189,11 +230,11 @@ def test_updateMyStoreTheme_thenGetUserStore_carriesTheTheme(clean):
     assert 'secondaryColor' not in store['store']
 
 
-def test_generateProductPhotos_makes3FromTheDefaultPrompt_inOneCall(
+def test_generateProductPhotos_makes3_oneCallPerShot_fromTheDefaultBase(
         fakes, monkeypatch):
-    """Replaces the test of two prompts (global + themed) and notes: one
-    prompt now makes all 3 photos, the store's default when none is sent
-    (the themed one, with a photo style)."""
+    """Replaces "one prompt makes all 3 in one call": each photo is its own
+    call (n=1), all at once, from the default base and its own shot, the
+    store's style on shots 2 and 3 only."""
     store = createTestStore(ADMIN)
     tools.updateMyStoreTheme(ADMIN, photoStyle='white marble, morning light',
                            primaryColor='#112233')
@@ -206,22 +247,28 @@ def test_generateProductPhotos_makes3FromTheDefaultPrompt_inOneCall(
     assertExactShape(GeneratedPhotosResponse, res)
     assert len(res['photos']) == PHOTOS_PER_CALL
     assert res['notGenerated'] is None
-    call = fakes.images.only()
-    assert call['n'] == PHOTOS_PER_CALL
-    assert call['model'] == imageModel.IMAGE_MODEL
-    assert call['image'] == [(JPEG, 'image/jpeg')]
-    assert call['prompt'] == PhotoActions.defaultPhotoPrompt(
-        storedTheme(store))
-    assert 'primary #112233' in call['prompt']
-    assert 'Background:' not in call['prompt']
-    assert call['prompt'].endswith('\nStyle: white marble, morning light')
-    assert [p['prompt'] for p in res['photos']] == [call['prompt']] * 3
+    calls = fakes.images.byShot()
+    prompts = expectedPrompts(store)
+    assert [call['prompt'] for call in calls] == prompts
+    base = PhotoActions.defaultPhotoPrompt(storedTheme(store))
+    shots = PhotoActions.storeShots(storedTheme(store))
+    style = 'Style: white marble, morning light'
+    assert prompts == [f'{base}\n{shots[0]["line"]}',
+                       f'{base}\n{style}\n{shots[1]["line"]}',
+                       f'{base}\n{style}\n{shots[2]["line"]}']
+    for call in calls:
+        assert call['model'] == imageModel.IMAGE_MODEL
+        assert call['image'] == [(JPEG, 'image/jpeg')]
+        assert 'primary #112233' in call['prompt']
+    # Each photo keeps its own prompt, in shot order.
+    assert [p['prompt'] for p in res['photos']] == prompts
     saved = db.read({'storeId': store['_id']}, 'GeneratedPhotos')
     assert {doc['_id'] for doc in saved} == {p['_id'] for p in res['photos']}
+    byId = {p['_id']: p['prompt'] for p in res['photos']}
     for doc in saved:
         assert doc['path'] == f'stores/{store["_id"]}/photos/{doc["_id"]}.jpg'
         assert fakes.bucket.objects[doc['path']]['data'] == JPEG
-        assert doc['prompt'] == call['prompt']
+        assert doc['prompt'] == byId[doc['_id']]
         assert doc['notes'] is None and doc['productId'] is None
     assert all(u['if_generation_match'] == 0 for u in fakes.bucket.uploads)
     counts = {doc['_id'].split(':')[1]: doc['count']
@@ -230,38 +277,61 @@ def test_generateProductPhotos_makes3FromTheDefaultPrompt_inOneCall(
                       PhotoActions.ALL_STORES: PHOTOS_PER_CALL}
 
 
-def test_generate_aStoreWithNoPhotoStyle_gets3FromTheGlobalPrompt(fakes):
-    """Replaces "a store with no photo style gets the global photo only":
-    it now gets all 3, from the global prompt."""
-    createTestStore(ADMIN)
+def test_generate_aStoreWithNoPhotoStyle_gets3Shots_withNoStyleLine(fakes):
+    """Replaces "a store with no photo style gets 3 from the global
+    prompt": its 3 shots carry no style line."""
+    store = createTestStore(ADMIN)
     theme(primaryColor='#112233')
     url = putObject(fakes, MINE)
 
     res = tools.generateProductPhotos(ADMIN, [url])
 
     assertExactShape(GeneratedPhotosResponse, res)
-    call = fakes.images.only()
-    assert call['n'] == PHOTOS_PER_CALL and 'Style:' not in call['prompt']
-    assert 'primary brand color #112233' in call['prompt']
-    assert [p['prompt'] for p in res['photos']] == [call['prompt']] * 3
+    prompts = [call['prompt'] for call in fakes.images.byShot()]
+    assert prompts == expectedPrompts(store)
+    assert all('Style:' not in prompt for prompt in prompts)
+    assert 'in the primary brand color' in prompts[0]
+    assert [p['prompt'] for p in res['photos']] == prompts
     assert res['notGenerated'] is None
     assert usageCounts() == [PHOTOS_PER_CALL, PHOTOS_PER_CALL]
 
 
-def test_generate_theAdminsPrompt_isTheWholePrompt_keptOnEachPhoto(fakes):
-    """Replaces "a failed themed call keeps the global photo" (there is one
-    call now): the admin's own prompt, stripped, is sent as it is."""
+def test_generate_theAdminsPrompt_isTheBase_ofEachShot(fakes):
+    """Replaces "the admin's prompt is the whole prompt": it is the base,
+    stripped, each shot adding its own lines."""
     store, url = themedStoreWithPhoto(fakes)
 
     res = tools.generateProductPhotos(ADMIN, [url],
                                       prompt='  A mug on a red desk.\n',
                                       productName='Mug')
 
-    call = fakes.images.only()
-    assert call['prompt'] == 'A mug on a red desk.'
-    assert [p['prompt'] for p in res['photos']] == ['A mug on a red desk.'] * 3
+    prompts = [call['prompt'] for call in fakes.images.byShot()]
+    assert prompts == expectedPrompts(store, 'A mug on a red desk.')
+    assert all(p.startswith('A mug on a red desk.\n') for p in prompts)
+    assert [p['prompt'] for p in res['photos']] == prompts
     for doc in db.read({'storeId': store['_id']}, 'GeneratedPhotos'):
-        assert doc['prompt'] == 'A mug on a red desk.'
+        assert doc['prompt'] in prompts
+
+
+def test_generate_oneFailedCall_keepsTheOtherTwo_andSaysSomeWereNotMade(
+        fakes, frozen, monkeypatch, noSleep, caplog):
+    store, url = themedStoreWithPhoto(fakes)
+    useImages(monkeypatch, ScriptedImages(perShot=[
+        [1], [sdkError(openai.BadRequestError, 400)], [1]]))
+
+    with caplog.at_level(logging.INFO):
+        res = tools.generateProductPhotos(ADMIN, [url])
+
+    prompts = expectedPrompts(store)
+    assert [p['prompt'] for p in res['photos']] == [prompts[0], prompts[2]]
+    assert res['notGenerated'] == PhotoActions.SOME_NOT_MADE
+    assert counterValue(store['_id']) == 2
+    assert counterValue(PhotoActions.ALL_STORES) == 2
+    assert len(db.read({'storeId': store['_id']}, 'GeneratedPhotos')) == 2
+    [failed] = [r.msg for r in caplog.records if isinstance(r.msg, dict)
+                and r.msg.get('event') == 'productPhotoCallFailed']
+    assert failed['errorClass'] == 'ServiceUnavailable'
+    assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
 
 
 def themedStoreWithPhoto(fakes, size=None) -> tuple[dict, str]:
@@ -544,15 +614,22 @@ def policyError(key='code'):
 
 class ScriptedImages:
     """images.edit plays its outcomes in order: an exception is raised, a
-    number is that many images returned."""
+    number is that many images returned. With `perShot` (a list of outcomes
+    per shot of PHOTO_SHOTS), each call plays its own shot's, so the calls
+    of one photo call, which run at once, play the same in any order."""
 
-    def __init__(self, *outcomes):
+    def __init__(self, *outcomes, perShot=None):
         self.outcomes = list(outcomes)
+        self.perShot = perShot
         self.calls = []
+        self.lock = threading.Lock()
 
     def edit(self, **kwargs):
-        self.calls.append(kwargs)
-        outcome = self.outcomes.pop(0)
+        with self.lock:
+            self.calls.append(kwargs)
+            outcomes = (self.outcomes if self.perShot is None
+                        else self.perShot[shotOf(kwargs['prompt'])])
+            outcome = outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
         encoded = base64.b64encode(JPEG).decode()
@@ -917,8 +994,8 @@ def test_generate_tenUrlsWork_elevenAreRefused(fakes):
 
     res = tools.generateProductPhotos(ADMIN, urls[:10])
     assert len(res['photos']) == PHOTOS_PER_CALL
-    # One call (one prompt makes all 3), with every reference.
-    assert len(fakes.images.only()['image']) == 10
+    # One call per shot, each with every reference.
+    assert [len(call['image']) for call in fakes.images.byShot()] == [10] * 3
 
 
 @pytest.mark.parametrize('second', [
@@ -945,7 +1022,8 @@ def test_generate_aCountSentToTheTool_isIgnored_alwaysMakes3(fakes):
         {'imageUrls': [url], 'count': 1})
     res = chatTools._generateProductPhotos(ADMIN, '', args)
 
-    assert fakes.images.only()['n'] == PHOTOS_PER_CALL
+    # One photo per call, one call per shot.
+    assert [call['n'] for call in fakes.images.byShot()] == [1] * 3
     assert len(res['photos']) == PHOTOS_PER_CALL
 
 
@@ -955,22 +1033,23 @@ def test_generate_prompt_blankIsTheDefault_overLengthAndNonTextRefused(fakes):
     store, url = themedStoreWithPhoto(fakes)
 
     tools.generateProductPhotos(ADMIN, [url], prompt='  \n ')
-    assert fakes.images.only()['prompt'] == PhotoActions.defaultPhotoPrompt(
-        storedTheme(store))
+    assert [call['prompt'] for call in fakes.images.byShot()] == (
+        expectedPrompts(store))
 
     before = usageCounts()
     for prompt in ('n' * (PHOTO_PROMPT_MAX_LENGTH + 1), 5, ['x'], 'a\x00b'):
         with pytest.raises(ValueError) as error:
             tools.generateProductPhotos(ADMIN, [url], prompt=prompt)
         assert str(error.value).startswith(PhotoActions.PROMPT_LABEL)
-    assert usageCounts() == before and len(fakes.images.calls) == 1
+    assert usageCounts() == before and len(fakes.images.calls) == 3
     tools.generateProductPhotos(ADMIN, [url],
                                 prompt='n' * PHOTO_PROMPT_MAX_LENGTH)
-    assert fakes.images.calls[-1]['prompt'] == 'n' * PHOTO_PROMPT_MAX_LENGTH
+    assert [call['prompt'] for call in callsByShot(fakes.images.calls[3:])] \
+        == expectedPrompts(store, 'n' * PHOTO_PROMPT_MAX_LENGTH)
 
 
 @pytest.mark.parametrize('clear', [None, '', '   '])
-def test_generate_withoutAPhotoStyle_makes3FromTheGlobalPrompt(fakes, clear):
+def test_generate_withoutAPhotoStyle_makes3Shots_withNoStyleLine(fakes, clear):
     """Replaces "without a photo style makes the global photo only"."""
     if clear is None:
         createTestStore(ADMIN)
@@ -983,8 +1062,8 @@ def test_generate_withoutAPhotoStyle_makes3FromTheGlobalPrompt(fakes, clear):
 
     assert len(res['photos']) == PHOTOS_PER_CALL
     assert res['notGenerated'] is None
-    call = fakes.images.only()
-    assert call['n'] == PHOTOS_PER_CALL and 'Style:' not in call['prompt']
+    assert all('Style:' not in call['prompt']
+               for call in fakes.images.byShot())
     assert usageCounts() == [PHOTOS_PER_CALL, PHOTOS_PER_CALL]
 
 
@@ -1046,15 +1125,16 @@ def test_generate_contentPolicyViolation_isTheFixed400_notRetried(
     store = createTestStore(ADMIN)
     theme(photoStyle=SENTINEL_STYLE)
     url = putObject(fakes, MINE)
-    # The one call is refused.
-    images = useImages(monkeypatch, ScriptedImages(policyError(key)))
+    # Every call is refused.
+    images = useImages(monkeypatch, ScriptedImages(
+        perShot=[[policyError(key)] for _ in range(PHOTOS_PER_CALL)]))
 
     with caplog.at_level(logging.INFO):
         with pytest.raises(ValueError) as error:
             tools.generateProductPhotos(ADMIN, [url], prompt=SENTINEL_NOTES)
 
     assert str(error.value) == imageModel.PHOTO_REQUEST_DECLINED
-    assert len(images.calls) == 1 and noSleep == []
+    assert len(images.calls) == PHOTOS_PER_CALL and noSleep == []
     assert routeFailure(error.value, status=400).status == 400
     assert counterValue(store['_id']) == 0
     assert counterValue(PhotoActions.ALL_STORES) == 0
@@ -1337,93 +1417,314 @@ def test_theOwnersView_ofAStoreWithNoTheme_leavesTheFieldsOut(clean):
     ({'primaryColor': '#112233', 'secondaryColor': '#445566'},
      ['Brand colors: primary #112233, secondary #445566'], []),
 ])
-def test_photoPrompt_hasTheColorsLineOnlyWhenAColorIsSet(colors, expected,
-                                                         absent):
-    prompt = PhotoActions.photoPrompt({'photoStyle': 'calm', **colors})
+def test_defaultPhotoPrompt_hasTheColorsLineOnlyWhenAColorIsSet(
+        colors, expected, absent):
+    """Replaces photoPrompt's colors test: the default base carries the
+    colors line, and never a style, a shot or notes."""
+    prompt = PhotoActions.defaultPhotoPrompt({'photoStyle': 'calm', **colors})
 
-    assert prompt.startswith(PhotoActions.PHOTO_INSTRUCTION)
-    assert 'Style: calm' in prompt and 'Special request:' not in prompt
+    assert prompt.split('\n')[:5] == list(PhotoActions.PHOTO_BASE_LINES)
+    for text in ('Style:', 'Shot:', 'Special request:'):
+        assert text not in prompt
     for text in expected:
         assert text in prompt
     for text in absent:
         assert text not in prompt
 
 
-def test_photoPrompt_namesTheProduct_onlyWhenItsNameIsKnown():
-    store = {'photoStyle': 'calm'}
-
-    named = PhotoActions.photoPrompt(store, 'Blue Mug').split('\n')
-    unnamed = PhotoActions.photoPrompt(store)
-
-    assert named == [PhotoActions.PHOTO_INSTRUCTION, 'Product: Blue Mug',
-                     'Style: calm']
-    assert 'Product:' not in unnamed
-
-
-def test_defaultPhotoPrompt_isTheThemedPrompt_withAPhotoStyle():
-    """Replaces photoPrompts' two prompts: the default is one prompt, the
-    themed one for a store with a photo style."""
-    store = {'photoStyle': 'calm', 'primaryColor': '#112233',
-             'secondaryColor': '#445566'}
-
-    prompt = PhotoActions.defaultPhotoPrompt(store, 'Blue Mug')
-
-    assert prompt.split('\n') == [
-        PhotoActions.PHOTO_INSTRUCTION,
-        'Product: Blue Mug',
-        PhotoActions.brandColorsLine('#112233', '#445566'),
-        'Style: calm']
-    assert prompt == PhotoActions.photoPrompt(store, 'Blue Mug')
-
-
-def test_defaultPhotoPrompt_withoutAPhotoStyle_isTheGlobalPrompt():
+def test_defaultPhotoPrompt_isTheBaseLines_theProduct_andTheColors():
+    """Replaces the themed and global default prompt tests: one default
+    base, the same with or without a photo style."""
     store = {'primaryColor': '#112233', 'secondaryColor': '#445566'}
-    for style in (None, ''):
+    for style in (None, '', 'calm'):
         prompt = PhotoActions.defaultPhotoPrompt({**store,
                                                   'photoStyle': style},
                                                  'Blue Mug')
         assert prompt.split('\n') == [
-            PhotoActions.PHOTO_INSTRUCTION,
+            *PhotoActions.PHOTO_BASE_LINES,
             'Product: Blue Mug',
-            PhotoActions.backgroundLine('#112233')]
+            'Brand colors: primary #112233, secondary #445566 — for '
+            'backgrounds and props only, never on the product.']
     assert (PhotoActions.defaultPhotoPrompt({'photoStyle': None})
-            == PhotoActions.PHOTO_INSTRUCTION)
+            == '\n'.join(PhotoActions.PHOTO_BASE_LINES))
+    assert 'Product:' not in PhotoActions.defaultPhotoPrompt(store)
 
 
-def test_globalPhotoPrompt_isTheProductOnAPlainPrimaryColorBackground():
-    prompt = PhotoActions.globalPhotoPrompt(
-        {'primaryColor': '#112233', 'secondaryColor': '#445566'})
+def test_photoBaseLines_askForTheProductOnly_withoutWhatSitsBesideIt():
+    """Replaces the PHOTO_INSTRUCTION test."""
+    base = '\n'.join(PhotoActions.PHOTO_BASE_LINES)
 
-    assert prompt.split('\n') == [PhotoActions.PHOTO_INSTRUCTION,
-                                  PhotoActions.backgroundLine('#112233')]
-    assert 'plain, seamless background' in prompt
-    assert 'primary brand color #112233' in prompt
-    assert 'Show only the product' in prompt
-    assert '#445566' not in prompt and 'Brand colors:' not in prompt
-
-
-def test_globalPhotoPrompt_withoutAPrimaryColor_keepsTheBrandColorsLine():
-    prompt = PhotoActions.globalPhotoPrompt({'secondaryColor': '#445566'})
-
-    assert prompt.split('\n') == [
-        PhotoActions.PHOTO_INSTRUCTION,
-        PhotoActions.brandColorsLine(None, '#445566')]
-    assert 'Background:' not in prompt
+    assert 'Show only the product' in base
+    assert 'such as items for scale' in base
+    assert 'Keep the product exactly as it is' in base
+    assert ('No added text, logos, watermarks or people unless the photo '
+            'style asks for them.') in base
 
 
-def test_themedPrompts_neverGetThePlainBackground():
-    prompt = PhotoActions.photoPrompt(
-        {'photoStyle': 'calm', 'primaryColor': '#112233'})
+def test_shotLines_nameTheBrandColors_theStoreHas():
+    shots = PhotoActions.shotLines('#112233', '#445566')
 
-    assert 'Background:' not in prompt
-    assert prompt.endswith('\nStyle: calm')
+    assert [shot['label'] for shot in shots] == ['Catalog', 'In use', 'Hero']
+    assert len(shots) == PHOTOS_PER_CALL
+    assert 'a seamless background in the primary brand color' in (
+        shots[0]['line'])
+    assert 'props in the secondary brand color' in shots[1]['line']
+    assert ('a smooth gradient from the primary to the secondary brand '
+            'color') in shots[2]['line']
+    assert all(shot['line'].startswith('Shot: ') for shot in shots)
+    # The hex values are the base's colors line's, never a shot's.
+    assert all('#' not in shot['line'] for shot in shots)
+    # Never the product's name, which a base may lack.
+    assert 'inferred from the product,' in shots[1]['line']
+    assert 'name' not in shots[1]['line']
 
 
-def test_photoInstruction_asksForTheProductOnly_withoutWhatSitsBesideIt():
-    instruction = PhotoActions.PHOTO_INSTRUCTION
+def test_shotLines_withoutColors_fallBackToNeutral():
+    shots = PhotoActions.shotLines(None, None)
 
-    assert 'Show only the product' in instruction
-    assert 'items placed beside it for scale' in instruction
+    assert 'a seamless neutral light-grey background' in shots[0]['line']
+    assert 'a few simple neutral props' in shots[1]['line']
+    assert 'a soft neutral gradient' in shots[2]['line']
+    assert all('brand color' not in shot['line'] for shot in shots)
+    onlyPrimary = PhotoActions.shotLines('#112233', None)
+    assert 'in the primary brand color' in onlyPrimary[0]['line']
+    assert 'simple neutral props' in onlyPrimary[1]['line']
+    assert ('from the primary brand color to a soft neutral light grey'
+            in onlyPrimary[2]['line'])
+    onlySecondary = PhotoActions.shotLines(None, '#445566')
+    assert 'neutral light-grey background' in onlySecondary[0]['line']
+    assert 'props in the secondary brand color' in onlySecondary[1]['line']
+    assert ('from the secondary brand color to a soft neutral light grey'
+            in onlySecondary[2]['line'])
+
+
+def test_cardShots_sayTheStyleIsAdded_onShots2And3_displayOnly():
+    styled = {'photoStyle': 'calm', 'primaryColor': '#112233'}
+    shots = PhotoActions.storeShots(styled)
+
+    card = PhotoActions.cardShots(styled)
+
+    assert [c['line'] for c in card] == [
+        shots[0]['line'],
+        shots[1]['line'] + PhotoActions.STYLE_SHOT_SUFFIX,
+        shots[2]['line'] + PhotoActions.STYLE_SHOT_SUFFIX]
+    assert PhotoActions.STYLE_SHOT_SUFFIX == ' Plus your photo style.'
+    # The prompts never carry the suffix: they carry the style itself.
+    assert all(PhotoActions.STYLE_SHOT_SUFFIX.strip() not in prompt
+               for prompt in PhotoActions.shotPrompts(styled, 'BASE', None))
+    for unstyled in ({'photoStyle': None, 'primaryColor': '#112233'},
+                     {'photoStyle': '', 'primaryColor': '#112233'}):
+        assert PhotoActions.cardShots(unstyled) == shots
+
+
+def test_generate_encodesTheReferencesOnce_sharedByThe3Calls(
+        fakes, monkeypatch):
+    _, url = themedStoreWithPhoto(fakes)
+    real = imageModel.imageInputs
+    encoded = []
+
+    def counting(images):
+        encoded.append(len(images))
+        return real(images)
+
+    monkeypatch.setattr(imageModel, 'imageInputs', counting)
+
+    tools.generateProductPhotos(ADMIN, [url])
+
+    # Once for the photo call, not once per request.
+    assert encoded == [1]
+    assert [call['image'] for call in fakes.images.byShot()] == [
+        [(JPEG, 'image/jpeg')]] * PHOTOS_PER_CALL
+
+
+def encoded(size, fmt, mode='RGB', orientation=None) -> bytes:
+    """A solid image of `size` saved as `fmt`, with an EXIF orientation
+    flag when given."""
+    from PIL import Image
+    out = io.BytesIO()
+    options = {}
+    if orientation is not None:
+        exif = Image.Exif()
+        exif[photoStorage.EXIF_ORIENTATION] = orientation
+        options['exif'] = exif
+    color = (10, 20, 30, 200) if mode == 'RGBA' else (10, 20, 30)
+    Image.new(mode, size, color).save(out, fmt, **options)
+    return out.getvalue()
+
+
+def pixelSize(data: bytes) -> tuple[int, int]:
+    from PIL import Image
+    with Image.open(io.BytesIO(data)) as image:
+        return image.size
+
+
+@pytest.fixture
+def smallDecodeCap(monkeypatch):
+    """DECODE_MAX_PIXELS at 1000 (and the model's side at 20), so small
+    test photos stand for photos over the real 16 megapixels."""
+    monkeypatch.setattr(photoStorage, 'DECODE_MAX_PIXELS', 1000)
+    monkeypatch.setattr(photoStorage, 'MODEL_REFERENCE_MAX_SIDE', 20)
+
+
+def test_decodeCap_isSixteenMegapixels_andSaysSo():
+    assert photoStorage.DECODE_MAX_PIXELS == 16_000_000
+    assert photoStorage.DECODE_TOO_LARGE == (
+        'is too large (over 16 megapixels). Use a smaller photo.')
+
+
+def test_decodeCap_aPngOrWebPOverIt_isRefused_inEveryDecode(smallDecodeCap):
+    png = encoded((40, 40), 'PNG', 'RGBA')
+    webpPhoto = encoded((40, 40), 'WEBP')
+    message = '^photo ' + re.escape(photoStorage.DECODE_TOO_LARGE) + '$'
+
+    for decode in (
+            lambda: photoStorage.storeOriginal(png, 'image/png', 'photo'),
+            lambda: photoStorage.storeOriginal(webpPhoto, 'image/webp',
+                                               'photo'),
+            lambda: photoStorage.modelReference(png, 'image/png', 'photo'),
+            lambda: photoStorage.modelReference(webpPhoto, 'image/webp',
+                                                'photo'),
+            lambda: photoStorage.receiptImage(png, 'photo'),
+            lambda: photoStorage.receiptImage(webpPhoto, 'photo')):
+        with pytest.raises(ValueError, match=message):
+            decode()
+    # Under it, a PNG is decoded as before.
+    small = encoded((30, 30), 'PNG', 'RGBA')
+    assert pixelSize(photoStorage.storeOriginal(small, 'image/png',
+                                                'photo')[0]) == (30, 30)
+
+
+def test_decodeCap_aPngOverIt_isNeverLoaded_beforeItIsRefused(
+        smallDecodeCap, monkeypatch):
+    """Reading a PNG's EXIF loads all its pixels (an eXIf chunk may follow
+    them), so the cap comes first: a PNG over it is refused unloaded."""
+    from PIL import PngImagePlugin
+    loads = []
+    load = PngImagePlugin.PngImageFile.load
+
+    def spiedLoad(self):
+        loads.append(self.size)
+        return load(self)
+
+    monkeypatch.setattr(PngImagePlugin.PngImageFile, 'load', spiedLoad)
+    png = encoded((40, 40), 'PNG', 'RGBA')
+    message = '^photo ' + re.escape(photoStorage.DECODE_TOO_LARGE) + '$'
+
+    for decode in (
+            lambda: photoStorage.modelReference(png, 'image/png', 'photo'),
+            lambda: photoStorage.storeOriginal(png, 'image/png', 'photo'),
+            lambda: photoStorage.receiptImage(png, 'photo')):
+        with pytest.raises(ValueError, match=message):
+            decode()
+    assert loads == []
+    # The spy sees a load within the cap, and a small upright PNG is still
+    # passed through as is.
+    small = encoded((20, 20), 'PNG', 'RGBA')
+    assert photoStorage.modelReference(small, 'image/png', 'photo') == (
+        small, 'image/png')
+    assert loads != []
+
+
+def test_modelReference_aJpegDraftedToTheSide_isStillReEncoded(
+        smallDecodeCap):
+    """The side checked for the pass-through is the stored one: a JPEG the
+    draft shrinks to the side is re-encoded, never sent at its full size."""
+    jpeg = encoded((40, 40), 'JPEG')
+
+    data, contentType = photoStorage.modelReference(jpeg, 'image/jpeg',
+                                                    'photo')
+    assert contentType == 'image/jpeg' and data != jpeg
+    assert max(pixelSize(data)) <= 20
+
+
+def test_decodeCap_aJpegOverIt_isDecodedAtAReducedScale(smallDecodeCap):
+    """A phone JPEG over the cap (a 48 megapixel one, say) still works:
+    the draft decodes it at the least reduction under the cap."""
+    jpeg = encoded((40, 40), 'JPEG')
+
+    data, contentType = photoStorage.storeOriginal(jpeg, 'image/jpeg',
+                                                   'photo')
+    width, height = pixelSize(data)
+    assert contentType == 'image/jpeg' and width * height <= 1000
+    assert (width, height) == (20, 20)
+    width, height = pixelSize(photoStorage.receiptImage(jpeg, 'photo'))
+    assert width * height <= 1000
+    data, _ = photoStorage.modelReference(jpeg, 'image/jpeg', 'photo')
+    assert pixelSize(data) == (20, 20)
+
+
+def test_modelReference_turnsAPhotoUpright_beforeScalingItDown():
+    """A portrait phone photo is stored sideways with a rotation flag: it
+    reaches the model upright."""
+    side = photoStorage.MODEL_REFERENCE_MAX_SIDE
+    sideways = encoded((3000, 2000), 'JPEG', orientation=6)
+
+    data, contentType = photoStorage.modelReference(sideways, 'image/jpeg',
+                                                    'r')
+
+    width, height = pixelSize(data)
+    assert contentType == 'image/jpeg'
+    assert height > width and height == side
+
+
+def test_modelReference_aSmallFlaggedPhoto_isTurned_anUnflaggedOneKept():
+    flagged = encoded((6, 4), 'JPEG', orientation=6)
+    plain = encoded((6, 4), 'JPEG')
+
+    data, _ = photoStorage.modelReference(flagged, 'image/jpeg', 'r')
+
+    assert pixelSize(data) == (4, 6)
+    assert photoStorage.modelReference(plain, 'image/jpeg', 'r') == (
+        plain, 'image/jpeg')
+    upright = encoded((6, 4), 'JPEG', orientation=1)
+    assert photoStorage.modelReference(upright, 'image/jpeg', 'r') == (
+        upright, 'image/jpeg')
+
+
+def test_modelReference_scalesALargePhotoDown_andKeepsASmallOneAsIs():
+    from PIL import Image
+    side = photoStorage.MODEL_REFERENCE_MAX_SIDE
+    out = io.BytesIO()
+    Image.new('RGB', (side + 952, 1000), (10, 20, 30)).save(out, 'JPEG')
+    data, contentType = photoStorage.modelReference(out.getvalue(),
+                                                    'image/jpeg', 'r')
+    with Image.open(io.BytesIO(data)) as image:
+        assert contentType == 'image/jpeg' and max(image.size) == side
+    out = io.BytesIO()
+    Image.new('RGBA', (1000, side + 1), (10, 20, 30, 100)).save(out, 'PNG')
+    data, contentType = photoStorage.modelReference(out.getvalue(),
+                                                    'image/png', 'r')
+    with Image.open(io.BytesIO(data)) as image:
+        assert contentType == 'image/png' and image.mode == 'RGBA'
+        assert max(image.size) == side
+    assert photoStorage.modelReference(JPEG, 'image/jpeg', 'r') == (
+        JPEG, 'image/jpeg')
+    with pytest.raises(ValueError, match="^r isn't a real"):
+        photoStorage.modelReference(JPEG[:3] + b'x', 'image/jpeg', 'r')
+
+
+def test_shotPrompts_theStyleOnShots2And3Only_andTheNotesLastOnEach():
+    store = {'photoStyle': 'calm', 'primaryColor': '#112233'}
+    shots = PhotoActions.storeShots(store)
+
+    colors = PhotoActions.brandColorsLine('#112233', None)
+
+    prompts = PhotoActions.shotPrompts(store, 'BASE', 'brighter')
+
+    # A base without the colors line gets it back on each shot.
+    assert [p.split('\n') for p in prompts] == [
+        ['BASE', colors, shots[0]['line'], 'Special request: brighter'],
+        ['BASE', colors, 'Style: calm', shots[1]['line'],
+         'Special request: brighter'],
+        ['BASE', colors, 'Style: calm', shots[2]['line'],
+         'Special request: brighter']]
+    # A base holding it (the default one) is not given it twice.
+    default = PhotoActions.defaultPhotoPrompt(store)
+    assert all(p.count(colors) == 1
+               for p in PhotoActions.shotPrompts(store, default, None))
+    plain = PhotoActions.shotPrompts({'photoStyle': None}, 'BASE', None)
+    assert [p.split('\n') for p in plain] == [
+        ['BASE', shot['line']] for shot in PhotoActions.shotLines(None, None)]
 
 
 def test_generate_productName_isInThePrompt_strippedAndBlankIsNone(fakes):
@@ -1434,10 +1735,11 @@ def test_generate_productName_isInThePrompt_strippedAndBlankIsNone(fakes):
         tools.generateProductPhotos(ADMIN, [url], productName=blank)
     tools.generateProductPhotos(ADMIN, [url])
 
-    named, *unnamed = [call['prompt'] for call in fakes.images.calls]
-    assert 'Product: Blue Mug\n' in named
-    # One call each now (one prompt makes all 3).
-    assert len(unnamed) == 3
+    prompts = [call['prompt'] for call in fakes.images.calls]
+    # One call per shot, each photo call's 3 after the one before.
+    named, unnamed = prompts[:PHOTOS_PER_CALL], prompts[PHOTOS_PER_CALL:]
+    assert all('Product: Blue Mug\n' in prompt for prompt in named)
+    assert len(unnamed) == 3 * PHOTOS_PER_CALL
     assert all('Product:' not in prompt for prompt in unnamed)
 
 
@@ -1453,7 +1755,7 @@ def test_generate_productName_overLengthOrNotText_isRefused_beforeAnyQuota(
     assert usageCounts() == [] and fakes.images.calls == []
     tools.generateProductPhotos(ADMIN, [url],
                               productName='n' * PRODUCT_NAME_MAX_LENGTH)
-    assert len(fakes.images.calls) == 1
+    assert len(fakes.images.calls) == PHOTOS_PER_CALL
 
 
 def test_generate_withNoColors_thePromptHasNoColorsLine(fakes):
@@ -1462,7 +1764,8 @@ def test_generate_withNoColors_thePromptHasNoColorsLine(fakes):
 
     tools.generateProductPhotos(ADMIN, [url])
 
-    assert 'Brand colors' not in fakes.images.only()['prompt']
+    assert all('Brand colors' not in call['prompt']
+               for call in fakes.images.byShot())
 
 
 def test_mcp_generateProductPhotos_hasNoUserIdInItsSchema():
@@ -1535,13 +1838,15 @@ def test_slots_bothHeld_theNextCallIs503_beforeAnyQuotaOrRead(fakes, frozen,
 
 def test_slots_aCallSucceedsAfterMoreFailuresThanThereAreSlots(
         fakes, monkeypatch, noSleep):
-    # One model call each, so the script plays in order.
+    # Each photo call's 3 model calls end before the next one's, so the
+    # script plays a photo call's 3 outcomes at a time.
     createTestStore(ADMIN)
     url = putObject(fakes, MINE)
     failures = PhotoActions.PHOTO_CALLS_AT_ONCE + 1
     images = useImages(monkeypatch, ScriptedImages(
-        *[sdkError(openai.BadRequestError, 400) for _ in range(failures)],
-        1))
+        *[sdkError(openai.BadRequestError, 400)
+          for _ in range(failures * PHOTOS_PER_CALL)],
+        1, 0, 0))
 
     for _ in range(failures):
         with pytest.raises(ServiceUnavailable):
@@ -1549,7 +1854,7 @@ def test_slots_aCallSucceedsAfterMoreFailuresThanThereAreSlots(
         assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
 
     assert len(tools.generateProductPhotos(ADMIN, [url])['photos']) == 1
-    assert len(images.calls) == failures + 1
+    assert len(images.calls) == (failures + 1) * PHOTOS_PER_CALL
 
 
 @pytest.mark.parametrize('instant, day', [
@@ -1579,8 +1884,9 @@ def test_quota_aFailedModelCall_givesEverythingBack_onBothCounters(
     outcome = {'policy': policyError,
                'model503': lambda: sdkError(openai.BadRequestError, 400),
                'noImages': lambda: 0}[failure]
-    # The one call fails.
-    useImages(monkeypatch, ScriptedImages(outcome()))
+    # Every call fails.
+    useImages(monkeypatch, ScriptedImages(
+        perShot=[[outcome()] for _ in range(PHOTOS_PER_CALL)]))
 
     with pytest.raises(expected):
         tools.generateProductPhotos(ADMIN, [url])
@@ -1591,10 +1897,11 @@ def test_quota_aFailedModelCall_givesEverythingBack_onBothCounters(
     assert slotsFree() == PhotoActions.PHOTO_CALLS_AT_ONCE
 
 
-def test_quota_2Of3Returned_gives1Back_onBothCounters(fakes, frozen):
+def test_quota_2Of3Returned_gives1Back_onBothCounters(fakes, frozen,
+                                                       monkeypatch):
     store, url = themedStoreWithPhoto(fakes)
-    # The call returns 2 of its 3.
-    fakes.images.returned = 2
+    # One of the 3 calls returns no photo.
+    useImages(monkeypatch, ScriptedImages(perShot=[[1], [0], [1]]))
 
     res = tools.generateProductPhotos(ADMIN, [url])
 

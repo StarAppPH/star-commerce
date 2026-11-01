@@ -173,6 +173,16 @@ class PhotoNotSavedRow(ResponseModel):
     reason: str = Field(..., min_length=1, description='Why it was not saved')
 
 
+class PhotoShotRow(ResponseModel):
+    """One of the fixed shots every photo call makes (PhotoActions.PHOTO_SHOTS),
+    its line as the store's brand colors write it: the edit box shows it
+    read-only under the base prompt."""
+    label: str = Field(..., min_length=1, description="The shot's short name")
+    line: str = Field(..., min_length=1,
+                      description="The shot's line, added to the base prompt "
+                      'for its photo')
+
+
 class UploadedProductPhotosResponse(ResponseModel):
     """What setUploadedProductPhotos sends: the products whose uploaded
     photo is now on them, and those it could not be put on."""
@@ -187,6 +197,10 @@ class UploadedProductPhotosResponse(ResponseModel):
         ..., max_length=PRODUCT_BATCH_MAX,
         description='The products whose photo could not be saved; empty '
         'when all were')
+    shots: list[PhotoShotRow] = Field(
+        ..., max_length=PHOTOS_PER_CALL,
+        description='The shots better photos are made in, one per photo, '
+        'for the card')
 
 
 class FoundProductRow(ResponseModel):

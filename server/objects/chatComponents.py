@@ -27,6 +27,7 @@ from objects.order import (MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
 from objects.payment import (OrderPaymentMethod, PaymentMethod,
                              PaymentOption, PaymentProvider)
 from objects.photo import (PHOTO_COLOR_FOCUS_MAX_LENGTH, PHOTO_COLORS_MAX,
+                           PhotoShotRow,
                            PHOTO_PROMPT_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                            PHOTOS_PER_CALL, GeneratedPhotoRow,
                            PhotoChoiceRow, PhotoColorRow)
@@ -342,6 +343,11 @@ class ProductPhotoOfferCard(ResponseModel):
     products: list[PhotoOfferRow] = Field(
         ..., min_length=1, max_length=PRODUCT_BATCH_MAX,
         description='The products, in the order they were added')
+    # Empty on a card saved before photos had shots.
+    shots: list[PhotoShotRow] = Field(
+        default_factory=list, max_length=PHOTOS_PER_CALL,
+        description='The fixed shot each of the photos adds to the prompt, '
+        'shown read-only under every edit box')
 
 
 class PhotoColorsCard(ResponseModel):
@@ -432,6 +438,11 @@ class PhotoRequestForm(ResponseModel):
     defaultPrompt: str | None = Field(
         None, max_length=PHOTO_PROMPT_MAX_LENGTH,
         description='The prompt the edit box starts with')
+    # Empty on a form saved before photos had shots.
+    shots: list[PhotoShotRow] = Field(
+        default_factory=list, max_length=PHOTOS_PER_CALL,
+        description='The fixed shot each of the photos adds to the prompt, '
+        'shown read-only under the edit box')
 
 
 class DeliveryPinForm(ResponseModel):

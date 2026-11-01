@@ -73,11 +73,17 @@ def imageInputs(images: list[tuple[str, bytes, str]]) -> list[dict]:
 
 
 def editImages(images: list[tuple[str, bytes, str]], prompt: str, n: int,
-               deadline: float) -> list[bytes]:
+               deadline: float, inputs: list[dict] | None = None
+               ) -> list[bytes]:
     """`n` images Meta makes from the reference `images` (each a file
     name, its bytes and content type) and `prompt`, done before `deadline`
-    (time.monotonic()), each attempt within IMAGE_TIMEOUT_SECONDS. Returns
-    the images it sent back (at most `n`, maybe fewer), decoded."""
+    (time.monotonic()), each attempt within IMAGE_TIMEOUT_SECONDS. `inputs`
+    is the body's images already encoded (imageInputs(images)), so calls
+    made at once from the same references share one encoding (read only);
+    left out, they are encoded here. Returns the images it sent back (at
+    most `n`, maybe fewer), decoded."""
+    if inputs is None:
+        inputs = imageInputs(images)
 
     def request(timeout: float):
         from openai.types import ImagesResponse
@@ -90,7 +96,7 @@ def editImages(images: list[tuple[str, bytes, str]], prompt: str, n: int,
                   'size': IMAGE_SIZE,
                   'output_format': IMAGE_OUTPUT_FORMAT,
                   'response_format': 'b64_json',
-                  'images': imageInputs(images)},
+                  'images': inputs},
             options={'timeout': timeout})
 
     response = chatModel.callModel(request, deadline, IMAGE_TIMEOUT_SECONDS,

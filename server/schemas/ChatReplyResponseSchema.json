@@ -2386,6 +2386,15 @@
                     "default": null,
                     "description": "The prompt the edit box starts with",
                     "title": "Defaultprompt"
+                },
+                "shots": {
+                    "description": "The fixed shot each of the photos adds to the prompt, shown read-only under the edit box",
+                    "items": {
+                        "$ref": "#/$defs/PhotoShotRow"
+                    },
+                    "maxItems": 3,
+                    "title": "Shots",
+                    "type": "array"
                 }
             },
             "required": [
@@ -2393,6 +2402,30 @@
                 "formId"
             ],
             "title": "PhotoRequestForm",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "PhotoShotRow": {
+            "description": "One of the fixed shots every photo call makes (PhotoActions.PHOTO_SHOTS),\nits line as the store's brand colors write it: the edit box shows it\nread-only under the base prompt.",
+            "properties": {
+                "label": {
+                    "description": "The shot's short name",
+                    "minLength": 1,
+                    "title": "Label",
+                    "type": "string"
+                },
+                "line": {
+                    "description": "The shot's line, added to the base prompt for its photo",
+                    "minLength": 1,
+                    "title": "Line",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "label",
+                "line"
+            ],
+            "title": "PhotoShotRow",
             "type": "object",
             "additionalProperties": false
         },
@@ -2850,6 +2883,15 @@
                     "maxItems": 50,
                     "minItems": 1,
                     "title": "Products",
+                    "type": "array"
+                },
+                "shots": {
+                    "description": "The fixed shot each of the photos adds to the prompt, shown read-only under every edit box",
+                    "items": {
+                        "$ref": "#/$defs/PhotoShotRow"
+                    },
+                    "maxItems": 3,
+                    "title": "Shots",
                     "type": "array"
                 }
             },
