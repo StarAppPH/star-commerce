@@ -38,11 +38,10 @@ from collections import defaultdict
 
 import pytest
 
-from ApiRequests import ApiRequests
-from ToolRequests import ToolRequests
 from mcpTools import mcp_tool
 from objects.base import ResponseModel
 from route_config import route_config
+from toolReading import routes, stampedMembers, tools
 
 LOOKALIKE_RATIO = 0.85
 LOOKALIKE_CALLS = 0.5
@@ -53,26 +52,6 @@ NOT_TWINS: dict[tuple[str, str], str] = {}
 
 
 # ---- Reading the code ----
-
-def _members(root: type, stamp: str) -> dict:
-    """Name -> function of every member of `root` (and its bases, in MRO
-    order) carrying `stamp`: httpMethod for a route, mcpAudiences for a
-    tool."""
-    found = {}
-    for cls in root.__mro__:
-        for name, func in vars(cls).items():
-            if callable(func) and hasattr(func, stamp):
-                found.setdefault(name, func)
-    return found
-
-
-def routes() -> dict:
-    return _members(ApiRequests, 'httpMethod')
-
-
-def tools() -> dict:
-    return _members(ToolRequests, 'mcpAudiences')
-
 
 def functionDef(source: str) -> ast.FunctionDef:
     """The def in `source`, a function's own source (indented or not)."""
@@ -513,7 +492,7 @@ class _FxRoutes():
         return fxOwnThing(_FxOtherAnswer, userId)
 
 
-_FX_ROUTES = _members(_FxRoutes, 'httpMethod')
+_FX_ROUTES = stampedMembers(_FxRoutes, 'httpMethod')
 
 
 class _FxTools():
@@ -585,7 +564,7 @@ class _FxMoreRoutes():
         return fxGetThing(_FxAnswer, userId)
 
 
-_FX_MORE_ROUTES = _members(_FxMoreRoutes, 'httpMethod')
+_FX_MORE_ROUTES = stampedMembers(_FxMoreRoutes, 'httpMethod')
 
 
 def _problems(tool) -> str:

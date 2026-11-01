@@ -843,8 +843,11 @@ def test_moves_setTheirTimestamps_andBumpTheVersion(
     clock.advance(minutes=5)
     cancelled = tools.cancelMyReturn(customerId, store['_id'], cancelId)
     assertExactShape(MyReturnRow, cancelled)
-    assert (cancelled['status'], cancelled['cancelledAt'],
-            cancelled['decidedAt']) == ('cancelled', clock.at, None)
+    assert (cancelled['status'], cancelled['decidedAt']) == ('cancelled',
+                                                             None)
+    # cancelledAt is stored, no longer sent (no question needs it).
+    assert 'cancelledAt' not in cancelled
+    assert _doc(cancelId)['cancelledAt'] == clock.at
     for returnId in (approveId, rejectId, cancelId):
         assert _doc(returnId)['_version'] == 1
     assert refunds.calls == []

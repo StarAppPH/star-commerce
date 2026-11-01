@@ -4,6 +4,7 @@ Package rule (every objects module): no validator may EVER mutate a value it
 receives (see objects/__init__.py)."""
 import datetime
 
+from typing import ClassVar
 from pydantic import Field
 from typing import Literal
 
@@ -116,6 +117,21 @@ class MyReturnRow(ResponseModel):
     """One return as the customer who asked for it sees it: no productIds,
     no refund reference, no contact number. Each field restates Return's,
     which test_route_response_models.py's MIRRORS keeps in step."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        '_id': 'the returnId the return tools take',
+        'orderId': 'the order it returns from',
+        'status': 'where the return is',
+        'items': 'what goes back',
+        'reason': 'why it goes back',
+        'note': "the customer's note, read before deciding",
+        'refundAmount': 'what it refunds',
+        'currency': 'the amounts are in it',
+        'createdAt': 'when it was requested',
+        'decidedAt': 'when the store decided',
+        'rejectReason': 'why the store rejected it',
+        'receivedAt': 'when the store got the items back',
+        'refundedAt': 'whether the refund went through',
+    }
     id: str = Field(..., alias='_id', description='Returns _id')
     orderId: str = Field(..., min_length=1, description='The Orders _id')
     status: ReturnStatus = Field(..., description='Where the return is')
@@ -136,8 +152,6 @@ class MyReturnRow(ResponseModel):
     rejectReason: str | None = Field(
         ..., max_length=RETURN_REJECT_REASON_MAX_LENGTH,
         description='Why the store rejected it')
-    cancelledAt: datetime.datetime | None = Field(
-        ..., description='When the customer cancelled it')
     receivedAt: datetime.datetime | None = Field(
         ..., description='When the store got the items back')
     refundedAt: datetime.datetime | None = Field(
@@ -148,6 +162,11 @@ class StoreReturnRow(MyReturnRow):
     """One return as its store's admin sees it: MyReturnRow with the
     customer's contact number (to arrange the handback), whether it was
     restocked and the refund's reference."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'contactNumber': "the customer's number, to arrange the handback",
+        'restocked': 'whether the units went back in stock',
+        'refundReference': "the provider's refund id, when the admin asks",
+    }
     contactNumber: str = Field(..., pattern=PHONE_NUMBER_PATTERN,
                                description="The customer's verified number")
     restocked: bool | None = Field(
@@ -157,11 +176,17 @@ class StoreReturnRow(MyReturnRow):
 
 
 class MyReturnListResponse(ResponseModel):
+    AI_READS: ClassVar[dict[str, str]] = {
+        'returns': 'the returns the AI answers about',
+    }
     returns: list[MyReturnRow] = Field(
         ..., description='The returns, newest first')
 
 
 class StoreReturnListResponse(ResponseModel):
+    AI_READS: ClassVar[dict[str, str]] = {
+        'returns': 'the returns the AI answers about',
+    }
     returns: list[StoreReturnRow] = Field(
         ..., description='The returns, newest first')
 

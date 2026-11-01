@@ -311,21 +311,26 @@ class TurnWarnings:
         self.told: list[tuple[str, str]] = []
 
     def attach(self, toolset: str, name, content: str,
-               maxChars: int) -> str:
+               maxChars: int, full: str | None = None) -> str:
         """The tool message `content` of the tool `name`, with its
         warnings. Unchanged for another toolset or tool, a refusal, a
         result with nothing to warn about, or one the warnings would take
-        past `maxChars` (chatModel.CHAT_TOOL_RESULT_MAX_CHARS)."""
+        past `maxChars` (chatModel.CHAT_TOOL_RESULT_MAX_CHARS). `full` is
+        the tool's full result when `content` is its AI copy (chatModel.
+        aiContent): the findings read it, so a field the AI copy leaves
+        out never silences a warning; the warnings go on `content`."""
         if toolset != WARNING_TOOLSET or name not in FINDERS:
             return content
         try:
             result = json.loads(content)
+            found = result if full is None else json.loads(full)
         except ValueError:
             return content
-        if not isinstance(result, dict) or 'error' in result:
+        if (not isinstance(result, dict) or 'error' in result
+                or not isinstance(found, dict) or 'error' in found):
             return content
         try:
-            warnings, told = warningsFor(name, self.storeId, result,
+            warnings, told = warningsFor(name, self.storeId, found,
                                          set(self.told), _now())
         except Exception as error:
             logging.warning({'event': 'toolWarningsSkipped', 'tool': name,

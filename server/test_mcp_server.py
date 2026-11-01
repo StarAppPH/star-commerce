@@ -36,7 +36,10 @@ from ApiRequests import ApiRequests
 from ToolRequests import ToolRequests
 from mcpTools import mcp_tool
 from mongoDb import db
-from objects import NoContentResponse
+from objects import (AdminProductListResponse, MyOrderListResponse,
+                     MyStoreResponse,
+                     NoContentResponse, ProductListResponse,
+                     StoreOrderListResponse, aiCopy)
 from responseModelCheck import assertResponseModel
 from conftest import (BRAND_COLORS, STORE_DETAILS, addOrder, addProduct, createTestStore,
                       createTestUser, guestAt, storeWithProducts,
@@ -380,15 +383,27 @@ def test_e2e_listStoreProducts_asTheCustomer_atTheConnectionsStore(
         clean, firebase):
     store = storeWithProducts(ADMIN)
     customerId = guestAt(firebase, store, GUEST)
+    # A photo on every product, so the full result has what the AI copy
+    # leaves out.
+    db.db['Products'].update_many({'storeId': store['_id']}, {'$set': {
+        'photoUrl': 'https://example.com/photo.jpg'}})
 
     result = callTool(_auth(customerId, store['_id']), 'listStoreProducts',
                       {'limit': 2})
 
     assert not result.is_error, _text(result)
-    assert result.structured_content == tools.listStoreProducts(
-        customerId, store['_id'], limit=2)
+    # The MCP servers answer the AI copy (mcpRuntime.callTool).
+    assert result.structured_content == aiCopy(
+        ProductListResponse,
+        tools.listStoreProducts(customerId, store['_id'], limit=2))
     assert [p['name'] for p in result.structured_content['products']
             ] == ['Pandesal', 'Ensaymada']
+    # Literally: no photo url (card-only), whatever aiCopy does.
+    assert all(set(p) <= {'_id', 'name', 'price', 'description', 'inventory'}
+               and '_id' in p
+               for p in result.structured_content['products'])
+    assert all(p['photoUrl'] for p in tools.listStoreProducts(
+        customerId, store['_id'], limit=2)['products'])
 
 
 def test_e2e_theAICannotPickAnotherUserOrStore(clean, firebase):
@@ -467,13 +482,23 @@ def test_e2e_adminOnboarding_getUserStoreThenCreateUserStore(clean):
 
     assert not created.is_error, _text(created)
     store = tools.getUserStore(ADMIN)['store']
-    assert {**created.structured_content, **BRAND_COLORS} == store
+    # The AI copy leaves out the store's _id (no tool takes it).
+    assert '_id' not in created.structured_content
+    assert {**created.structured_content, **BRAND_COLORS} == {
+        key: value for key, value in store.items() if key != '_id'}
     assert store['currency'] == 'PHP'
     assert store['slug'] == 'bakery-a'
     assert store['openingHours'] == 'Mon-Sat 7am-7pm'
     assert store['location'] is None
     after = callTool(_auth(ADMIN), 'getUserStore', {}, audience='admin')
-    assert after.structured_content == {'store': store}
+    assert after.structured_content == aiCopy(MyStoreResponse,
+                                              {'store': store})
+    # Literally: no _id (route-shared, no tool takes it).
+    assert {'name', 'slug', 'currency'} <= set(
+        after.structured_content['store']) <= {
+        'name', 'slug', 'description', 'contactNumber', 'address',
+        'openingHours', 'currency', 'location', 'primaryColor',
+        'secondaryColor', 'photoStyle', 'voiceId'}
     assert len(db.read({}, 'Stores')) == 1
 
 
@@ -599,7 +624,7 @@ def test_theAdminProductToolsArguments_leaveOutTheInjectedParams():
     assert set(update['required']) == {'productId'}
 
     listing = byName['listMyStoreProducts'].input_schema
-    assert set(listing['properties']) == {'search', 'limit'}
+    assert set(listing['properties']) == {'search', 'limit', 'sortBy'}
     assert not listing.get('required')
 
 
@@ -630,12 +655,21 @@ def test_e2e_adminProducts_addBatchListUpdate(clean, firebase):
     assert [r['reservedQuantity'] for r in rows] == [0, 0]
     assert [r['isAvailable'] for r in rows] == [False, True]
 
+    # A photo on every product, so the full result has what the AI copy
+    # leaves out.
+    db.db['Products'].update_many({}, {'$set': {
+        'photoUrl': 'https://example.com/photo.jpg'}})
     listed = callTool(headers, 'listMyStoreProducts', {}, audience='admin')
 
     assert not listed.is_error, _text(listed)
-    assert listed.structured_content == tools.listMyStoreProducts(ADMIN)
+    assert listed.structured_content == aiCopy(
+        AdminProductListResponse, tools.listMyStoreProducts(ADMIN))
     assert [p['name'] for p in listed.structured_content['products']
             ] == ['Cake', 'Pandesal', 'Tea']
+    assert all(set(p) == {'_id', 'name', 'description', 'price', 'inventory',
+                          'isAvailable', 'reservedQuantity', 'soldCount',
+                          'hasPhoto'}
+               for p in listed.structured_content['products'])
 
     updated = callTool(headers, 'updateStoreProduct',
                        {'productId': stored['_id'], 'price': 99.5,
@@ -781,7 +815,13 @@ def test_e2e_getStoreOrders_listsTheAdminsStoreOrders(clean, firebase):
     assert not everything.is_error, _text(everything)
     assert _orderIds(everything) == [newer, older]
     assert _withoutCreatedAt(everything.structured_content) == (
-        _withoutCreatedAt(tools.getStoreOrders(ADMIN)))
+        _withoutCreatedAt(aiCopy(StoreOrderListResponse,
+                                 tools.getStoreOrders(ADMIN))))
+    # Literally: no delivery pin or distance (card-only).
+    assert all(not {'deliveryLatitude', 'deliveryLongitude',
+                    'deliveryDistanceKm'} & set(order)
+               and {'_id', 'status', 'total', 'items'} <= set(order)
+               for order in everything.structured_content['orders'])
     assert _orderIds(confirmed) == [newer]
     assert _orderIds(limited) == [newer]
 
@@ -851,7 +891,13 @@ def test_e2e_getMyOrders_listsTheCustomersOwnOrdersAtTheConnectionsStore(
     assert all('contactNumber' not in o
                for o in result.structured_content['orders'])
     assert _withoutCreatedAt(result.structured_content) == _withoutCreatedAt(
-        tools.getMyOrders(customerId, store['_id']))
+        aiCopy(MyOrderListResponse, tools.getMyOrders(customerId,
+                                                      store['_id'])))
+    # Literally: no delivery pin or distance (card-only).
+    assert all(not {'deliveryLatitude', 'deliveryLongitude',
+                    'deliveryDistanceKm'} & set(order)
+               and {'_id', 'status', 'total', 'items'} <= set(order)
+               for order in result.structured_content['orders'])
     assert _orderIds(confirmed) == [newer]
 
 

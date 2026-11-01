@@ -77,7 +77,8 @@ import photoStorage
 import productFinder
 import samModel
 from actions.callSlots import slot
-from actions.ProductActions import PRODUCT_NOT_FOUND, PRODUCTS
+from actions.ProductActions import (PRODUCT_NOT_FOUND, PRODUCTS,
+                                    adminProductRow)
 from actions.StoreActions import (_validText, requireAnyOwnerStore,
                                   requireOwnerStore)
 # ALL_STORES is imported for the tests, which read it here.
@@ -661,7 +662,7 @@ def setProductPhoto(model,
             projection=projection_of(model))
     if updated is None:
         raise ValueError(PRODUCT_NOT_FOUND)
-    return projectedCopy(model, updated)
+    return adminProductRow(model, updated)
 
 
 class PhotoTools():
@@ -689,9 +690,9 @@ class PhotoTools():
         above". productName is optional: the product's name (up to 80
         characters), when the photos are for one of the store's products,
         so the model knows which item to photograph. Returns each photo's
-        _id, url and the prompt the model was given for it, and
-        notGenerated, why fewer than 3 were made (null when all were): tell
-        the admin. To show one in the shop, put it on its product with
+        _id, and notGenerated, why fewer than 3 were made (null when all
+        were): tell the admin. The chat shows the photos, and the prompts
+        they were made from, on a card. To show one in the shop, put it on its product with
         setProductPhoto. If this tool refuses, relay its message to the
         admin."""
         return generateProductPhotos(GeneratedPhotosResponse, userId,
@@ -720,8 +721,8 @@ class PhotoTools():
         original and those made are still returned and notGenerated says
         why: tell the admin. notes is optional extra direction from the
         admin for these photos (up to 300 characters), only when they gave
-        one. Returns the photos (original first), each made
-        one with the prompt the model was given for it; the chat shows them
+        one. Returns the photos (original first), each with its _id and
+        source; the chat shows them, with the prompts they were made from,
         as a card the admin picks from, numbered in this order (1 is the
         original). Call it for one product per turn; when the admin picks a
         photo on the card, or names one by its number ("use the 2nd"), call

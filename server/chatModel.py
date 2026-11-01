@@ -18,11 +18,15 @@
   fixed text sent first, so Meta's prompt cache matches its prefix: an
   audience's, and the setup prompt of an admin whose store is not set up
   yet (chatForms.SETUP_TOOLSET).
-- runTool(): runs one tool call of the model (chatTools.py, generated) as
-  the chat's user at the chat's store, and returns the tool message's
-  content: one over CHAT_TOOL_RESULT_MAX_CHARS is refused, never cut. The
-  identity comes from the chat route (its JWT userId, the conversation's
-  storeId), never from the model's arguments.
+- toolResult() / runTool(): runs one tool call of the model (chatTools.py,
+  generated) as the chat's user at the chat's store: the tool's full
+  result as JSON (what the cards get, held in memory for the turn) and its
+  AI copy (aiContent, objects.aiCopy: what the model gets and the history
+  keeps). The call is refused, never cut, when the AI copy is over
+  CHAT_TOOL_RESULT_MAX_CHARS, or the full result over
+  CHAT_TOOL_FULL_RESULT_MAX_CHARS. The identity comes from the chat route
+  (its JWT userId, the conversation's storeId), never from the model's
+  arguments.
 
 Meta's rules this keeps: tool_choice "auto" only; max_completion_tokens,
 not max_tokens; reasoning_effort minimal to xhigh, never "none"; no stop,
@@ -63,9 +67,14 @@ ASSISTANT_SERVICE = 'the assistant'
 UNKNOWN_TOOL = 'unknown'
 UNKNOWN_TOOL_REFUSAL = 'Unknown tool'
 TOOL_CALL_TOO_LONG = 'That tool call is too long: send fewer items per call'
-# The longest tool message content: a longer one is refused, never cut
-# (cut JSON would mislead the model).
+# The longest tool message content (a result's AI copy, what reaches Meta
+# and the history): a longer one is refused, never cut (cut JSON would
+# mislead the model).
 CHAT_TOOL_RESULT_MAX_CHARS = 16000
+# The longest full tool result: only held in memory for the turn's cards
+# (photo urls, pins), never sent to Meta, so far above the AI copy's limit;
+# it bounds a runaway result (a 50-product list with photos is ~40000).
+CHAT_TOOL_FULL_RESULT_MAX_CHARS = 256000
 RESULT_TOO_LARGE = ('That result is too large: ask for fewer with a smaller '
                     'limit, or filter by status or period')
 # The most images Meta takes in one request (more is a 400): a PDF counts
@@ -351,6 +360,33 @@ def toolError(message: str) -> str:
     return json.dumps({'error': message})
 
 
+def toolResponseModel(name):
+    """The responseModel of the tool `name` (a ToolRequests @mcp_tool), or
+    None for a name that is no such tool."""
+    from ToolRequests import ToolRequests
+    tool = getattr(ToolRequests, name, None) if isinstance(name, str) else None
+    return getattr(tool, 'responseModel', None)
+
+
+def aiContent(name, content: str) -> str:
+    """The tool message the model gets for the tool `name`'s full result
+    `content` (runTool's): its AI copy (objects.aiCopy), only the fields
+    its model's AI_READS lists. A refusal, a content that is no JSON object
+    and a name that is no tool pass through unchanged. The chat cards are
+    built from the full result (chatCards.build's cardResults)."""
+    from objects import aiCopy
+    model = toolResponseModel(name)
+    if model is None:
+        return content
+    try:
+        result = json.loads(content)
+    except ValueError:
+        return content
+    if not isinstance(result, dict) or 'error' in result:
+        return content
+    return to_json(aiCopy(model, result)).decode()
+
+
 def toolLogName(toolset: str, name) -> str:
     """`name` as a log line names it: a tool of the toolset (an
     audience, or chatForms.SETUP_TOOLSET), else UNKNOWN_TOOL (the model's
@@ -420,14 +456,28 @@ def _toolContent(toolset: str, name, argumentsJson, userId: str,
     return to_json(result).decode()
 
 
+def toolResult(toolset: str, name, argumentsJson, userId: str,
+               storeId: str) -> tuple[str, str]:
+    """(the full result, its AI copy) of the model's call of `name` with
+    `argumentsJson`, run as `userId` at `storeId`, each as JSON; both the
+    same {"error": ...} on a refusal. A refusal names the tool and the
+    fields, never an argument's value. The call is refused
+    (RESULT_TOO_LARGE), never cut, when the AI copy (aiContent) is over
+    CHAT_TOOL_RESULT_MAX_CHARS or the full result over
+    CHAT_TOOL_FULL_RESULT_MAX_CHARS: a card-only field (a photo url) never
+    counts against what the model is sent."""
+    full = _toolContent(toolset, name, argumentsJson, userId, storeId)
+    if len(full) > CHAT_TOOL_FULL_RESULT_MAX_CHARS:
+        full = toolError(RESULT_TOO_LARGE)
+        return full, full
+    ai = aiContent(name, full)
+    if len(ai) > CHAT_TOOL_RESULT_MAX_CHARS:
+        full = toolError(RESULT_TOO_LARGE)
+        return full, full
+    return full, ai
+
+
 def runTool(toolset: str, name, argumentsJson, userId: str,
             storeId: str) -> str:
-    """The tool message's content for the model's call of `name` with
-    `argumentsJson`, run as `userId` at `storeId`: the tool's result as
-    JSON, or {"error": ...}. A refusal names the tool and the fields, never
-    an argument's value; a content over CHAT_TOOL_RESULT_MAX_CHARS is
-    refused (RESULT_TOO_LARGE), never cut."""
-    content = _toolContent(toolset, name, argumentsJson, userId, storeId)
-    if len(content) > CHAT_TOOL_RESULT_MAX_CHARS:
-        return toolError(RESULT_TOO_LARGE)
-    return content
+    """The full result toolResult gives (or its refusal)."""
+    return toolResult(toolset, name, argumentsJson, userId, storeId)[0]

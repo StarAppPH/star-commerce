@@ -1,12 +1,6 @@
 {
-    "description": "ReservedInventory as a route sends it. Each field restates\nReservedInventory's, which test_route_response_models.py's MIRRORS\nkeeps in step.",
+    "description": "ReservedInventory as a tool sends it: the units only (which order\nholds them is no one's question). Each field restates\nReservedInventory's, which test_route_response_models.py's MIRRORS\nkeeps in step.",
     "properties": {
-        "orderId": {
-            "description": "The Orders _id",
-            "minLength": 1,
-            "title": "Orderid",
-            "type": "string"
-        },
         "quantity": {
             "description": "Units the order holds",
             "minimum": 1,
@@ -15,7 +9,6 @@
         }
     },
     "required": [
-        "orderId",
         "quantity"
     ],
     "title": "ReservedInventoryResponse",

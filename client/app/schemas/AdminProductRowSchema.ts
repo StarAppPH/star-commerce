@@ -26,10 +26,6 @@ export type Price = number;
  */
 export type Inventory = number;
 /**
- * The Orders _id
- */
-export type Orderid = string;
-/**
  * Units the order holds
  */
 export type Quantity = number;
@@ -49,6 +45,10 @@ export type Soldcount = number;
  * The photo the shop shows: the url of one of the store's GeneratedPhotos (setProductPhoto)
  */
 export type Photourl = string | null;
+/**
+ * Whether the shop shows a photo of it: what the AI reads, the card showing the photo itself (ProductActions.adminProductRow)
+ */
+export type Hasphoto = boolean;
 
 /**
  * One product as its store's admin sees it. Each field restates
@@ -65,13 +65,14 @@ export interface AdminProductRow {
   isAvailable: Isavailable;
   soldCount: Soldcount;
   photoUrl?: Photourl;
+  hasPhoto: Hasphoto;
 }
 /**
- * ReservedInventory as a route sends it. Each field restates
+ * ReservedInventory as a tool sends it: the units only (which order
+ * holds them is no one's question). Each field restates
  * ReservedInventory's, which test_route_response_models.py's MIRRORS
  * keeps in step.
  */
 export interface ReservedInventoryResponse {
-  orderId: Orderid;
   quantity: Quantity;
 }

@@ -729,16 +729,17 @@ def _history(conversationId: str, seq: int, audience: str, userId: str,
             'resent': len(resent), 'gone': gone, 'skipped': skipped}
 
 
-def _assistantStep(message) -> tuple[dict, dict]:
+def _assistantStep(message, seen: set) -> tuple[dict, dict]:
     """The model's tool_calls message as a ChatStep, and the refusal of
     each call that cannot run, by its stored id (chatModel.toolCallProblem:
     an over-long id, name or arguments, or no tool name). Such a call is
     stored and replayed bounded, never as sent: as UNKNOWN_TOOL with no
     arguments. A missing or over-long id, or one an earlier call of the
-    message already has, is replaced by a fresh one, so the stored ids are
-    unique and each tool message answers its own call. A call that is no
-    function call is refused as no tool name."""
-    calls, refusals, seen = [], {}, set()
+    turn already has (`seen`, the turn's ids, one set for all its rounds,
+    added to here), is replaced by a fresh one, so the turn's stored ids are
+    unique and each tool message, card result and form answers its own
+    call. A call that is no function call is refused as no tool name."""
+    calls, refusals = [], {}
     for call in message.tool_calls:
         function = getattr(call, 'function', None)
         callId = getattr(call, 'id', None)
@@ -792,9 +793,12 @@ def _runModel(toolset: str, userId: str, storeId: str,
     """Call the model with the tools of `toolset` (chatTools.TOOLS) until
     it replies in text, running its tool calls in between (at most
     MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call without tools): a
-    tool through chatModel.runTool, a form tool through
-    chatForms.runFormTool. Returns the reply, the steps, the forms opened
-    (by tool call id), the tools called (as the log names them), the
+    tool through chatModel.toolResult, a form tool through
+    chatForms.runFormTool. Returns the reply, the steps (each tool step
+    holding the tool's AI copy, chatModel.aiContent), the forms opened
+    (by tool call id), each tool's full result for the cards
+    (`cardResults`, by tool call id: never stored, the cards built from
+    it are), the tools called (as the log names them), the
     usage and the warnings told (`warningsTold`: an admin's read tool
     results carry what the store's data lacks, toolWarnings.TurnWarnings,
     marked as told once the turn is saved). Sets progress['sent'] just
@@ -810,7 +814,7 @@ def _runModel(toolset: str, userId: str, storeId: str,
     if deadline is None:
         deadline = time.monotonic() + TURN_DEADLINE_SECONDS
     steps, toolNames, usage = [], [], _Usage()
-    forms = {}
+    forms, cardResults, callIds = {}, {}, set()
     warnings = toolWarnings.TurnWarnings(storeId)
     formTools = chatForms.formToolNames(toolset)
     toolsAllowed = True
@@ -825,7 +829,7 @@ def _runModel(toolset: str, userId: str, storeId: str,
         choice = completion.choices[0] if completion.choices else None
         message = choice.message if choice is not None else None
         if toolsAllowed and message is not None and message.tool_calls:
-            step, refusals = _assistantStep(message)
+            step, refusals = _assistantStep(message, callIds)
             steps.append(step)
             messages.append(_stepMessage(step))
             for call in step['toolCalls']:
@@ -849,14 +853,18 @@ def _runModel(toolset: str, userId: str, storeId: str,
                     chatModel.remainingSeconds(deadline)
                     chatThinking.note(userId, storeId, turnKey,
                                       call['name'])
+                    full, ai = chatModel.toolResult(
+                        toolset, call['name'], call['arguments'], userId,
+                        storeId)
+                    # The model and the stored step get the AI copy, with
+                    # the warnings found in the full result; the cards
+                    # get the full result, held for this turn only.
                     content = warnings.attach(
-                        toolset, call['name'],
-                        chatModel.runTool(toolset, call['name'],
-                                          call['arguments'], userId,
-                                          storeId),
-                        chatModel.CHAT_TOOL_RESULT_MAX_CHARS)
+                        toolset, call['name'], ai,
+                        chatModel.CHAT_TOOL_RESULT_MAX_CHARS, full=full)
+                    cardResults[call['id']] = full
                     if chatForms.setsUpTheStore(toolset, call['name'],
-                                                content):
+                                                full):
                         # The store exists now: the rest of the turn has
                         # the admin's tools, so the model can open the map.
                         toolset = 'admin'
@@ -871,6 +879,7 @@ def _runModel(toolset: str, userId: str, storeId: str,
             reply = (TOO_LONG_REPLY if choice is not None
                      and choice.finish_reason == 'length' else NO_REPLY)
         return {'reply': reply, 'steps': steps, 'forms': forms,
+                'cardResults': cardResults,
                 'toolNames': toolNames, 'usage': usage.model(),
                 'warningsTold': warnings.told}
 
@@ -1081,7 +1090,8 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
                 giveBackQuotas(CHAT_USAGE, attachmentKeys, len(files))
             raise
         components = chatCards.build(answer['steps'], answer['forms'],
-                                     chatCards.CardContext(storeId))
+                                     chatCards.CardContext(storeId),
+                                     answer['cardResults'])
         _saveTurn(newConversation, conversationId, userId, storeId, seq,
                   userTurn, answer, components, busyUntil, sent)
         busyUntil = None  # cleared by the save

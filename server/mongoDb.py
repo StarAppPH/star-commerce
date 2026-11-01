@@ -154,6 +154,12 @@ class mongoDb():
         # A store's products, best sellers first (listStoreProducts).
         self.db['Products'].create_index([('storeId', 1), ('isAvailable', 1),
                                           ('soldCount', -1), ('name', 1)])
+        # An admin's products, best sellers first and fewest units left
+        # first (listMyStoreProducts' sortBy), each tied on the name.
+        self.db['Products'].create_index([('storeId', 1), ('soldCount', -1),
+                                          ('nameKey', 1)])
+        self.db['Products'].create_index([('storeId', 1), ('inventory', 1),
+                                          ('nameKey', 1)])
         # No two products of one store share a name (productNameKey), so
         # two racing adds of the same name cannot both win.
         self.db['Products'].create_index([('storeId', 1), ('nameKey', 1)],

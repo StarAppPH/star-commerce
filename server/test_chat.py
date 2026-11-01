@@ -38,8 +38,9 @@ from actions.ProductActions import (PRODUCT_LIST_DEFAULT_LIMIT,
 from actions.StoreActions import NO_STORE_YET, STORE_NOT_FOUND
 from ApiRequests import ApiRequests
 from ToolRequests import ToolRequests
-from conftest import (assertExactShape, createTestStore, createTestUser,
-                      storeWithProducts, verifiedGuestAt, wipeCollections)
+from conftest import (addProduct, assertExactShape, createTestStore,
+                      createTestUser, storeWithProducts, verifiedGuestAt,
+                      wipeCollections)
 from mcpCreator import toolSpecs
 from mongoDb import db
 from objects import (ChatUsage, Conversation, ChatTurn,
@@ -450,7 +451,7 @@ def test_render_isDeterministic_andPassesStoreIdOnlyWhereInjected(
         sent.append((route.__name__, kwargs))
         return {}
 
-    monkeypatch.setattr(chatTools, 'callTool', recorder)
+    monkeypatch.setattr(chatTools, 'callToolFull', recorder)
     chatTools._listStoreProducts('u1', 's1', chatTools.ListStoreProductsArgs())
     chatTools._getMyStorePolicy('u1', 's1', chatTools.GetMyStorePolicyArgs())
     assert sent[0][0] == 'listStoreProducts'
@@ -792,7 +793,10 @@ def test_toolErrors_reachTheModel_withoutLeakingInput(
 
 def jsonOfLength(length: int) -> str:
     """A tool result's JSON of exactly `length` characters."""
-    payload = {'x': 'a' * (length - len('{"x":""}'))}
+    # An answer the AI reads (in StorePolicyResponse's AI_READS), so the
+    # AI copy keeps it: the limit is on the AI copy.
+    payload = {'additionalTerms':
+               'a' * (length - len('{"additionalTerms":""}'))}
     text = to_json(payload).decode()
     assert len(text) == length
     return text
@@ -819,6 +823,50 @@ def test_aToolResultOverTheLimit_isRefusedNotCut(clean, model, monkeypatch):
     res = say(ADMIN, None, 'show everything')
     [turn] = turnDocs(res['conversationId'])
     assert turn['steps'][1]['content'] == refused
+
+
+def test_theLimit_isOnTheAiCopy_soALongListWithPhotosFits(clean):
+    """A card-only field never counts against the limit: 50 products with
+    long photo urls are over CHAT_TOOL_RESULT_MAX_CHARS in full, and their
+    AI copy (no photo url) fits, so the call is no longer refused."""
+    store = createTestStore(ADMIN)
+    photoUrl = ('https://firebasestorage.googleapis.com/v0/b/demo-store.app/'
+                'o/stores%2Fs1%2Fphotos%2F' + 'p' * 400 + '{n}.jpg')
+    for n in range(50):
+        product = addProduct(store['_id'], f'Product {n:02d}', 100 + n)
+        db.db['Products'].update_one({'_id': product['_id']}, {'$set': {
+            'photoUrl': photoUrl.format(n=n)}})
+
+    full, ai = chatModel.toolResult('admin', 'listMyStoreProducts',
+                                    '{"limit": 50}', ADMIN, store['_id'])
+
+    assert len(full) > chatModel.CHAT_TOOL_RESULT_MAX_CHARS
+    assert len(ai) <= chatModel.CHAT_TOOL_RESULT_MAX_CHARS
+    assert len(full) <= chatModel.CHAT_TOOL_FULL_RESULT_MAX_CHARS
+    rows = json.loads(full)['products']
+    assert len(rows) == 50
+    assert all(row['photoUrl'] == photoUrl.format(n=n)
+               for n, row in enumerate(rows))
+    aiRows = json.loads(ai)['products']
+    assert len(aiRows) == 50
+    assert all('photoUrl' not in row and row['hasPhoto'] is True
+               for row in aiRows)
+    assert chatModel.runTool('admin', 'listMyStoreProducts', '{"limit": 50}',
+                             ADMIN, store['_id']) == full
+
+
+def test_aFullResultOverItsOwnGuard_isRefused(clean, model, monkeypatch):
+    createTestStore(ADMIN)
+    big = 'a' * chatModel.CHAT_TOOL_FULL_RESULT_MAX_CHARS
+    stubTool(monkeypatch, 'admin', 'getMyStorePolicy',
+             lambda userId, storeId, args: {'updatedAt': big})
+
+    full, ai = chatModel.toolResult('admin', 'getMyStorePolicy', '{}', 'u',
+                                    's')
+
+    # updatedAt is card-only: the AI copy is tiny, the full result is not.
+    assert json.loads(full) == {'error': chatModel.RESULT_TOO_LARGE}
+    assert ai == full
 
 
 # ----------------------------- F. bad tool calls ----------------------------- #

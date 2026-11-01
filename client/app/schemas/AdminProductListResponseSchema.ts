@@ -63,6 +63,10 @@ export type Soldcount = number;
  */
 export type Photourl = string | null;
 /**
+ * Whether the shop shows a photo of it: what the AI reads, the card showing the photo itself (ProductActions.adminProductRow)
+ */
+export type Hasphoto = boolean;
+/**
  * The products
  */
 export type Products = AdminProductListRow[];
@@ -87,4 +91,5 @@ export interface AdminProductListRow {
   isAvailable: Isavailable;
   soldCount: Soldcount;
   photoUrl?: Photourl;
+  hasPhoto: Hasphoto;
 }

@@ -15,10 +15,11 @@ from actions.CustomerActions import requireCustomer
 from actions.StoreActions import _validText, requireOwnerStore, setUpStore
 from mcpTools import mcp_tool
 from mongoDb import db
-from objects import (PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH,
+from objects import (ADMIN_PRODUCT_SORTS, PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH,
                      PRODUCT_INVENTORY_MAX, PRODUCT_NAME_MAX_LENGTH,
                      PRODUCT_PRICE_MAX, PRODUCTS_PER_STORE_MAX,
-                     AdminProductListResponse, AdminProductRow, NewProduct,
+                     AdminProductListResponse, AdminProductRow,
+                     AdminProductSort, NewProduct,
                      Product, ProductListResponse, fieldModel, productNameKey,
                      projectedCopy)
 from utils import wholeNumber
@@ -33,6 +34,16 @@ INVENTORY_WITH_RESERVED = (
     'The inventory plus the units orders are holding is at most '
     f'{PRODUCT_INVENTORY_MAX}')
 DUPLICATE_KEY_CODE = 11000
+# listMyStoreProducts' orders (AdminProductSort), each tied on the name and
+# served by its (storeId, ..., nameKey) index (mongoDb.ensureIndexes).
+ADMIN_PRODUCT_SORT_STAGES = {
+    'name': {'nameKey': 1},
+    'soldCount': {'soldCount': -1, 'nameKey': 1},
+    'inventory': {'inventory': 1, 'nameKey': 1},
+}
+SORT_BY_CHOICES = ('sortBy is one of: ' + ', '.join(ADMIN_PRODUCT_SORTS))
+if set(ADMIN_PRODUCT_SORT_STAGES) != set(ADMIN_PRODUCT_SORTS):
+    raise TypeError('ADMIN_PRODUCT_SORT_STAGES must cover AdminProductSort')
 
 
 def storeCurrency(storeId: str) -> str:
@@ -244,7 +255,7 @@ def addStoreProduct(model,
         created = db.create(document, PRODUCTS)
     except DuplicateKeyError:
         raise ValueError(NAME_TAKEN) from None
-    return projectedCopy(model, created)
+    return adminProductRow(model, created)
 
 
 def addStoreProducts(model, userId: str,
@@ -292,7 +303,7 @@ def addStoreProducts(model, userId: str,
         'currency': store['currency'],
         'products': [
             # A new product has no reservations.
-            projectedCopy(fieldModel(model, 'products'), {
+            adminProductRow(fieldModel(model, 'products'), {
                 **d, 'reservedQuantity': 0
             }) for d in documents
         ],
@@ -343,23 +354,53 @@ def updateStoreProduct(model,
             changes, PRODUCTS)
     except DuplicateKeyError:
         raise ValueError(NAME_TAKEN) from None
-    return projectedCopy(model, updated)
+    return adminProductRow(model, updated)
+
+
+def adminProductRow(model, document: dict) -> dict:
+    """An admin's product row (AdminProductRow, AdminProductListRow) from a
+    Products document: what `model` declares, with hasPhoto, which no
+    document stores (photoUrl set). The AI reads hasPhoto, the card the
+    photo itself."""
+    return projectedCopy(model, {
+        **document, 'hasPhoto': document.get('photoUrl') is not None})
+
+
+# The aggregation stage of adminProductRow's hasPhoto ($photoUrl missing
+# or null: no photo).
+HAS_PHOTO_STAGE = {'$set': {'hasPhoto': {
+    '$ne': [{'$ifNull': ['$photoUrl', None]}, None]}}}
+
+
+def _adminProductSort(sortBy) -> dict:
+    """The $sort of `sortBy` (ADMIN_PRODUCT_SORT_STAGES; None is by
+    name, as the generated handler passes a missing key)."""
+    if sortBy is None:
+        sortBy = 'name'
+    if not isinstance(sortBy, str) or sortBy not in ADMIN_PRODUCT_SORT_STAGES:
+        raise ValueError(SORT_BY_CHOICES)
+    return ADMIN_PRODUCT_SORT_STAGES[sortBy]
 
 
 def listMyStoreProducts(model,
                         userId: str,
                         search: str | None = None,
-                        limit: int = PRODUCT_LIST_DEFAULT_LIMIT) -> dict:
+                        limit: int = PRODUCT_LIST_DEFAULT_LIMIT,
+                        sortBy: AdminProductSort = 'name') -> dict:
     store = _adminStore(userId)
+    match = {'storeId': store['_id'], **_nameSearch(search)}
+    limit = _validLimit(limit)
     pipeline = [
-        {'$match': {'storeId': store['_id'], **_nameSearch(search)}},
-        # nameKey: the name order, case-insensitive, and indexed.
-        {'$sort': {'nameKey': 1}},
-        {'$limit': _validLimit(limit)},
+        {'$match': match},
+        # nameKey: the name order, case-insensitive, and indexed; each
+        # sort's tie-break, so a cut list is cut in a fixed order.
+        {'$sort': _adminProductSort(sortBy)},
+        {'$limit': limit},
         # The reservations summed, so a row never carries the array.
         {'$set': {
             'reservedQuantity': {'$sum': '$reservedInventory.quantity'}
         }},
+        HAS_PHOTO_STAGE,
     ]
     return {
         'currency': store['currency'],
@@ -469,7 +510,8 @@ class ProductTools():
         refuses because the data is outdated, call listMyStoreProducts
         again, confirm the change with the admin against the fresh values,
         then retry. If it refuses for another reason, relay its message to
-        the admin."""
+        the admin. Returns the product as saved, with hasPhoto (whether the
+        shop shows a photo of it)."""
         return updateStoreProduct(AdminProductRow, userId, productId, name,
                                   description, price, inventory, isAvailable)
 
@@ -482,13 +524,18 @@ class ProductTools():
     def listMyStoreProducts(self,
                             userId: str,
                             search: str | None = None,
-                            limit: int = PRODUCT_LIST_DEFAULT_LIMIT) -> dict:
-        """List the products of the admin's store by name, hidden ones
-        (isAvailable false) included, each with its productId (_id), price,
-        inventory, the units orders are holding (reservedQuantity) and the
-        units sold. Pass `search` to find products whose name contains that
-        text, and `limit` (1 to 50, default 10) for how many to return. Use
-        it to find a product's productId before calling
-        updateStoreProduct."""
+                            limit: int = PRODUCT_LIST_DEFAULT_LIMIT,
+                            sortBy: AdminProductSort = 'name') -> dict:
+        """List the products of the admin's store, hidden ones (isAvailable
+        false) included, each with its productId (_id), price, inventory,
+        the units orders are holding (reservedQuantity), the units sold
+        (soldCount) and hasPhoto (whether the shop shows a photo of it).
+        `sortBy` orders the whole store before `limit` cuts
+        it: 'name' (the default), 'soldCount' (best sellers first: use it
+        for the top or best-selling products) or 'inventory' (fewest units
+        left first: use it for low or out-of-stock products). Pass `search`
+        to find products whose name contains that text, and `limit` (1 to
+        50, default 10) for how many to return. Use it to find a product's
+        productId before calling updateStoreProduct."""
         return listMyStoreProducts(AdminProductListResponse, userId, search,
-                                   limit)
+                                   limit, sortBy)

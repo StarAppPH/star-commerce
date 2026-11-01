@@ -29,7 +29,8 @@ from conftest import (TEST_GEOCODED_ADDRESS, TOKEN, addOrder, assertExactShape, 
                       verifiedGuestAt, wipeCollections)
 from mongoDb import db
 from objects import (CHAT_COMPONENTS_PER_TURN_MAX, POLICY_ANSWER_FIELDS,
-                     ChatReplyResponse, ConversationTurnsResponse)
+                     ChatReplyResponse, ConversationTurnsResponse,
+                     StoreResponse)
 from test_chat import (ADMIN, GUEST, calls, clean, clock, frozenNow, model,
                        offline, reply, stubTool)
 
@@ -1189,3 +1190,174 @@ def test_aPhotoChoiceCard_isAnsweredWithOneOfItsPhotos(wiped, model,
         adminSays(None, res['conversationId'],
                   {'kind': 'productPhoto', 'formId': card['formId'],
                    'productId': 'p-mug', 'photoId': 'ph-original'})
+
+
+# ----------------------------- the AI copy ----------------------------- #
+
+
+def _toolMessages(fake) -> list[dict]:
+    """The tool messages of the model's last request, parsed."""
+    return [json.loads(m['content']) for m in fake.requests[-1]['messages']
+            if m['role'] == 'tool']
+
+
+def _storedToolSteps(conversationId: str) -> list[dict]:
+    [turn] = turns(conversationId)
+    return [json.loads(step['content']) for step in turn['steps']
+            if step['role'] == 'tool']
+
+
+def test_theModelAndTheStoredStep_getTheAiCopy_theCardTheFullResult(
+        wiped, model, monkeypatch):
+    """A photo's url and prompt are on the card only: the tool message and
+    the stored step (the history the model reads on later turns) hold the
+    AI copy, the photos' _id and source."""
+    createTestStore(ADMIN)
+    stubTool(monkeypatch, 'admin', 'makeProductPhotoChoices',
+             lambda userId, storeId, args: CHOICES)
+    fake = model(calls(('c1', 'makeProductPhotoChoices',
+                        json.dumps({'productId': 'p-mug',
+                                    'imageUrl': 'u'}))),
+                 reply('Pick one.'))
+
+    res = adminSays('Photos for the mug')
+
+    aiCopy = {'productId': 'p-mug', 'productName': 'Mug', 'photos': [
+        {'_id': photo['_id'], 'source': photo['source']}
+        for photo in CHOICES['photos']], 'notGenerated': None}
+    assert _toolMessages(fake) == [aiCopy]
+    assert _storedToolSteps(res['conversationId']) == [aiCopy]
+    [card] = res['components']
+    assert [(p['url'], p['prompt']) for p in card['photos']] == [
+        (p['url'], p['prompt']) for p in CHOICES['photos']]
+    [stored] = turns(res['conversationId'])[0]['components']
+    assert stored['photos'] == card['photos']
+
+
+def test_aCardRowMerged_keepsWhatOnlyTheCardShows(wiped, model):
+    """Orders listed then one handed over: the card's row is updated from
+    the full result (the delivery pin, card-only), the steps hold the AI
+    copy without it."""
+    store = createTestStore(ADMIN)
+    item = [{'productId': 'p1', 'name': 'Barako', 'price': 620,
+             'quantity': 2}]
+    paid = addOrder(store['_id'], 'cust-1', item, 'paid',
+                    paymentMethod='gcash')
+    db.db['Orders'].update_one({'_id': paid['_id']}, {'$set': {
+        'fulfillment': 'delivery', 'deliveryAddress': '1 Main St',
+        'deliveryLatitude': 14.5, 'deliveryLongitude': 121.0}})
+    model(calls(('c1', 'getStoreOrders', json.dumps({'status': 'paid'}))),
+          calls(('c2', 'completeOrder',
+                 json.dumps({'orderId': paid['_id']}))),
+          reply('Handed over.'))
+
+    res = adminSays('Hand it over')
+
+    [card] = res['components']
+    [row] = card['orders']
+    assert (row['status'], row['deliveryLatitude'],
+            row['deliveryLongitude']) == ('completed', 14.5, 121.0)
+    listed, completed = _storedToolSteps(res['conversationId'])
+    for order in (listed['orders'][0], completed):
+        assert order['deliveryAddress'] == '1 Main St'
+        assert not {'deliveryLatitude', 'deliveryLongitude',
+                    'deliveryDistanceKm'} & set(order)
+
+
+def test_aCallIdReusedInALaterRound_getsAFreshId_andNoEarlierCard(
+        wiped, model, monkeypatch):
+    """Tool call ids are unique across the turn, not only per round: a
+    later call reusing an earlier id (here refused, the turn's tool calls
+    used up) is stored under a fresh id, so it never picks up the earlier
+    call's card result, name or form."""
+    createTestStore(ADMIN)
+    stubTool(monkeypatch, 'admin', 'makeProductPhotoChoices',
+             lambda userId, storeId, args: CHOICES)
+    # A tool with no card, so the only card is the photo choice.
+    stubTool(monkeypatch, 'admin', 'listVoices',
+             lambda userId, storeId, args: {'voices': []})
+    photoCall = ('c1', 'makeProductPhotoChoices',
+                 json.dumps({'productId': 'p-mug', 'imageUrl': 'u'}))
+    model(calls(photoCall, *[(f'c{n}', 'listVoices', '{}')
+                             for n in range(2, 9)]),
+          calls(photoCall),
+          reply('Pick one.'))
+
+    res = adminSays('Photos for the mug')
+
+    [turn] = turns(res['conversationId'])
+    toolSteps = [s for s in turn['steps'] if s['role'] == 'tool']
+    assert len(toolSteps) == 9
+    last = toolSteps[-1]
+    assert json.loads(last['content']) == {
+        'error': ChatActions.TOOL_LIMIT_REACHED}
+    assert last['toolCallId'] != 'c1'
+    ids = [step['toolCallId'] for step in toolSteps]
+    assert len(set(ids)) == len(ids)
+    assert [c['kind'] for c in res['components']] == ['productPhotoChoice']
+
+
+def test_endToEnd_warningsAndSetupReadTheFullResult_historyTheAiCopy(
+        wiped, firebase, model, monkeypatch):
+    """Through the chat route and _runModel, with the faked model: a setup
+    turn creates the store, then reads it.
+      - chatForms.setsUpTheStore gets createUserStore's full result;
+      - a warning decided from a field the AI copy drops lands in the
+        stored step (and a dropped field the full result has set raises
+        none);
+      - the cards show the full result;
+      - the next turn's request to the model carries only the AI copy."""
+    adminId = signedUpAdmin(firebase)
+    # Two store details made card-only for this test: the AI copy leaves
+    # them out, the warnings must still read them.
+    reads = StoreResponse.__dict__['AI_READS']
+    monkeypatch.setattr(StoreResponse, 'AI_READS', {
+        key: why for key, why in reads.items()
+        if key not in ('contactNumber', 'openingHours')})
+    setUp = []
+    realSetsUp = chatForms.setsUpTheStore
+
+    def spySetsUp(toolset, name, content):
+        setUp.append((name, content))
+        return realSetsUp(toolset, name, content)
+
+    monkeypatch.setattr(chatForms, 'setsUpTheStore', spySetsUp)
+    created = json.dumps({'name': 'Kalye Coffee',
+                          'description': 'Small-batch coffee',
+                          'currency': 'PHP', 'contactNumber': '+639171234567',
+                          'primaryColor': '#6F4E37',
+                          'secondaryColor': '#F5E6D3'})
+    model(calls(('c1', 'createUserStore', created)),
+          calls(('c2', 'getUserStore', '{}')),
+          reply('Your store is live.'))
+
+    res = adminSays('Yes, create it', userId=adminId)
+
+    [(name, full)] = [entry for entry in setUp
+                      if entry[0] == 'createUserStore']
+    assert '_id' in json.loads(full)
+    assert json.loads(full)['contactNumber'] == '+639171234567'
+    createdStep, readStep = _storedToolSteps(res['conversationId'])
+    for store in (createdStep, readStep['store']):
+        assert not {'_id', 'contactNumber', 'openingHours'} & set(store)
+        assert store['name'] == 'Kalye Coffee'
+    [warning] = readStep['warnings']
+    assert warning['code'] == 'storeDetailMissing'
+    assert 'openingHours' in warning['ids']
+    assert 'contactNumber' not in warning['ids']
+    assert all(card['contactNumber'] == '+639171234567'
+               for card in res['components'] if card['kind'] == 'store')
+    assert any(card['kind'] == 'store' for card in res['components'])
+
+    fake = model(reply('What next?'))
+    adminSays('Thanks', res['conversationId'], userId=adminId)
+
+    toolMessages = _toolMessages(fake)
+    assert toolMessages == [createdStep, readStep]
+    # (The phone is in the model's own createUserStore arguments; the tool
+    # messages never carry it, nor the store's _id.)
+    sent = json.dumps([m for m in fake.requests[0]['messages']
+                       if m['role'] == 'tool'])
+    assert '+639171234567' not in sent
+    assert json.loads(full)['_id'] not in json.dumps(
+        fake.requests[0]['messages'])

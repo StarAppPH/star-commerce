@@ -5,6 +5,7 @@ Package rule (every objects module): no validator may EVER mutate a value it
 receives (see objects/__init__.py)."""
 import datetime
 
+from typing import ClassVar
 from pydantic import Field
 
 from objects.base import MongoModel, ResponseModel
@@ -44,6 +45,13 @@ class VoiceRow(ResponseModel):
     """One voice a store can speak with: an ElevenLabs default voice or one
     saved to the app's account, never a person's clone. Its text is
     ElevenLabs' (third-party data), cut short."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'voiceId': 'updateMyStoreTheme takes it',
+        'name': 'shown to the owner',
+        'description': 'shown to the owner',
+        'labels': 'accent, gender, use case',
+        'previewUrl': 'shown to the owner to listen to',
+    }
     voiceId: str = Field(..., pattern=VOICE_ID_PATTERN,
                          description="ElevenLabs' voice id")
     name: str = Field(..., min_length=1, max_length=VOICE_NAME_MAX_LENGTH,
@@ -60,6 +68,10 @@ class VoiceRow(ResponseModel):
 
 
 class VoiceListResponse(ResponseModel):
+    AI_READS: ClassVar[dict[str, str]] = {
+        'voices': 'the voices offered',
+        'nextPageToken': 'passed back as pageToken',
+    }
     voices: list[VoiceRow] = Field(..., description='A page of voices')
     nextPageToken: str | None = Field(
         ..., max_length=VOICE_PAGE_TOKEN_MAX_LENGTH,

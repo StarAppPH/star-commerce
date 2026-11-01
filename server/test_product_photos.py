@@ -73,6 +73,7 @@ def test_setProductPhoto_showsTheStoresPhotoOnTheProduct(clean, firebase):
 
     assertExactShape(AdminProductRow, res)
     assert res['photoUrl'] == photo['url']
+    assert res['hasPhoto'] is True
     stored = db.read({'_id': mug['_id']}, 'Products', findOne=True)
     assert stored['photoUrl'] == photo['url']
     assert stored['_version'] == mug['_version'] + 1

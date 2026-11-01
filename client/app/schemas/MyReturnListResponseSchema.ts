@@ -82,10 +82,6 @@ export type Decidedat = string | null;
  */
 export type Rejectreason = string | null;
 /**
- * When the customer cancelled it
- */
-export type Cancelledat = string | null;
-/**
  * When the store got the items back
  */
 export type Receivedat = string | null;
@@ -118,7 +114,6 @@ export interface MyReturnRow {
   createdAt: Createdat;
   decidedAt: Decidedat;
   rejectReason: Rejectreason;
-  cancelledAt: Cancelledat;
   receivedAt: Receivedat;
   refundedAt: Refundedat;
 }

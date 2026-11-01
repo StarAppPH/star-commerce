@@ -3,7 +3,9 @@
 Package rule (every objects module): no validator may EVER mutate a value it
 receives (see objects/__init__.py)."""
 import datetime
+import typing
 
+from typing import ClassVar
 from pydantic import Field
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
@@ -29,6 +31,12 @@ if DELIVERY_ZONE_AMOUNT_MAX != PRODUCT_PRICE_MAX:
 PRODUCT_BATCH_MAX = 50
 # The most products one store holds.
 PRODUCTS_PER_STORE_MAX = 2000
+# How listMyStoreProducts orders an admin's products: by name, best sellers
+# first (soldCount), or fewest units left first (inventory). Each sort ties
+# on the name and has its own (storeId, ..., nameKey) index
+# (mongoDb.ensureIndexes), so a list longer than its limit is cut in order.
+AdminProductSort = typing.Literal['name', 'soldCount', 'inventory']
+ADMIN_PRODUCT_SORTS = typing.get_args(AdminProductSort)
 
 
 def productNameKey(name: str) -> str:
@@ -95,6 +103,13 @@ class ProductRow(ResponseModel):
     """One product as a customer's list sends it. Each field restates
     Product's, which test_route_response_models.py's MIRRORS keeps in
     step."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        '_id': 'the productId createOrder takes',
+        'name': 'the customer asks for products by name',
+        'description': 'the customer asks what a product is',
+        'price': 'the customer asks the price',
+        'inventory': 'tells the customer what is left; 0 is sold out',
+    }
     id: str = Field(..., alias='_id', description='Products _id')
     name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
                       description='Product name')
@@ -112,6 +127,10 @@ class ProductRow(ResponseModel):
 
 
 class ProductListResponse(ResponseModel):
+    AI_READS: ClassVar[dict[str, str]] = {
+        'currency': 'the prices are in it',
+        'products': 'the products the AI answers about',
+    }
     currency: StoreCurrency = Field(
         ..., description="ISO 4217 code of every price in the list")
     products: list[ProductRow] = Field(
@@ -119,10 +138,13 @@ class ProductListResponse(ResponseModel):
 
 
 class ReservedInventoryResponse(ResponseModel):
-    """ReservedInventory as a route sends it. Each field restates
+    """ReservedInventory as a tool sends it: the units only (which order
+    holds them is no one's question). Each field restates
     ReservedInventory's, which test_route_response_models.py's MIRRORS
     keeps in step."""
-    orderId: str = Field(..., min_length=1, description='The Orders _id')
+    AI_READS: ClassVar[dict[str, str]] = {
+        'quantity': 'units held: updateStoreProduct subtracts them from a total on hand',
+    }
     quantity: int = Field(..., ge=1, description='Units the order holds')
 
 
@@ -130,6 +152,17 @@ class AdminProductRow(ResponseModel):
     """One product as its store's admin sees it. Each field restates
     Product's, which test_route_response_models.py's MIRRORS keeps in
     step."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        '_id': 'the productId updateStoreProduct and the photo tools take',
+        'name': 'the admin names products',
+        'description': 'no admin card shows it: the admin asks what it says',
+        'price': 'the admin asks and changes prices',
+        'inventory': 'stock questions and updates',
+        'reservedInventory': 'units orders hold (its quantities)',
+        'isAvailable': 'hidden products',
+        'soldCount': 'best sellers',
+        'hasPhoto': 'which products still need a photo',
+    }
     id: str = Field(..., alias='_id', description='Products _id')
     name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
                       description='Product name')
@@ -148,6 +181,10 @@ class AdminProductRow(ResponseModel):
         None, min_length=1,
         description='The photo the shop shows: the url of one of the '
         "store's GeneratedPhotos (setProductPhoto)")
+    hasPhoto: bool = Field(
+        ..., description='Whether the shop shows a photo of it: what the AI '
+        'reads, the card showing the photo itself '
+        '(ProductActions.adminProductRow)')
 
 
 class AdminProductListRow(ResponseModel):
@@ -155,6 +192,17 @@ class AdminProductListRow(ResponseModel):
     reservations summed (reservedQuantity), so a row never grows with its
     open orders. Each field restates Product's, which
     test_route_response_models.py's MIRRORS keeps in step."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        '_id': 'the productId updateStoreProduct and the photo tools take',
+        'name': 'the admin names products',
+        'description': 'no admin card shows it: the admin asks what it says',
+        'price': 'the admin asks and changes prices',
+        'inventory': 'low or out-of-stock questions',
+        'reservedQuantity': 'updateStoreProduct subtracts it from a total on hand',
+        'isAvailable': 'hidden products',
+        'soldCount': 'best sellers (sortBy soldCount)',
+        'hasPhoto': 'which products still need a photo',
+    }
     id: str = Field(..., alias='_id', description='Products _id')
     name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
                       description='Product name')
@@ -173,9 +221,17 @@ class AdminProductListRow(ResponseModel):
         None, min_length=1,
         description='The photo the shop shows: the url of one of the '
         "store's GeneratedPhotos (setProductPhoto)")
+    hasPhoto: bool = Field(
+        ..., description='Whether the shop shows a photo of it: what the AI '
+        'reads, the card showing the photo itself '
+        '(ProductActions.adminProductRow)')
 
 
 class AdminProductListResponse(ResponseModel):
+    AI_READS: ClassVar[dict[str, str]] = {
+        'currency': 'the prices are in it',
+        'products': 'the products the AI answers about',
+    }
     currency: StoreCurrency = Field(
         ..., description="ISO 4217 code of every price in the list")
     products: list[AdminProductListRow] = Field(...,

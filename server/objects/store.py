@@ -5,6 +5,7 @@ receives (see objects/__init__.py)."""
 import datetime
 import re
 
+from typing import ClassVar
 from pydantic import Field, ValidationInfo, field_validator
 from typing import Annotated, Literal
 
@@ -77,6 +78,10 @@ class StoreLocationResponse(ResponseModel):
     """A store's map location as a route sends it. Each field restates
     StoreLocation's, which test_route_response_models.py's MIRRORS keeps
     in step."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'latitude': "the store's pin",
+        'longitude': "the store's pin",
+    }
     latitude: Latitude = Field(...,
                                description='Degrees north (negative: south)')
     longitude: Longitude = Field(...,
@@ -140,6 +145,13 @@ class DeliveryZoneRule(ResponseModel):
     """A zone's delivery policy as a route sends it, without its shape.
     Each field restates DeliveryZone's, which test_route_response_models.py's
     MIRRORS keeps in step."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'name': 'the zone',
+        'deliveryFee': 'its flat fee',
+        'deliveryDays': 'how long a delivery takes',
+        'minimumOrder': 'the smallest items total it takes',
+        'freeDeliveryFrom': 'the total from which delivery is free',
+    }
     name: DeliveryZoneName
     deliveryFee: DeliveryZoneFee
     deliveryDays: DeliveryZoneDays
@@ -433,6 +445,16 @@ class CustomerView(StoredDocumentKeys, Customer):
 class StoreResponse(ResponseModel):
     """A store as a route sends it. Each field restates Store's, which
     test_route_response_models.py's MIRRORS keeps in step."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'name': 'store details',
+        'slug': "the store's link",
+        'currency': 'store details',
+        'description': 'store details',
+        'contactNumber': 'store details',
+        'address': 'store details',
+        'openingHours': 'store details',
+        'location': 'whether and where the store is pinned',
+    }
     id: str = Field(..., alias='_id', description='Stores _id')
     name: str | None = Field(None, min_length=1,
                              max_length=STORE_NAME_MAX_LENGTH,
@@ -483,6 +505,12 @@ class AdminStoreResponse(StoreResponse):
     route builds leaves it out, and exclude_if drops it from a dump), so a
     store with none reads exactly as a StoreResponse. Each field restates
     Store's (test_route_response_models.py's MIRRORS)."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'photoStyle': 'the photo style asked about or changed',
+        'primaryColor': 'a brand color',
+        'secondaryColor': 'a brand color',
+        'voiceId': 'the voice saved (updateMyStoreTheme docstring)',
+    }
     photoStyle: str | None = Field(
         None, min_length=1, max_length=PHOTO_STYLE_MAX_LENGTH,
         exclude_if=_isNone,
@@ -500,6 +528,9 @@ class AdminStoreResponse(StoreResponse):
 
 
 class MyStoreResponse(ResponseModel):
+    AI_READS: ClassVar[dict[str, str]] = {
+        'store': "the admin's store, null before it is set up",
+    }
     store: AdminStoreResponse | None = Field(
         ..., description="The admin's store; null until it is created")
 
@@ -535,6 +566,11 @@ class StoreThemeResponse(ResponseModel):
     """What updateMyStoreTheme sends: the store's photo theme, each field
     null while unset (never the voice: getUserStore sends it). Each field
     restates Store's (MIRRORS)."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'photoStyle': 'confirms what was saved',
+        'primaryColor': 'confirms what was saved',
+        'secondaryColor': 'confirms what was saved',
+    }
     photoStyle: str | None = Field(
         ..., min_length=1, max_length=PHOTO_STYLE_MAX_LENGTH,
         description="The look of the store's product photos")
@@ -548,6 +584,10 @@ class StoreThemeResponse(ResponseModel):
 class AddressSuggestionResponse(ResponseModel):
     """What suggestStoreAddress sends: the street address Google gives for
     the store's pin, and the address the store has now."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'suggestedAddress': 'the AI asks the owner to use it',
+        'address': 'compared with the suggestion',
+    }
     suggestedAddress: str | None = Field(
         ..., min_length=1, max_length=STORE_ADDRESS_MAX_LENGTH,
         description="The pin's street address; null when there is none")

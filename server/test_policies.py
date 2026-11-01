@@ -891,8 +891,10 @@ def test_e2e_theAdminSetsThePolicy_theCustomerReadsIt(clean, firebase):
     mine = callTool(_auth(ADMIN), 'getMyStorePolicy', {}, audience='admin')
     direct = tools.getMyStorePolicy(ADMIN)
     assert _answers(mine.structured_content) == _answers(direct)
-    assert mine.structured_content['updatedAt'].startswith(
-        direct['updatedAt'].strftime('%Y-%m-%dT%H:%M:%S'))
+    # updatedAt is in no AI_READS: the MCP answer (the AI copy) leaves it out.
+    assert 'updatedAt' not in mine.structured_content
+    # The full result (the chat's cards, the route) still carries it.
+    assert isinstance(direct['updatedAt'], datetime.datetime)
 
     read = callTool(_auth(customerId, store['_id']), 'getStorePolicy', {
         'storeId': 'someone-elses-store'

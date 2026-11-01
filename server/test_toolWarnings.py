@@ -290,3 +290,41 @@ def test_aWriteThatFails_neverFailsTheTurn(monkeypatch, caplog):
 
     assert 'toolWarningsNotMarked' in [r.msg['event'] for r in caplog.records
                                        if isinstance(r.msg, dict)]
+
+
+def test_theFindings_readTheFullResult_theWarningsGoOnTheAiCopy(
+        monkeypatch):
+    """The model gets a tool's AI copy (chatModel.aiContent): a field it
+    leaves out never decides a warning, which is found in the full
+    result and put on the AI copy."""
+    try:
+        wipeDatabase()
+        at(monkeypatch, FAR)
+        storeId = createTestStore(ADMIN)['_id']
+        full = {'store': {'name': 'A', 'contactNumber': None,
+                          'address': 'x', 'openingHours': 'Mon',
+                          'location': {'latitude': 1, 'longitude': 2},
+                          'primaryColor': '#112233',
+                          'secondaryColor': '#445566',
+                          'photoStyle': 'marble'}}
+        # An AI copy that left out every detail but the name and address.
+        content = json.dumps({'store': {'name': 'A', 'address': 'x'}})
+        turn = toolWarnings.TurnWarnings(storeId)
+
+        attached = json.loads(turn.attach('admin', 'getUserStore', content,
+                                          16000, full=json.dumps(full)))
+
+        assert attached['store'] == {'name': 'A', 'address': 'x'}
+        assert told(attached) == {'storeDetailMissing': (
+            1, ['contactNumber'])}
+        # Read from the AI copy alone, the left-out fields would warn too.
+        alone = toolWarnings.TurnWarnings(storeId)
+        assert told(json.loads(alone.attach(
+            'admin', 'getUserStore', content, 16000)))[
+                'storeDetailMissing'][0] > 1
+        # A refused full result attaches nothing.
+        refusal = chatModel.toolError('No store')
+        assert turn.attach('admin', 'getUserStore', content, 16000,
+                           full=refusal) == content
+    finally:
+        wipeDatabase()

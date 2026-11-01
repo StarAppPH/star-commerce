@@ -41,6 +41,10 @@ export type Soldcount = number;
  * The photo the shop shows: the url of one of the store's GeneratedPhotos (setProductPhoto)
  */
 export type Photourl = string | null;
+/**
+ * Whether the shop shows a photo of it: what the AI reads, the card showing the photo itself (ProductActions.adminProductRow)
+ */
+export type Hasphoto = boolean;
 
 /**
  * One product of an admin's list: AdminProductRow with the
@@ -58,4 +62,5 @@ export interface AdminProductListRow {
   isAvailable: Isavailable;
   soldCount: Soldcount;
   photoUrl?: Photourl;
+  hasPhoto: Hasphoto;
 }

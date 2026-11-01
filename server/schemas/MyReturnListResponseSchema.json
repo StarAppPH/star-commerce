@@ -121,19 +121,6 @@
                     "description": "Why the store rejected it",
                     "title": "Rejectreason"
                 },
-                "cancelledAt": {
-                    "anyOf": [
-                        {
-                            "format": "date-time",
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "description": "When the customer cancelled it",
-                    "title": "Cancelledat"
-                },
                 "receivedAt": {
                     "anyOf": [
                         {
@@ -173,7 +160,6 @@
                 "createdAt",
                 "decidedAt",
                 "rejectReason",
-                "cancelledAt",
                 "receivedAt",
                 "refundedAt"
             ],

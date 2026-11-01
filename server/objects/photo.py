@@ -5,6 +5,7 @@ receives (see objects/__init__.py)."""
 import datetime
 from typing import Literal
 
+from typing import ClassVar
 from pydantic import Field
 
 from objects.base import MongoModel, ResponseModel
@@ -63,6 +64,9 @@ class GeneratedPhoto(MongoModel):
 
 
 class GeneratedPhotoRow(ResponseModel):
+    AI_READS: ClassVar[dict[str, str]] = {
+        '_id': 'the photoId setProductPhoto takes',
+    }
     id: str = Field(..., alias='_id', description='GeneratedPhotos _id')
     url: str = Field(..., min_length=1, description='Its download URL')
     prompt: str | None = Field(
@@ -73,6 +77,10 @@ class GeneratedPhotoRow(ResponseModel):
 class GeneratedPhotosResponse(ResponseModel):
     """What generateProductPhotos sends: the photos it saved, each with
     the prompt it was made with."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'photos': 'their _ids',
+        'notGenerated': 'why fewer were made: told to the admin',
+    }
     photos: list[GeneratedPhotoRow] = Field(
         ..., max_length=PHOTOS_PER_CALL,
         description='The photos made, in order: the first in the global '
@@ -84,6 +92,10 @@ class GeneratedPhotosResponse(ResponseModel):
 
 class PhotoChoiceRow(ResponseModel):
     """One photo the admin may put on the product."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        '_id': 'the photoId setProductPhoto takes',
+        'source': 'numbering: 1 is the original',
+    }
     id: str = Field(..., alias='_id', description='GeneratedPhotos _id')
     url: str = Field(..., min_length=1, description='Its download URL')
     source: PhotoSource = Field(..., description='Styled, or the original')
@@ -96,6 +108,12 @@ class PhotoChoiceRow(ResponseModel):
 class ProductPhotoChoicesResponse(ResponseModel):
     """What makeProductPhotoChoices sends: the product, its original photo
     first, then the ones made, each with its prompt."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'productId': 'setProductPhoto takes it',
+        'productName': 'names the product',
+        'photos': 'their _ids',
+        'notGenerated': 'why fewer were made: told to the admin',
+    }
     productId: str = Field(..., min_length=1, description='The Products _id')
     productName: str = Field(..., min_length=1, description='Product name')
     photos: list[PhotoChoiceRow] = Field(
@@ -110,6 +128,10 @@ class ProductPhotoChoicesResponse(ResponseModel):
 class FoundProductRow(ResponseModel):
     """A product findProductsInPhoto found: its name and its cut-out
     photo."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'name': 'goes into showNewProductsForm',
+        'imageUrl': 'goes into showNewProductsForm',
+    }
     name: str = Field(..., min_length=1, description='Product name')
     imageUrl: str = Field(..., min_length=1,
                           description="The cut-out photo's URL, the "
@@ -119,6 +141,10 @@ class FoundProductRow(ResponseModel):
 class FoundProductsResponse(ResponseModel):
     """What findProductsInPhoto sends: the products found, in the photo's
     order, and those named but not located."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'products': 'the products found',
+        'notFound': 'told to the admin',
+    }
     products: list[FoundProductRow] = Field(
         ..., max_length=PHOTO_FIND_ITEMS_MAX,
         description='The products found, left to right')
@@ -130,6 +156,11 @@ class FoundProductsResponse(ResponseModel):
 class PhotoColorRow(ResponseModel):
     """A color findColorsInPhoto read: its hex code and how much of the
     photo (or of the part it looked at) it covers."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'hex': 'the color saved as a brand color',
+        'share': 'suggest the biggest',
+        'neutral': 'suggest a non-neutral',
+    }
     hex: str = Field(..., pattern=HEX_COLOR_PATTERN,
                      description='The color, like #1A73E8')
     share: float = Field(..., gt=0, le=1,
@@ -141,6 +172,11 @@ class PhotoColorRow(ResponseModel):
 class PhotoColorsResponse(ResponseModel):
     """What findColorsInPhoto sends: the photo's main colors, biggest share
     first, and the part it looked at."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'colors': 'the colors read',
+        'focus': 'the part read',
+        'focusFound': 'false: say the focus was not found',
+    }
     colors: list[PhotoColorRow] = Field(
         ..., max_length=PHOTO_COLORS_MAX,
         description='The main colors, biggest share first; empty when the '

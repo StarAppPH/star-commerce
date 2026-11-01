@@ -7,7 +7,8 @@ test_mcp_server.py fails while it is stale.
 Every method of ToolRequests marked @mcp_tool(<audience>, ...) (mcpTools.py)
 becomes one tool function on each audience's MCPServer. The tool takes the
 method's params minus mcpTools.INJECTED_PARAMS, with the same annotations
-and defaults, and calls the tool method through mcpRuntime.callTool. Its
+and defaults, and calls the tool method through mcpRuntime.callTool (its
+AI copy). Its
 description is the method's docstring. Refused (ValueError naming the
 tool):
   - a function carrying @route_config (httpMethod): a tool is no route;
@@ -202,14 +203,18 @@ _INJECTED_SOURCE = {
 }
 
 
-def callSource(toolName: str, arguments: list) -> list:
-    """The lines of a generated tool's body: `return callTool(...)` of
+def callSource(toolName: str, arguments: list,
+               caller: str = 'callTool') -> list:
+    """The lines of a generated tool's body: `return <caller>(...)` of
     the tool method `toolName` with `arguments` (each `name=source`), one
-    per line. chatToolsCreator writes the same call."""
-    lines = [f'{INDENT}return callTool(ToolRequests().{toolName},']
+    per line. The MCP servers call mcpRuntime.callTool (the AI copy);
+    chatToolsCreator writes the same call with callToolFull (the chat's
+    cards need the full result)."""
+    lines = [f'{INDENT}return {caller}(ToolRequests().{toolName},']
+    pad = ' ' * len(f'return {caller}(')
     for i, argument in enumerate(arguments):
         end = ')' if i == len(arguments) - 1 else ','
-        lines.append(f'{INDENT}                {argument}{end}')
+        lines.append(f'{INDENT}{pad}{argument}{end}')
     return lines
 
 

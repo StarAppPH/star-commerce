@@ -5,8 +5,9 @@
   token. A missing, forged or expired one is a 401 before any tool runs.
 - callerUserId / sessionStoreId: the injected tool params (mcpTools.
   INJECTED_PARAMS), read from the connection, never from the AI.
-- callTool: runs the tool method (ToolRequests) and turns its failure into
-  a ToolError the AI can read, with routeErrors' messages (a 500's text
+- callTool / callToolFull: run the tool method (ToolRequests), the MCP
+  servers' answer being its AI copy (the chat's the full result, cut
+  later), and turn its failure into a ToolError the AI can read, with routeErrors' messages (a 500's text
   never leaks).
 - ArgumentsHidingServer: the SDK checks a tool's arguments against its
   signature before the tool runs; its refusal names the argument and what
@@ -98,9 +99,21 @@ def sessionStoreId(ctx: Context) -> str:
 
 
 def callTool(tool, **kwargs) -> dict:
-    """Run the tool method. A failure the caller can act on (ValueError,
-    PermissionError, ...) reaches the AI with its message; any other one
-    with routeErrors' generic message and error id, logged once."""
+    """What the MCP servers answer: the tool's AI copy (objects.aiCopy, the
+    fields of its responseModel's AI_READS), since an outside AI client has
+    no cards to show the rest. See callToolFull for the failures."""
+    from objects import aiCopy
+    return aiCopy(getattr(tool, 'responseModel', None),
+                  callToolFull(tool, **kwargs))
+
+
+def callToolFull(tool, **kwargs) -> dict:
+    """Run the tool method and return its full result (the chat route's
+    tools, chatTools.py: the cards need all of it; chatModel.aiContent
+    then cuts what the model gets). A failure the caller can act on
+    (ValueError, PermissionError, ...) reaches the AI with its message; any
+    other one with routeErrors' generic message and error id, logged
+    once."""
     try:
         return tool(**kwargs)
     except ToolError:
@@ -138,6 +151,29 @@ class ArgumentsHidingServer(MCPServer):
         super().add_tool(fn, name=name, **kwargs)
         tool = self._tool_manager.get_tool(name or fn.__name__)
         tool.fn_metadata.arg_model = _hidingInput(tool.fn_metadata.arg_model)
+        _publishAiCopy(tool.fn_metadata)
+
+
+def _publishAiCopy(metadata) -> None:
+    """A tool's output schema and output check as its AI copy (callTool):
+    the SDK checks a tool's result against its return annotation, the
+    tool's responseModel, which declares fields the AI copy leaves out.
+    The SDK reads both fields live, so swapping them after registration
+    is enough."""
+    from mcp.server.mcpserver.utilities.func_metadata import FuncMetadata
+    from pydantic import BaseModel
+    from objects import aiCopyModel
+    model = metadata.output_model
+    if not (isinstance(model, type) and issubclass(model, BaseModel)):
+        return
+    published = aiCopyModel(model)
+    if published is model:
+        return
+    derived = FuncMetadata(arg_model=metadata.arg_model,
+                           output_model=published,
+                           wrap_output=metadata.wrap_output)
+    metadata.output_model = published
+    metadata.output_schema = derived.output_schema
 
 
 def _baseUrl(port: int) -> str:

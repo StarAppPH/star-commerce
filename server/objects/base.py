@@ -4,6 +4,7 @@ and the projections derived from a ResponseModel.
 
 Package rule (every objects module): no validator may EVER mutate a value it
 receives (see objects/__init__.py)."""
+import copy
 import functools
 import types
 import typing
@@ -264,6 +265,30 @@ class ResponseModel(BaseModel):
     def _coerce_empty_strings(cls, data):
         return _coerce_empty_strings_to_none(cls, data)
 
+    @classmethod
+    def aiReads(cls) -> dict[str, str] | None:
+        """The keys of this model the AI reads, each with why: the
+        `AI_READS: ClassVar[dict[str, str]]` of the model and of its bases,
+        merged (each class marks only the fields it declares itself, by
+        serialized key); None when no class of it declares one. A ClassVar
+        is no field: the schemas, the TS types and the payloads never see
+        it. A tool's result keeps for the AI only these keys (aiCopy), and
+        test_unused_tool_fields.py fails on a tool field that is neither on
+        its chat card nor here."""
+        found = None
+        for base in reversed(cls.__mro__):
+            own = base.__dict__.get('AI_READS')
+            if own is not None:
+                found = {**(found or {}), **own}
+        return found
+
+    @classmethod
+    def aiKeeps(cls, key: str) -> bool:
+        """Whether aiCopy keeps `key` of this model for the AI: it is in
+        aiReads(), or no class of the model declares AI_READS."""
+        reads = cls.aiReads()
+        return reads is None or key in reads
+
 
 # ──────────────────────────────────────────────
 # Projections derived from a ResponseModel
@@ -522,6 +547,100 @@ def projectedCopy(model: type[BaseModel], document):
     return copy
 
 
+# The keys the chat puts beside a tool's own (a refusal, the admin's
+# warnings): an AI copy always keeps them.
+AI_ALWAYS_KEPT = ('error', 'warnings')
+
+
+def aiCopy(model: type[BaseModel], result):
+    """`result`, a tool's answer as `model` declares it, cut down to what
+    the AI reads, at every depth: a key its model keeps
+    (ResponseModel.aiKeeps: in its AI_READS, or every key of a model that
+    declares none, an undeclared one too), and AI_ALWAYS_KEPT. What a chat
+    card alone shows (a photo url, a pin's coordinates) stays out of the
+    AI's tool message and history; the card is built from the full result.
+    A kept field's value is walked as projectedCopy walks it (_cut with
+    cutModel=aiCopy): through lists, dict values, Annotated and unions, a
+    union of models cut as the member its value is, each nested model by
+    its own rules; so it matches aiCopyModel, which swaps every model in a
+    field for its own. A new dict; the input is not mutated, and anything
+    that is not a dict (or a RootModel's value) is returned as is."""
+    if not (isinstance(model, type) and issubclass(model, BaseModel)):
+        return result
+    if issubclass(model, RootModel):
+        return _cut(model, result, cutModel=aiCopy)
+    if not isinstance(result, dict):
+        return result
+    fields = _fieldsByKey(model)
+    keeps = (model.aiKeeps if issubclass(model, ResponseModel)
+             else lambda key: True)
+    copy = {}
+    for key, value in result.items():
+        if key in AI_ALWAYS_KEPT:
+            copy[key] = value
+        elif keeps(key):
+            field = fields.get(key)
+            copy[key] = value if field is None else _cut(
+                field.annotation, value,
+                _tag_of(field.discriminator, *field.metadata),
+                cutModel=aiCopy)
+    return copy
+
+
+@functools.cache
+def _fieldsByKey(model: type[BaseModel]) -> dict:
+    """`model`'s fields by serialized key. Only this map is cached, never
+    aiReads (the self-tests patch AI_READS)."""
+    return {field.alias or name: field
+            for name, field in model.model_fields.items()}
+
+
+@functools.cache
+def aiCopyModel(model: type[BaseModel]) -> type[BaseModel]:
+    """The model aiCopy's result of `model` fits: `model` itself when
+    nothing in it is cut, else a model of the same name declaring only what
+    the AI reads, at every depth (each field as declared, a nested model
+    swapped for its own aiCopyModel). The MCP servers publish it as a
+    tool's output schema and validate the AI copy against it
+    (mcpRuntime.ArgumentsHidingServer)."""
+    from pydantic import create_model
+    fields, changed = {}, False
+    for name, field in model.model_fields.items():
+        key = field.alias or name
+        if issubclass(model, ResponseModel) and not model.aiKeeps(key):
+            changed = True
+            continue
+        annotation = _withAiCopyModels(field.annotation)
+        changed = changed or annotation != field.annotation
+        info = copy.copy(field)
+        info.annotation = annotation
+        fields[name] = (annotation, info)
+    if not changed:
+        return model
+    return create_model(model.__name__, __base__=ResponseModel,
+                        __doc__=model.__doc__, __module__=model.__module__,
+                        **fields)
+
+
+def _withAiCopyModels(annotation):
+    """`annotation` with each model in it (through Optional, unions, lists
+    and dict values) swapped for its aiCopyModel."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return aiCopyModel(annotation)
+    origin = typing.get_origin(annotation)
+    args = typing.get_args(annotation)
+    if not args:
+        return annotation
+    swapped = tuple(_withAiCopyModels(arg) for arg in args)
+    if swapped == args:
+        return annotation
+    if origin is typing.Annotated:
+        return typing.Annotated[(swapped[0], *annotation.__metadata__)]
+    if _is_union(annotation):
+        return typing.Union[swapped]
+    return origin[swapped]
+
+
 def fieldModel(model: type[BaseModel], field: str) -> type[BaseModel]:
     """The model of `model`'s field `field`, through a list and a null: the
     row model an action reads a list answer's items with, so the answer
@@ -555,49 +674,55 @@ def _tag_of(*declared):
     return next((tag for tag in map(_str_tag, declared) if tag), None)
 
 
-def _cut(annotation, value, discriminator=None):
+def _cut(annotation, value, discriminator=None, cutModel=None):
     """`value` cut down to what `annotation` declares (see projectedCopy).
     `discriminator` tags the union `annotation` is (a field's own); a union
     nested in a list or a dict, or in an Optional, carries its tag in
-    Annotated (_union_of)."""
+    Annotated (_union_of). `cutModel(model, value)` cuts each model reached
+    (projectedCopy by default; aiCopy for the AI copy, the one walk both
+    share)."""
+    cutModel = cutModel or projectedCopy
     members, discriminator = _union_of(annotation, discriminator)
     if len(members) > 1:
-        return _cut_union(members, value, discriminator)
+        return _cut_union(members, value, discriminator, cutModel)
     annotation = members[0]
     origin = typing.get_origin(annotation)
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-        return projectedCopy(annotation, value)
+        return cutModel(annotation, value)
     if origin in (list, tuple):
         if not isinstance(value, (list, tuple)):
             return value
         args = typing.get_args(annotation)
         item = args[0] if args else typing.Any
-        return [_cut(item, element) for element in value]
+        return [_cut(item, element, cutModel=cutModel) for element in value]
     if origin is dict:
         args = typing.get_args(annotation)
         if not isinstance(value, dict) or len(args) != 2:
             return value
-        return {k: _cut(args[1], v) for k, v in value.items()}
+        return {k: _cut(args[1], v, cutModel=cutModel)
+                for k, v in value.items()}
     return value
 
 
-def _cut_union(members: tuple, value, discriminator=None):
-    """`value` cut as the union member it is (_member_for). A scalar or a
-    null has nothing to cut. A container no member is (a tag naming none, an
-    untagged union of models, a value no member accepts) is cut down to what
-    the members declare: a dict to every member model's keys, a list to
-    nothing; it is never sent whole."""
+def _cut_union(members: tuple, value, discriminator=None, cutModel=None):
+    """`value` cut as the union member it is (_member_for), each model by
+    `cutModel` (see _cut). A scalar or a null has nothing to cut. A
+    container no member is (a tag naming none, an untagged union of models,
+    a value no member accepts) is cut down to what the members declare: a
+    dict to every member model's keys, a list to nothing; it is never sent
+    whole."""
+    cutModel = cutModel or projectedCopy
     if not isinstance(value, (dict, list, tuple)):
         return value
     member = _member_for(members, value, discriminator)
     if member is not None:
-        return _cut(member, value)
+        return _cut(member, value, cutModel=cutModel)
     if not _holds_a_response_model(typing.Union[members]):
         return value
     if isinstance(value, dict):
         kept = {}
         for model in _model_members(members):
-            kept.update(projectedCopy(model, value))
+            kept.update(cutModel(model, value))
         return kept
     return []
 

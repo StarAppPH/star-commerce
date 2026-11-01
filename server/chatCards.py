@@ -1,8 +1,9 @@
 """chatCards.py — the cards under an assistant's reply (hand-written).
 
 A card shows what a tool returned in this turn, built from the tool's own
-result (the JSON its tool message carries), never from the model's words: a
-price on a card is the price the route sent. The cards are made once the
+full result (held for the turn, while its tool message carries only the AI
+copy, chatModel.aiContent), never from the model's words: a price on a card
+is the price the route sent. The cards are made once the
 turn's tools have run (build), in the order the tools ran:
 
 - a list (products, orders, returns) is a card of its own;
@@ -303,10 +304,16 @@ def _validCard(card: dict, tool: str) -> dict | None:
 
 
 def build(steps: list[dict], forms: dict[str, dict],
-          context: CardContext) -> list[dict]:
+          context: CardContext,
+          cardResults: dict[str, str] | None = None) -> list[dict]:
     """The components of a turn whose tool steps are `steps`: a card per
     tool result, the forms the form tools opened (`forms`, by tool call id)
-    in their place, the latest CHAT_COMPONENTS_PER_TURN_MAX of them."""
+    in their place, the latest CHAT_COMPONENTS_PER_TURN_MAX of them. A card
+    is built from the tool's full result (`cardResults[callId]`, its JSON,
+    held for the turn by ChatActions._runModel) when there is one, else
+    from the step's content: a step holds the AI copy (chatModel.
+    aiContent), which leaves out what only the card shows."""
+    cardResults = cardResults or {}
     names = {call['id']: call['name']
              for step in steps if step['role'] == 'assistant'
              for call in step.get('toolCalls') or []}
@@ -323,7 +330,8 @@ def build(steps: list[dict], forms: dict[str, dict],
         if makeCard is None:
             continue
         try:
-            result = json.loads(step.get('content') or 'null')
+            result = json.loads(cardResults.get(callId)
+                                or step.get('content') or 'null')
         except ValueError:
             continue
         if not isinstance(result, dict) or 'error' in result:

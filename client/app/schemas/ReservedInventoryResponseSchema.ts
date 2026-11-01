@@ -6,20 +6,16 @@
  */
 
 /**
- * The Orders _id
- */
-export type Orderid = string;
-/**
  * Units the order holds
  */
 export type Quantity = number;
 
 /**
- * ReservedInventory as a route sends it. Each field restates
+ * ReservedInventory as a tool sends it: the units only (which order
+ * holds them is no one's question). Each field restates
  * ReservedInventory's, which test_route_response_models.py's MIRRORS
  * keeps in step.
  */
 export interface ReservedInventoryResponse {
-  orderId: Orderid;
   quantity: Quantity;
 }

@@ -5,6 +5,7 @@ receives (see objects/__init__.py)."""
 import datetime
 import typing
 
+from typing import ClassVar
 from pydantic import Field, field_validator
 from typing import Annotated, Literal
 
@@ -208,6 +209,23 @@ class StorePolicyResponse(ResponseModel):
     test_route_response_models.py's MIRRORS keeps in step. Beside them,
     deliveryZones: the zones the store delivers to, each with its own
     delivery policy (its shape is not sent)."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'acceptsReturns': 'a policy answer the AI tells or warns about',
+        'returnWindowDays': 'a policy answer the AI tells or warns about',
+        'returnConditions': 'a policy answer the AI tells or warns about',
+        'nonReturnableItems': 'a policy answer the AI tells or warns about',
+        'refundMethod': 'a policy answer the AI tells or warns about',
+        'returnShippingPaidBy': 'a policy answer the AI tells or warns about',
+        'defectReportDays': 'a policy answer the AI tells or warns about',
+        'deliveryOptions': 'a policy answer the AI tells or warns about',
+        'deliveryAreas': 'a policy answer the AI tells or warns about',
+        'handoverDays': 'a policy answer the AI tells or warns about',
+        'authorizedPaymentMethods': 'a policy answer the AI tells or warns about',
+        'paidOrderCancellation': 'a policy answer the AI tells or warns about',
+        'paidOrderCancellationHours': 'a policy answer the AI tells or warns about',
+        'additionalTerms': 'a policy answer the AI tells or warns about',
+        'deliveryZones': 'a policy answer the AI tells or warns about',
+    }
     acceptsReturns: AcceptsReturns = Field(...)
     returnWindowDays: ReturnWindowDays = Field(...)
     returnConditions: ReturnConditions = Field(...)

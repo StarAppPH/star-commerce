@@ -577,7 +577,9 @@ def test_updateStoreProduct_changesOnlyWhatIsSent_andKeepsTheReservations(
     def update(**fields) -> dict:
         res = tools.updateStoreProduct(ADMIN, productId, **fields)
         assertExactShape(AdminProductRow, res)
-        assert res['reservedInventory'] == RESERVED
+        # The tool sends the units held, not which order holds them.
+        assert res['reservedInventory'] == [
+            {'quantity': held['quantity']} for held in RESERVED]
         assert res['soldCount'] == 7
         assert _byName(res['name'])['reservedInventory'] == RESERVED
         return res
@@ -805,6 +807,113 @@ def test_listMyStoreProducts_searchAndLimit(clean):
     for limit in (0, 51, -1, True, 2.5):
         with pytest.raises(ValueError, match=exactly(LIMIT)):
             names(limit=limit)
+
+
+def _sortedNames(**kwargs) -> list:
+    return [p['name'] for p in
+            tools.listMyStoreProducts(ADMIN, **kwargs)['products']]
+
+
+def test_listMyStoreProducts_sortByName_isTheDefault(clean):
+    store = createTestStore(ADMIN)
+    addProduct(store['_id'], 'banana', 1, soldCount=5, inventory=0)
+    addProduct(store['_id'], 'Apple', 1, soldCount=1, inventory=9)
+    addProduct(store['_id'], 'Cherry', 1, soldCount=9, inventory=3)
+
+    assert _sortedNames() == _sortedNames(sortBy='name') == _sortedNames(
+        sortBy=None) == ['Apple', 'banana', 'Cherry']
+
+
+def test_listMyStoreProducts_sortBySoldCount_bestSellersFirst(clean):
+    """The top sellers of a store with more products than the limit: the
+    whole store is sorted before the limit cuts it, hidden ones included,
+    ties by name."""
+    store = createTestStore(ADMIN)
+    for number in range(55):
+        addProduct(store['_id'], f'Item {number:02d}', 1, soldCount=number)
+    addProduct(store['_id'], 'Zz hidden', 1, soldCount=500,
+               isAvailable=False)
+    addProduct(store['_id'], 'aa tie', 1, soldCount=54)
+
+    products = tools.listMyStoreProducts(ADMIN, sortBy='soldCount',
+                                         limit=4)['products']
+
+    assert [(p['name'], p['soldCount']) for p in products] == [
+        ('Zz hidden', 500), ('aa tie', 54), ('Item 54', 54),
+        ('Item 53', 53)]
+
+
+def test_listMyStoreProducts_sortByInventory_fewestLeftFirst(clean):
+    store = createTestStore(ADMIN)
+    for number in range(55):
+        addProduct(store['_id'], f'Item {number:02d}', 1,
+                   inventory=100 - number)
+    addProduct(store['_id'], 'Sold out B', 1, inventory=0)
+    addProduct(store['_id'], 'sold out a', 1, inventory=0,
+               isAvailable=False)
+
+    products = tools.listMyStoreProducts(ADMIN, sortBy='inventory',
+                                         limit=3)['products']
+
+    assert [(p['name'], p['inventory']) for p in products] == [
+        ('sold out a', 0), ('Sold out B', 0), ('Item 54', 46)]
+
+
+def test_listMyStoreProducts_sortByWithSearch(clean):
+    store = createTestStore(ADMIN)
+    addProduct(store['_id'], 'Cake small', 1, soldCount=1)
+    addProduct(store['_id'], 'Cake big', 1, soldCount=7)
+    addProduct(store['_id'], 'Bread', 1, soldCount=99)
+
+    assert _sortedNames(search='cake', sortBy='soldCount') == [
+        'Cake big', 'Cake small']
+
+
+def test_listMyStoreProducts_refusesAnUnknownSort(clean):
+    createTestStore(ADMIN)
+
+    for sortBy in ('price', 'NAME', '', 5, ['name'], {'$ne': 1}, True):
+        with pytest.raises(ValueError, match=exactly(
+                'sortBy is one of: name, soldCount, inventory')):
+            _sortedNames(sortBy=sortBy)
+    # The search and the limit are checked first.
+    with pytest.raises(ValueError, match=exactly(LIMIT)):
+        _sortedNames(limit=0, sortBy='price')
+
+
+def test_listMyStoreProducts_eachSortHasItsIndex(clean):
+    """Each sort is served by an index (no in-memory sort of the store)."""
+    from actions.ProductActions import ADMIN_PRODUCT_SORT_STAGES
+    db.ensureIndexes()
+    keys = [list(index['key']) for index in
+            db.db['Products'].index_information().values()]
+    for stage in ADMIN_PRODUCT_SORT_STAGES.values():
+        assert [('storeId', 1), *stage.items()] in keys
+
+
+def test_adminProductRows_sayWhetherTheyHaveAPhoto(clean):
+    """hasPhoto (for the AI) follows photoUrl (for the card) on every
+    admin product answer, a missing photoUrl included."""
+    store = createTestStore(ADMIN)
+    withPhoto = addProduct(store['_id'], 'A photo', 1)
+    addProduct(store['_id'], 'B none', 1)
+    addProduct(store['_id'], 'C missing', 1)
+    db.db['Products'].update_one({'_id': withPhoto['_id']},
+                                 {'$set': {'photoUrl': 'https://x/p.png'}})
+    db.db['Products'].update_one({'name': 'C missing'},
+                                 {'$unset': {'photoUrl': ''}})
+
+    listed = tools.listMyStoreProducts(ADMIN)['products']
+
+    assert [(p['name'], p['hasPhoto'], p.get('photoUrl')) for p in listed] == [
+        ('A photo', True, 'https://x/p.png'), ('B none', False, None),
+        ('C missing', False, None)]
+    updated = tools.updateStoreProduct(ADMIN, withPhoto['_id'], price=2)
+    assert (updated['hasPhoto'], updated.get('photoUrl')) == (True,
+                                                          'https://x/p.png')
+    assert _add(name='New one')['hasPhoto'] is False
+    [batched] = tools.addStoreProducts(ADMIN, [_item('Batched')])['products']
+    assert batched['hasPhoto'] is False
 
 
 def test_listMyStoreProducts_anEmptyStore(clean):

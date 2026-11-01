@@ -13,7 +13,8 @@ Per tool, chatTools.py holds:
     (`<tool>Arguments`) and it has no docstring, so its schema is the one
     the MCP server lists;
   - _<tool>(userId, storeId, args), which runs the tool method
-    (ToolRequests) through mcpRuntime.callTool. userId always comes from
+    (ToolRequests) through mcpRuntime.callToolFull (the full result: the
+    cards need it; chatModel.aiContent cuts the model's copy). userId always comes from
     the chat route's JWT; storeId is passed only to a tool that takes one,
     from the conversation, never from the model;
   - THINKING_TEXTS, each tool's thinking texts (mcpTools), which
@@ -101,7 +102,7 @@ def _callSource(spec: ToolSpec) -> str:
     return '\n'.join([
         f'def {callFunctionName(spec.name)}(userId: str, storeId: str, '
         f'args: {argsClassName(spec.name)}) -> dict:',
-        *callSource(spec.name, arguments),
+        *callSource(spec.name, arguments, 'callToolFull'),
     ])
 
 
@@ -118,7 +119,7 @@ def render(specs: list) -> str:
         'from pydantic import BaseModel, ConfigDict\n',
         'import chatForms',
         'from ToolRequests import ToolRequests',
-        'from mcpRuntime import callTool',
+        'from mcpRuntime import callToolFull',
         *importLines,
         '',
         'DESCRIPTIONS = {',

@@ -4,6 +4,7 @@ Package rule (every objects module): no validator may EVER mutate a value it
 receives (see objects/__init__.py)."""
 import datetime
 
+from typing import ClassVar
 from pydantic import Field
 from typing import Literal
 
@@ -191,6 +192,11 @@ class OrderItemRow(ResponseModel):
     """One item of an order as a route sends it: OrderItem without its
     productId. Each field restates OrderItem's, which
     test_route_response_models.py's MIRRORS keeps in step."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'name': 'what was ordered',
+        'price': 'unit price paid',
+        'quantity': 'units ordered or returned',
+    }
     name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
                       description='Product name when ordered')
     price: float = Field(..., ge=0, le=PRODUCT_PRICE_MAX,
@@ -204,6 +210,13 @@ class OrderDeliveryRow(ResponseModel):
     Order's, which test_route_response_models.py's MIRRORS keeps in step;
     an order stored before delivery existed reads as a pickup
     (OrderActions.orderRow)."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'fulfillment': 'pickup or delivery',
+        'deliveryFee': 'what delivery added to the total',
+        'deliveryZone': 'the zone whose policy priced it',
+        'deliveryAddress': 'where to hand it over',
+        'deliveryNotes': "the customer's notes for the rider",
+    }
     fulfillment: Fulfillment = Field(
         ..., description='How the customer gets it: pickup or delivery')
     deliveryFee: float = Field(..., ge=0, le=PRODUCT_PRICE_MAX,
@@ -235,6 +248,27 @@ class StoreOrderRow(OrderDeliveryRow):
     """One order as its store's admin sees it. Each field restates
     Order's, which test_route_response_models.py's MIRRORS keeps in
     step."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        '_id': 'the orderId completeOrder, cancelStoreOrder and confirmOrderPayment take',
+        'status': 'where the order is',
+        'items': 'what was ordered',
+        'total': 'what it costs; sales questions',
+        'currency': 'the amounts are in it',
+        'contactNumber': "the customer's number, to arrange the handover",
+        'createdAt': 'when it was placed',
+        'paymentMethod': 'how the customer pays',
+        'paymentProvider': 'null: paid by hand, refunded by the store itself',
+        'manualPaymentReference': 'matches a payment made by hand',
+        'paymentReceiptAt': 'a receipt photo to check before confirming',
+        'paidAt': 'when it was paid; orders to hand over',
+        'expiresAt': 'a pending order is held until then',
+        'completedAt': 'when it was handed over',
+        'cancelledAt': 'when it was cancelled',
+        'cancelReason': 'why it was cancelled',
+        'refundedAt': 'whether the refund went through',
+        'paymentReference': "the provider's payment id, when the admin asks",
+        'refundReference': "the provider's refund id, when the admin asks",
+    }
     id: str = Field(..., alias='_id', description='Orders _id')
     status: OrderStatus = Field(..., description='Where the order is')
     items: list[OrderItemRow] = Field(..., min_length=1,
@@ -283,6 +317,24 @@ class MyOrderRow(OrderDeliveryRow):
     without the contact number and the payment and refund references. Each field
     restates Order's, which test_route_response_models.py's MIRRORS keeps
     in step."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        '_id': 'the orderId payOrder, cancelMyOrder and requestReturn take',
+        'status': 'where the order is',
+        'items': 'what was ordered; requestReturn takes their positions',
+        'total': 'what it costs',
+        'currency': 'the amounts are in it',
+        'createdAt': 'when it was placed',
+        'paymentMethod': 'how the customer pays',
+        'paymentProvider': 'null: paid by hand, refunded by the store itself',
+        'manualPaymentReference': 'confirms the reference saved',
+        'paymentReceiptAt': 'did my receipt go through',
+        'paidAt': 'when it was paid',
+        'expiresAt': 'pay by then or it is cancelled',
+        'completedAt': 'when it was handed over; the return window counts from it',
+        'cancelledAt': 'when it was cancelled',
+        'cancelReason': 'why it was cancelled',
+        'refundedAt': 'whether the refund went through',
+    }
     id: str = Field(..., alias='_id', description='Orders _id')
     status: OrderStatus = Field(..., description='Where the order is')
     items: list[OrderItemRow] = Field(..., min_length=1,
@@ -321,11 +373,17 @@ class MyOrderRow(OrderDeliveryRow):
 
 
 class StoreOrderListResponse(ResponseModel):
+    AI_READS: ClassVar[dict[str, str]] = {
+        'orders': 'the orders the AI answers about',
+    }
     orders: list[StoreOrderRow] = Field(
         ..., description='The orders, newest first')
 
 
 class MyOrderListResponse(ResponseModel):
+    AI_READS: ClassVar[dict[str, str]] = {
+        'orders': 'the orders the AI answers about',
+    }
     orders: list[MyOrderRow] = Field(...,
                                      description='The orders, newest first')
 
@@ -347,6 +405,10 @@ class WaitingOnYouResponse(ResponseModel):
 
 
 class CreatedOrderResponse(ResponseModel):
+    AI_READS: ClassVar[dict[str, str]] = {
+        'order': 'the order just placed: its _id, total and deadline',
+        'paymentOptions': 'the ways to pay the AI offers; payOrder takes one',
+    }
     order: MyOrderRow = Field(..., description='The order just placed')
     paymentOptions: list[PaymentOption] = Field(
         ..., min_length=1, description='The ways the customer can pay it')

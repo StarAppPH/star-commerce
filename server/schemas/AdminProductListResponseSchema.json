@@ -72,6 +72,11 @@
                     "default": null,
                     "description": "The photo the shop shows: the url of one of the store's GeneratedPhotos (setProductPhoto)",
                     "title": "Photourl"
+                },
+                "hasPhoto": {
+                    "description": "Whether the shop shows a photo of it: what the AI reads, the card showing the photo itself (ProductActions.adminProductRow)",
+                    "title": "Hasphoto",
+                    "type": "boolean"
                 }
             },
             "required": [
@@ -82,7 +87,8 @@
                 "inventory",
                 "reservedQuantity",
                 "isAvailable",
-                "soldCount"
+                "soldCount",
+                "hasPhoto"
             ],
             "title": "AdminProductListRow",
             "type": "object",

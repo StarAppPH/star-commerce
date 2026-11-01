@@ -6,6 +6,7 @@ Package rule (every objects module): no validator may EVER mutate a value it
 receives (see objects/__init__.py)."""
 from typing import Annotated, Literal
 
+from typing import ClassVar
 from pydantic import Field, model_validator
 
 from objects.base import AppModel, ResponseModel
@@ -163,12 +164,21 @@ class EwalletAccountRow(ResponseModel):
     """EwalletAccount as a route sends it. Each field restates
     EwalletAccount's, which test_route_response_models.py's MIRRORS keeps
     in step."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'ewalletName': 'the e-wallet to pay to',
+        'accountNumber': 'the account to pay to',
+    }
     ewalletName: EwalletName
     accountNumber: AccountNumber
 
 
 class BankAccountRow(ResponseModel):
     """BankAccount as a route sends it (MIRRORS keeps it in step)."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'bankName': 'the bank to pay to',
+        'accountName': 'the name the account is under',
+        'accountNumber': 'the account to pay to',
+    }
     bankName: BankName
     accountName: AccountHolder
     accountNumber: AccountNumber
@@ -177,6 +187,13 @@ class BankAccountRow(ResponseModel):
 class AuthorizedPaymentMethodRow(ResponseModel):
     """AuthorizedPaymentMethod as a route sends it (MIRRORS keeps it in
     step): every detail, null where the method takes none."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'method': 'a way the store takes payment',
+        'provider': 'paid online through it',
+        'eWallets': "the store's e-wallet accounts",
+        'banks': "the store's bank accounts",
+        'checkPayees': 'whom a check is made out to',
+    }
     method: PaymentMethod = Field(..., description='The way to pay')
     provider: MethodProvider = Field(...)
     eWallets: list[EwalletAccountRow] | None = Field(
@@ -195,6 +212,13 @@ class PaymentOption(ResponseModel):
     it (paymentMethod and paymentProvider). With a provider it is paid
     there and then; without one it is paid by hand to the store, to the
     accounts listed (none for cash), and the store confirms it."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'method': 'payOrder takes it',
+        'provider': 'payOrder takes it; null: paid by hand',
+        'eWallets': 'accounts to pay by hand to',
+        'banks': 'accounts to pay by hand to',
+        'checkPayees': 'whom a check is made out to',
+    }
     method: PaymentMethod = Field(..., description='The way to pay')
     provider: PaymentProvider | None = Field(
         ..., description='The payment provider that takes it; null: paid by '
