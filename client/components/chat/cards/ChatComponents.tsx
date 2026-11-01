@@ -11,6 +11,7 @@ import { PhoneVerificationForm } from './PhoneVerificationForm';
 import { PhotoColorsCard } from './PhotoColorsCard';
 import { PhotoRequestForm } from './PhotoRequestForm';
 import { ProductPhotoChoiceCard } from './ProductPhotoChoiceCard';
+import { ProductPhotoOfferCard } from './ProductPhotoOfferCard';
 import { ShopProductsCard } from './ShopProductsCard';
 import type { ChatComponent, ChatFormAnswer } from './types';
 
@@ -30,7 +31,7 @@ function formIdOf(component: ChatComponent): string | null {
 // Cards that only show something go above the reply's text; what answers it
 // (a form or a choosing card) goes below, so the question comes first.
 function isAnswerable(component: ChatComponent): boolean {
-  return formIdOf(component) !== null;
+  return formIdOf(component) !== null || component.kind === 'productPhotoOffer';
 }
 
 // The cards and forms of one assistant reply, on one side of its text. An
@@ -61,6 +62,7 @@ export function ChatComponents({ components, place, answeredFormIds, busy, onAns
           case 'policy': return <PolicyCard key={key} component={component} {...shared} />;
           case 'photos': return <PhotosCard key={key} component={component} {...shared} />;
           case 'productPhotoChoice': return <ProductPhotoChoiceCard key={key} component={component} {...shared} />;
+          case 'productPhotoOffer': return <ProductPhotoOfferCard key={key} component={component} answeredFormIds={answeredFormIds} {...shared} />;
           case 'photoColors': return <PhotoColorsCard key={key} component={component} {...shared} />;
           case 'store': return <StoreCard key={key} component={component} {...shared} />;
           case 'locationForm': return <LocationForm key={key} component={component} {...shared} />;

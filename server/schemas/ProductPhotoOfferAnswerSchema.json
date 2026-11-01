@@ -1,0 +1,47 @@
+{
+    "description": "A ProductPhotoOfferCard row's \"Make photos\": make better photos of\nthat product from its uploaded photo and this prompt.",
+    "properties": {
+        "kind": {
+            "const": "makeProductPhotos",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "The row's formId",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "productId": {
+            "description": "The row's Products _id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Productid",
+            "type": "string"
+        },
+        "prompt": {
+            "anyOf": [
+                {
+                    "maxLength": 2000,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The prompt the photos are made from; null: the default one",
+            "title": "Prompt"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "productId"
+    ],
+    "title": "ProductPhotoOfferAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

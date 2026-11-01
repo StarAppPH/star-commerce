@@ -8,6 +8,7 @@ import { InputGroup, InputGroupAddon, InputGroupTextarea } from '@/components/ui
 import { useSnackbar } from '@/lib/SnackbarContext';
 import { cn } from '@/lib/utils';
 import { ATTACHMENTS_MAX, attachmentProblem, isPdf, type PickedFile, type UploadedFiles } from './attachments';
+import { PHOTO_ACCEPT } from './cards/photoUpload';
 import { MESSAGE_MAX_LENGTH } from './useChat';
 
 interface ChatComposerProps {
@@ -113,7 +114,7 @@ export function ChatComposer({
         dataComponent={`${dataComponent}Camera`}
         inputDataComponent={`${dataComponent}CameraInput`}
         label="Take a photo"
-        accept="image/jpeg,image/png"
+        accept={PHOTO_ACCEPT}
         capture="environment"
         disabled={locked || full}
         variant={variant}

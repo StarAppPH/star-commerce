@@ -1,0 +1,43 @@
+{
+    "description": "A product on the photo offer card: its uploaded photo, now on it,\nand the prompt better photos would be made from. Each row is answered\non its own (its own formId), once.",
+    "properties": {
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "productId": {
+            "description": "The Products _id",
+            "title": "Productid",
+            "type": "string"
+        },
+        "productName": {
+            "description": "Product name",
+            "title": "Productname",
+            "type": "string"
+        },
+        "photoUrl": {
+            "description": "Its uploaded photo, now on it",
+            "title": "Photourl",
+            "type": "string"
+        },
+        "defaultPrompt": {
+            "description": "The prompt the edit box starts with",
+            "maxLength": 2000,
+            "title": "Defaultprompt",
+            "type": "string"
+        }
+    },
+    "required": [
+        "formId",
+        "productId",
+        "productName",
+        "photoUrl",
+        "defaultPrompt"
+    ],
+    "title": "PhotoOfferRow",
+    "type": "object",
+    "additionalProperties": false
+}

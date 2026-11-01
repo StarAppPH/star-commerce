@@ -42,7 +42,7 @@
             "type": "string"
         },
         "sourcePaths": {
-            "description": "The object paths of the admin's reference photos",
+            "description": "The object paths of the admin's reference photos (an original's: the upload it was copied from, which setUploadedProductPhotos compares to copy an upload once)",
             "items": {
                 "type": "string"
             },
@@ -62,8 +62,21 @@
                 }
             ],
             "default": null,
-            "description": "The admin's notes for this call",
+            "description": "The admin's direction typed in chat for this call, added to its prompt as the special request",
             "title": "Notes"
+        },
+        "productId": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The Products _id it was copied for (an original, setUploadedProductPhotos) or made for (makeProductPhotoChoices); null otherwise, and on a photo saved before photos kept it",
+            "title": "Productid"
         },
         "model": {
             "anyOf": [

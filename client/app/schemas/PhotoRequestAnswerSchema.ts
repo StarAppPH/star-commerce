@@ -31,16 +31,17 @@ export type Imageurls =
   | [string, string, string, string, string, string, string, string, string]
   | [string, string, string, string, string, string, string, string, string, string];
 /**
- * Extra direction
+ * The prompt the photos are made from; null: the default one
  */
-export type Notes = string | null;
+export type Prompt = string | null;
 
 /**
- * A PhotoRequestForm, filled in: the uploaded photos' URLs.
+ * A PhotoRequestForm, filled in: the uploaded photos' URLs and the
+ * prompt (null, or the default unchanged: the default one).
  */
 export interface PhotoRequestAnswer {
   kind: Kind;
   formId: Formid;
   imageUrls: Imageurls;
-  notes?: Notes;
+  prompt?: Prompt;
 }

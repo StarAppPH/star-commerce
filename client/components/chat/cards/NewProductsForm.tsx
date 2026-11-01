@@ -2,6 +2,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import Image from 'next/image';
 import { ImagePlusIcon, PackagePlusIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react';
+import { useObjectUrls } from './useObjectUrls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getDownloadURL, ref } from 'firebase/storage';
@@ -64,11 +65,9 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
   const locked = answered || busy || uploading;
   const ready = rows.length > 0 && rows.every(validRow)
     && rows.every((row) => row.photo?.kind !== 'attached' || row.photo.url !== null);
+  const previews = useObjectUrls();
   const rowsRef = useRef<Row[]>([]);
-
-  // The previews still shown are let go when the form goes.
   useEffect(() => { rowsRef.current = rows; }, [rows]);
-  useEffect(() => () => { rowsRef.current.forEach((row) => { if (row.photo?.kind === 'file') URL.revokeObjectURL(row.photo.preview); }); }, []);
 
   // Each attached photo's download URL; a row whose file is gone (or not
   // the owner's) shows "Add photo" instead.
@@ -100,16 +99,17 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
         return;
       }
     }
+    const preview = file ? previews.create(file) : null;
     setRows((current) => current.map((row) => {
       if (row.key !== key) return row;
-      if (row.photo?.kind === 'file') URL.revokeObjectURL(row.photo.preview);
-      return { ...row, photo: file ? { kind: 'file', file, preview: URL.createObjectURL(file) } : null };
+      if (row.photo?.kind === 'file') previews.release(row.photo.preview);
+      return { ...row, photo: file && preview ? { kind: 'file', file, preview } : null };
     }));
   };
 
   const removeRow = (key: number) => {
     setRows((current) => current.filter((row) => {
-      if (row.key === key && row.photo?.kind === 'file') URL.revokeObjectURL(row.photo.preview);
+      if (row.key === key && row.photo?.kind === 'file') previews.release(row.photo.preview);
       return row.key !== key;
     }));
   };

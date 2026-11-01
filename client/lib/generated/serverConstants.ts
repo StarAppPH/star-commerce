@@ -22,3 +22,13 @@ export const SALES_STATUSES = [
 ] as const;
 
 export const REPORT_RANGE_DAYS_MAX = 366 as const;
+
+export const PHOTOS_PER_CALL = 3 as const;
+
+export const PHOTO_PROMPT_MAX_LENGTH = 2000 as const;
+
+export const PHOTO_NOTES_MAX_LENGTH = 300 as const;
+
+export const PHOTO_REFERENCES_MAX = 10 as const;
+
+export const PHOTO_UPLOAD_MAX_BYTES = 10485760 as const;

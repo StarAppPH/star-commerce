@@ -39,7 +39,7 @@
     "description": "What generateProductPhotos sends: the photos it saved, each with\nthe prompt it was made with.",
     "properties": {
         "photos": {
-            "description": "The photos made, in order: the first in the global prompt, the others in the store's photo style too",
+            "description": "The photos made, all from the one prompt",
             "items": {
                 "$ref": "#/$defs/GeneratedPhotoRow"
             },
@@ -56,7 +56,7 @@
                     "type": "null"
                 }
             ],
-            "description": "Why fewer photos than asked were made (no photo style, a model call failed); null when all were",
+            "description": "Why fewer photos than asked were made; null when all were",
             "title": "Notgenerated"
         }
     },

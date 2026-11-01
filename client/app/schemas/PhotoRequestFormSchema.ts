@@ -13,12 +13,18 @@ export type Kind = "photoRequestForm";
  * Answer it with this id
  */
 export type Formid = string;
+/**
+ * The prompt the edit box starts with
+ */
+export type Defaultprompt = string | null;
 
 /**
- * Asks the admin for photos of one item to turn into product photos.
- * Answered with PhotoRequestAnswer.
+ * Asks the admin for photos of one item to turn into product photos,
+ * and the prompt they are made from (an edit box starting with
+ * defaultPrompt). Answered with PhotoRequestAnswer.
  */
 export interface PhotoRequestForm {
   kind: Kind;
   formId: Formid;
+  defaultPrompt?: Defaultprompt;
 }

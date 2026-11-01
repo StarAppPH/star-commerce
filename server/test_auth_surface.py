@@ -132,9 +132,12 @@ TOOL_PERMISSION_CHECKS = {
     # A product photo: requireOwnerStore, and only a photo and a product of
     # that store.
     'setProductPhoto': 'requireOwnerStore',
-    # A new product's photo choices: requireOwnerStore, a product of that
-    # store, and a photo under the caller's own users/<uid>/ folder.
+    # A product's photo choices: requireOwnerStore, a product of that
+    # store, made from that store's own photo of it.
     'makeProductPhotoChoices': 'requireOwnerStore',
+    # A new product's uploaded photo: requireOwnerStore, products of that
+    # store, and photos under the caller's own users/<uid>/ folder.
+    'setUploadedProductPhotos': 'requireOwnerStore',
     # Products in a group photo: requireOwnerStore, a photo under the
     # caller's own users/<uid>/ folder, cut-outs saved back there.
     'findProductsInPhoto': 'requireOwnerStore',

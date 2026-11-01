@@ -75,7 +75,8 @@ USAGE_COLLECTIONS = [CHAT_USAGE, PHOTO_USAGE, VOICE_USAGE]
 # dropped from the carry-over.
 STORE_KINDS = [(CHAT_USAGE, 'store'), (CHAT_USAGE, 'attachmentsStore'),
                (PHOTO_USAGE, 'photos'), (PHOTO_USAGE, 'productFinds'),
-               (PHOTO_USAGE, 'colorFinds'), (VOICE_USAGE, 'ttsStore')]
+               (PHOTO_USAGE, 'colorFinds'), (PHOTO_USAGE, 'originals'),
+               (VOICE_USAGE, 'ttsStore')]
 # The collections the reset empties for the old store, as storeReset's
 # `deleted` names them.
 DELETED_COLLECTIONS = {'ChatTurns', 'Conversations', 'Products', 'Orders',
@@ -733,7 +734,7 @@ def test_theCarriedKinds_areThePinnedOnes():
     assert set(ChatActions.STORE_USAGE_KINDS[1]) == {'store',
                                                      'attachmentsStore'}
     assert PhotoActions.STORE_USAGE_KINDS == (
-        PHOTO_USAGE, ('photos', 'productFinds', 'colorFinds'))
+        PHOTO_USAGE, ('photos', 'productFinds', 'colorFinds', 'originals'))
     assert VoiceActions.STORE_USAGE_KINDS[0] == VOICE_USAGE
     assert set(VoiceActions.STORE_USAGE_KINDS[1]) == {'ttsStore'}
     assert sorted((collection, kind) for collection, kinds in (

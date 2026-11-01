@@ -230,6 +230,15 @@ class mongoDb():
         # counters, deleted once their day is over).
         self.db['GeneratedPhotos'].create_index([('storeId', 1),
                                                  ('createdAt', -1)])
+        # A product's latest original (PhotoActions._latestOriginal, the
+        # newest _id first on a tie): the photo makeProductPhotoChoices
+        # makes its photos from, and the upload setUploadedProductPhotos
+        # does not copy twice.
+        self.db['GeneratedPhotos'].create_index([('storeId', 1),
+                                                 ('productId', 1),
+                                                 ('source', 1),
+                                                 ('createdAt', -1),
+                                                 ('_id', -1)])
         self.db['PhotoUsage'].create_index('expireAt', expireAfterSeconds=0)
         # The daily voice counters (seconds, characters), deleted once their
         # day is over.

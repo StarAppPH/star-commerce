@@ -1,14 +1,13 @@
 import { getDownloadURL, ref, uploadBytes, type FirebaseStorage } from 'firebase/storage';
+import { PHOTO_UPLOAD_MAX_BYTES } from '@/lib/generated/serverConstants';
+import { fileProblem } from './fileProblem';
 import type { ChatAttachmentRow } from '@/app/schemas/ChatAttachmentRowSchema';
 
 // The files a chat message may carry, as the server checks them
 // (objects/chat.py CHAT_ATTACHMENT_*, storage.rules).
 export const ATTACHMENTS_MAX = 4;
-const ATTACHMENT_BYTES_MAX = 10 * 1024 * 1024;
 const PDF_TYPE = 'application/pdf';
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', PDF_TYPE];
-const HEIC_TYPES = ['image/heic', 'image/heif'];
-const HEIC_EXTENSIONS = ['.heic', '.heif'];
 // The longest file name the server keeps (CHAT_ATTACHMENT_NAME_MAX_LENGTH).
 const NAME_MAX_LENGTH = 120;
 
@@ -40,13 +39,7 @@ export function isAttachmentType(type: string): type is AttachmentType {
 
 // Why `file` can't be attached, or null when it can.
 export function attachmentProblem(file: File): string | null {
-  const name = file.name.toLowerCase();
-  if (HEIC_TYPES.includes(file.type) || HEIC_EXTENSIONS.some((extension) => name.endsWith(extension))) {
-    return `${file.name} is a HEIC photo. Convert it to JPG, PNG or WebP before uploading.`;
-  }
-  if (!isAttachmentType(file.type)) return `${file.name} is not a JPG, PNG, WebP or PDF file.`;
-  if (file.size >= ATTACHMENT_BYTES_MAX) return `${file.name} is over 10 MB.`;
-  return null;
+  return fileProblem(file, ALLOWED_TYPES, PHOTO_UPLOAD_MAX_BYTES, 'a JPG, PNG, WebP or PDF file');
 }
 
 export function isPdf(file: File): boolean {

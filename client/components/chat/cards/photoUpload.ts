@@ -2,24 +2,17 @@
 // never HEIC) and where it goes (their own folder, server photoStorage.py).
 import { getDownloadURL, ref, uploadBytes, type FirebaseStorage } from 'firebase/storage';
 import type { User } from 'firebase/auth';
+import { fileProblem } from '../fileProblem';
+import { PHOTO_UPLOAD_MAX_BYTES } from '@/lib/generated/serverConstants';
 import { storage } from '@/lib/firebase';
 
 // The server's limits (photoStorage.py, storage.rules).
-export const PHOTO_BYTES_MAX = 10 * 1024 * 1024;
 export const PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp';
-const HEIC_TYPES = ['image/heic', 'image/heif'];
-const HEIC_EXTENSIONS = ['.heic', '.heif'];
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 // Why a photo can't be uploaded, or null when it can.
 export function photoProblem(file: File): string | null {
-  const name = file.name.toLowerCase();
-  if (HEIC_TYPES.includes(file.type) || HEIC_EXTENSIONS.some((extension) => name.endsWith(extension))) {
-    return `${file.name} is a HEIC photo. Convert it to JPG, PNG or WebP before uploading.`;
-  }
-  if (!ALLOWED_TYPES.includes(file.type)) return `${file.name} is not a JPG, PNG or WebP photo.`;
-  if (file.size >= PHOTO_BYTES_MAX) return `${file.name} is over 10 MB.`;
-  return null;
+  return fileProblem(file, ALLOWED_TYPES, PHOTO_UPLOAD_MAX_BYTES, 'a JPG, PNG or WebP photo');
 }
 
 // Upload a photo that passed photoProblem to `folder` of the user `uid`'s own

@@ -139,6 +139,8 @@ export function PhotoPrompts({ photos, prompt, dataComponent }: PhotoPromptsProp
     else groups.push({ prompt: photo.prompt, numbers: [index + 1] });
   });
   if (groups.length === 0) return prompt && photos.length > 0 ? <PromptUsed dataComponent={dataComponent} prompt={prompt} /> : null;
+  // One prompt made every generated photo: one fold, no photo numbers.
+  if (groups.length === 1) return <PromptUsed dataComponent={dataComponent} prompt={groups[0].prompt} />;
   return groups.map((group) => (
     <PromptUsed key={group.numbers[0]} dataComponent={dataComponent} prompt={group.prompt} label={`Prompt used for ${photoNumbers(group.numbers)}`} />
   ));

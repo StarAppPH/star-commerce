@@ -1,5 +1,5 @@
 {
-    "description": "A PhotoRequestForm, filled in: the uploaded photos' URLs.",
+    "description": "A PhotoRequestForm, filled in: the uploaded photos' URLs and the\nprompt (null, or the default unchanged: the default one).",
     "properties": {
         "kind": {
             "const": "photoRequest",
@@ -26,10 +26,10 @@
             "title": "Imageurls",
             "type": "array"
         },
-        "notes": {
+        "prompt": {
             "anyOf": [
                 {
-                    "maxLength": 300,
+                    "maxLength": 2000,
                     "type": "string"
                 },
                 {
@@ -37,8 +37,8 @@
                 }
             ],
             "default": null,
-            "description": "Extra direction",
-            "title": "Notes"
+            "description": "The prompt the photos are made from; null: the default one",
+            "title": "Prompt"
         }
     },
     "required": [
