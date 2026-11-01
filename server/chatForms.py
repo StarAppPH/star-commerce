@@ -425,25 +425,42 @@ def setsUpTheStore(toolset: str, name: str, content: str) -> bool:
 MAP_FORM_TOOLS = ('showStoreLocationForm', 'showDeliveryZonesForm',
                   'showDeliveryPinForm')
 _MENTIONS_A_MAP = re.compile(r'\bmaps?\b', re.IGNORECASE)
+# Words that point the user to something shown under the reply. Cards and
+# forms come only from the tools called in the turn, so with none called
+# nothing is shown, however much the model read earlier in the chat.
+_POINTS_TO_A_CARD = re.compile(
+    r'\bhere you go\b|\bhere it is\b|\bhere they are\b|\bbelow\b'
+    r'|\b(?:see|on|in) the card\b', re.IGNORECASE)
 
 
-def unopenedMapNudge(toolset: str, reply: str,
-                     toolNames: list[str]) -> str | None:
-    """The note sending the model back when its `reply` mentions a map but
-    the turn called none of `toolset`'s map forms (`toolNames`, the tools
-    the turn called): the user sees no map. None otherwise. The note lets
-    the model reply again without a map, so a reply that only mentions one
-    costs one more model call, never a map nobody asked for."""
+def nothingShownNudge(toolset: str, reply: str,
+                      toolNames: list[str]) -> tuple[str, str] | None:
+    """(kind, note) sending the model back when its `reply` points the user
+    to something the turn did not show (`toolNames`, the tools the turn
+    called): 'map' when it mentions a map with none of `toolset`'s map forms
+    called, 'card' when it points to a card or form ("here you go",
+    "below") with no tool called at all. None otherwise. The note lets the
+    model reply again in text, so a false alarm costs one more model call,
+    never a card nobody asked for."""
     mapTools = [name for name in MAP_FORM_TOOLS
                 if name in formToolNames(toolset)]
-    if (not mapTools or not _MENTIONS_A_MAP.search(reply)
-            or any(name in toolNames for name in mapTools)):
-        return None
-    return ('Your reply mentions a map, but you opened none this turn, so '
+    if (mapTools and _MENTIONS_A_MAP.search(reply)
+            and not any(name in toolNames for name in mapTools)):
+        return 'map', (
+            'Your reply mentions a map, but you opened none this turn, so '
             'the user sees no map. If they need one now, call '
             f'{" or ".join(mapTools)}; otherwise reply again without '
             'saying a map is shown. Never say a map is shown without '
             'calling its tool.')
+    if not toolNames and _POINTS_TO_A_CARD.search(reply):
+        return 'card', (
+            'Your reply points the user to something shown under it, but '
+            'you called no tool this turn, so nothing is shown: a card '
+            'shows only what a tool returned in this turn. If the user '
+            'wants to see it, call its tool now, even if you read it '
+            'earlier in the chat; otherwise reply again in text without '
+            'pointing to a card.')
+    return None
 
 
 def formToolNames(toolset: str) -> set[str]:

@@ -445,6 +445,48 @@ def test_aFormAnswer_isRefusedBeforeTheModelRuns(wiped, model):
         adminSays(None, cid, good)
 
 
+def test_aCardClaimWithNoToolCalled_isSentBackToCallIt(wiped, model):
+    """The policy read in an earlier turn is in the history, so the model
+    answered "Here you go" without calling getMyStorePolicy: no card. It
+    is told so once, calls the tool, and the card shows."""
+    createTestStore(ADMIN)
+    model(calls(('c1', 'getMyStorePolicy', '{}')), reply('Your policy.'))
+    cid = adminSays('Policy?')['conversationId']
+    fake = model(reply('Here you go'),
+                 calls(('c2', 'getMyStorePolicy', '{}')),
+                 reply('Here is your policy.'))
+
+    res = adminSays('Whats my policies?', cid)
+
+    assert res['reply'] == 'Here is your policy.'
+    assert [c['kind'] for c in res['components']] == ['policy']
+    claim, note = fake.requests[1]['messages'][-2:]
+    assert claim == {'role': 'assistant', 'content': 'Here you go'}
+    assert note['role'] == 'developer'
+    assert 'you called no tool this turn' in note['content']
+    assert chatModel.CARDS_THIS_TURN_RULE in chatModel.CHAT_PROMPTS['admin']
+    assert chatModel.CARDS_THIS_TURN_RULE in chatModel.CHAT_PROMPTS[
+        'customer']
+
+
+@pytest.mark.parametrize('script', [
+    # Plain text that points to nothing.
+    [reply('Your store opens at 9.')],
+    # A tool ran this turn: its card shows.
+    [calls(('c1', 'getMyStorePolicy', '{}')), reply('Here you go.')],
+    # Told once, the model may still answer in text: no second note.
+    [reply('See below.'), reply('Returns are accepted within 7 days.')],
+])
+def test_noCardNote_whenNothingIsClaimedOrATool_ran(wiped, model, script):
+    createTestStore(ADMIN)
+    fake = model(*script)
+
+    res = adminSays('Returns?')
+
+    assert len(fake.requests) == len(script)
+    assert res['reply'] == script[-1].choices[0].message.content
+
+
 def test_aRetiredComponentKind_isLeftOutOfTheTurnsPage(wiped, model):
     """A turn saved with a form since retired (store details, policy,
     return, fulfillment) still loads: the rest of its components show."""

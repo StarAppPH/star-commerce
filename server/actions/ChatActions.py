@@ -809,9 +809,9 @@ def _runModel(toolset: str, userId: str, storeId: str,
     `refusalLevel`. Before each tool runs, one of its thinking texts
     is saved as what the turn `turnKey` is doing (chatThinking.note).
     A setup turn whose createUserStore succeeded goes on with the admin's
-    tools (chatForms.setsUpTheStore). A reply that mentions a map with no
-    map form called is sent back once with a note
-    (chatForms.unopenedMapNudge)."""
+    tools (chatForms.setsUpTheStore). A reply that points to a map or a
+    card the turn did not show is sent back once with a note
+    (chatForms.nothingShownNudge)."""
     from chatTools import TOOLS
     if deadline is None:
         deadline = time.monotonic() + TURN_DEADLINE_SECONDS
@@ -878,15 +878,17 @@ def _runModel(toolset: str, userId: str, storeId: str,
             continue
         reply = ((message.content if message is not None else None)
                  or '').strip()
-        nudge = (chatForms.unopenedMapNudge(toolset, reply, toolNames)
+        nudge = (chatForms.nothingShownNudge(toolset, reply, toolNames)
                  if toolsAllowed and not nudged else None)
         if nudge is not None:
             # Once a turn, and never stored: the turn keeps the reply the
             # model gives after the note.
             nudged = True
-            logging.info({'event': 'chatUnopenedMap', 'toolset': toolset})
+            kind, note = nudge
+            logging.info({'event': 'chatNothingShown', 'kind': kind,
+                          'toolset': toolset})
             messages.append({'role': 'assistant', 'content': reply})
-            messages.append({'role': 'developer', 'content': nudge})
+            messages.append({'role': 'developer', 'content': note})
             continue
         if not reply:
             reply = (TOO_LONG_REPLY if choice is not None

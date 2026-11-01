@@ -134,10 +134,18 @@ SHOW_CARD_RULE = (
     'Set showCard to false when a card would not help: a look-up for '
     'yourself, a short answer, or what a card in this chat already shows; '
     'then give what the user needs in your text. ')
+# Cards come only from the turn's own tool calls (chatCards.build), never
+# from what an earlier turn returned: the model re-calls a tool to show it.
+CARDS_THIS_TURN_RULE = (
+    'A card shows only what a tool returned in this turn: to show something '
+    'again, even what you read earlier in the chat, call its tool again. '
+    'Never say "here you go" or that something is below without calling '
+    'its tool in this turn. ')
 _ADMIN_UI = (
     'The app shows what your tools return as cards under your reply '
     '(products, orders, returns, the policy, photos, the store), so keep '
-    'your text short and never repeat what a card shows. ' + SHOW_CARD_RULE +
+    'your text short and never repeat what a card shows. ' +
+    CARDS_THIS_TURN_RULE + SHOW_CARD_RULE +
     _ADMIN_ASK_RULE +
     'For the policy, call getMyStorePolicy first and say it takes 4 short '
     'sections (say skip to skip any). In each section say what is set, ask '
@@ -164,7 +172,8 @@ _CUSTOMER_UI = (
     'The app shows what your tools return as cards under your reply '
     '(products, the checkout summary, the order to pay, orders, returns, '
     'the policy), so keep '
-    'your text short and never repeat what a card shows. ' + SHOW_CARD_RULE +
+    'your text short and never repeat what a card shows. ' +
+    CARDS_THIS_TURN_RULE + SHOW_CARD_RULE +
     _ASK_RULE +
     'Orders go through the cart: on the product card the customer adds '
     'products to their cart (the app also shows the cart in its header); '
