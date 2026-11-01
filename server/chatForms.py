@@ -99,6 +99,7 @@ ANSWERS_TO = {
     'deliveryZones': 'deliveryZonesForm',
     'productPhoto': 'productPhotoChoice',
     'brandColors': 'photoColors',
+    'placeOrder': 'checkoutSummary',
 }
 
 # How a payment method reads in the user's turn.
@@ -370,9 +371,10 @@ FORM_TOOLS: dict[str, FormTool] = {
     'showPhoneVerification': FormTool(
         ('customer', ),
         'Open phone verification under your reply: the customer gets a code '
-        'by text and enters it there. Use it when checkoutMyCart refuses '
-        'because the phone number is not verified. When it is done, their '
-        'next message says so: then call checkoutMyCart again.',
+        'by text and enters it there. Use it when previewMyCheckout or '
+        'checkoutMyCart refuses because the phone number is not verified. '
+        'When it is done, their next message says so: then call that tool '
+        'again.',
         ShowPhoneVerificationArgs, _phoneVerification),
     'showDeliveryPinForm': FormTool(
         ('customer', ),
@@ -384,8 +386,8 @@ FORM_TOOLS: dict[str, FormTool] = {
         'only inside one. The pin comes as their next message, with its zone '
         "and that zone's fee, delivery days, minimum order and free delivery "
         "total: tell them, then ask in chat for the rest of checkoutMyCart's "
-        '`delivery` and call it with fulfillment delivery and the pin\'s '
-        'latitude and longitude.',
+        '`delivery` and call previewMyCheckout with fulfillment delivery and '
+        'the pin\'s latitude and longitude.',
         ShowDeliveryPinFormArgs, _deliveryPinForm),
     'showDeliveryZonesForm': FormTool(
         ('admin', ),
@@ -636,6 +638,24 @@ def _brandColors(answer, component, userId) -> tuple[str, dict]:
                                        for role, color in picks}})
 
 
+def _placeOrder(answer, component, userId) -> tuple[str, dict]:
+    """The summary's Place order: checkoutMyCart with the fulfillment and
+    delivery the card was priced on (checkoutMyCart prices the cart again,
+    as it is then)."""
+    delivery = None
+    if component['fulfillment'] == 'delivery':
+        delivery = {'address': component['deliveryAddress'],
+                    'latitude': component['deliveryLatitude'],
+                    'longitude': component['deliveryLongitude'],
+                    'notes': component['deliveryNotes']}
+    how = ('pickup' if delivery is None
+           else f'delivery to {component["deliveryAddress"]}')
+    return (f'Place my order: {_itemsText(component["items"])} for '
+            f'{component["total"]:g} {component["currency"]}, {how}',
+            {'kind': 'placeOrder', 'fulfillment': component['fulfillment'],
+             'delivery': delivery})
+
+
 def _zoneRules(zone: dict) -> dict:
     """A zone's delivery policy, without its shape."""
     return {rule: zone.get(rule) for rule in DELIVERY_ZONE_RULES}
@@ -680,6 +700,7 @@ _ANSWER_TURNS = {
     'deliveryZones': _deliveryZones,
     'productPhoto': _productPhoto,
     'brandColors': _brandColors,
+    'placeOrder': _placeOrder,
 }
 assert set(_ANSWER_TURNS) == set(ANSWERS_TO)
 

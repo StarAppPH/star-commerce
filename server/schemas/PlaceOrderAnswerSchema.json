@@ -1,0 +1,25 @@
+{
+    "description": "A CheckoutSummaryCard's Place order: check the cart out as the card\nshowed it.",
+    "properties": {
+        "kind": {
+            "const": "placeOrder",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        }
+    },
+    "required": [
+        "kind",
+        "formId"
+    ],
+    "title": "PlaceOrderAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

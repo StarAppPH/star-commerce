@@ -4,7 +4,7 @@ import type { OrderDeliveryRow } from '@/app/schemas/OrderDeliveryRowSchema';
 import { formatMoney } from './format';
 
 // A pin on OpenStreetMap, the map the forms pin on.
-function mapLink(latitude: number, longitude: number): string {
+export function mapLink(latitude: number, longitude: number): string {
   return `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=18/${latitude}/${longitude}`;
 }
 

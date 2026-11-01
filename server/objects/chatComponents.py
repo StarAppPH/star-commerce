@@ -20,6 +20,7 @@ from typing import Annotated, Literal, Union
 from pydantic import Field
 
 from objects.base import AppModel, ResponseModel
+from objects.cart import CART_ITEMS_MAX, CheckoutLineRow, CheckoutSummary
 from objects.order import (MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
                            ORDER_ITEMS_MAX, CancelReason, NewOrderItem,
                            OrderDeliveryRow, OrderItemRow, OrderStatus)
@@ -192,6 +193,17 @@ class CheckoutCard(ResponseModel):
     paymentMethods: list[OrderPaymentMethod] | None = Field(
         None, description='The ways the shopper could pay it, on a card '
         'saved before payment options')
+
+
+class CheckoutSummaryCard(CheckoutSummary):
+    """What checking out the shopper's cart would place, priced, before
+    anything is placed (previewMyCheckout). Answered with PlaceOrderAnswer:
+    the shopper places it."""
+    kind: Literal['checkoutSummary'] = Field(..., description='The card')
+    formId: FormId
+    items: list[CheckoutLineRow] = Field(
+        ..., min_length=1, max_length=CART_ITEMS_MAX,
+        description='What the order would hold')
 
 
 class ChatStoreReturnRow(ResponseModel):
@@ -430,7 +442,7 @@ class DeliveryZonesForm(ResponseModel):
 
 ChatComponent = Annotated[Union[
     ShopProductsCard, StoreProductsCard, StoreOrdersCard, MyOrdersCard,
-    CheckoutCard, StoreReturnsCard, MyReturnsCard, PolicyCard, PhotosCard,
+    CheckoutCard, CheckoutSummaryCard, StoreReturnsCard, MyReturnsCard, PolicyCard, PhotosCard,
     ProductPhotoChoiceCard, PhotoColorsCard, StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
     PhotoRequestForm, DeliveryPinForm, DeliveryZonesForm,
 ], Field(discriminator='kind')]
@@ -562,11 +574,18 @@ class BrandColorsAnswer(AppModel):
                                        description='The secondary color')
 
 
+class PlaceOrderAnswer(AppModel):
+    """A CheckoutSummaryCard's Place order: check the cart out as the card
+    showed it."""
+    kind: Literal['placeOrder'] = Field(..., description='The answer')
+    formId: FormId
+
+
 # The chat route's `form` param (a plain union: a route param cannot be
 # Annotated); ChatFormAnswerTagged reads it by its kind.
 ChatFormAnswer = (LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer
                   | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer
                   | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer
                   | DeliveryZonesAnswer | ProductPhotoAnswer
-                  | BrandColorsAnswer)
+                  | BrandColorsAnswer | PlaceOrderAnswer)
 ChatFormAnswerTagged = Annotated[ChatFormAnswer, Field(discriminator='kind')]

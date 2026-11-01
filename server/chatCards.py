@@ -14,7 +14,7 @@ turn's tools have run (build), in the order the tools ran:
 - a form a form tool opened (chatForms.py) takes its place among them.
 
 A card that takes a choice gets a formId (chatForms.ANSWERS_TO): products to
-order, an order to pay, paid orders to hand over, requested returns to
+order, a checkout summary to place, an order to pay, paid orders to hand over, requested returns to
 decide, colors to pick the brand colors from. A tool that refused (an {"error": ...} result) shows nothing, and so
 does a result that does not fit its card: it is logged, and the turn goes on.
 At most CHAT_COMPONENTS_PER_TURN_MAX components are kept, the latest.
@@ -26,7 +26,8 @@ ignores it, so the tool never sees it). `showCard: false` drops the card the
 call would add, yet a row it changed still updates the turn's card that
 lists it, so a card on screen never shows a row as it was. Left out, the
 card shows. A card that is the only way to finish an action (the order to
-pay, a new product's photo choices, the brand colors to pick) always shows:
+place or pay, a new product's photo choices, the brand colors to pick)
+always shows:
 its tools take no `showCard` (ALWAYS_SHOWN).
 """
 
@@ -157,6 +158,21 @@ def _checkout(result: dict, context: CardContext) -> dict:
             'paymentOptions': result['paymentOptions']}
 
 
+_CHECKOUT_LINE = ('name', 'price', 'quantity', 'lineTotal')
+_CHECKOUT_SUMMARY = ('currency', 'subtotal', 'fulfillment', 'deliveryZone',
+                     'deliveryFee', 'total', 'readyInDays', 'deliveryAddress',
+                     'deliveryLatitude', 'deliveryLongitude', 'deliveryNotes')
+
+
+def _checkoutSummary(result: dict, context: CardContext) -> dict:
+    """What checking out the cart would place, before it is placed
+    (answered with PlaceOrderAnswer)."""
+    return {'kind': 'checkoutSummary', 'formId': newFormId(),
+            **_pick(result, _CHECKOUT_SUMMARY),
+            'items': [_pick(item, _CHECKOUT_LINE)
+                      for item in result['items']]}
+
+
 def _storeReturns(result: dict, context: CardContext) -> dict:
     return _withFormIf({'kind': 'storeReturns', 'returns': [
         _withItems(r, _STORE_RETURN) for r in result['returns']]},
@@ -243,6 +259,7 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'cancelMyOrder': _myOrder,
     'createOrder': _checkout,
     'checkoutMyCart': _checkout,
+    'previewMyCheckout': _checkoutSummary,
     'getStoreReturns': _storeReturns,
     'approveReturn': _storeReturn,
     'rejectReturn': _storeReturn,
@@ -264,7 +281,7 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
 
 # The cards that are the only way to finish an action: shown whatever the
 # model says, so their tools take no showCard.
-ALWAYS_SHOWN = (_checkout, _photoChoice, _photoColors)
+ALWAYS_SHOWN = (_checkout, _checkoutSummary, _photoChoice, _photoColors)
 SHOW_CARD = 'showCard'
 # The tools whose card the model may leave out.
 SHOW_CARD_TOOLS = frozenset(name for name, makeCard in CARDS.items()

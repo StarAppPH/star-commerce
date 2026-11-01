@@ -1,5 +1,6 @@
 'use client';
 import { CheckoutCard } from './CheckoutCard';
+import { CheckoutSummaryCard } from './CheckoutSummaryCard';
 import { MyOrdersCard, StoreOrdersCard } from './OrderCards';
 import { MyReturnsCard, StoreReturnsCard } from './ReturnCards';
 import { PhotosCard, PolicyCard, StoreCard, StoreProductsCard } from './InfoCards';
@@ -54,6 +55,7 @@ export function ChatComponents({ components, place, answeredFormIds, busy, onAns
           case 'storeOrders': return <StoreOrdersCard key={key} component={component} {...shared} />;
           case 'myOrders': return <MyOrdersCard key={key} component={component} {...shared} />;
           case 'checkout': return <CheckoutCard key={key} component={component} {...shared} />;
+          case 'checkoutSummary': return <CheckoutSummaryCard key={key} component={component} {...shared} />;
           case 'storeReturns': return <StoreReturnsCard key={key} component={component} {...shared} />;
           case 'myReturns': return <MyReturnsCard key={key} component={component} {...shared} />;
           case 'policy': return <PolicyCard key={key} component={component} {...shared} />;

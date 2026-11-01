@@ -1268,6 +1268,230 @@
             "type": "object",
             "additionalProperties": false
         },
+        "CheckoutLineRow": {
+            "description": "One line of a checkout summary: a product of the cart at its price\nnow (the chat's summary card shows these).",
+            "properties": {
+                "name": {
+                    "description": "Product name",
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "price": {
+                    "description": "Unit price now, in the store's currency",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Price",
+                    "type": "number"
+                },
+                "quantity": {
+                    "description": "Units ordered",
+                    "maximum": 1000000,
+                    "minimum": 1,
+                    "title": "Quantity",
+                    "type": "integer"
+                },
+                "lineTotal": {
+                    "description": "The price times the quantity",
+                    "minimum": 0,
+                    "title": "Linetotal",
+                    "type": "number"
+                }
+            },
+            "required": [
+                "name",
+                "price",
+                "quantity",
+                "lineTotal"
+            ],
+            "title": "CheckoutLineRow",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "CheckoutSummaryCard": {
+            "description": "What checking out the shopper's cart would place, priced, before\nanything is placed (previewMyCheckout). Answered with PlaceOrderAnswer:\nthe shopper places it.",
+            "properties": {
+                "currency": {
+                    "description": "ISO 4217 code of every amount",
+                    "enum": [
+                        "PHP",
+                        "USD",
+                        "EUR",
+                        "GBP",
+                        "JPY",
+                        "SGD",
+                        "AUD",
+                        "CAD",
+                        "HKD",
+                        "CNY",
+                        "KRW",
+                        "MYR",
+                        "THB",
+                        "IDR",
+                        "VND",
+                        "INR",
+                        "AED"
+                    ],
+                    "title": "Currency",
+                    "type": "string"
+                },
+                "subtotal": {
+                    "description": "The items, before delivery",
+                    "minimum": 0,
+                    "title": "Subtotal",
+                    "type": "number"
+                },
+                "fulfillment": {
+                    "description": "How the customer gets it: pickup or delivery",
+                    "enum": [
+                        "pickup",
+                        "delivery"
+                    ],
+                    "title": "Fulfillment",
+                    "type": "string"
+                },
+                "deliveryZone": {
+                    "anyOf": [
+                        {
+                            "maxLength": 40,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery zone whose policy prices it; null for a pickup",
+                    "title": "Deliveryzone"
+                },
+                "deliveryFee": {
+                    "description": "What delivery adds to the total (0: free, or a pickup)",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Deliveryfee",
+                    "type": "number"
+                },
+                "total": {
+                    "description": "The subtotal plus the delivery fee",
+                    "minimum": 0,
+                    "title": "Total",
+                    "type": "number"
+                },
+                "readyInDays": {
+                    "anyOf": [
+                        {
+                            "maximum": 365,
+                            "minimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Days from payment until it arrives (the zone's deliveryDays) or is ready for pickup (the store's handoverDays); null: the store hasn't said",
+                    "title": "Readyindays"
+                },
+                "deliveryAddress": {
+                    "anyOf": [
+                        {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Where it is delivered, as the customer gave it; null for a pickup",
+                    "title": "Deliveryaddress"
+                },
+                "deliveryLatitude": {
+                    "anyOf": [
+                        {
+                            "maximum": 90,
+                            "minimum": -90,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery pin's degrees north",
+                    "title": "Deliverylatitude"
+                },
+                "deliveryLongitude": {
+                    "anyOf": [
+                        {
+                            "maximum": 180,
+                            "minimum": -180,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery pin's degrees east",
+                    "title": "Deliverylongitude"
+                },
+                "deliveryNotes": {
+                    "anyOf": [
+                        {
+                            "maxLength": 300,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The customer's notes for the rider",
+                    "title": "Deliverynotes"
+                },
+                "kind": {
+                    "const": "checkoutSummary",
+                    "description": "The card",
+                    "title": "Kind",
+                    "type": "string"
+                },
+                "formId": {
+                    "description": "Answer it with this id",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "title": "Formid",
+                    "type": "string"
+                },
+                "items": {
+                    "description": "What the order would hold",
+                    "items": {
+                        "$ref": "#/$defs/CheckoutLineRow"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "title": "Items",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "currency",
+                "subtotal",
+                "fulfillment",
+                "deliveryZone",
+                "deliveryFee",
+                "total",
+                "readyInDays",
+                "deliveryAddress",
+                "deliveryLatitude",
+                "deliveryLongitude",
+                "deliveryNotes",
+                "kind",
+                "formId",
+                "items"
+            ],
+            "title": "CheckoutSummaryCard",
+            "type": "object",
+            "additionalProperties": false
+        },
         "DeliveryPinForm": {
             "description": "Asks the shopper to pin where their delivery goes: a map and \"use\nwhere I am\", nothing typed (the model asks for the address in chat).\nAnswered with DeliveryPinAnswer.",
             "properties": {
@@ -2965,6 +3189,7 @@
                 "discriminator": {
                     "mapping": {
                         "checkout": "#/$defs/CheckoutCard",
+                        "checkoutSummary": "#/$defs/CheckoutSummaryCard",
                         "deliveryPinForm": "#/$defs/DeliveryPinForm",
                         "deliveryZonesForm": "#/$defs/DeliveryZonesForm",
                         "locationForm": "#/$defs/LocationForm",
@@ -3000,6 +3225,9 @@
                     },
                     {
                         "$ref": "#/$defs/CheckoutCard"
+                    },
+                    {
+                        "$ref": "#/$defs/CheckoutSummaryCard"
                     },
                     {
                         "$ref": "#/$defs/StoreReturnsCard"

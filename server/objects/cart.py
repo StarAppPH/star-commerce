@@ -9,10 +9,15 @@ from pydantic import Field
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
                           ResponseModel)
-from objects.order import ORDER_ITEMS_MAX
+from objects.order import (DELIVERY_ADDRESS_MAX_LENGTH,
+                           DELIVERY_NOTES_MAX_LENGTH, ORDER_ITEMS_MAX,
+                           Fulfillment)
+from objects.policy import POLICY_DAYS_MAX
 from objects.product import (PRODUCT_INVENTORY_MAX, PRODUCT_NAME_MAX_LENGTH,
                              PRODUCT_PRICE_MAX)
-from objects.store import StoreCurrency
+from objects.store import (DELIVERY_ZONE_DAYS_MAX,
+                           DELIVERY_ZONE_NAME_MAX_LENGTH, LATITUDE_LIMIT,
+                           LONGITUDE_LIMIT, StoreCurrency)
 
 
 # ──────────────────────────────────────────────
@@ -107,3 +112,95 @@ class CartScreenResponse(CartResponse):
     items: list[CartScreenItemRow] = Field(
         ..., max_length=CART_ITEMS_MAX,
         description='The products still sold, in the order they were added')
+
+
+# ──────────────────────────────────────────────
+# Checkout summary (previewMyCheckout, before the order is placed)
+# ──────────────────────────────────────────────
+
+class CheckoutLineRow(ResponseModel):
+    """One line of a checkout summary: a product of the cart at its price
+    now (the chat's summary card shows these)."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'name': 'the customer names what they are ordering',
+        'price': 'the unit price the customer asks about',
+        'quantity': 'how many of it the order takes',
+        'lineTotal': 'what the line costs, when the customer asks',
+    }
+    name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
+                      description='Product name')
+    price: float = Field(..., ge=0, le=PRODUCT_PRICE_MAX,
+                         description="Unit price now, in the store's "
+                         'currency')
+    quantity: int = Field(..., ge=1, le=PRODUCT_INVENTORY_MAX,
+                          description='Units ordered')
+    lineTotal: float = Field(..., ge=0,
+                             description='The price times the quantity')
+
+
+class CheckoutPreviewItemRow(CheckoutLineRow):
+    """One line of the summary as the AI reads it."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'productId': 'the productId setCartItemQuantity and removeFromCart '
+                     'take when the customer changes a line',
+    }
+    productId: str = Field(..., min_length=1, description='The Products _id')
+
+
+class CheckoutSummary(ResponseModel):
+    """What checking out the cart would place, priced as the order would be
+    (OrderActions.orderPricing): the AI's previewMyCheckout answer and the
+    chat's summary card share these fields."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'currency': 'the amounts are in it',
+        'subtotal': 'what the items cost, before delivery',
+        'fulfillment': 'pickup or delivery, as checkoutMyCart then takes it',
+        'deliveryZone': 'the zone whose policy prices the delivery',
+        'deliveryFee': 'what delivery adds to the total; 0 is free',
+        'total': 'what the customer would pay; said when they only hear you',
+        'readyInDays': 'when the customer asks how soon it comes',
+    }
+    currency: StoreCurrency = Field(
+        ..., description='ISO 4217 code of every amount')
+    subtotal: float = Field(..., ge=0, description='The items, before '
+                            'delivery')
+    fulfillment: Fulfillment = Field(
+        ..., description='How the customer gets it: pickup or delivery')
+    deliveryZone: str | None = Field(
+        ..., min_length=1, max_length=DELIVERY_ZONE_NAME_MAX_LENGTH,
+        description='The delivery zone whose policy prices it; null for a '
+        'pickup')
+    deliveryFee: float = Field(..., ge=0, le=PRODUCT_PRICE_MAX,
+                               description='What delivery adds to the total '
+                               '(0: free, or a pickup)')
+    total: float = Field(..., ge=0, description='The subtotal plus the '
+                         'delivery fee')
+    readyInDays: int | None = Field(
+        ..., ge=0, le=max(DELIVERY_ZONE_DAYS_MAX, POLICY_DAYS_MAX),
+        description="Days from payment until it arrives (the zone's "
+        "deliveryDays) or is ready for pickup (the store's handoverDays); "
+        "null: the store hasn't said")
+    deliveryAddress: str | None = Field(
+        ..., min_length=1, max_length=DELIVERY_ADDRESS_MAX_LENGTH,
+        description='Where it is delivered, as the customer gave it; null '
+        'for a pickup')
+    deliveryLatitude: float | None = Field(
+        ..., ge=-LATITUDE_LIMIT, le=LATITUDE_LIMIT,
+        description="The delivery pin's degrees north")
+    deliveryLongitude: float | None = Field(
+        ..., ge=-LONGITUDE_LIMIT, le=LONGITUDE_LIMIT,
+        description="The delivery pin's degrees east")
+    deliveryNotes: str | None = Field(
+        ..., min_length=1, max_length=DELIVERY_NOTES_MAX_LENGTH,
+        description="The customer's notes for the rider")
+
+
+class CheckoutPreviewResponse(CheckoutSummary):
+    """previewMyCheckout's answer: the order checkoutMyCart would place now,
+    nothing placed or held."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'items': 'what the order would hold',
+    }
+    items: list[CheckoutPreviewItemRow] = Field(
+        ..., min_length=1, max_length=CART_ITEMS_MAX,
+        description="The cart's products still sold, in the cart's order")

@@ -1,0 +1,48 @@
+{
+    "description": "One line of the summary as the AI reads it.",
+    "properties": {
+        "name": {
+            "description": "Product name",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "price": {
+            "description": "Unit price now, in the store's currency",
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        },
+        "quantity": {
+            "description": "Units ordered",
+            "maximum": 1000000,
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+        },
+        "lineTotal": {
+            "description": "The price times the quantity",
+            "minimum": 0,
+            "title": "Linetotal",
+            "type": "number"
+        },
+        "productId": {
+            "description": "The Products _id",
+            "minLength": 1,
+            "title": "Productid",
+            "type": "string"
+        }
+    },
+    "required": [
+        "name",
+        "price",
+        "quantity",
+        "lineTotal",
+        "productId"
+    ],
+    "title": "CheckoutPreviewItemRow",
+    "type": "object",
+    "additionalProperties": false
+}

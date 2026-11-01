@@ -13,7 +13,7 @@ export function formatMoney(amount: number, currency: string): string {
   return format.format(amount);
 }
 
-function daysText(days: number): string {
+export function daysText(days: number): string {
   if (days === 0) return 'same day';
   return days === 1 ? '1 day' : `${days} days`;
 }

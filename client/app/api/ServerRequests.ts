@@ -23,6 +23,7 @@ import type { PaymentAnswer } from '../schemas/PaymentAnswerSchema';
 import type { PaymentReceiptResponse } from '../schemas/PaymentReceiptResponseSchema';
 import type { PhoneVerifiedAnswer } from '../schemas/PhoneVerifiedAnswerSchema';
 import type { PhotoRequestAnswer } from '../schemas/PhotoRequestAnswerSchema';
+import type { PlaceOrderAnswer } from '../schemas/PlaceOrderAnswerSchema';
 import type { ProductPhotoAnswer } from '../schemas/ProductPhotoAnswerSchema';
 import type { ReturnDecisionAnswer } from '../schemas/ReturnDecisionAnswerSchema';
 import type { RoleListResponse } from '../schemas/RoleListResponseSchema';
@@ -451,7 +452,7 @@ import type { WaitingOnYouResponse } from '../schemas/WaitingOnYouResponseSchema
         }
     }
 
-    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendAdminChatMessage(userId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | PlaceOrderAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendAdminChatMessage`, {
             method: 'POST',
@@ -474,7 +475,7 @@ import type { WaitingOnYouResponse } from '../schemas/WaitingOnYouResponseSchema
         }
     }
 
-    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
+    async sendStoreChatMessage(userId: string, storeId: string, message: string | null, conversationId: string | null, form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | PlaceOrderAnswer | null, attachments: string[] | null, turnKey: string | null, speak: boolean | null): Promise<ApiResponse<ChatReplyResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/sendStoreChatMessage`, {
             method: 'POST',
@@ -636,8 +637,8 @@ export interface RouteRequestBodies {
     addPaymentReceipt: { userId: string; storeId: string; orderId: string; receiptUrl: string };
     getPaymentReceipt: { userId: string; orderId: string };
     getMyStorePolicy: { userId: string };
-    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
-    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
+    sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | PlaceOrderAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
+    sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | BrandColorsAnswer | PlaceOrderAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
     getChatThinking: { userId: string; turnKey: string };
     listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
     getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };
