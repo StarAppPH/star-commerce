@@ -24,7 +24,7 @@ from actions.StoreActions import (DELIVERY_ZONES_NOT_A_LIST,
                                   TOO_MANY_DELIVERY_ZONES, ZONES_OVERLAP)
 from ApiRequests import ApiRequests
 from ToolRequests import ToolRequests
-from conftest import addProduct, assertExactShape
+from conftest import TEST_GEOCODED_ADDRESS, addProduct, assertExactShape
 from mongoDb import db
 from objects import (DELIVERY_ZONES_MAX, ChatReplyResponse,
                      DeliveryZonesResponse, NewDeliveryPoint,
@@ -481,7 +481,7 @@ def test_aPinOutsideTheZones_isRefused_andOneInside_namesItsZone(
                                   '(Taguig)')
     assert formAnswerDetails(fake.requests[0]['messages'][-1]['content']) == {
         'kind': 'deliveryPin', 'latitude': 14.555, 'longitude': 121.05,
-        'zone': rules(TAGUIG)}
+        'zone': rules(TAGUIG), 'suggestedAddress': TEST_GEOCODED_ADDRESS}
 
 
 # --------------------------- E. the admin's map --------------------------- #

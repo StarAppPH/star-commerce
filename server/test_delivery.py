@@ -15,6 +15,7 @@ import json
 import re
 
 import pytest
+import requests
 
 import chatForms
 from actions.OrderActions import (CHOOSE_FULFILLMENT, DELIVERY_FOR_PICKUP,
@@ -23,7 +24,8 @@ from actions.OrderActions import (CHOOSE_FULFILLMENT, DELIVERY_FOR_PICKUP,
                                   NOT_OFFERED)
 from ApiRequests import ApiRequests
 from ToolRequests import ToolRequests
-from conftest import (addOrder, addProduct, assertExactShape,
+from conftest import (TEST_GEOCODED_ADDRESS, FakeGeocodingSession,
+                      addOrder, addProduct, assertExactShape,
                       storeWithProducts, verifiedGuestAt, wipeCollections)
 from mongoDb import db
 from objects import (DELIVERY_ADDRESS_MAX_LENGTH, DELIVERY_NOTES_MAX_LENGTH,
@@ -411,7 +413,8 @@ def test_aPin_thenTheAddressInChat_placesTheDelivery(clean, firebase, model):
         'kind': 'deliveryPin', 'latitude': HOME['latitude'],
         'longitude': HOME['longitude'],
         'zone': {key: value for key, value in HOME_ZONE.items()
-                 if key != 'points'}}
+                 if key != 'points'},
+        'suggestedAddress': TEST_GEOCODED_ADDRESS}
     assert second['components'] == []
     picked = items(products['Pandesal'], 2)
     model(calls(('c2', 'createOrder', json.dumps({
@@ -432,6 +435,70 @@ def test_aPin_thenTheAddressInChat_placesTheDelivery(clean, firebase, model):
     assert order['deliveryNotes'] == HOME['notes']
     assert (order['deliveryLatitude'], order['deliveryLongitude']) == (
         HOME['latitude'], HOME['longitude'])
+
+
+def test_aPin_asksGoogleForItsAddress_once(clean, firebase, model,
+                                          _fakeGeocoding):
+    store, customerId, _ = shop(firebase, **DELIVERS)
+    first = openPin(model, customerId, store)
+    [form] = first['components']
+    model(reply('Is it 123 Test Street? And a landmark?'))
+
+    customerSays(customerId, store['_id'], None, first['conversationId'],
+                 pinOf(form))
+
+    [call] = _fakeGeocoding.calls
+    assert call['params']['latlng'] == (f"{HOME['latitude']:.7f},"
+                                        f"{HOME['longitude']:.7f}")
+
+
+@pytest.mark.parametrize('session', [
+    FakeGeocodingSession(status=500),
+    FakeGeocodingSession(error=requests.ConnectionError('down')),
+    FakeGeocodingSession(body=json.dumps(
+        {'status': 'ZERO_RESULTS', 'results': []}).encode()),
+], ids=['refused', 'unreachable', 'noAddress'])
+def test_aPinWithNoAddressFromGoogle_stillGoesThrough(
+        clean, firebase, model, monkeypatch, session):
+    """The address is only a suggestion: without one the pin is taken and
+    the model asks for the address."""
+    import geocoding
+    monkeypatch.setattr(geocoding, 'httpSession', lambda: session)
+    store, customerId, _ = shop(firebase, **DELIVERS)
+    first = openPin(model, customerId, store)
+    [form] = first['components']
+    fake = model(reply('Your address and a landmark?'))
+
+    second = customerSays(customerId, store['_id'], None,
+                          first['conversationId'], pinOf(form))
+
+    assert second['userText'] == ('Deliver to my pin at 14.55470, 121.02440 '
+                                  '(Makati)')
+    details = formAnswerDetails(fake.requests[0]['messages'][-1]['content'])
+    assert details['suggestedAddress'] is None
+
+
+def test_aPinWithNoMapsKey_skipsTheLookup(clean, firebase, model,
+                                         monkeypatch, _fakeGeocoding):
+    import geocoding
+    monkeypatch.delenv(geocoding.KEY_VARIABLE)
+    store, customerId, _ = shop(firebase, **DELIVERS)
+    first = openPin(model, customerId, store)
+    [form] = first['components']
+    fake = model(reply('Your address and a landmark?'))
+
+    customerSays(customerId, store['_id'], None, first['conversationId'],
+                 pinOf(form))
+
+    assert _fakeGeocoding.calls == []
+    details = formAnswerDetails(fake.requests[0]['messages'][-1]['content'])
+    assert details['suggestedAddress'] is None
+
+
+def test_theCustomerPrompt_saysTheSuggestedAddressNeedsAYes():
+    import chatModel
+    assert 'suggestedAddress' in chatModel.PIN_IS_NOT_CONFIRMATION
+    assert 'only once they said yes' in chatModel.CHAT_PROMPTS['customer']
 
 
 def test_aPickupChosenInChat_isPlacedWithoutAnAddress(clean, firebase,

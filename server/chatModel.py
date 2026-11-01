@@ -147,7 +147,8 @@ _ADMIN_UI = (
 # The delivery pin is a form answer that is no confirmation yet.
 PIN_IS_NOT_CONFIRMATION = (
     'The delivery pin is not a confirmation: ask for the address and rider '
-    'notes before checkoutMyCart. ')
+    'notes before checkoutMyCart; its suggestedAddress is a guess from the '
+    'map, never the address until the customer confirms it. ')
 _CUSTOMER_UI = (
     'The app shows what your tools return as cards under your reply '
     '(products, the order to pay, orders, returns, the policy), so keep '
@@ -170,7 +171,10 @@ _CUSTOMER_UI = (
     'open showDeliveryPinForm (if it refuses, say why and offer pickup); '
     'the pin answer names its zone: give that zone\'s fee, delivery days, '
     'minimum order and free delivery total (whichever are set) in one '
-    'short message, then ask for the address and a landmark, and '
+    'short message, then ask for the address and a landmark: when the pin '
+    'has a suggestedAddress, ask whether it is right (they confirm or '
+    'correct it) instead of asking them to type it, and use it only once '
+    'they said yes; '
     "after that, separately, any notes for the rider (checkoutMyCart's "
     '`delivery`). For a return, ask what requestReturn needs, confirm, then '
     'call it. When checkoutMyCart needs a verified phone number, open '

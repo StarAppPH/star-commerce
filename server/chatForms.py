@@ -32,6 +32,7 @@ from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
                                   bookableFulfillments, offeredFulfillments,
                                   storeDelivery)
 from actions.StoreActions import STORES, ownerQuery
+import geocoding
 import photoStorage
 from mongoDb import db
 from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_MESSAGE_MAX_LENGTH,
@@ -383,7 +384,8 @@ FORM_TOOLS: dict[str, FormTool] = {
         'deliver. The map shows the store\'s delivery zones and takes a pin '
         'only inside one. The pin comes as their next message, with its zone '
         "and that zone's fee, delivery days, minimum order and free delivery "
-        "total: tell them, then ask in chat for the rest of checkoutMyCart's "
+        'total, and a suggestedAddress from the map (null when there is '
+        "none): tell them, then ask in chat for the rest of checkoutMyCart's "
         '`delivery` and call it with fulfillment delivery and the pin\'s '
         'latitude and longitude.',
         ShowDeliveryPinFormArgs, _deliveryPinForm),
@@ -647,10 +649,14 @@ def _deliveryPin(answer, component, userId) -> tuple[str, dict]:
                           component.get('deliveryZones'))
     if zone is None:
         raise ValueError(OUTSIDE_DELIVERY_ZONES)
+    # Google's street address for the pin, only a suggestion the customer
+    # confirms or corrects (None when there is none: ask for it).
     return (f'Deliver to my pin at {answer.latitude:.5f}, '
             f'{answer.longitude:.5f} ({zone["name"]})',
             {**answer.model_dump(exclude={'formId'}),
-             'zone': _zoneRules(zone)})
+             'zone': _zoneRules(zone),
+             'suggestedAddress': geocoding.reverseGeocode(
+                 answer.latitude, answer.longitude)})
 
 
 def _deliveryZones(answer, component, userId) -> tuple[str, dict]:
