@@ -157,11 +157,15 @@ _CUSTOMER_UI = (
     'open showDeliveryPinForm (if it refuses, say why and offer pickup); '
     'the pin answer names its zone: give that zone\'s fee, delivery days, '
     'minimum order and free delivery total (whichever are set) in one '
-    'short message, then ask for the address and a landmark, and '
-    "after that, separately, any notes for the rider (createOrder's "
-    '`delivery`). For a return, ask what requestReturn needs, confirm, then '
-    'call it. When createOrder needs a verified phone number, open '
-    'showPhoneVerification. ' + _FORM_ANSWER_RULE + PIN_IS_NOT_CONFIRMATION)
+    'short message, then ask for the address: when the pin\'s turn gives '
+    "Google Maps' street address, ask whether it is right and for a house "
+    'number, unit or landmark to add; otherwise ask for the address and a '
+    'landmark. The pin is where the rider goes, so whatever they give (a '
+    'landmark alone is enough) is the address: ask for it once, never '
+    'again. After that, separately, ask any notes for the rider '
+    "(createOrder's `delivery`). For a return, ask what requestReturn "
+    'needs, confirm, then call it. When createOrder needs a verified '
+    'phone number, open showPhoneVerification. ' + _FORM_ANSWER_RULE + PIN_IS_NOT_CONFIRMATION)
 
 CHAT_PROMPTS = {
     'admin': (

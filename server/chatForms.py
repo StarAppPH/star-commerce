@@ -32,10 +32,12 @@ from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
                                   bookableFulfillments, offeredFulfillments,
                                   storeDelivery)
 from actions.StoreActions import STORES, ownerQuery
+import geocoding
 import photoStorage
 from mongoDb import db
 from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_MESSAGE_MAX_LENGTH,
-                     PHOTOS_PER_CALL, PRODUCT_BATCH_MAX,
+                     DELIVERY_ADDRESS_MAX_LENGTH, PHOTOS_PER_CALL,
+                     PRODUCT_BATCH_MAX,
                      PRODUCT_DESCRIPTION_MAX_LENGTH, PRODUCT_INVENTORY_MAX,
                      PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
                      ChatComponent, ChatFormAnswerTagged,
@@ -71,6 +73,10 @@ PICKED_TWICE = 'Each one once'
 REJECT_NEEDS_REASON = 'Say why you reject it'
 PHONE_NOT_VERIFIED = 'Verify your phone number first'
 FORM_ANSWER_PREFIX = 'Form answer: '
+# What the model reads, before a delivery pin's details, when Google Maps
+# gives the pin a street address: a suggestion, never the customer's answer.
+PIN_ADDRESS_NOTE = ('Google Maps gives this street address for the pin, a '
+                    'suggestion and not their answer: {address}')
 # The attachments a new products row may take as its photo.
 PHOTO_EXTENSIONS = tuple(extension for extension, contentType
                          in CHAT_ATTACHMENT_EXTENSIONS.items()
@@ -382,7 +388,8 @@ FORM_TOOLS: dict[str, FormTool] = {
         'deliver. The map shows the store\'s delivery zones and takes a pin '
         'only inside one. The pin comes as their next message, with its zone '
         "and that zone's fee, delivery days, minimum order and free delivery "
-        "total: tell them, then ask in chat for the rest of createOrder's "
+        "total, and Google Maps' street address for it when there is one: "
+        "tell them, then ask in chat for the rest of createOrder's "
         '`delivery` and call it with fulfillment delivery and the pin\'s '
         'latitude and longitude.',
         ShowDeliveryPinFormArgs, _deliveryPinForm),
@@ -652,6 +659,18 @@ def _deliveryPin(answer, component, userId) -> tuple[str, dict]:
              'zone': _zoneRules(zone)})
 
 
+def _pinAddressNote(answer) -> str | None:
+    """The street address Google gives for a delivery pin, for the model
+    to offer the customer (geocoding.reverseGeocode: None, so no note, on a
+    missing key, a failure or no street-level result). It is data from
+    Google, so it goes as a JSON string."""
+    address = geocoding.reverseGeocode(answer.latitude, answer.longitude)
+    if address is None or len(address) > DELIVERY_ADDRESS_MAX_LENGTH:
+        return None
+    return PIN_ADDRESS_NOTE.format(
+        address=json.dumps(address, ensure_ascii=False))
+
+
 def _deliveryZones(answer, component, userId) -> tuple[str, dict]:
     # The map saved them (setMyDeliveryZones): what the store has now.
     store = _ownStore(userId, {'deliveryZones': 1})
@@ -681,16 +700,25 @@ _ANSWER_TURNS = {
     'brandColors': _brandColors,
 }
 assert set(_ANSWER_TURNS) == set(ANSWERS_TO)
+# What the model also reads for some answers, between the summary and the
+# details: never part of what the user sent.
+_ANSWER_NOTES = {
+    'deliveryPin': _pinAddressNote,
+}
 
 
 def answerTurn(conversationId: str, userId: str,
                answer: BaseModel) -> tuple[str, str]:
     """The user's turn for a form answer: (userText, userContent). userText
     is the summary the user sees; userContent is what the model reads, the
-    summary and the details it acts on."""
+    summary, a note for some answers (_ANSWER_NOTES) and the details it
+    acts on."""
     component = _answeredComponent(conversationId, answer)
     text, details = _ANSWER_TURNS[answer.kind](answer, component, userId)
     userText = _cut(text)
-    userContent = (f'{userText}\n\n{FORM_ANSWER_PREFIX}'
+    noteOf = _ANSWER_NOTES.get(answer.kind)
+    note = noteOf(answer) if noteOf is not None else None
+    read = userText if note is None else f'{userText}\n\n{note}'
+    userContent = (f'{read}\n\n{FORM_ANSWER_PREFIX}'
                    f'{json.dumps(details, ensure_ascii=False, default=str)}')
     return userText, userContent

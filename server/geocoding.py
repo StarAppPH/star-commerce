@@ -1,5 +1,6 @@
 """geocoding.py — a map pin's street address (hand-written, no database),
-suggested to the admin when they pin their store.
+suggested to the admin when they pin their store (suggestStoreAddress) and
+to the customer when they pin a delivery (chatForms._pinAddressNote).
 
 reverseGeocode() asks Google's Geocoding API
 (https://maps.googleapis.com/maps/api/geocode/json?latlng=...) with

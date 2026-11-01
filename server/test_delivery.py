@@ -15,15 +15,17 @@ import json
 import re
 
 import pytest
+import requests
 
 import chatForms
 from actions.OrderActions import (CHOOSE_FULFILLMENT, DELIVERY_FOR_PICKUP,
                                   DELIVERY_NOT_AN_OBJECT, DELIVERY_REQUIRED,
                                   INVALID_FULFILLMENT, NO_DELIVERY_ZONES_YET,
-                                  NOT_OFFERED)
+                                  NOT_OFFERED, OUTSIDE_DELIVERY_ZONES)
 from ApiRequests import ApiRequests
 from ToolRequests import ToolRequests
-from conftest import (addOrder, addProduct, assertExactShape,
+from conftest import (TEST_GEOCODED_ADDRESS, FakeGeocodingSession,
+                      addOrder, addProduct, assertExactShape,
                       storeWithProducts, verifiedGuestAt, wipeCollections)
 from mongoDb import db
 from objects import (DELIVERY_ADDRESS_MAX_LENGTH, DELIVERY_NOTES_MAX_LENGTH,
@@ -432,6 +434,81 @@ def test_aPin_thenTheAddressInChat_placesTheDelivery(clean, firebase, model):
     assert order['deliveryNotes'] == HOME['notes']
     assert (order['deliveryLatitude'], order['deliveryLongitude']) == (
         HOME['latitude'], HOME['longitude'])
+
+
+def test_aPin_givesTheModelGooglesAddressForIt_asASuggestion(
+        clean, firebase, model, _fakeGeocoding):
+    """The model reads Google's street address for the pin before the
+    pin's details, as a suggestion it offers; the customer sees only the
+    pin, and the details stay what the map sent."""
+    store, customerId, products = shop(firebase, **DELIVERS)
+    first = openPin(model, customerId, store)
+    [form] = first['components']
+    fake = model(reply(f'Deliver to {TEST_GEOCODED_ADDRESS}? Add a landmark '
+                       'if you like.'))
+
+    second = customerSays(customerId, store['_id'], None,
+                          first['conversationId'], pinOf(form))
+
+    [google] = _fakeGeocoding.calls
+    assert google['params']['latlng'] == '14.5547000,121.0244000'
+    content = fake.requests[0]['messages'][-1]['content']
+    note = chatForms.PIN_ADDRESS_NOTE.format(
+        address=json.dumps(TEST_GEOCODED_ADDRESS))
+    assert content.startswith(f'{second["userText"]}\n\n{note}\n\n'
+                              f'{chatForms.FORM_ANSWER_PREFIX}')
+    assert TEST_GEOCODED_ADDRESS not in second['userText']
+    assert set(formAnswerDetails(content)) == {'kind', 'latitude',
+                                               'longitude', 'zone'}
+    # The customer says yes and adds a landmark: that is the address.
+    accepted = {**HOME, 'address': f'{TEST_GEOCODED_ADDRESS}, near Jollibee'}
+    model(calls(('c2', 'createOrder', json.dumps({
+        'items': items(products['Pandesal']), 'fulfillment': 'delivery',
+        'delivery': accepted}))), reply('Placed: pay below.'))
+
+    third = customerSays(customerId, store['_id'], 'Yes, near Jollibee',
+                         first['conversationId'])
+
+    [checkout] = third['components']
+    assert checkout['order']['deliveryAddress'] == accepted['address']
+
+
+@pytest.mark.parametrize('answer', [
+    {'body': json.dumps({'status': 'ZERO_RESULTS', 'results': []}).encode()},
+    {'status': 500, 'body': b'{}'},
+    {'error': requests.ConnectionError('down')},
+])
+def test_aPinWithNoAddressFromGoogle_isTakenWithoutANote(
+        clean, firebase, model, monkeypatch, answer):
+    import geocoding
+    session = FakeGeocodingSession(**answer)
+    monkeypatch.setattr(geocoding, 'httpSession', lambda: session)
+    store, customerId, _ = shop(firebase, **DELIVERS)
+    first = openPin(model, customerId, store)
+    [form] = first['components']
+    fake = model(reply('Your address and a landmark?'))
+
+    second = customerSays(customerId, store['_id'], None,
+                          first['conversationId'], pinOf(form))
+
+    assert len(session.calls) == 1
+    content = fake.requests[0]['messages'][-1]['content']
+    assert content.startswith(f'{second["userText"]}\n\n'
+                              f'{chatForms.FORM_ANSWER_PREFIX}')
+
+
+def test_aPinOutsideEveryZone_asksGoogleNothing(clean, firebase, model,
+                                               _fakeGeocoding):
+    store, customerId, _ = shop(firebase, **DELIVERS)
+    first = openPin(model, customerId, store)
+    [form] = first['components']
+    model()
+
+    with pytest.raises(ValueError, match=exactly(OUTSIDE_DELIVERY_ZONES)):
+        customerSays(customerId, store['_id'], None, first['conversationId'],
+                     {**pinOf(form), 'latitude': 0.0, 'longitude': 0.0})
+
+    assert _fakeGeocoding.calls == []
 
 
 def test_aPickupChosenInChat_isPlacedWithoutAnAddress(clean, firebase,
