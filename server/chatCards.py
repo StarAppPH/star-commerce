@@ -26,22 +26,32 @@ from typing import Callable
 
 from pydantic import TypeAdapter, ValidationError
 
+from actions.PolicyActions import storePolicy
 from actions.StoreActions import STORES
 from chatForms import newFormId
 from mongoDb import db
 from objects import (CHAT_CARD_ROWS_MAX, CHAT_COMPONENTS_PER_TURN_MAX,
-                     POLICY_ANSWER_FIELDS, ChatComponent)
+                     POLICY_ANSWER_FIELDS, ChatComponent, CheckoutPolicy)
 
 _COMPONENT = TypeAdapter(ChatComponent)
 
 
 class CardContext:
     """What a card needs besides its tool's result: the store's currency,
-    read once, only when a card needs it."""
+    and its policy for the checkout card, each read once, only when a card
+    needs it."""
 
     def __init__(self, storeId: str):
         self.storeId = storeId
         self._currency = None
+        self._checkoutPolicy = None
+
+    def checkoutPolicy(self) -> dict:
+        """The store's policy the shopper agrees to on the checkout card
+        before paying (chatForms._payment keeps it on the order)."""
+        if self._checkoutPolicy is None:
+            self._checkoutPolicy = storePolicy(CheckoutPolicy, self.storeId)
+        return self._checkoutPolicy
 
     def currency(self) -> str:
         if self._currency is None:
@@ -142,9 +152,12 @@ def _myOrder(result: dict, context: CardContext) -> dict:
 
 
 def _checkout(result: dict, context: CardContext) -> dict:
+    """The order to pay, with the store's policy the shopper agrees to
+    before paying (answered with PaymentAnswer)."""
     return {'kind': 'checkout', 'formId': newFormId(),
             'order': _withItems(result['order'], _MY_ORDER),
-            'paymentOptions': result['paymentOptions']}
+            'paymentOptions': result['paymentOptions'],
+            'policy': context.checkoutPolicy()}
 
 
 def _storeReturns(result: dict, context: CardContext) -> dict:

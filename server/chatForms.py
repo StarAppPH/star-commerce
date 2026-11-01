@@ -31,6 +31,7 @@ from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
                                   OUTSIDE_DELIVERY_ZONES,
                                   bookableFulfillments, offeredFulfillments,
                                   storeDelivery)
+from actions.PaymentActions import POLICY_NOT_AGREED, agreeToPolicy
 from actions.StoreActions import STORES, ownerQuery
 import photoStorage
 from mongoDb import db
@@ -66,6 +67,8 @@ FORM_ANSWER_INVALID = 'That form answer is not valid: {fields}'
 FORM_NEEDS_CONVERSATION = 'A form answer belongs to a chat'
 MESSAGE_AND_FORM = 'Send a message or a form answer, not both'
 NOT_ON_THE_CARD = 'Pick from what the card shows'
+CHECKOUT_OUT_OF_DATE = ('This checkout is out of date: ask in the chat to '
+                        'place the order again')
 NOTHING_PICKED = 'Pick at least one'
 PICKED_TWICE = 'Each one once'
 REJECT_NEEDS_REASON = 'Say why you reject it'
@@ -555,13 +558,22 @@ def _payment(answer, component, userId) -> tuple[str, dict]:
                and option['provider'] == answer.paymentProvider
                for option in component.get('paymentOptions') or []):
         raise ValueError(NOT_ON_THE_CARD)
+    # Nor does one saved before the shopper agreed to the policy there.
+    if component.get('policy') is None:
+        raise ValueError(CHECKOUT_OUT_OF_DATE)
+    if answer.agreedToPolicy is not True:
+        raise ValueError(POLICY_NOT_AGREED)
     order = component['order']
+    # What payOrder needs: the policy they agreed to is the one the card
+    # showed, kept on the order as it was.
+    agreeToPolicy(userId, order['_id'], component['policy'])
     how = _label(answer.paymentMethod)
     if answer.paymentProvider is None:
         how += ', paid to the store'
     else:
         how += ' online'
-    return (f'Pay {order["total"]:g} {order["currency"]} by {how}',
+    return (f'Agree to the store policy and pay {order["total"]:g} '
+            f'{order["currency"]} by {how}',
             {'kind': 'payment', 'orderId': order['_id'],
              'paymentMethod': answer.paymentMethod,
              'paymentProvider': answer.paymentProvider})

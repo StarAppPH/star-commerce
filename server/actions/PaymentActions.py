@@ -34,7 +34,8 @@ from actions.StoreActions import _validText
 from mcpTools import mcp_tool
 from mongoDb import db
 from objects import (MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
-                     ORDER_PAYMENT_MINUTES, MyOrderRow, NoContentResponse,
+                     ORDER_PAYMENT_MINUTES, AgreedPolicy, MyOrderRow,
+                     NoContentResponse,
                      PaymentReceiptResponse, StoreOrderRow, projection_of)
 from payments import chargeDemoPayment, newPaymentReference
 from route_config import route_config
@@ -77,6 +78,8 @@ RECEIPT_GONE = 'This receipt is no longer available'
 RECEIPT_SECONDS = 30
 
 CANNOT_BE_PAID = "This order can't be paid"
+POLICY_NOT_AGREED = ("Agree to the store's policy on the checkout card "
+                     'first, then pay there')
 PAYMENT_FAILED = "The payment didn't go through, try again"
 # What _notPayableMessage reads of an order.
 PAYMENT_STATE = {'status': 1, 'cancelReason': 1}
@@ -87,6 +90,9 @@ createOrder's paymentOptions: its method as paymentMethod (one of
 {PAYMENT_METHODS_TEXT}) and its provider as paymentProvider (null for an
 option paid by hand to the store).
 Call it only after the customer chose the option; never pick one for them.
+The customer pays on the checkout card, where they agree to the store's
+policy first: it refuses an order whose policy they have not agreed to, so
+when they say how to pay in words, point them to the card instead.
 With a provider, when it succeeds, tell the customer the payment went
 through, with the order's total, and that this is a demo payment: no money
 moved. Without one, the order waits for the store to confirm the payment
@@ -173,7 +179,8 @@ def payOrder(model, userId: str, storeId: str, orderId: str,
         {'_id': validOrderId(orderId), 'customerId': userId,
          'storeId': storeId},
         ORDERS, projection={**PAYMENT_STATE, 'total': 1,
-                            'currency': 1, 'expiresAt': 1},
+                            'currency': 1, 'expiresAt': 1,
+                            'policyAgreedAt': 1},
         findOne=True)
     if order is None:
         raise ValueError(ORDER_NOT_FOUND)
@@ -189,6 +196,9 @@ def payOrder(model, userId: str, storeId: str, orderId: str,
             raise ValueError(ORDER_EXPIRED)
         # Another call changed it first (a sweep, a payment).
         raise ValueError(_currentNotPayableMessage(order['_id']))
+    # Last, so a refusal above (the option, the deadline) comes first.
+    if order.get('policyAgreedAt') is None:
+        raise ValueError(POLICY_NOT_AGREED)
     if paymentProvider is None:
         return _awaitManualPayment(model, order['_id'], paymentMethod, now)
     # Claim, then charge: the guarded write turns the order paid only
@@ -223,6 +233,22 @@ def payOrder(model, userId: str, storeId: str, orderId: str,
             ORDERS, upsert=False)
         raise ValueError(PAYMENT_FAILED) from error
     return orderRow(model, paid)
+
+
+def agreeToPolicy(userId: str, orderId: str, policy: dict) -> None:
+    """Keep on the caller's pending order that they agreed to the store's
+    `policy` (a CheckoutPolicy, as their checkout card showed it), which
+    payOrder needs: when, and the policy as it was (Order.agreedPolicy).
+    An order no longer pending is left as it is: payOrder then says why it
+    cannot be paid. The last agreement wins. No $inc of _version: no
+    write locks on an order's _version, and this changes nothing the
+    order's own writes (paying, cancelling, the expiry sweep) read."""
+    agreed = AgreedPolicy.model_validate(policy).model_dump()
+    db.findOneAndUpdate(
+        {'_id': validOrderId(orderId), 'customerId': userId,
+         'status': 'pending'},
+        {'$set': {'policyAgreedAt': _now(), 'agreedPolicy': agreed}},
+        ORDERS, upsert=False, projection={'_id': 1})
 
 
 def addPaymentReference(model, userId: str, storeId: str, orderId: str,

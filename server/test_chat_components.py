@@ -28,7 +28,9 @@ from conftest import (TEST_GEOCODED_ADDRESS, TOKEN, addOrder, assertExactShape, 
                       firebaseClaims, guestAt, storeWithProducts,
                       verifiedGuestAt, wipeCollections)
 from mongoDb import db
+from actions.PaymentActions import POLICY_NOT_AGREED
 from objects import (CHAT_COMPONENTS_PER_TURN_MAX, POLICY_ANSWER_FIELDS,
+                     AgreedPolicy,
                      ChatReplyResponse, ConversationTurnsResponse,
                      StoreResponse)
 from test_chat import (ADMIN, GUEST, calls, clean, clock, frozenNow, model,
@@ -544,7 +546,8 @@ def test_theShopsProductCard_isTheRoutesResult_andOrdersThroughTheModel(
                          first['conversationId'],
                          {'kind': 'payment', 'formId': checkout['formId'],
                           'paymentMethod': method,
-                          'paymentProvider': provider})
+                          'paymentProvider': provider,
+                          'agreedToPolicy': True})
     details = formAnswerDetails(fake.requests[0]['messages'][-1]['content'])
     assert details == {'kind': 'payment',
                        'orderId': checkout['order']['_id'],
@@ -562,6 +565,91 @@ def test_theShopsProductCard_isTheRoutesResult_andOrdersThroughTheModel(
     assert bySeq[2]['answeredFormId'] == checkout['formId']
     assert bySeq[0]['answeredFormId'] is None
     assert bySeq[0]['components'][0]['formId'] == card['formId']
+
+
+def test_theCheckoutCard_showsThePolicy_andPayingNeedsItAgreed(
+        wiped, firebase, model):
+    """The checkout card carries the store's policy. Its answer is refused
+    until the shopper agrees to it, and so is payOrder; agreed, the order
+    keeps the policy as the card showed it."""
+    store = storeWithProducts(ADMIN)
+    customerId = verifiedGuestAt(firebase, store, GUEST)
+    model(calls(('c1', 'listStoreProducts', '{}')), reply('Here.'))
+    first = customerSays(customerId, store['_id'], 'Menu?')
+    [card] = first['components']
+    picked = [{'productId': card['products'][0]['_id'], 'quantity': 1}]
+    model(calls(('c2', 'createOrder', json.dumps({'items': picked}))),
+          reply('Choose how to pay below.'))
+    second = customerSays(customerId, store['_id'], None,
+                          first['conversationId'],
+                          {'kind': 'orderItems', 'formId': card['formId'],
+                           'items': picked})
+    [checkout] = second['components']
+    policy = tools.getStorePolicy(customerId, store['_id'])
+    del policy['updatedAt']
+    assert checkout['policy'] == policy
+    orderId = checkout['order']['_id']
+    option = checkout['paymentOptions'][0]
+    answer = {'kind': 'payment', 'formId': checkout['formId'],
+              'paymentMethod': option['method'],
+              'paymentProvider': option['provider']}
+
+    model()
+    for refused in (answer, {**answer, 'agreedToPolicy': False}):
+        with pytest.raises(ValueError,
+                           match='^' + re.escape(POLICY_NOT_AGREED) + '$'):
+            customerSays(customerId, store['_id'], None,
+                         first['conversationId'], refused)
+    assert db.read({'_id': orderId}, 'Orders',
+                   findOne=True).get('policyAgreedAt') is None
+    with pytest.raises(ValueError,
+                       match='^' + re.escape(POLICY_NOT_AGREED) + '$'):
+        tools.payOrder(customerId, store['_id'], orderId, option['method'],
+                       option['provider'])
+
+    fake = model(reply('Paying it now.'))
+    third = customerSays(customerId, store['_id'], None,
+                         first['conversationId'],
+                         {**answer, 'agreedToPolicy': True})
+    assert third['reply'] == 'Paying it now.'
+    content = fake.requests[0]['messages'][-1]['content']
+    assert content.startswith('Agree to the store policy and pay')
+    stored = db.read({'_id': orderId}, 'Orders', findOne=True)
+    assert stored['status'] == 'pending'
+    assert stored['policyAgreedAt'] is not None
+    assert stored['agreedPolicy'] == AgreedPolicy.model_validate(
+        checkout['policy']).model_dump()
+
+
+def test_aCheckoutCardWithoutThePolicy_takesNoAnswer(wiped, firebase, model):
+    """A checkout card saved before the policy was on it can no longer be
+    answered: the shopper places the order again."""
+    store = storeWithProducts(ADMIN)
+    customerId = verifiedGuestAt(firebase, store, GUEST)
+    model(calls(('c1', 'listStoreProducts', '{}')), reply('Here.'))
+    first = customerSays(customerId, store['_id'], 'Menu?')
+    [card] = first['components']
+    picked = [{'productId': card['products'][0]['_id'], 'quantity': 1}]
+    model(calls(('c2', 'createOrder', json.dumps({'items': picked}))),
+          reply('Choose how to pay below.'))
+    second = customerSays(customerId, store['_id'], None,
+                          first['conversationId'],
+                          {'kind': 'orderItems', 'formId': card['formId'],
+                           'items': picked})
+    [checkout] = second['components']
+    db.db['ChatTurns'].update_one(
+        {'components.formId': checkout['formId']},
+        {'$set': {'components.$.policy': None}})
+    option = checkout['paymentOptions'][0]
+
+    model()
+    with pytest.raises(ValueError, match='^' + re.escape(
+            chatForms.CHECKOUT_OUT_OF_DATE) + '$'):
+        customerSays(customerId, store['_id'], None, first['conversationId'],
+                     {'kind': 'payment', 'formId': checkout['formId'],
+                      'paymentMethod': option['method'],
+                      'paymentProvider': option['provider'],
+                      'agreedToPolicy': True})
 
 
 def test_anAnswer_mustPickFromTheCard(wiped, firebase, model):
@@ -887,6 +975,8 @@ def test_cards_fromEveryCardTool_fitTheirModels():
     """A canned result of every card tool makes a valid card."""
     context = chatCards.CardContext('store-1')
     context._currency = 'PHP'
+    context._checkoutPolicy = {
+        **dict.fromkeys(POLICY_ANSWER_FIELDS), 'deliveryZones': []}
     order = {'_id': 'o1', 'status': 'paid', 'items': [
         {'name': 'A', 'price': 1, 'quantity': 1}], 'total': 1,
         'currency': 'PHP', 'contactNumber': '+639171234567',

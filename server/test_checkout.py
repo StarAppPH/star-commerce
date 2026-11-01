@@ -38,18 +38,21 @@ from actions.OrderActions import (ALREADY_IN_ORDER, ITEMS_COUNT, NOT_IN_STOCK,
 from actions.PaymentActions import (INVALID_PAYMENT_METHOD,
                                     INVALID_PAYMENT_PROVIDER, NOT_PAYABLE,
                                     OPTION_NOT_OFFERED, ORDER_EXPIRED,
-                                    ORDER_NOT_FOUND, PAYMENT_FAILED)
+                                    ORDER_NOT_FOUND, PAYMENT_FAILED,
+                                    POLICY_NOT_AGREED)
 from ApiRequests import ApiRequests
 from ToolRequests import ToolRequests
 from conftest import (ALL_PAYMENT_METHODS, addOrder, addProduct,
+                      agreeToPolicy,
                       assertExactShape, createTestStore, guestAt,
                       storeWithProducts, takePayments, verifiedGuestAt,
                       wipeCollections)
 from mongoDb import db
 from objects import (MAX_PENDING_ORDERS_PER_STORE, ORDER_ITEMS_MAX,
                      ORDER_PAYMENT_MINUTES, PAYMENT_REFERENCE_PREFIX,
-                     PRODUCT_INVENTORY_MAX, CreatedOrderResponse,
-                     MyOrderRow, NewOrderItem, paymentOptions)
+                     PRODUCT_INVENTORY_MAX, AgreedPolicy,
+                     CreatedOrderResponse, MyOrderRow, NewOrderItem,
+                     paymentOptions)
 from utils import generateRandomString
 
 COLLECTIONS = [
@@ -164,9 +167,12 @@ def _items(*lines) -> list[dict]:
 
 
 def _place(customerId: str, store: dict, *lines) -> dict:
-    """createOrder's order row."""
-    return tools.createOrder(customerId, store['_id'],
-                           _items(*lines))['order']
+    """createOrder's order row, its policy agreed to (as the checkout card
+    does before a payment)."""
+    order = tools.createOrder(customerId, store['_id'],
+                              _items(*lines))['order']
+    agreeToPolicy(customerId, store['_id'], order['_id'])
+    return order
 
 
 def _heldOrder(store: dict,
@@ -182,6 +188,8 @@ def _heldOrder(store: dict,
     orderId = generateRandomString()
     items = [{'productId': p['_id'], 'name': p['name'], 'price': p['price'],
               'quantity': q} for p, q in lines]
+    # Its policy agreed to when it was placed, as the checkout card does.
+    fields.setdefault('policyAgreedAt', createdAt)
     addOrder(store['_id'], customerId, items, status, createdAt,
              _id=orderId, **fields)
     if hold:
@@ -986,6 +994,52 @@ def test_payOrder_aFailedCharge_andAFailedRevert_leavesTheOrderPaid(
 
 
 # ----------------------------- expiry ----------------------------- #
+
+
+@pytest.mark.parametrize('method, provider', [('card', 'demo'),
+                                              ('bankTransfer', None)])
+def test_payOrder_refusesAnOrderWhosePolicyWasNotAgreedTo(
+        clean, firebase, clock, charges, method, provider):
+    """The customer agrees to the store's policy on the checkout card
+    before paying: an order placed without it is not paid, charged or
+    moved, online or by hand."""
+    store, customerId, products = _shop(firebase)
+    order = tools.createOrder(customerId, store['_id'],
+                              _items((products['Pandesal'], 1)))['order']
+    before = _order(order['_id'])
+
+    with pytest.raises(ValueError, match=exactly(POLICY_NOT_AGREED)):
+        tools.payOrder(customerId, store['_id'], order['_id'], method,
+                       provider)
+
+    assert _order(order['_id']) == before
+    assert charges.calls == []
+
+
+def test_agreeToPolicy_keepsThePolicyOnAPendingOrderOnly(
+        clean, firebase, clock, charges):
+    """The agreement keeps the policy as it was on the caller's pending
+    order; another customer's order, or one no longer pending, is left as
+    it is."""
+    store, customerId, products = _shop(firebase)
+    order = tools.createOrder(customerId, store['_id'],
+                              _items((products['Pandesal'], 1)))['order']
+    agreeToPolicy('someone-else', store['_id'], order['_id'])
+    assert _order(order['_id']).get('policyAgreedAt') is None
+
+    agreeToPolicy(customerId, store['_id'], order['_id'])
+    stored = _order(order['_id'])
+    policy = tools.getStorePolicy(customerId, store['_id'])
+    del policy['updatedAt']
+    assert stored['policyAgreedAt'] == T0
+    assert stored['agreedPolicy'] == AgreedPolicy.model_validate(
+        policy).model_dump()
+
+    tools.payOrder(customerId, store['_id'], order['_id'], 'card', 'demo')
+    paid = _order(order['_id'])
+    clock.advance(minutes=1)
+    agreeToPolicy(customerId, store['_id'], order['_id'])
+    assert _order(order['_id']) == paid
 
 
 def test_payOrder_untilTheLastSecond_pays(clean, firebase, clock, charges):

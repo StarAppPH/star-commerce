@@ -9,17 +9,25 @@ from typing import ClassVar
 from pydantic import Field, field_validator
 from typing import Annotated, Literal
 
-from objects.base import MongoModel, StoredDocumentKeys, ResponseModel
-from objects.order import Fulfillment
+from objects.base import (AppModel, MongoModel, StoredDocumentKeys,
+                          ResponseModel)
 from objects.payment import (AuthorizedPaymentMethod,
                              AuthorizedPaymentMethodRow, PaymentMethod)
-from objects.store import DELIVERY_ZONES_MAX, DeliveryZoneRule
+from objects.store import (DELIVERY_ZONES_MAX, DeliveryZoneDays,
+                           DeliveryZoneFee, DeliveryZoneFreeFrom,
+                           DeliveryZoneMinimumOrder, DeliveryZoneName,
+                           DeliveryZoneRule)
 
 
 # ──────────────────────────────────────────────
 # Policies (one per store)
 # ──────────────────────────────────────────────
 
+# How a customer gets an order: picked up at the store, or delivered to the
+# address and pin they gave. The store's policy (deliveryOptions) says which
+# it offers; one that has not said offers pickup. Here, not in objects.order,
+# which imports AgreedPolicy from this module.
+Fulfillment = Literal['pickup', 'delivery']
 # How a customer can get an order: an order's Fulfillment.
 DeliveryOption = Fulfillment
 # How a returned item is refunded.
@@ -201,6 +209,47 @@ if set(POLICY_ANSWER_FIELDS) != set(typing.get_args(PolicyField)):
 
 class PolicyView(StoredDocumentKeys, Policy):
     """A Policies document as stored."""
+
+
+class AgreedDeliveryZone(AppModel):
+    """A delivery zone's policy as a customer agreed to it: DeliveryZone's
+    rules (DELIVERY_ZONE_RULES), without its shape."""
+    name: DeliveryZoneName
+    deliveryFee: DeliveryZoneFee
+    deliveryDays: DeliveryZoneDays
+    minimumOrder: DeliveryZoneMinimumOrder = None
+    freeDeliveryFrom: DeliveryZoneFreeFrom = None
+
+
+class AgreedPolicy(AppModel):
+    """The store's policy as a customer agreed to it before paying an order
+    (the policy their checkout card showed), kept on the order
+    (Order.agreedPolicy), so a later change of the policy never changes
+    what they agreed to. Policy's answers, null where the store had not
+    said, and the zones it delivered to."""
+    acceptsReturns: AcceptsReturns = None
+    returnWindowDays: ReturnWindowDays = None
+    returnConditions: ReturnConditions = None
+    nonReturnableItems: NonReturnableItems = None
+    refundMethod: RefundMethodAnswer = None
+    returnShippingPaidBy: ReturnShippingPaidBy = None
+    defectReportDays: DefectReportDays = None
+    deliveryOptions: DeliveryOptions = None
+    deliveryAreas: DeliveryAreas = None
+    handoverDays: HandoverDays = None
+    authorizedPaymentMethods: AuthorizedPaymentMethods = None
+    paidOrderCancellation: PaidOrderCancellationAnswer = None
+    paidOrderCancellationHours: PaidOrderCancellationHours = None
+    additionalTerms: AdditionalTerms = None
+    deliveryZones: list[AgreedDeliveryZone] = Field(
+        default_factory=list, max_length=DELIVERY_ZONES_MAX,
+        description='The zones the store delivered to and their policies')
+
+
+if tuple(name for name in AgreedPolicy.model_fields
+         if name != 'deliveryZones') != POLICY_ANSWER_FIELDS:
+    raise TypeError('AgreedPolicy must hold exactly the answer fields of '
+                    'Policy, in its order')
 
 
 class StorePolicyResponse(ResponseModel):

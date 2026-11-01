@@ -16,6 +16,7 @@ from objects.store import (DELIVERY_ZONE_NAME_MAX_LENGTH, LATITUDE_LIMIT,
 from objects.product import (PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
                              Product)
 from objects.payment import OrderPaymentMethod, PaymentOption, PaymentProvider
+from objects.policy import AgreedPolicy, Fulfillment
 from sharedConstants import WAITING_COUNT_CAP
 
 
@@ -57,10 +58,6 @@ ORDER_PAYMENT_MINUTES = 30
 # The most unpaid orders (pending and unexpired, or awaitingPayment) a
 # customer holds at a store.
 MAX_PENDING_ORDERS_PER_STORE = 3
-# How a customer gets an order: picked up at the store, or delivered to the
-# address and pin they gave. The store's policy (deliveryOptions) says which
-# it offers; one that has not said offers pickup.
-Fulfillment = Literal['pickup', 'delivery']
 DELIVERY_ADDRESS_MAX_LENGTH = 200
 DELIVERY_NOTES_MAX_LENGTH = 300
 # Half the Earth's circumference, rounded up: no two pins are farther apart.
@@ -142,6 +139,13 @@ class Order(MongoModel):
         'kept (photoStorage.receiptPath), for a payment made by hand')
     paymentReceiptAt: datetime.datetime | None = Field(
         None, description='When the customer sent the photo of its receipt')
+    # Set from the checkout card's answer (chatForms._payment): payOrder
+    # takes no order without it. An order paid before it existed has none.
+    policyAgreedAt: datetime.datetime | None = Field(
+        None, description="When the customer agreed to the store's policy, "
+        'before paying')
+    agreedPolicy: AgreedPolicy | None = Field(
+        None, description='The policy the customer agreed to, as it was')
     paidAt: datetime.datetime | None = Field(None,
                                              description='When it was paid')
     cancelledAt: datetime.datetime | None = Field(

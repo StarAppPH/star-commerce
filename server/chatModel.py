@@ -148,7 +148,9 @@ _CUSTOMER_UI = (
     'card: when the customer asks about it, answer just what they asked '
     'in a few words. ' + _ASK_RULE +
     'On the product card the customer picks quantities to order; on the '
-    'checkout card they choose how to pay. Before createOrder, check '
+    "checkout card they read and agree to the store's policy and choose "
+    'how to pay: they pay only there, so when they say how to pay in '
+    'words, point them to the card. Before createOrder, check '
     "getStorePolicy: ask \"pickup or delivery?\" only when deliveryOptions "
     'has both and deliveryZones is not empty, saying in one short clause '
     'that the fee depends on their zone; otherwise leave fulfillment '

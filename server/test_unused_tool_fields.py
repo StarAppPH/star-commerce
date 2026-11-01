@@ -64,8 +64,9 @@ import pytest
 from pydantic import Field
 
 import chatCards
-from objects import (AI_ALWAYS_KEPT, ResponseModel, StorePolicyResponse,
-                     StoreResponse, validate_route_response)
+from objects import (AI_ALWAYS_KEPT, POLICY_ANSWER_FIELDS, ResponseModel,
+                     StorePolicyResponse, StoreResponse,
+                     validate_route_response)
 from responseModelCheck import _where
 from toolReading import (Leaf, changedValues, fieldAt, leaves, pathText,
                          reachable, routeModels, sample, tools, valueAt,
@@ -141,6 +142,10 @@ class FakeContext:
 
     def currency(self) -> str:
         return 'PHP'
+
+    def checkoutPolicy(self) -> dict:
+        # Read from the store, not from the tool's result: no tool leaf.
+        return {**dict.fromkeys(POLICY_ANSWER_FIELDS), 'deliveryZones': []}
 
 
 _RAISED = object()

@@ -178,12 +178,46 @@ class MyOrdersCard(ResponseModel):
         ..., max_length=CHAT_CARD_ROWS_MAX, description='The orders')
 
 
+class PolicyAnswersRow(ResponseModel):
+    """The store's answers on a card (the policy card, the checkout's
+    policy): null where the store has not said."""
+    acceptsReturns: AcceptsReturns
+    returnWindowDays: ReturnWindowDays
+    returnConditions: ReturnConditions
+    nonReturnableItems: NonReturnableItems
+    refundMethod: RefundMethodAnswer
+    returnShippingPaidBy: ReturnShippingPaidBy
+    defectReportDays: DefectReportDays
+    deliveryOptions: DeliveryOptions
+    deliveryAreas: DeliveryAreas
+    handoverDays: HandoverDays
+    # Null on a policy card saved before authorizedPaymentMethods.
+    authorizedPaymentMethods: AuthorizedPaymentMethodRows = None
+    paidOrderCancellation: PaidOrderCancellationAnswer
+    paidOrderCancellationHours: PaidOrderCancellationHours
+    additionalTerms: AdditionalTerms
+
+
+class CheckoutPolicy(PolicyAnswersRow):
+    """The store's policy as the checkout card shows it, for the shopper to
+    agree to before paying (PaymentAnswer.agreedToPolicy); what they agree
+    to is kept on the order (Order.agreedPolicy)."""
+    deliveryZones: list[DeliveryZoneRule] = Field(
+        ..., max_length=DELIVERY_ZONES_MAX,
+        description="The store's delivery zones and their policies")
+
+
 class CheckoutCard(ResponseModel):
     """The order a shopper just placed, unpaid. Answered with PaymentAnswer:
-    the payment method the shopper picked."""
+    the payment method the shopper picked, once they agreed to the store's
+    policy."""
     kind: Literal['checkout'] = Field(..., description='The card')
     formId: FormId
     order: ChatMyOrderRow = Field(..., description='The order to pay')
+    # Null on a card saved before the shopper agreed to the policy there:
+    # it can no longer be answered.
+    policy: CheckoutPolicy | None = Field(
+        None, description="The store's policy the shopper agrees to")
     # Null on a card saved before payment options.
     paymentOptions: list[PaymentOption] | None = Field(
         None, description='The ways the shopper can pay it (never none)')
@@ -247,30 +281,15 @@ class MyReturnsCard(ResponseModel):
         ..., max_length=CHAT_CARD_ROWS_MAX, description='The returns')
 
 
-class PolicyCard(ResponseModel):
+class PolicyCard(PolicyAnswersRow):
     """The store's policy a tool read or saved: every answer, null while
     the store has not said."""
     kind: Literal['policy'] = Field(..., description='The card')
     currency: StoreCurrency = Field(..., description='Fees are in it')
-    acceptsReturns: AcceptsReturns
-    returnWindowDays: ReturnWindowDays
-    returnConditions: ReturnConditions
-    nonReturnableItems: NonReturnableItems
-    refundMethod: RefundMethodAnswer
-    returnShippingPaidBy: ReturnShippingPaidBy
-    defectReportDays: DefectReportDays
-    deliveryOptions: DeliveryOptions
-    deliveryAreas: DeliveryAreas
-    handoverDays: HandoverDays
-    # Null on a card saved before authorizedPaymentMethods.
-    authorizedPaymentMethods: AuthorizedPaymentMethodRows = None
     # Only on a card saved before authorizedPaymentMethods.
     acceptedPaymentMethods: list[OrderPaymentMethod] | None = Field(
         None, description='The ways a customer could pay, on a card saved '
         'before each method had its details')
-    paidOrderCancellation: PaidOrderCancellationAnswer
-    paidOrderCancellationHours: PaidOrderCancellationHours
-    additionalTerms: AdditionalTerms
     # Null on a card saved before zones had policies.
     deliveryZones: list[DeliveryZoneRule] | None = Field(
         None, max_length=DELIVERY_ZONES_MAX,
@@ -506,6 +525,9 @@ class PaymentAnswer(AppModel):
     paymentProvider: PaymentProvider | None = Field(
         None, description='The provider of the option picked; null: paid by '
         'hand to the store')
+    agreedToPolicy: bool = Field(
+        False, description="The shopper agreed to the store's policy the "
+        'card shows; payOrder takes no order without it')
 
 
 class HandoverAnswer(AppModel):

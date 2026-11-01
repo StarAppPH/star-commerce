@@ -5,7 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChatCard, PhotoPrompts, ProductPhoto } from './ChatCard';
-import { type PolicyAnswers, type PolicyQuestion, missingDeliveryZones, offersDelivery, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
+import { type PolicyAnswers, type PolicyQuestion, type PolicyWithZones, missingDeliveryZones, offersDelivery, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
 import type { AuthorizedPaymentMethodRow } from '@/app/schemas/AuthorizedPaymentMethodRowSchema';
 import { PAYMENT_METHOD_LABELS, PAYMENT_PROVIDER_LABELS, POLICY_VALUE_LABELS, formatMoney, zoneRuleText } from './format';
 import type { ComponentProps } from './types';
@@ -90,16 +90,55 @@ export function policyRows(
   ];
 }
 
+interface PolicyListProps {
+  policy: PolicyWithZones & { acceptedPaymentMethods?: string[] | null };
+  currency: string;
+  // The admin's card also says that delivery has no zone yet.
+  showMissingZones: boolean;
+  emptyText: string;
+  dataComponent: string;
+}
+
+// A store's policy as a list: the answers the store gave, then each delivery
+// zone's own policy. The policy card's and the checkout's.
+export function PolicyList({ policy, currency, showMissingZones, emptyText, dataComponent }: PolicyListProps) {
+  const rows = policyRows(policy).filter((row) => policyQuestionApplies(row.question, policy));
+  const money = (amount: number) => formatMoney(amount, currency);
+  const zones = offersDelivery(policy) ? policy.deliveryZones ?? [] : [];
+  const answeredRows = rows.filter((row) => row.value !== null);
+  return (
+    <dl data-component={dataComponent} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-x-4 gap-y-2 px-4 py-3 text-sm">
+      {answeredRows.map((row) => (
+        <div key={row.label} className="contents">
+          <dt className="text-muted-foreground">{row.label}</dt>
+          <dd>{shown(row.value, money, row.money === true)}</dd>
+        </div>
+      ))}
+      {zones.map((zone) => (
+        <div key={zone.name} className="contents">
+          <dt className="text-muted-foreground">Delivery to {zone.name}</dt>
+          <dd data-component="policyCardDeliveryZone">{zoneRuleText(zone, currency)}</dd>
+        </div>
+      ))}
+      {showMissingZones && missingDeliveryZones(policy) && (
+        <div className="contents">
+          <dt className="text-muted-foreground">Delivery zones</dt>
+          <dd data-component="policyCardNoDeliveryZones">None yet: no deliveries until you draw one</dd>
+        </div>
+      )}
+      {answeredRows.length === 0 && zones.length === 0 && (
+        <p className="col-span-2 text-muted-foreground">{emptyText}</p>
+      )}
+    </dl>
+  );
+}
+
 // The store's policy: every answer and each delivery zone's own policy. Only
 // the admin's card says how many questions that apply are not answered yet,
 // and that delivery has no zone: a customer sees only what the store said.
 export function PolicyCard({ component, variant }: ComponentProps<'policy'> & { variant: 'admin' | 'shop' }) {
   const isAdmin = variant === 'admin';
-  const rows = policyRows(component).filter((row) => policyQuestionApplies(row.question, component));
   const open = isAdmin ? unansweredPolicyQuestions(component) : 0;
-  const money = (amount: number) => formatMoney(amount, component.currency);
-  const zones = offersDelivery(component) ? component.deliveryZones ?? [] : [];
-  const answeredRows = rows.filter((row) => row.value !== null);
   return (
     <ChatCard
       dataComponent="policyCard"
@@ -107,31 +146,13 @@ export function PolicyCard({ component, variant }: ComponentProps<'policy'> & { 
       title="Store policy"
       meta={open > 0 ? <Badge variant="warning">{open} not answered</Badge> : undefined}
     >
-      <dl className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-x-4 gap-y-2 px-4 py-3 text-sm">
-        {answeredRows.map((row) => (
-          <div key={row.label} className="contents">
-            <dt className="text-muted-foreground">{row.label}</dt>
-            <dd>{shown(row.value, money, row.money === true)}</dd>
-          </div>
-        ))}
-        {zones.map((zone) => (
-          <div key={zone.name} className="contents">
-            <dt className="text-muted-foreground">Delivery to {zone.name}</dt>
-            <dd data-component="policyCardDeliveryZone">{zoneRuleText(zone, component.currency)}</dd>
-          </div>
-        ))}
-        {isAdmin && missingDeliveryZones(component) && (
-          <div className="contents">
-            <dt className="text-muted-foreground">Delivery zones</dt>
-            <dd data-component="policyCardNoDeliveryZones">None yet: no deliveries until you draw one</dd>
-          </div>
-        )}
-        {answeredRows.length === 0 && (
-          <p className="col-span-2 text-muted-foreground">
-            {isAdmin ? 'Nothing answered yet.' : 'The store hasn’t shared its policy yet.'}
-          </p>
-        )}
-      </dl>
+      <PolicyList
+        dataComponent="policyCardList"
+        policy={component}
+        currency={component.currency}
+        showMissingZones={isAdmin}
+        emptyText={isAdmin ? 'Nothing answered yet.' : 'The store hasn’t shared its policy yet.'}
+      />
     </ChatCard>
   );
 }

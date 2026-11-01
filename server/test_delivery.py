@@ -23,7 +23,7 @@ from actions.OrderActions import (CHOOSE_FULFILLMENT, DELIVERY_FOR_PICKUP,
                                   NOT_OFFERED)
 from ApiRequests import ApiRequests
 from ToolRequests import ToolRequests
-from conftest import (addOrder, addProduct, assertExactShape,
+from conftest import (agreeToPolicy, addOrder, addProduct, assertExactShape,
                       storeWithProducts, verifiedGuestAt, wipeCollections)
 from mongoDb import db
 from objects import (DELIVERY_ADDRESS_MAX_LENGTH, DELIVERY_NOTES_MAX_LENGTH,
@@ -317,6 +317,7 @@ def test_payOrder_chargesTheTotalWithTheFee(clean, firebase, monkeypatch):
     order = tools.createOrder(customerId, store['_id'],
                             items(products['Pandesal']), 'delivery',
                             HOME)['order']
+    agreeToPolicy(customerId, store['_id'], order['_id'])
 
     paid = tools.payOrder(customerId, store['_id'], order['_id'], 'eWallet',
                         'demo')

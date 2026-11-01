@@ -41,7 +41,8 @@ from objects import (AdminProductListResponse, MyOrderListResponse,
                      NoContentResponse, ProductListResponse,
                      StoreOrderListResponse, aiCopy)
 from responseModelCheck import assertResponseModel
-from conftest import (BRAND_COLORS, STORE_DETAILS, addOrder, addProduct, createTestStore,
+from conftest import (BRAND_COLORS, STORE_DETAILS, agreeToPolicy,
+                      addOrder, addProduct, createTestStore,
                       createTestUser, guestAt, storeWithProducts,
                       verifiedGuestAt, wipeCollections)
 
@@ -1077,6 +1078,9 @@ def test_e2e_listCreateAndPayAnOrder_overMcp(clean, firebase):
         ('eWallet', None), ('bankTransfer', None), ('check', None),
         ('crypto', 'demo')]
     assert (order['status'], order['total']) == ('pending', 1300)
+    # payOrder takes only an order whose policy the customer agreed to, on
+    # the store chat's checkout card.
+    agreeToPolicy(customerId, store['_id'], order['_id'])
 
     paid = callTool(headers, 'payOrder', {
         'orderId': order['_id'], 'paymentMethod': 'eWallet',

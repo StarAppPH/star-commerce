@@ -316,10 +316,17 @@ def getMyStorePolicy(model, userId: str) -> dict:
     return _storePolicy(model, store)
 
 
+def storePolicy(model, storeId: str) -> dict:
+    """The policy of the set-up store `storeId`, as `model` (with
+    deliveryZones): what the checkout card shows the shopper to agree to
+    (chatCards.CardContext.checkoutPolicy)."""
+    return _storePolicy(model, setUpStore(storeId, POLICY_STORE_FIELDS))
+
+
 def getStorePolicy(model, userId: str, storeId: str) -> dict:
     """The policy of the store a customer is at, as `model`."""
     customerAtStore(userId, storeId)
-    return _storePolicy(model, setUpStore(storeId, POLICY_STORE_FIELDS))
+    return storePolicy(model, storeId)
 
 
 def updateMyStorePolicy(model,

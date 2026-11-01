@@ -763,6 +763,16 @@ def addOrder(storeId: str, customerId: str, items: list[dict],
     return db.create(order.model_dump(by_alias=True), 'Orders')
 
 
+def agreeToPolicy(customerId: str, storeId: str, orderId: str) -> None:
+    """What the checkout card's answer does before a payment: the customer
+    agrees to the store's policy as it is now (payOrder takes no order
+    without it)."""
+    from actions.PaymentActions import agreeToPolicy as agree
+    from actions.PolicyActions import storePolicy
+    from objects import CheckoutPolicy
+    agree(customerId, orderId, storePolicy(CheckoutPolicy, storeId))
+
+
 @pytest.fixture
 def noExpirySweep(monkeypatch):
     """The order routes without their expiry sweep (cancelExpiredOrders),
