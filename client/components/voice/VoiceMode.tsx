@@ -60,6 +60,8 @@ const STATUS: Record<VoiceState, string> = {
 // left on.
 const MAX_RECORDING_MS = 120000;
 const RESTART_MIN_MS = 1000;
+// Past this many characters the live transcript drops a font size, so long speech fits in fewer lines.
+const LONG_TRANSCRIPT_CHARS = 120;
 // Errors after which the microphone can't be used: listening stops.
 const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-capture', 'network']);
 
@@ -109,6 +111,13 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
   useEffect(() => { speakRef.current = speakReplies; }, [speakReplies]);
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { formOpenRef.current = formOpen; }, [formOpen]);
+
+  // Long speech scrolls inside the text area, never pushing the controls off screen; follow the newest words.
+  const textArea = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = textArea.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [heard, interim, question, reply, state]);
 
   const stopThinkingAudio = useCallback(() => {
     thinkingAudio.current?.stop();
@@ -375,7 +384,7 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
         style={{ boxShadow: `inset 0 0 26px 3px ${alpha(glow, 0.5)}, inset 0 0 140px 22px ${alpha(glowSecond, 0.26)}` }}
       />
 
-      <div className="relative flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
+      <div className="relative flex shrink-0 items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex flex-col">
           <span className="font-medium text-sm">{title}</span>
           <span className="text-muted-foreground text-xs">{subtitle}</span>
@@ -392,44 +401,58 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
         </Button>
       </div>
 
-      <div className="relative mx-auto flex w-full max-w-2xl flex-1 flex-col justify-end gap-4 px-5 pb-6" aria-live="polite">
-        {state === 'unsupported' ? (
-          <p className="m-0 font-heading text-2xl leading-tight">
-            This browser can’t listen. Try Chrome, Edge or Safari, or type instead.
-          </p>
-        ) : (
-          <>
-            {(state === 'listening' || state === 'thinking') && (
-              <p className="m-0 font-heading text-3xl leading-tight text-pretty sm:text-4xl">
-                {state === 'thinking' ? question : heard}
-                {state === 'listening' && <span className="text-muted-foreground">{interim}</span>}
-                {state === 'listening' && !heard && !interim && <span className="text-muted-foreground">Go ahead, I’m listening</span>}
-              </p>
-            )}
-            {(state === 'answering' || state === 'idle') && reply && (
-              <div className="flex flex-col gap-3">
-                {question && <span className="text-muted-foreground text-sm">“{question}”</span>}
-                <div className="font-heading text-2xl leading-snug sm:text-3xl [&_[data-component=assistantText]]:text-[inherit] [&_[data-component=assistantText]]:leading-[inherit]">
-                  <AssistantText text={reply} />
+      <div
+        ref={textArea}
+        data-component={`${variant}VoiceText`}
+        className="relative mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col overflow-y-auto overscroll-contain px-5 pb-6"
+        aria-live="polite"
+      >
+        <div className="mt-auto flex flex-col gap-4">
+          {state === 'unsupported' ? (
+            <p className="m-0 font-heading text-2xl leading-tight">
+              This browser can’t listen. Try Chrome, Edge or Safari, or type instead.
+            </p>
+          ) : (
+            <>
+              {(state === 'listening' || state === 'thinking') && (
+                <p
+                  className={cn(
+                    'm-0 font-heading leading-tight text-pretty',
+                    (state === 'thinking' ? question : `${heard}${interim}`).length > LONG_TRANSCRIPT_CHARS
+                      ? 'text-2xl sm:text-3xl'
+                      : 'text-3xl sm:text-4xl',
+                  )}
+                >
+                  {state === 'thinking' ? question : heard}
+                  {state === 'listening' && <span className="text-muted-foreground">{interim}</span>}
+                  {state === 'listening' && !heard && !interim && <span className="text-muted-foreground">Go ahead, I’m listening</span>}
+                </p>
+              )}
+              {(state === 'answering' || state === 'idle') && reply && (
+                <div className="flex flex-col gap-3">
+                  {question && <span className="text-muted-foreground text-sm">“{question}”</span>}
+                  <div className="font-heading text-2xl leading-snug sm:text-3xl [&_[data-component=assistantText]]:text-[inherit] [&_[data-component=assistantText]]:leading-[inherit]">
+                    <AssistantText text={reply} />
+                  </div>
+                  {state === 'idle' && forms.length > 0 && !formOpen && (
+                    <Button
+                      data-component={`${variant}VoiceFormReopen`}
+                      variant="outline"
+                      className="self-start"
+                      onClick={() => setFormOpen(true)}
+                    >
+                      <ClipboardListIcon />
+                      Open form
+                    </Button>
+                  )}
                 </div>
-                {state === 'idle' && forms.length > 0 && !formOpen && (
-                  <Button
-                    data-component={`${variant}VoiceFormReopen`}
-                    variant="outline"
-                    className="self-start"
-                    onClick={() => setFormOpen(true)}
-                  >
-                    <ClipboardListIcon />
-                    Open form
-                  </Button>
-                )}
-              </div>
-            )}
-          </>
-        )}
+              )}
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="relative grid grid-cols-[48px_1fr_48px] items-center gap-3 px-5 pb-8 sm:mx-auto sm:w-full sm:max-w-md">
+      <div className="relative grid shrink-0 grid-cols-[48px_1fr_48px] items-center gap-3 px-5 pb-8 sm:mx-auto sm:w-full sm:max-w-md">
         <Button
           data-component={`${variant}VoiceKeyboard`}
           variant="outline"
