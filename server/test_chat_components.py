@@ -922,6 +922,11 @@ def test_cards_fromEveryCardTool_fitTheirModels():
                             {'method': 'cash', 'provider': None,
                              'eWallets': None, 'banks': None,
                              'checkPayees': None}]},
+        'checkoutMyCart': {'order': {**order, 'status': 'pending'},
+                           'paymentOptions': [
+                               {'method': 'cash', 'provider': None,
+                                'eWallets': None, 'banks': None,
+                                'checkPayees': None}]},
         'addPaymentReference': order,
         'confirmOrderPayment': order,
         'getStoreReturns': {'returns': [ret]},
