@@ -104,7 +104,7 @@ class ProductRow(ResponseModel):
     Product's, which test_route_response_models.py's MIRRORS keeps in
     step."""
     AI_READS: ClassVar[dict[str, str]] = {
-        '_id': 'the productId createOrder takes',
+        '_id': 'the productId addToCart and createOrder take',
         'name': 'the customer asks for products by name',
         'description': 'the customer asks what a product is',
         'price': 'the customer asks the price',

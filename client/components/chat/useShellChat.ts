@@ -37,12 +37,18 @@ export function useShellChat({ transport, conversationId, threadHref }: UseShell
   const onSaved = useCallback((turn: ChatTurnView) => shell.turnSaved(turn.components), [shell]);
   const chat = useChat({ transport, conversationId, initialTurns, onStarted, onSaved });
   // Voice mode talks: its replies come with their speech.
-  const { talk: ask } = chat;
+  const { talk: ask, ask: sendText } = chat;
 
   useEffect(() => {
     shell.bindAsk(ask);
     return () => shell.unbindAsk(ask);
   }, [ask, shell]);
+
+  // A message asked for outside the chat (the shop's cart) is sent here.
+  useEffect(() => {
+    shell.bindSend(sendText);
+    return () => shell.unbindSend(sendText);
+  }, [sendText, shell]);
 
   return chat;
 }

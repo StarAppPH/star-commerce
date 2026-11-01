@@ -366,7 +366,8 @@ ADMIN_TOOLS = {
 CUSTOMER_TOOLS = {
     'listStoreProducts', 'getMyOrders', 'createOrder', 'payOrder',
     'cancelMyOrder', 'getStorePolicy', 'requestReturn', 'getMyReturns',
-    'cancelMyReturn', 'addPaymentReference'
+    'cancelMyReturn', 'addPaymentReference', 'getMyCart', 'addToCart',
+    'setCartItemQuantity', 'removeFromCart', 'clearMyCart', 'checkoutMyCart'
 }
 # The chat-only form tools (chatForms.py), never on the MCP servers.
 ADMIN_FORM_TOOLS = {

@@ -359,14 +359,15 @@ def _twins() -> list:
 
 def test_theTwinsAreTheDeclaredOnes():
     assert sorted(tool.__name__ for tool in _twins()) == [
-        'getMyStorePolicy', 'getUserStore']
+        'addToCart', 'clearMyCart', 'getMyCart', 'getMyStorePolicy',
+        'getUserStore', 'removeFromCart', 'setCartItemQuantity']
 
 
 def test_theRealCounts_arePinned():
-    """36 tools serve the AI, 19 routes the people (ApiRequests): a tool or
+    """42 tools serve the AI, 24 routes the people (ApiRequests): a tool or
     route added or removed is a decision, not an accident."""
-    assert len(tools()) == 36
-    assert len(routes()) == 19
+    assert len(tools()) == 42
+    assert len(routes()) == 24
 
 
 @pytest.mark.parametrize('tool', _twins(), ids=lambda tool: tool.__name__)

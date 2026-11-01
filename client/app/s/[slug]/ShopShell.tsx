@@ -14,8 +14,10 @@ import { ChatShellProvider } from '@/components/chat/ChatShell';
 import { matchingConversations } from '@/components/chat/useConversationList';
 import { useBrandColor } from '@/lib/brandColors';
 import { useGuestSession } from '@/lib/GuestSessionContext';
+import { ShopCartProvider, useShopCart } from '@/lib/ShopCartContext';
 import { groupConversationsByDay } from '@/lib/storeTime';
 import { cn } from '@/lib/utils';
+import { ShopCart } from './ShopCart';
 import { ShopWorkspaceProvider, useShopWorkspace } from './ShopWorkspace';
 
 // A shop's voice glow while its store has no brand colors.
@@ -55,15 +57,22 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ShopWorkspaceProvider session={state.session}>
-      <ShopFrame>{children}</ShopFrame>
+      <ShopCartProvider>
+        <ShopFrame>{children}</ShopFrame>
+      </ShopCartProvider>
     </ShopWorkspaceProvider>
   );
 }
 
 function ShopFrame({ children }: { children: React.ReactNode }) {
   const { session, reloadConversations } = useShopWorkspace();
+  const { refresh: refreshCart } = useShopCart();
   const { store } = session;
-  const onTurnSaved = useCallback(() => { reloadConversations(); }, [reloadConversations]);
+  // The assistant may have changed the cart in that turn.
+  const onTurnSaved = useCallback(() => {
+    reloadConversations();
+    void refreshCart();
+  }, [reloadConversations, refreshCart]);
   useBrandColor(store.primaryColor);
 
   return (
@@ -82,15 +91,18 @@ function ShopFrame({ children }: { children: React.ReactNode }) {
         <header className="flex h-14 shrink-0 items-center justify-between gap-2 px-2">
           <ShopChats />
           <span className="min-w-0 truncate font-medium text-[15px]">{store.name}</span>
-          <Button
-            data-component="shopNewChat"
-            variant="ghost"
-            size="icon-lg"
-            aria-label="New chat"
-            render={<Link href={`/s/${store.slug}`} />}
-          >
-            <SquarePenIcon />
-          </Button>
+          <div className="flex shrink-0 items-center">
+            <ShopCart />
+            <Button
+              data-component="shopNewChat"
+              variant="ghost"
+              size="icon-lg"
+              aria-label="New chat"
+              render={<Link href={`/s/${store.slug}`} />}
+            >
+              <SquarePenIcon />
+            </Button>
+          </div>
         </header>
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       </div>

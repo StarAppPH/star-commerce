@@ -7,6 +7,7 @@ import type { ChatComponent } from './cards/types';
 import type { ChatTurnView, OnThinking, VoiceAnswer } from './useChat';
 
 type Ask = (text: string, onThinking?: OnThinking) => Promise<VoiceAnswer | null>;
+type Send = (text: string) => Promise<string | null>;
 
 interface VoiceOptions {
   title: string;
@@ -33,6 +34,11 @@ interface ChatShellValue {
   // have bound its own first.
   unbindAsk: (ask: Ask) => void;
   openVoice: () => void;
+  // The chat on screen sends a message asked for outside it (the shop's
+  // cart: "Check out my cart"); false when no chat is on screen.
+  sendText: (text: string) => boolean;
+  bindSend: (send: Send) => void;
+  unbindSend: (send: Send) => void;
 }
 
 const ChatShellContext = createContext<ChatShellValue | null>(null);
@@ -52,6 +58,7 @@ interface ChatShellProviderProps {
 export function ChatShellProvider({ voice, onTurnSaved, children }: ChatShellProviderProps) {
   const started = useRef(new Map<string, ChatTurnView[]>());
   const askRef = useRef<Ask | null>(null);
+  const sendRef = useRef<Send | null>(null);
   const savedRef = useRef(onTurnSaved);
   useEffect(() => { savedRef.current = onTurnSaved; }, [onTurnSaved]);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -66,6 +73,13 @@ export function ChatShellProvider({ voice, onTurnSaved, children }: ChatShellPro
     turnSaved: (components) => savedRef.current(components),
     bindAsk: (next) => { askRef.current = next; },
     unbindAsk: (bound) => { if (askRef.current === bound) askRef.current = null; },
+    sendText: (text) => {
+      if (!sendRef.current) return false;
+      void sendRef.current(text);
+      return true;
+    },
+    bindSend: (next) => { sendRef.current = next; },
+    unbindSend: (bound) => { if (sendRef.current === bound) sendRef.current = null; },
     // Runs in the voice button's tap: iOS plays audio only once unlocked by one.
     openVoice: () => {
       unlockVoiceAudio();

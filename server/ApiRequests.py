@@ -74,6 +74,7 @@ EXAMPLE (the models are in objects.py's docstring):
 from pydantic import ValidationError
 
 from route_config import route_config
+from actions.CartActions import CartActions
 from actions.ChatActions import ChatActions
 from actions.CustomerActions import CustomerActions
 from actions.OrderActions import OrderActions
@@ -282,14 +283,15 @@ class RolesActions():
 
 
 class ApiRequests(AuthActions, RolesActions, StoreActions, CustomerActions,
-                  OrderActions, PaymentActions, PolicyActions, ChatActions,
-                  VoiceActions, ServiceToServiceActions):
+                  CartActions, OrderActions, PaymentActions, PolicyActions,
+                  ChatActions, VoiceActions, ServiceToServiceActions):
 
     def __init__(self):
         AuthActions.__init__(self)
         RolesActions.__init__(self)
         StoreActions.__init__(self)
         CustomerActions.__init__(self)
+        CartActions.__init__(self)
         OrderActions.__init__(self)
         PaymentActions.__init__(self)
         PolicyActions.__init__(self)

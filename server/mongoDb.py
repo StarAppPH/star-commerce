@@ -187,6 +187,9 @@ class mongoDb():
         self.db['Returns'].create_index([('customerId', 1), ('storeId', 1),
                                          ('createdAt', -1)])
         self.db['Returns'].create_index([('orderId', 1), ('status', 1)])
+        # A store's carts, deleted with the store (resetMyStore). A cart is
+        # found by its _id, "<customerId>:<storeId>" (CartActions.cartId).
+        self.db['Carts'].create_index('storeId')
         # A user's conversations at one store, newest first
         # (listMyConversations).
         self.db['Conversations'].create_index([('userId', 1), ('storeId', 1),

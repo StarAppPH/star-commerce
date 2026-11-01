@@ -370,19 +370,20 @@ FORM_TOOLS: dict[str, FormTool] = {
     'showPhoneVerification': FormTool(
         ('customer', ),
         'Open phone verification under your reply: the customer gets a code '
-        'by text and enters it there. Use it when createOrder refuses '
+        'by text and enters it there. Use it when checkoutMyCart refuses '
         'because the phone number is not verified. When it is done, their '
-        'next message says so: then call createOrder again.',
+        'next message says so: then call checkoutMyCart again.',
         ShowPhoneVerificationArgs, _phoneVerification),
     'showDeliveryPinForm': FormTool(
         ('customer', ),
         'Open a map under your reply where the customer pins where their '
-        'delivery goes (or uses where they are). Use it before createOrder, '
+        'delivery goes (or uses where they are). Use it before '
+        'checkoutMyCart, '
         'once they chose delivery in chat; it refuses when the store cannot '
         'deliver. The map shows the store\'s delivery zones and takes a pin '
         'only inside one. The pin comes as their next message, with its zone '
         "and that zone's fee, delivery days, minimum order and free delivery "
-        "total: tell them, then ask in chat for the rest of createOrder's "
+        "total: tell them, then ask in chat for the rest of checkoutMyCart's "
         '`delivery` and call it with fulfillment delivery and the pin\'s '
         'latitude and longitude.',
         ShowDeliveryPinFormArgs, _deliveryPinForm),

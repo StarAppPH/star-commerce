@@ -1,0 +1,25 @@
+{
+    "description": "One product in a cart: only its id and how many. The name, price and\nstock are read from the product each time the cart is shown, so a cart\nnever shows a stale price.",
+    "properties": {
+        "productId": {
+            "description": "The Products _id",
+            "minLength": 1,
+            "title": "Productid",
+            "type": "string"
+        },
+        "quantity": {
+            "description": "Units the customer wants",
+            "maximum": 1000000,
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "productId",
+        "quantity"
+    ],
+    "title": "CartLine",
+    "type": "object",
+    "additionalProperties": false
+}
