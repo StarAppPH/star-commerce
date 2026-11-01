@@ -700,6 +700,18 @@ def test_aRefusedTool_showsNoCard(wiped, model):
     assert res['components'] == []
 
 
+def test_theCustomersPolicyRead_showsNoCard(wiped, firebase, model):
+    # The model reads the policy before every order: no policy table pops
+    # up under the order turn, and none answers a policy question either.
+    store = storeWithProducts(ADMIN)
+    customerId = verifiedGuestAt(firebase, store, GUEST)
+    model(calls(('c1', 'getStorePolicy', '{}')),
+          reply('Returns are accepted within 7 days.'))
+    res = customerSays(customerId, store['_id'], 'Can I return things?')
+    assert res['components'] == []
+    assert res['reply'] == 'Returns are accepted within 7 days.'
+
+
 def test_aTurn_keepsItsLatestComponents(wiped, model):
     createTestStore(ADMIN)
     script = [calls((f'c{i}', 'getMyStorePolicy', '{}'))
@@ -933,7 +945,6 @@ def test_cards_fromEveryCardTool_fitTheirModels():
         'cancelMyReturn': ret,
         'getMyStorePolicy': policy,
         'updateMyStorePolicy': policy,
-        'getStorePolicy': policy,
         'generateProductPhotos': {'photos': [{'_id': 'g1', 'url': 'https://x'}],
                                   'prompt': 'p'},
         'makeProductPhotoChoices': {

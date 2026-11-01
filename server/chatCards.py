@@ -215,7 +215,9 @@ def _store(result: dict, context: CardContext) -> dict | None:
 
 
 # The tools whose result makes a card, by tool name (the names are unique
-# across the audiences).
+# across the audiences). The customer's getStorePolicy makes none: the model
+# reads it before every order, and a whole policy table under an order turn
+# is noise; it answers a policy question in words instead.
 CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'listStoreProducts': _shopProducts,
     'listMyStoreProducts': _storeProducts,
@@ -241,7 +243,6 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'cancelMyReturn': _myReturn,
     'getMyStorePolicy': _policy,
     'updateMyStorePolicy': _policy,
-    'getStorePolicy': _policy,
     'generateProductPhotos': _photos,
     'makeProductPhotoChoices': _photoChoice,
     'findColorsInPhoto': _photoColors,

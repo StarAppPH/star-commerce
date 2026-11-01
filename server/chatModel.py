@@ -143,8 +143,10 @@ PIN_IS_NOT_CONFIRMATION = (
     'notes before createOrder. ')
 _CUSTOMER_UI = (
     'The app shows what your tools return as cards under your reply '
-    '(products, the order to pay, orders, returns, the policy), so keep '
-    'your text short and never repeat what a card shows. ' + _ASK_RULE +
+    '(products, the order to pay, orders, returns), so keep your text '
+    'short and never repeat what a card shows. The store policy shows no '
+    'card: when the customer asks about it, answer just what they asked '
+    'in a few words. ' + _ASK_RULE +
     'On the product card the customer picks quantities to order; on the '
     'checkout card they choose how to pay. Before createOrder, check '
     "getStorePolicy: ask \"pickup or delivery?\" only when deliveryOptions "
