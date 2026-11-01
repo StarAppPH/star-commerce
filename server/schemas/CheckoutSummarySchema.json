@@ -1,0 +1,157 @@
+{
+    "description": "What checking out the cart would place, priced as the order would be\n(OrderActions.orderPricing): the AI's previewMyCheckout answer and the\nchat's summary card share these fields.",
+    "properties": {
+        "currency": {
+            "description": "ISO 4217 code of every amount",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "subtotal": {
+            "description": "The items, before delivery",
+            "minimum": 0,
+            "title": "Subtotal",
+            "type": "number"
+        },
+        "fulfillment": {
+            "description": "How the customer gets it: pickup or delivery",
+            "enum": [
+                "pickup",
+                "delivery"
+            ],
+            "title": "Fulfillment",
+            "type": "string"
+        },
+        "deliveryZone": {
+            "anyOf": [
+                {
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The delivery zone whose policy prices it; null for a pickup",
+            "title": "Deliveryzone"
+        },
+        "deliveryFee": {
+            "description": "What delivery adds to the total (0: free, or a pickup)",
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Deliveryfee",
+            "type": "number"
+        },
+        "total": {
+            "description": "The subtotal plus the delivery fee",
+            "minimum": 0,
+            "title": "Total",
+            "type": "number"
+        },
+        "readyInDays": {
+            "anyOf": [
+                {
+                    "maximum": 365,
+                    "minimum": 0,
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Days from payment until it arrives (the zone's deliveryDays) or is ready for pickup (the store's handoverDays); null: the store hasn't said",
+            "title": "Readyindays"
+        },
+        "deliveryAddress": {
+            "anyOf": [
+                {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Where it is delivered, as the customer gave it; null for a pickup",
+            "title": "Deliveryaddress"
+        },
+        "deliveryLatitude": {
+            "anyOf": [
+                {
+                    "maximum": 90,
+                    "minimum": -90,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The delivery pin's degrees north",
+            "title": "Deliverylatitude"
+        },
+        "deliveryLongitude": {
+            "anyOf": [
+                {
+                    "maximum": 180,
+                    "minimum": -180,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The delivery pin's degrees east",
+            "title": "Deliverylongitude"
+        },
+        "deliveryNotes": {
+            "anyOf": [
+                {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The customer's notes for the rider",
+            "title": "Deliverynotes"
+        }
+    },
+    "required": [
+        "currency",
+        "subtotal",
+        "fulfillment",
+        "deliveryZone",
+        "deliveryFee",
+        "total",
+        "readyInDays",
+        "deliveryAddress",
+        "deliveryLatitude",
+        "deliveryLongitude",
+        "deliveryNotes"
+    ],
+    "title": "CheckoutSummary",
+    "type": "object",
+    "additionalProperties": false
+}

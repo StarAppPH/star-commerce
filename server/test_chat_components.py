@@ -49,6 +49,17 @@ PICKUP = {'fulfillment': 'pickup', 'deliveryFee': 0,
           'deliveryDistanceKm': None, 'deliveryAddress': None,
           'deliveryLatitude': None, 'deliveryLongitude': None,
           'deliveryNotes': None}
+# A previewMyCheckout result: a delivery of two items.
+CHECKOUT_PREVIEW = {
+    'currency': 'PHP', 'items': [
+        {'productId': 'p1', 'name': 'A', 'price': 5, 'quantity': 3,
+         'lineTotal': 15},
+        {'productId': 'p2', 'name': 'B', 'price': 650, 'quantity': 1,
+         'lineTotal': 650}],
+    'subtotal': 665, 'fulfillment': 'delivery', 'deliveryZone': 'Makati',
+    'deliveryFee': 60, 'total': 725, 'readyInDays': 1,
+    'deliveryAddress': '1 Ayala Ave', 'deliveryLatitude': 14.55,
+    'deliveryLongitude': 121.02, 'deliveryNotes': 'Gate 2'}
 
 
 @pytest.fixture
@@ -453,7 +464,7 @@ def test_aRetiredComponentKind_isLeftOutOfTheTurnsPage(wiped, model):
         'checkout', 'storeReturns', 'myReturns', 'policy', 'photos',
         'productPhotoChoice', 'store', 'locationForm', 'newProductsForm',
         'phoneVerificationForm', 'photoRequestForm', 'deliveryPinForm',
-        'deliveryZonesForm', 'photoColors'}
+        'deliveryZonesForm', 'photoColors', 'checkoutSummary'}
     # The retired form cannot be answered with a kind of today.
     fake = model()
     with pytest.raises(ValueError, match='^' + re.escape(
@@ -929,6 +940,7 @@ def test_cards_fromEveryCardTool_fitTheirModels():
                                {'method': 'cash', 'provider': None,
                                 'eWallets': None, 'banks': None,
                                 'checkPayees': None}]},
+        'previewMyCheckout': CHECKOUT_PREVIEW,
         'addPaymentReference': order,
         'confirmOrderPayment': order,
         'getStoreReturns': {'returns': [ret]},
@@ -1030,7 +1042,7 @@ def test_showCard_isTheChatsOwn_andNeverOnACardThatFinishesAnAction():
     """Every card tool but the ones whose card is the only way to finish an
     action takes an optional showCard in the chat, never on the MCP
     servers, and the tool itself never gets it."""
-    alwaysShown = {'createOrder', 'checkoutMyCart',
+    alwaysShown = {'createOrder', 'checkoutMyCart', 'previewMyCheckout',
                    'makeProductPhotoChoices', 'findColorsInPhoto'}
     assert chatCards.SHOW_CARD_TOOLS == set(chatCards.CARDS) - alwaysShown
     seen = set()
@@ -1104,6 +1116,7 @@ def test_cards_aCardThatFinishesAnAction_showsWhateverTheModelSays():
     results = {
         'createOrder': checkout,
         'checkoutMyCart': checkout,
+        'previewMyCheckout': CHECKOUT_PREVIEW,
         'makeProductPhotoChoices': {
             'productId': 'p1', 'productName': 'A', 'photos': [
                 {'_id': 'o1', 'url': 'https://x', 'source': 'original'}],

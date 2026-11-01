@@ -599,6 +599,25 @@ def _belowZoneMinimum(zone: dict, itemsTotal: float, currency: str) -> None:
             zone=zone['name'], minimum=minimum, currency=currency))
 
 
+def orderPricing(items: list[dict], zone: dict | None,
+                 currency: str) -> dict:
+    """What an order of `items` ({price, quantity}) costs, pure: the items'
+    `subtotal`, the `deliveryFee` of the `zone` that delivers it (a None
+    zone: a pickup, no fee; deliveryFeeFor: nothing from its
+    freeDeliveryFrom on)
+    and the `total`, each to the cent. A delivery whose items come to less
+    than its zone's minimumOrder is refused. The one pricing of an order:
+    _reserveAndCreate stores it and CartActions.previewMyCheckout shows it,
+    so a preview's total is the placed order's on the same prices."""
+    subtotal = orderTotal(items)
+    fee = 0
+    if zone is not None:
+        _belowZoneMinimum(zone, subtotal, currency)
+        fee = deliveryFeeFor(zone, subtotal)
+    return {'subtotal': subtotal, 'deliveryFee': fee,
+            'total': round(subtotal + fee, 2)}
+
+
 def _checkZoneMinimum(wanted: list[tuple[str, int]], storeId: str,
                       zone: dict | None, currency: str) -> None:
     """The zone's minimum order, checked on today's prices before anything
@@ -612,9 +631,8 @@ def _checkZoneMinimum(wanted: list[tuple[str, int]], storeId: str,
          'storeId': storeId}, PRODUCTS, projection={'price': 1})}
     if len(prices) < len(wanted):
         return  # an unknown item: the reservation refuses it by position
-    _belowZoneMinimum(zone, orderTotal(
-        [{'price': prices[productId], 'quantity': quantity}
-         for productId, quantity in wanted]), currency)
+    orderPricing([{'price': prices[productId], 'quantity': quantity}
+                  for productId, quantity in wanted], zone, currency)
 
 
 def _reserveAndCreate(wanted: list[tuple[str, int]], storeId: str,
@@ -625,8 +643,7 @@ def _reserveAndCreate(wanted: list[tuple[str, int]], storeId: str,
     an item no product can fill rolls back every earlier reservation, and
     a customer over MAX_PENDING_ORDERS_PER_STORE reserves nothing, nor does
     a delivery whose items come to less than its `zone`'s minimumOrder.
-    The fee is the zone's (deliveryFeeFor: nothing from its
-    freeDeliveryFrom on).
+    The prices are the reserved products' own, priced by orderPricing.
 
     On a local mongod that is no replica set there is no transaction
     (addStoreProducts' accepted limit): a refused item leaves the earlier
@@ -671,24 +688,20 @@ def _reserveAndCreate(wanted: list[tuple[str, int]], storeId: str,
                 raise _atPosition(position, ValueError(NOT_IN_STOCK), 'Item')
             items.append({'productId': productId, 'name': product['name'],
                           'price': product['price'], 'quantity': quantity})
-        itemsTotal = orderTotal(items)
-        fee = 0
-        if zone is not None:
-            _belowZoneMinimum(zone, itemsTotal, currency)
-            fee = deliveryFeeFor(zone, itemsTotal)
+        pricing = orderPricing(items, zone, currency)
         order = Order(
             _id=orderId,
             storeId=storeId,
             customerId=customer['_id'],
             items=items,
-            total=round(itemsTotal + fee, 2),
+            total=pricing['total'],
             currency=currency,
             contactNumber=customer['phoneNumber'],
             status='pending',
             createdAt=createdAt,
             expiresAt=orderExpiresAt(createdAt),
             fulfillment=fulfillment,
-            deliveryFee=fee,
+            deliveryFee=pricing['deliveryFee'],
             deliveryZone=zone['name'] if zone is not None else None,
             **(delivery or {}),
             _version=0)
@@ -780,10 +793,30 @@ def getMyOrders(model,
     return _listOrders(fieldModel(model, 'orders'), match, limit)
 
 
-def createOrder(model, userId: str, storeId: str,
-                items: list[NewOrderItem],
-                fulfillment: Fulfillment | None = None,
-                delivery: NewOrderDelivery | None = None) -> dict:
+class CheckoutTerms(typing.NamedTuple):
+    """What an order of the caller's items would be placed on (checkoutTerms):
+    who, in which currency, the items as (productId, quantity) pairs, the
+    store's payment options, the policy's delivery answers (storeDelivery),
+    how it is fulfilled, where (as the order stores it) and the zone that
+    prices a delivery."""
+    customer: dict
+    currency: str
+    wanted: list[tuple[str, int]]
+    options: list[dict]
+    policy: dict
+    fulfillment: str
+    address: dict | None
+    zone: dict | None
+
+
+def checkoutTerms(userId: str, storeId: str, items: list,
+                  fulfillment: Fulfillment | None,
+                  delivery: NewOrderDelivery | None) -> CheckoutTerms:
+    """createOrder's checks before any price or stock is read, in its order:
+    a customer with a verified phone, a set-up store, the items, a store
+    that said how customers pay, and the fulfillment (_validFulfillment).
+    Reads only, so CartActions.previewMyCheckout refuses on exactly what
+    createOrder would."""
     customer = customerAtStore(userId, storeId)
     if not customer.get('phoneNumber'):
         raise PermissionError(PHONE_REQUIRED)
@@ -795,14 +828,51 @@ def createOrder(model, userId: str, storeId: str,
     policy = storeDelivery(storeId)
     fulfillment, address, zone = _validFulfillment(fulfillment,
                                                    delivery, policy)
-    _checkZoneMinimum(wanted, storeId, zone, currency)
+    return CheckoutTerms(customer, currency, wanted, options, policy,
+                         fulfillment, address, zone)
+
+
+def tooManyUnpaid(customerId: str, storeId: str) -> bool:
+    """Whether the customer already holds MAX_PENDING_ORDERS_PER_STORE
+    unpaid orders at the store (a read: _reserveAndCreate counts again in
+    its transaction)."""
+    return db.read({'customerId': customerId, 'storeId': storeId,
+                    **unpaidMatch(_now())}, ORDERS,
+                   countOnly=True) >= MAX_PENDING_ORDERS_PER_STORE
+
+
+def expiredHolds(storeId: str, productIds: list[str]) -> dict[str, int]:
+    """The units each product holds for orders already past their expiresAt
+    but not cancelled yet, by product _id: free for a new order, since
+    createOrder cancels those first (cancelExpiredOrders). Reads only."""
+    products = db.read({'_id': {'$in': productIds}, 'storeId': storeId},
+                       PRODUCTS, projection={'reservedInventory': 1})
+    orderIds = list({held['orderId'] for product in products
+                     for held in product.get('reservedInventory') or []})
+    if not orderIds:
+        return {}
+    expired = {order['_id'] for order in db.read(
+        {'_id': {'$in': orderIds}, 'status': 'pending',
+         'expiresAt': expiredBy(_now())}, ORDERS, projection={'_id': 1})}
+    return {product['_id']: sum(
+        held['quantity'] for held in product.get('reservedInventory') or []
+        if held['orderId'] in expired) for product in products}
+
+
+def createOrder(model, userId: str, storeId: str,
+                items: list[NewOrderItem],
+                fulfillment: Fulfillment | None = None,
+                delivery: NewOrderDelivery | None = None) -> dict:
+    terms = checkoutTerms(userId, storeId, items, fulfillment, delivery)
+    _checkZoneMinimum(terms.wanted, storeId, terms.zone, terms.currency)
     # Units an expired order still holds are free for this one.
     cancelExpiredOrders(storeId)
-    created = _reserveAndCreate(wanted, storeId, customer, currency,
-                                fulfillment, address, zone)
+    created = _reserveAndCreate(terms.wanted, storeId, terms.customer,
+                                terms.currency, terms.fulfillment,
+                                terms.address, terms.zone)
     return {
         'order': projectedCopy(fieldModel(model, 'order'), created),
-        'paymentOptions': options,
+        'paymentOptions': terms.options,
     }
 
 

@@ -147,27 +147,32 @@ _ADMIN_UI = (
 # The delivery pin is a form answer that is no confirmation yet.
 PIN_IS_NOT_CONFIRMATION = (
     'The delivery pin is not a confirmation: ask for the address and rider '
-    'notes before checkoutMyCart; its suggestedAddress is a guess from the '
-    'map, never the address until the customer confirms it. ')
+    'notes before previewMyCheckout; its suggestedAddress is a guess from '
+    'the map, never the address until the customer confirms it. ')
 _CUSTOMER_UI = (
     'The app shows what your tools return as cards under your reply '
-    '(products, the order to pay, orders, returns, the policy), so keep '
+    '(products, the checkout summary, the order to pay, orders, returns, '
+    'the policy), so keep '
     'your text short and never repeat what a card shows. ' + SHOW_CARD_RULE +
     _ASK_RULE +
     'Orders go through the cart: on the product card the customer adds '
     'products to their cart (the app also shows the cart in its header); '
     'in chat, add or change them with the cart tools (addToCart, '
     'setCartItemQuantity, removeFromCart) and show it with getMyCart. When '
-    'the customer wants to order, check out the cart with checkoutMyCart; '
-    'on the checkout card they choose how to pay. Before checkoutMyCart, '
+    'the customer wants to order, show what it would cost with '
+    'previewMyCheckout: its summary card lists the items, delivery fee and '
+    'total with a Place order button, so never ask "confirm checkout?" in '
+    'text; say the total in one short line. Only once they confirm (Place '
+    'order, or yes in chat) check out with checkoutMyCart, with the same '
+    'fulfillment and delivery; after a change, preview again. On the '
+    'checkout card they choose how to pay. Before previewMyCheckout, '
     "check getStorePolicy: ask \"pickup or delivery?\" only when "
     'deliveryOptions has both and deliveryZones is not empty, saying in one '
     'short clause that the fee depends on their zone; otherwise leave '
-    'fulfillment out and checkoutMyCart uses the one way that can be '
+    'fulfillment out and previewMyCheckout uses the one way that can be '
     'booked; when that way is delivery, still do the delivery steps below. '
-    "For a pickup, confirm the cart's items and check it out; never invent "
-    "the store's "
-    'address or hours. For a delivery, '
+    "For a pickup, confirm the cart's items, then call previewMyCheckout; "
+    "never invent the store's address or hours. For a delivery, "
     'open showDeliveryPinForm (if it refuses, say why and offer pickup); '
     'the pin answer names its zone: give that zone\'s fee, delivery days, '
     'minimum order and free delivery total (whichever are set) in one '
@@ -176,8 +181,9 @@ _CUSTOMER_UI = (
     'correct it) instead of asking them to type it, and use it only once '
     'they said yes; '
     "after that, separately, any notes for the rider (checkoutMyCart's "
-    '`delivery`). For a return, ask what requestReturn needs, confirm, then '
-    'call it. When checkoutMyCart needs a verified phone number, open '
+    '`delivery`), then call previewMyCheckout. For a return, ask what '
+    'requestReturn needs, confirm, then call it. When previewMyCheckout or '
+    'checkoutMyCart needs a verified phone number, open '
     'showPhoneVerification. ' + _FORM_ANSWER_RULE + PIN_IS_NOT_CONFIRMATION)
 
 CHAT_PROMPTS = {

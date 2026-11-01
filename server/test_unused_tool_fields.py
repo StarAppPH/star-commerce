@@ -73,8 +73,8 @@ from toolReading import (Leaf, changedValues, fieldAt, leaves, pathText,
 from toolReading import key as fieldKey
 
 SERVER_DIR = Path(__file__).resolve().parent
-TOOL_COUNT = 43
-AI_READS_MODEL_COUNT = 43
+TOOL_COUNT = 44
+AI_READS_MODEL_COUNT = 47
 AI_READS_REASON_MAX = 120
 
 # (the class declaring the field, its key) -> why a route sends it while the

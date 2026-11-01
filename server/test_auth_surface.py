@@ -203,6 +203,7 @@ TOOL_PERMISSION_CHECKS = {
     'removeFromCart': 'customerAtStore',
     'clearMyCart': 'customerAtStore',
     'checkoutMyCart': 'customerAtStore',
+    'previewMyCheckout': 'customerAtStore',
 }
 
 # The functions an action may reach first to check its caller.

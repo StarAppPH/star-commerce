@@ -239,7 +239,9 @@ from objects.order import (OrderStatus, CancelReason,
                            PaymentReceiptResponse)
 from objects.cart import (CART_ITEMS_MAX, CartLine, Cart, CartView,
                           CartItemRow, CartResponse, CartScreenItemRow,
-                          CartScreenResponse)
+                          CartScreenResponse, CheckoutLineRow,
+                          CheckoutPreviewItemRow, CheckoutSummary,
+                          CheckoutPreviewResponse)
 from objects.policy import (DeliveryOption, RefundMethod, ReturnShippingPayer,
                             PaidOrderCancellation, PolicyField,
                             POLICY_TEXT_MAX_LENGTH, POLICY_TERMS_MAX_LENGTH,
@@ -279,7 +281,7 @@ from objects.chatComponents import (
     CHAT_ANSWER_ID_MAX_LENGTH, CHAT_PHOTO_URL_MAX_LENGTH, FormId,
     ChatShopProductRow, ShopProductsCard, ChatStoreProductRow,
     StoreProductsCard, ChatStoreOrderRow, StoreOrdersCard, ChatMyOrderRow,
-    MyOrdersCard, CheckoutCard, ChatStoreReturnRow, StoreReturnsCard,
+    MyOrdersCard, CheckoutCard, CheckoutSummaryCard, ChatStoreReturnRow, StoreReturnsCard,
     ChatMyReturnRow, MyReturnsCard, PolicyCard, PhotosCard,
     ProductPhotoChoiceCard, PhotoColorsCard, StoreCard,
     LocationForm, ChatProductDraft, NewProductsForm, PhoneVerificationForm,
@@ -288,7 +290,7 @@ from objects.chatComponents import (
     PhoneVerifiedAnswer, PhotoRequestAnswer, OrderItemsAnswer, PaymentAnswer,
     HandoverAnswer, ReturnDecisionAnswer, DeliveryPinAnswer,
     DeliveryZonesAnswer,
-    ProductPhotoAnswer, BrandColorsAnswer, ChatFormAnswer,
+    ProductPhotoAnswer, BrandColorsAnswer, PlaceOrderAnswer, ChatFormAnswer,
     ChatFormAnswerTagged)
 from objects.chat import (ChatAudience, CHAT_MESSAGE_MAX_LENGTH,
                           CHAT_TITLE_MAX_LENGTH, CHAT_TOOL_CALL_ID_MAX_LENGTH,

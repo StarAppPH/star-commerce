@@ -364,9 +364,9 @@ def test_theTwinsAreTheDeclaredOnes():
 
 
 def test_theRealCounts_arePinned():
-    """43 tools serve the AI, 24 routes the people (ApiRequests): a tool or
+    """44 tools serve the AI, 24 routes the people (ApiRequests): a tool or
     route added or removed is a decision, not an accident."""
-    assert len(tools()) == 43
+    assert len(tools()) == 44
     assert len(routes()) == 24
 
 

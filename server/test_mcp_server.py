@@ -109,7 +109,8 @@ def test_eachAudienceListsOnlyItsTools():
                                               'setCartItemQuantity',
                                               'removeFromCart',
                                               'clearMyCart',
-                                              'checkoutMyCart'}
+                                              'checkoutMyCart',
+                                              'previewMyCheckout'}
     assert asyncio.run(names('admin')) == {
         'getUserStore', 'createUserStore', 'addStoreProduct',
         'addStoreProducts', 'updateStoreProduct', 'listMyStoreProducts',

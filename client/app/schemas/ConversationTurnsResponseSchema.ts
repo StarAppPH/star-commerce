@@ -463,13 +463,105 @@ export type Paymentmethods =
   | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[]
   | null;
 /**
+ * ISO 4217 code of every amount
+ */
+export type Currency4 =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "SGD"
+  | "AUD"
+  | "CAD"
+  | "HKD"
+  | "CNY"
+  | "KRW"
+  | "MYR"
+  | "THB"
+  | "IDR"
+  | "VND"
+  | "INR"
+  | "AED";
+/**
+ * The items, before delivery
+ */
+export type Subtotal = number;
+/**
+ * How the customer gets it: pickup or delivery
+ */
+export type Fulfillment2 = "pickup" | "delivery";
+/**
+ * The delivery zone whose policy prices it; null for a pickup
+ */
+export type Deliveryzone2 = string | null;
+/**
+ * What delivery adds to the total (0: free, or a pickup)
+ */
+export type Deliveryfee2 = number;
+/**
+ * The subtotal plus the delivery fee
+ */
+export type Total2 = number;
+/**
+ * Days from payment until it arrives (the zone's deliveryDays) or is ready for pickup (the store's handoverDays); null: the store hasn't said
+ */
+export type Readyindays = number | null;
+/**
+ * Where it is delivered, as the customer gave it; null for a pickup
+ */
+export type Deliveryaddress2 = string | null;
+/**
+ * The delivery pin's degrees north
+ */
+export type Deliverylatitude2 = number | null;
+/**
+ * The delivery pin's degrees east
+ */
+export type Deliverylongitude2 = number | null;
+/**
+ * The customer's notes for the rider
+ */
+export type Deliverynotes2 = string | null;
+/**
  * The card
  */
-export type Kind5 = "storeReturns";
+export type Kind5 = "checkoutSummary";
+/**
+ * Answer it with this id
+ */
+export type Formid3 = string;
+/**
+ * What the order would hold
+ *
+ * @minItems 1
+ * @maxItems 50
+ */
+export type Items2 = [CheckoutLineRow, ...CheckoutLineRow[]];
+/**
+ * Product name
+ */
+export type Name4 = string;
+/**
+ * Unit price now, in the store's currency
+ */
+export type Price3 = number;
+/**
+ * Units ordered
+ */
+export type Quantity1 = number;
+/**
+ * The price times the quantity
+ */
+export type Linetotal = number;
+/**
+ * The card
+ */
+export type Kind6 = "storeReturns";
 /**
  * Set when it has returns waiting for a decision
  */
-export type Formid3 = string | null;
+export type Formid4 = string | null;
 /**
  * Returns _id
  */
@@ -485,19 +577,19 @@ export type Status2 = "requested" | "approved" | "rejected" | "received" | "canc
 /**
  * Product name when ordered
  */
-export type Name4 = string;
+export type Name5 = string;
 /**
  * Unit price paid, in the order currency
  */
-export type Price3 = number;
+export type Price4 = number;
 /**
  * Units returned
  */
-export type Quantity1 = number;
+export type Quantity2 = number;
 /**
  * What goes back
  */
-export type Items2 = ReturnItemRow[];
+export type Items3 = ReturnItemRow[];
 /**
  * Why it goes back
  */
@@ -513,7 +605,7 @@ export type Refundamount = number;
 /**
  * The order's currency
  */
-export type Currency4 =
+export type Currency5 =
   | "PHP"
   | "USD"
   | "EUR"
@@ -556,7 +648,7 @@ export type Returns = ChatStoreReturnRow[];
 /**
  * The card
  */
-export type Kind6 = "myReturns";
+export type Kind7 = "myReturns";
 /**
  * Returns _id
  */
@@ -568,7 +660,7 @@ export type Status3 = "requested" | "approved" | "rejected" | "received" | "canc
 /**
  * What goes back
  */
-export type Items3 = ReturnItemRow[];
+export type Items4 = ReturnItemRow[];
 /**
  * Why it goes back
  */
@@ -580,7 +672,7 @@ export type Refundamount1 = number;
 /**
  * The order's currency
  */
-export type Currency5 =
+export type Currency6 =
   | "PHP"
   | "USD"
   | "EUR"
@@ -619,11 +711,11 @@ export type Returns1 = ChatMyReturnRow[];
 /**
  * The card
  */
-export type Kind7 = "policy";
+export type Kind8 = "policy";
 /**
  * Fees are in it
  */
-export type Currency6 =
+export type Currency7 =
   | "PHP"
   | "USD"
   | "EUR"
@@ -901,11 +993,11 @@ export type Deliveryzones =
 /**
  * What the zone is called, e.g. Makati
  */
-export type Name5 = string;
+export type Name6 = string;
 /**
  * What a delivery into the zone costs, in the store's currency; 0: free
  */
-export type Deliveryfee2 = number;
+export type Deliveryfee3 = number;
 /**
  * Days from payment until a delivery into the zone arrives
  */
@@ -921,7 +1013,7 @@ export type Freedeliveryfrom = number | null;
 /**
  * The card
  */
-export type Kind8 = "photos";
+export type Kind9 = "photos";
 /**
  * GeneratedPhotos _id
  */
@@ -949,11 +1041,11 @@ export type Notgenerated = string | null;
 /**
  * The card
  */
-export type Kind9 = "productPhotoChoice";
+export type Kind10 = "productPhotoChoice";
 /**
  * Answer it with this id
  */
-export type Formid4 = string;
+export type Formid5 = string;
 /**
  * The Products _id
  */
@@ -1000,11 +1092,11 @@ export type Notgenerated1 = string | null;
 /**
  * The card
  */
-export type Kind10 = "photoColors";
+export type Kind11 = "photoColors";
 /**
  * Answer it with this id
  */
-export type Formid5 = string;
+export type Formid6 = string;
 /**
  * The main colors, biggest share first
  *
@@ -1041,11 +1133,11 @@ export type Focusfound = boolean | null;
 /**
  * The card
  */
-export type Kind11 = "store";
+export type Kind12 = "store";
 /**
  * Store name
  */
-export type Name6 = string | null;
+export type Name7 = string | null;
 /**
  * The store's link name
  */
@@ -1053,7 +1145,7 @@ export type Slug = string | null;
 /**
  * The store's currency
  */
-export type Currency7 =
+export type Currency8 =
   | "PHP"
   | "USD"
   | "EUR"
@@ -1098,11 +1190,11 @@ export type Longitude = number;
 /**
  * The form
  */
-export type Kind12 = "locationForm";
+export type Kind13 = "locationForm";
 /**
  * Answer it with this id
  */
-export type Formid6 = string;
+export type Formid7 = string;
 /**
  * The store's address
  */
@@ -1110,15 +1202,15 @@ export type Address1 = string | null;
 /**
  * The form
  */
-export type Kind13 = "newProductsForm";
+export type Kind14 = "newProductsForm";
 /**
  * Answer it with this id
  */
-export type Formid7 = string;
+export type Formid8 = string;
 /**
  * Prices are in it
  */
-export type Currency8 =
+export type Currency9 =
   | "PHP"
   | "USD"
   | "EUR"
@@ -1139,11 +1231,11 @@ export type Currency8 =
 /**
  * Product name
  */
-export type Name7 = string | null;
+export type Name8 = string | null;
 /**
  * Price
  */
-export type Price4 = number | null;
+export type Price5 = number | null;
 /**
  * Units in stock
  */
@@ -1167,15 +1259,7 @@ export type Rowphotos = (string | null)[];
 /**
  * The form
  */
-export type Kind14 = "phoneVerificationForm";
-/**
- * Answer it with this id
- */
-export type Formid8 = string;
-/**
- * The form
- */
-export type Kind15 = "photoRequestForm";
+export type Kind15 = "phoneVerificationForm";
 /**
  * Answer it with this id
  */
@@ -1183,15 +1267,23 @@ export type Formid9 = string;
 /**
  * The form
  */
-export type Kind16 = "deliveryPinForm";
+export type Kind16 = "photoRequestForm";
 /**
  * Answer it with this id
  */
 export type Formid10 = string;
 /**
+ * The form
+ */
+export type Kind17 = "deliveryPinForm";
+/**
+ * Answer it with this id
+ */
+export type Formid11 = string;
+/**
  * The zones' fees and totals are in it
  */
-export type Currency9 =
+export type Currency10 =
   | (
       | "PHP"
       | "USD"
@@ -1276,11 +1368,11 @@ export type Deliveryzones1 =
 /**
  * What the zone is called, e.g. Makati
  */
-export type Name8 = string;
+export type Name9 = string;
 /**
  * What a delivery into the zone costs, in the store's currency; 0: free
  */
-export type Deliveryfee3 = number;
+export type Deliveryfee4 = number;
 /**
  * Days from payment until a delivery into the zone arrives
  */
@@ -1303,15 +1395,15 @@ export type Points = [StoreLocationResponse, StoreLocationResponse, StoreLocatio
 /**
  * The form
  */
-export type Kind17 = "deliveryZonesForm";
+export type Kind18 = "deliveryZonesForm";
 /**
  * Answer it with this id
  */
-export type Formid11 = string;
+export type Formid12 = string;
 /**
  * The zones' fees and totals are in it
  */
-export type Currency10 =
+export type Currency11 =
   | "PHP"
   | "USD"
   | "EUR"
@@ -1400,6 +1492,7 @@ export type Components = (
   | StoreOrdersCard
   | MyOrdersCard
   | CheckoutCard
+  | CheckoutSummaryCard
   | StoreReturnsCard
   | MyReturnsCard
   | PolicyCard
@@ -1621,13 +1714,44 @@ export interface BankAccountRow {
   accountNumber: Accountnumber1;
 }
 /**
+ * What checking out the shopper's cart would place, priced, before
+ * anything is placed (previewMyCheckout). Answered with PlaceOrderAnswer:
+ * the shopper places it.
+ */
+export interface CheckoutSummaryCard {
+  currency: Currency4;
+  subtotal: Subtotal;
+  fulfillment: Fulfillment2;
+  deliveryZone: Deliveryzone2;
+  deliveryFee: Deliveryfee2;
+  total: Total2;
+  readyInDays: Readyindays;
+  deliveryAddress: Deliveryaddress2;
+  deliveryLatitude: Deliverylatitude2;
+  deliveryLongitude: Deliverylongitude2;
+  deliveryNotes: Deliverynotes2;
+  kind: Kind5;
+  formId: Formid3;
+  items: Items2;
+}
+/**
+ * One line of a checkout summary: a product of the cart at its price
+ * now (the chat's summary card shows these).
+ */
+export interface CheckoutLineRow {
+  name: Name4;
+  price: Price3;
+  quantity: Quantity1;
+  lineTotal: Linetotal;
+}
+/**
  * The store's returns a tool listed or decided. With requested returns
  * it is answered with ReturnDecisionAnswer (formId set); otherwise formId
  * is null.
  */
 export interface StoreReturnsCard {
-  kind: Kind5;
-  formId: Formid3;
+  kind: Kind6;
+  formId: Formid4;
   returns: Returns;
 }
 /**
@@ -1637,11 +1761,11 @@ export interface ChatStoreReturnRow {
   _id: Id4;
   orderId: Orderid;
   status: Status2;
-  items: Items2;
+  items: Items3;
   reason: Reason;
   note: Note;
   refundAmount: Refundamount;
-  currency: Currency4;
+  currency: Currency5;
   createdAt: Createdat2;
   contactNumber: Contactnumber1;
   rejectReason: Rejectreason;
@@ -1652,15 +1776,15 @@ export interface ChatStoreReturnRow {
  * productId.
  */
 export interface ReturnItemRow {
-  name: Name4;
-  price: Price3;
-  quantity: Quantity1;
+  name: Name5;
+  price: Price4;
+  quantity: Quantity2;
 }
 /**
  * The shopper's returns a tool listed, requested or cancelled.
  */
 export interface MyReturnsCard {
-  kind: Kind6;
+  kind: Kind7;
   returns: Returns1;
 }
 /**
@@ -1669,10 +1793,10 @@ export interface MyReturnsCard {
 export interface ChatMyReturnRow {
   _id: Id5;
   status: Status3;
-  items: Items3;
+  items: Items4;
   reason: Reason1;
   refundAmount: Refundamount1;
-  currency: Currency5;
+  currency: Currency6;
   createdAt: Createdat3;
   rejectReason: Rejectreason1;
   refundedAt: Refundedat1;
@@ -1682,8 +1806,8 @@ export interface ChatMyReturnRow {
  * the store has not said.
  */
 export interface PolicyCard {
-  kind: Kind7;
-  currency: Currency6;
+  kind: Kind8;
+  currency: Currency7;
   acceptsReturns: Acceptsreturns;
   returnWindowDays: Returnwindowdays;
   returnConditions: Returnconditions;
@@ -1718,8 +1842,8 @@ export interface AuthorizedPaymentMethodRow {
  * MIRRORS keeps in step.
  */
 export interface DeliveryZoneRule {
-  name: Name5;
-  deliveryFee: Deliveryfee2;
+  name: Name6;
+  deliveryFee: Deliveryfee3;
   deliveryDays: Deliverydays;
   minimumOrder: Minimumorder;
   freeDeliveryFrom: Freedeliveryfrom;
@@ -1728,7 +1852,7 @@ export interface DeliveryZoneRule {
  * The product photos a tool made.
  */
 export interface PhotosCard {
-  kind: Kind8;
+  kind: Kind9;
   photos: Photos;
   prompt?: Prompt1;
   notGenerated?: Notgenerated;
@@ -1743,8 +1867,8 @@ export interface GeneratedPhotoRow {
  * the styled ones made from it. Answered with ProductPhotoAnswer.
  */
 export interface ProductPhotoChoiceCard {
-  kind: Kind9;
-  formId: Formid4;
+  kind: Kind10;
+  formId: Formid5;
   productId: Productid;
   productName: Productname;
   photos: Photos1;
@@ -1765,8 +1889,8 @@ export interface PhotoChoiceRow {
  * attached, as swatches. Answered with BrandColorsAnswer.
  */
 export interface PhotoColorsCard {
-  kind: Kind10;
-  formId: Formid5;
+  kind: Kind11;
+  formId: Formid6;
   colors: Colors;
   focus: Focus;
   focusFound: Focusfound;
@@ -1784,10 +1908,10 @@ export interface PhotoColorRow {
  * The admin's store a tool read, created or pinned.
  */
 export interface StoreCard {
-  kind: Kind11;
-  name: Name6;
+  kind: Kind12;
+  name: Name7;
   slug: Slug;
-  currency: Currency7;
+  currency: Currency8;
   description: Description1;
   contactNumber: Contactnumber2;
   address: Address;
@@ -1811,8 +1935,8 @@ export interface StoreLocationResponse {
  * LocationAnswer.
  */
 export interface LocationForm {
-  kind: Kind12;
-  formId: Formid6;
+  kind: Kind13;
+  formId: Formid7;
   /**
    * The pin so far; null when there is none
    */
@@ -1823,9 +1947,9 @@ export interface LocationForm {
  * Asks the admin for new products. Answered with NewProductsAnswer.
  */
 export interface NewProductsForm {
-  kind: Kind13;
-  formId: Formid7;
-  currency: Currency8;
+  kind: Kind14;
+  formId: Formid8;
+  currency: Currency9;
   products: Products2;
   rowPhotos?: Rowphotos;
 }
@@ -1834,8 +1958,8 @@ export interface NewProductsForm {
  * form.
  */
 export interface ChatProductDraft {
-  name: Name7;
-  price: Price4;
+  name: Name8;
+  price: Price5;
   inventory: Inventory2;
   description: Description2;
 }
@@ -1845,16 +1969,16 @@ export interface ChatProductDraft {
  * stored it.
  */
 export interface PhoneVerificationForm {
-  kind: Kind14;
-  formId: Formid8;
+  kind: Kind15;
+  formId: Formid9;
 }
 /**
  * Asks the admin for photos of one item to turn into product photos.
  * Answered with PhotoRequestAnswer.
  */
 export interface PhotoRequestForm {
-  kind: Kind15;
-  formId: Formid9;
+  kind: Kind16;
+  formId: Formid10;
 }
 /**
  * Asks the shopper to pin where their delivery goes: a map and "use
@@ -1862,21 +1986,21 @@ export interface PhotoRequestForm {
  * Answered with DeliveryPinAnswer.
  */
 export interface DeliveryPinForm {
-  kind: Kind16;
-  formId: Formid10;
+  kind: Kind17;
+  formId: Formid11;
   /**
    * The store's pin, where the map opens; null until pinned
    */
   storeLocation: StoreLocationResponse | null;
-  currency?: Currency9;
+  currency?: Currency10;
   deliveryZones?: Deliveryzones1;
 }
 /**
  * A zone as a route sends it: its policy and its shape.
  */
 export interface DeliveryZoneResponse {
-  name: Name8;
-  deliveryFee: Deliveryfee3;
+  name: Name9;
+  deliveryFee: Deliveryfee4;
   deliveryDays: Deliverydays1;
   minimumOrder: Minimumorder1;
   freeDeliveryFrom: Freedeliveryfrom1;
@@ -1889,9 +2013,9 @@ export interface DeliveryZoneResponse {
  * DeliveryZonesAnswer.
  */
 export interface DeliveryZonesForm {
-  kind: Kind17;
-  formId: Formid11;
-  currency: Currency10;
+  kind: Kind18;
+  formId: Formid12;
+  currency: Currency11;
   /**
    * The store's pin, where the map opens; null until pinned
    */
