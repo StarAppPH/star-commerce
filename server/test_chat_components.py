@@ -117,7 +117,9 @@ def test_thePrompts_askInChat_andNameOnlyTheFormsLeft():
     for toolset, prompt in chatModel.CHAT_PROMPTS.items():
         assert 'one short question per message' in prompt
         assert not any(name in prompt for name in retired)
-        named = set(re.findall(r'show[A-Z][A-Za-z]+', prompt))
+        # showCard is a tool argument (chatCards.SHOW_CARD), not a form.
+        named = set(re.findall(r'show[A-Z][A-Za-z]+', prompt)) - {
+            chatCards.SHOW_CARD}
         assert named <= chatForms.formToolNames(toolset), toolset
     assert 'createUserStore' in chatModel.CHAT_PROMPTS['adminSetup']
     assert 'updateMyStorePolicy' in chatModel.CHAT_PROMPTS['admin']

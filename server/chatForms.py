@@ -21,6 +21,7 @@ conversation's storeId), never from the model or the answer.
 """
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Callable, get_args
 
@@ -415,6 +416,32 @@ def setsUpTheStore(toolset: str, name: str, content: str) -> bool:
     except ValueError:
         return False
     return isinstance(result, dict) and 'error' not in result
+
+
+# The forms that show a map. A reply that mentions a map with none of them
+# called in its turn told the user about a map they cannot see.
+MAP_FORM_TOOLS = ('showStoreLocationForm', 'showDeliveryZonesForm',
+                  'showDeliveryPinForm')
+_MENTIONS_A_MAP = re.compile(r'\bmaps?\b', re.IGNORECASE)
+
+
+def unopenedMapNudge(toolset: str, reply: str,
+                     toolNames: list[str]) -> str | None:
+    """The note sending the model back when its `reply` mentions a map but
+    the turn called none of `toolset`'s map forms (`toolNames`, the tools
+    the turn called): the user sees no map. None otherwise. The note lets
+    the model reply again without a map, so a reply that only mentions one
+    costs one more model call, never a map nobody asked for."""
+    mapTools = [name for name in MAP_FORM_TOOLS
+                if name in formToolNames(toolset)]
+    if (not mapTools or not _MENTIONS_A_MAP.search(reply)
+            or any(name in toolNames for name in mapTools)):
+        return None
+    return ('Your reply mentions a map, but you opened none this turn, so '
+            'the user sees no map. If they need one now, call '
+            f'{" or ".join(mapTools)}; otherwise reply again without '
+            'saying a map is shown. Never say a map is shown without '
+            'calling its tool.')
 
 
 def formToolNames(toolset: str) -> set[str]:

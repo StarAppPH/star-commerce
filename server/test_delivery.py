@@ -395,6 +395,59 @@ def test_aStoreThatOnlyDelivers_opensThePinAtTheStore(clean, firebase,
     assert form['storeLocation'] == STORE_PIN
 
 
+def test_aReplyThatClaimsAMapItNeverOpened_isSentBackOnce(clean, firebase,
+                                                          model):
+    """The model said a map was below without calling showDeliveryPinForm:
+    it is told so once, opens the map, and only its last reply is kept."""
+    store, customerId, _ = shop(firebase, deliveryOptions=['delivery'])
+    fake = model(reply("I've put a map below. Please pin your location."),
+                 calls(('c1', 'showDeliveryPinForm', '{}')),
+                 reply('Pin where it goes.'))
+
+    res = customerSays(customerId, store['_id'], 'I wanna checkout')
+
+    assert res['reply'] == 'Pin where it goes.'
+    [form] = res['components']
+    assert form['kind'] == 'deliveryPinForm'
+    claim, note = fake.requests[1]['messages'][-2:]
+    assert claim == {'role': 'assistant',
+                     'content': "I've put a map below. Please pin your "
+                                'location.'}
+    assert note['role'] == 'developer'
+    assert 'showDeliveryPinForm' in note['content']
+    [turn] = db.read({'conversationId': res['conversationId']},
+                     chatForms.CHAT_TURNS)
+    assert [step['role'] for step in turn['steps']] == ['assistant', 'tool']
+    assert turn['replyText'] == 'Pin where it goes.'
+
+
+def test_aMapClaim_isSentBackOnlyOnce(clean, firebase, model):
+    store, customerId, _ = shop(firebase, deliveryOptions=['delivery'])
+    fake = model(reply('See the map.'), reply('The map is below.'))
+
+    res = customerSays(customerId, store['_id'], 'Where do you deliver?')
+
+    assert res['reply'] == 'The map is below.' and res['components'] == []
+    assert len(fake.requests) == 2
+
+
+@pytest.mark.parametrize('script', [
+    # No map mentioned.
+    [reply('Pickup or delivery?')],
+    # The map form was called (refused here: no zone), so no note.
+    [calls(('c1', 'showDeliveryPinForm', '{}')),
+     reply('No map: this store has no delivery zones yet.')],
+])
+def test_noNote_whenNoMapIsClaimedOrTheMapToolWasCalled(clean, firebase,
+                                                        model, script):
+    store, customerId, _ = shop(firebase, zones=[], **DELIVERS)
+    fake = model(*script)
+
+    customerSays(customerId, store['_id'], 'Checkout please')
+
+    assert len(fake.requests) == len(script)
+
+
 def test_aPin_thenTheAddressInChat_placesTheDelivery(clean, firebase, model):
     """The pin is the customer's turn; the model asks for the address in
     chat, then places the order with the typed address, the pin and the
