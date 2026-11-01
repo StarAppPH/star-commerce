@@ -1,11 +1,14 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { KeyboardIcon, Volume2Icon, VolumeXIcon, XIcon } from 'lucide-react';
+import { ClipboardListIcon, KeyboardIcon, Volume2Icon, VolumeXIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogDescription, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from '@/components/ui/dialog';
 import { Kbd } from '@/components/ui/kbd';
 import { cn } from '@/lib/utils';
 import { AssistantText } from '@/components/chat/AssistantText';
-import type { OnThinking, VoiceAnswer } from '@/components/chat/useChat';
+import { answerLabel, type OnThinking, type VoiceAnswer, type VoiceInput } from '@/components/chat/useChat';
+import { ChatComponents } from '@/components/chat/cards/ChatComponents';
+import type { ChatComponent, ChatFormAnswer } from '@/components/chat/cards/types';
 import { streamSpeech, type SpeechStream } from './elevenLabsStream';
 import { clipSource, closeVoiceAudio, setAudioSession, unlockVoiceAudio, voiceAudioContext } from './voiceAudio';
 import {
@@ -22,10 +25,11 @@ type VoiceState = 'listening' | 'thinking' | 'answering' | 'idle' | 'unsupported
 interface VoiceModeProps {
   open: boolean;
   onClose: () => void;
-  // Sends the spoken words as a chat message; resolves to the reply.
-  // onThinking hears what the assistant is doing while it answers. The
-  // reply comes with its speech (ElevenLabs), else the browser speaks it.
-  ask: (text: string, onThinking?: OnThinking) => Promise<VoiceAnswer | null>;
+  // Sends the spoken words as a chat message, or the answer to a form the
+  // reply opened; resolves to the reply. onThinking hears what the assistant
+  // is doing while it answers. The reply comes with its speech (ElevenLabs),
+  // else the browser speaks it.
+  ask: (input: VoiceInput, onThinking?: OnThinking) => Promise<VoiceAnswer | null>;
   title: string;
   subtitle: string;
   // The glow's two colors: the store's tones for shoppers, teal and blue
@@ -42,17 +46,31 @@ function alpha(hex: string, amount: number): string {
 }
 
 const STATUS: Record<VoiceState, string> = {
-  listening: 'Listening',
+  listening: 'Listening · tap the orb when you’re done',
   thinking: 'Working on it',
   answering: 'Speaking',
   idle: 'Tap the orb to talk',
   unsupported: 'Voice isn’t available here',
 };
 
-// How long a pause ends what was said, and how long listening waits for a
-// first word before giving up.
-const END_OF_SPEECH_MS = 1500;
-const NO_SPEECH_MS = 8000;
+// Listening runs from one tap on the orb to the next. The browser may end
+// recognition on its own (a long pause): it starts again, keeping what was
+// said, unless it ended within RESTART_MIN_MS (it would only end again).
+// Past MAX_RECORDING_MS what was said is sent, so the microphone is never
+// left on.
+const MAX_RECORDING_MS = 120000;
+const RESTART_MIN_MS = 1000;
+// Errors after which the microphone can't be used: listening stops.
+const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-capture', 'network']);
+
+// What a reply asks the user to fill in or choose: its forms and choosing
+// cards (a formId).
+function formsOf(components: ChatComponent[]): ChatComponent[] {
+  return components.filter((component) => 'formId' in component && component.formId !== null);
+}
+
+// The voice modal shows only the latest reply's forms, none answered yet.
+const NONE_ANSWERED: ReadonlySet<string> = new Set();
 
 // Full-screen voice mode: a breathing glow around the screen while it
 // listens, the words appearing as they are spoken, and the reply read aloud
@@ -65,7 +83,14 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
   const [reply, setReply] = useState<string | null>(null);
   const [speakReplies, setSpeakReplies] = useState(true);
   const [thinkingText, setThinkingText] = useState<string | null>(null);
+  // The latest reply's forms, and whether their modal is open (closing it
+  // keeps them, to open again).
+  const [forms, setForms] = useState<ChatComponent[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
+  const formOpenRef = useRef(formOpen);
   const recognition = useRef<SpeechRecognitionLike | null>(null);
+  // Ends the listening in progress and sends what was said.
+  const stopListening = useRef<(() => void) | null>(null);
   const speakRef = useRef(speakReplies);
   const stateRef = useRef<VoiceState>(state);
   // The thinking text playing (ElevenLabs, in the store's voice), and
@@ -83,6 +108,7 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
 
   useEffect(() => { speakRef.current = speakReplies; }, [speakReplies]);
   useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => { formOpenRef.current = formOpen; }, [formOpen]);
 
   const stopThinkingAudio = useCallback(() => {
     thinkingAudio.current?.stop();
@@ -119,13 +145,17 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     source.start();
   }, []);
 
-  const finish = useCallback(async (text: string) => {
-    const spoken = text.trim();
+  // Sends what was said, or a form's answer, then shows and says the reply
+  // and opens its forms, if any, once it has been said.
+  const finish = useCallback(async (input: VoiceInput) => {
+    const spoken = typeof input === 'string' ? input.trim() : input;
     if (!spoken) {
       setState('idle');
       return;
     }
-    setQuestion(spoken);
+    setQuestion(typeof spoken === 'string' ? spoken : answerLabel(spoken));
+    setForms([]);
+    setFormOpen(false);
     setReply(null);
     setThinkingText(null);
     setState('thinking');
@@ -149,6 +179,8 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
       return;
     }
     setReply(answer.reply);
+    const replyForms = formsOf(answer.components);
+    setForms(replyForms);
     setState('answering');
     const stopsBefore = stops.current;
     let spokenAloud = false;
@@ -164,7 +196,11 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
       await speak(speakableText(answer.reply), lang);
     }
     if (session.current !== current) return;
-    setState((prev) => (prev === 'answering' ? 'idle' : prev));
+    // A tap on the orb while it spoke started listening: no modal over it.
+    if (stateRef.current !== 'answering') return;
+    stateRef.current = 'idle';
+    setState('idle');
+    if (replyForms.length > 0) setFormOpen(true);
   }, [ask, lang, onThinking, stopThinkingAudio]);
 
   const listen = useCallback(() => {
@@ -175,50 +211,95 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     }
     stopVoice();
     setAudioSession('auto');
+    const current = session.current;
     let finalText = '';
-    const instance = new Recognition();
-    instance.lang = lang;
-    instance.interimResults = true;
-    // Continuous, so a stutter or a breath does not end the turn: it ends
-    // after END_OF_SPEECH_MS without new words (or a tap on the orb).
-    instance.continuous = true;
-    let silenceTimer = window.setTimeout(() => instance.stop(), NO_SPEECH_MS);
-    const stopAfter = (ms: number) => {
-      window.clearTimeout(silenceTimer);
-      silenceTimer = window.setTimeout(() => instance.stop(), ms);
+    // The orb was tapped (or the cap reached): send what was said.
+    let done = false;
+    // The microphone can't be used: nothing is sent.
+    let failed = false;
+    const stop = () => {
+      done = true;
+      recognition.current?.stop();
     };
-    instance.onresult = (event) => {
-      let live = '';
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const result = event.results[i];
-        if (result.isFinal) finalText += result[0].transcript;
-        else live += result[0].transcript;
-      }
-      setHeard(finalText);
-      setInterim(live);
-      stopAfter(END_OF_SPEECH_MS);
+    const cap = window.setTimeout(stop, MAX_RECORDING_MS);
+    stopListening.current = stop;
+
+    const start = () => {
+      const startedAt = Date.now();
+      const instance = new Recognition();
+      instance.lang = lang;
+      instance.interimResults = true;
+      instance.continuous = true;
+      instance.onresult = (event) => {
+        let live = '';
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          const transcript = result[0].transcript.trim();
+          if (result.isFinal) finalText = finalText ? `${finalText} ${transcript}` : transcript;
+          else live += result[0].transcript;
+        }
+        setHeard(finalText);
+        setInterim(live && finalText ? ` ${live.trim()}` : live);
+      };
+      instance.onerror = (event) => {
+        if (FATAL_ERRORS.has(event.error)) {
+          failed = true;
+          finalText = '';
+        }
+      };
+      instance.onend = () => {
+        // Closed (or unmounted): nothing more is heard or sent.
+        if (session.current !== current) return;
+        if (!done && !failed && Date.now() - startedAt >= RESTART_MIN_MS) {
+          try {
+            start();
+            return;
+          } catch {
+            // It can't start again: send what was said.
+          }
+        }
+        window.clearTimeout(cap);
+        if (stopListening.current === stop) stopListening.current = null;
+        recognition.current = null;
+        setInterim('');
+        finish(finalText);
+      };
+      recognition.current = instance;
+      instance.start();
     };
-    instance.onerror = () => {
-      finalText = '';
-    };
-    instance.onend = () => {
-      window.clearTimeout(silenceTimer);
-      recognition.current = null;
-      setInterim('');
-      finish(finalText);
-    };
-    recognition.current = instance;
+
     setHeard('');
     setInterim('');
+    setForms([]);
+    setFormOpen(false);
+    stateRef.current = 'listening';
     setState('listening');
-    instance.start();
+    try {
+      start();
+    } catch {
+      window.clearTimeout(cap);
+      stopListening.current = null;
+      recognition.current = null;
+      stateRef.current = 'idle';
+      setState('idle');
+    }
   }, [finish, lang, stopVoice]);
+
+  // A form answered in the modal: the modal closes, and the answer goes as
+  // the next turn (its reply said aloud). Submitting is a tap: audio
+  // unlocks again.
+  const answerForm = useCallback((form: ChatFormAnswer) => {
+    unlockVoiceAudio();
+    setFormOpen(false);
+    finish(form);
+  }, [finish]);
 
   const close = useCallback(() => {
     session.current += 1;
     fetchingThinking.current = false;
     recognition.current?.abort();
     recognition.current = null;
+    stopListening.current = null;
     stopVoice();
     closeVoiceAudio();
     setState('idle');
@@ -226,6 +307,8 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     setInterim('');
     setQuestion('');
     setReply(null);
+    setForms([]);
+    setFormOpen(false);
     onClose();
   }, [onClose, stopVoice]);
 
@@ -250,7 +333,8 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
     if (!open) return;
     const start = window.setTimeout(() => listenRef.current(), 150);
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeRef.current();
+      // Esc with the form open closes only the form.
+      if (event.key === 'Escape' && !formOpenRef.current) closeRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => {
@@ -264,7 +348,7 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
   // stops the microphone.
   const tapOrb = () => {
     unlockVoiceAudio();
-    if (state === 'listening') recognition.current?.stop();
+    if (state === 'listening') stopListening.current?.();
     else if (state === 'answering') {
       stopVoice();
       listen();
@@ -273,7 +357,7 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
 
   if (!open) return null;
 
-  const orbLabel = state === 'listening' ? 'Stop listening' : state === 'thinking' ? 'Working on it' : 'Talk';
+  const orbLabel = state === 'listening' ? 'Done talking' : state === 'thinking' ? 'Working on it' : 'Talk';
   const showBars = state === 'listening' || state === 'answering';
   const orbFill = `radial-gradient(circle at 34% 28%, #ffffff 0%, ${alpha(glowSecond, 0.85)} 32%, ${glow} 80%)`;
 
@@ -328,6 +412,17 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
                 <div className="font-heading text-2xl leading-snug sm:text-3xl [&_[data-component=assistantText]]:text-[inherit] [&_[data-component=assistantText]]:leading-[inherit]">
                   <AssistantText text={reply} />
                 </div>
+                {state === 'idle' && forms.length > 0 && !formOpen && (
+                  <Button
+                    data-component={`${variant}VoiceFormReopen`}
+                    variant="outline"
+                    className="self-start"
+                    onClick={() => setFormOpen(true)}
+                  >
+                    <ClipboardListIcon />
+                    Open form
+                  </Button>
+                )}
               </div>
             )}
           </>
@@ -420,6 +515,25 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
           <Kbd>Esc</Kbd> to close
         </span>
       )}
+
+      <Dialog open={formOpen && forms.length > 0} onOpenChange={setFormOpen}>
+        <DialogPopup data-component={`${variant}VoiceFormDialog`} className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Fill this in</DialogTitle>
+            <DialogDescription>Or close it and just say it.</DialogDescription>
+          </DialogHeader>
+          <DialogPanel className="flex flex-col gap-4">
+            {reply && <AssistantText text={reply} />}
+            <ChatComponents
+              components={forms}
+              place="below"
+              answeredFormIds={NONE_ANSWERED}
+              busy={state === 'thinking'}
+              onAnswer={answerForm}
+            />
+          </DialogPanel>
+        </DialogPopup>
+      </Dialog>
     </div>
   );
 }

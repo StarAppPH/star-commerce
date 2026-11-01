@@ -73,11 +73,17 @@ function photoChoicesSettled(turns: ChatTurnView[]): string[] {
 export type OnThinking = (text: string, spoken: () => Promise<string | null>) => void;
 
 // A spoken message's reply, with how to stream it spoken (null: the
-// browser's own voice speaks it).
+// browser's own voice speaks it), and its cards and forms (voice mode opens
+// a form in a modal).
 export interface VoiceAnswer {
   reply: string;
   speech: ChatSpeech | null;
+  components: ChatComponent[];
 }
+
+// What voice mode sends: the spoken words, or the answer to a form it
+// opened.
+export type VoiceInput = string | ChatFormAnswer;
 
 // How a chat reaches the server: the admin's routes or a shopper's.
 // `turnKey` names a turn being sent, so thinking and speakThinking can ask
@@ -134,7 +140,7 @@ interface UseChatOptions {
 }
 
 // What a form answer says until the server's summary arrives.
-function answerLabel(form: ChatFormAnswer): string {
+export function answerLabel(form: ChatFormAnswer): string {
   switch (form.kind) {
     case 'location': return 'Here is the store’s pin.';
     case 'newProducts': return `Add ${form.products.length === 1 ? 'this product' : `these ${form.products.length} products`}.`;
@@ -308,12 +314,18 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     return (await send(message || null, null, undefined, false, files))?.reply ?? null;
   }, [send]);
 
-  // A spoken message (voice mode): its reply and how to stream it spoken.
-  const talk = useCallback(async (text: string, onThinking?: OnThinking): Promise<VoiceAnswer | null> => {
-    const message = text.trim();
-    if (!message) return null;
-    const saved = await send(message, null, onThinking, true);
-    return saved ? { reply: saved.reply, speech: saved.speech } : null;
+  // A spoken message, or a form answered in voice mode: its reply, how to
+  // stream it spoken, and its components.
+  const talk = useCallback(async (input: VoiceInput, onThinking?: OnThinking): Promise<VoiceAnswer | null> => {
+    let saved: ChatReplyResponse | null;
+    if (typeof input === 'string') {
+      const message = input.trim();
+      if (!message) return null;
+      saved = await send(message, null, onThinking, true);
+    } else {
+      saved = await send(null, input, onThinking, true);
+    }
+    return saved ? { reply: saved.reply, speech: saved.speech, components: saved.components } : null;
   }, [send]);
 
   const answer = useCallback(async (form: ChatFormAnswer) => (await send(null, form))?.reply ?? null, [send]);
