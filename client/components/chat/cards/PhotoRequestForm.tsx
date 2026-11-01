@@ -1,28 +1,24 @@
 'use client';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
 import Image from 'next/image';
 import { ImagePlusIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
-import { Textarea } from '@/components/ui/textarea';
 import { auth } from '@/lib/firebase';
+import { PHOTOS_PER_CALL, PHOTO_REFERENCES_MAX, PHOTO_UPLOAD_MAX_BYTES } from '@/lib/generated/serverConstants';
 import { useSnackbar } from '@/lib/SnackbarContext';
 import { ChatCard, SentNote } from './ChatCard';
+import { useObjectUrls } from './useObjectUrls';
+import { PhotoPromptBox, promptAnswer } from './PhotoPromptBox';
 import { PHOTO_ACCEPT, photoProblem, uploadChatPhoto } from './photoUpload';
 import type { AnswerOf, ComponentProps } from './types';
 
 type ImageUrls = AnswerOf<'photoRequest'>['imageUrls'];
 
-// The uploaded photos' URLs as the answer types them: 1 to PHOTOS_MAX.
+// The uploaded photos' URLs as the answer types them: 1 to PHOTO_REFERENCES_MAX.
 function imageUrlsOf(urls: string[]): ImageUrls | null {
-  return urls.length >= 1 && urls.length <= PHOTOS_MAX ? (urls as ImageUrls) : null;
+  return urls.length >= 1 && urls.length <= PHOTO_REFERENCES_MAX ? (urls as ImageUrls) : null;
 }
 
-// The server's limits (objects/photo.py).
-const PHOTOS_MAX = 10;
-const NOTES_MAX = 300;
-// Every photo call makes this many (PHOTOS_PER_CALL).
-const PHOTOS_MADE = 3;
 
 interface Picked {
   file: File;
@@ -35,36 +31,30 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
   const { showSnackbar } = useSnackbar();
   const inputId = useId();
   const [picked, setPicked] = useState<Picked[]>([]);
-  const [notes, setNotes] = useState('');
+  const [prompt, setPrompt] = useState(component.defaultPrompt ?? '');
   const [uploading, setUploading] = useState(false);
   const locked = answered || busy || uploading;
-  const pickedRef = useRef<Picked[]>([]);
-
-  // The previews still shown are let go when the form goes.
-  useEffect(() => { pickedRef.current = picked; }, [picked]);
-  useEffect(() => () => { pickedRef.current.forEach((photo) => URL.revokeObjectURL(photo.preview)); }, []);
+  const previews = useObjectUrls();
 
   const remove = (photo: Picked) => {
-    URL.revokeObjectURL(photo.preview);
+    previews.release(photo.preview);
     setPicked((current) => current.filter((other) => other !== photo));
   };
 
   const add = (files: FileList | null) => {
     if (!files) return;
     const accepted: Picked[] = [];
+    // Previews are made only for the files that fit.
+    const room = PHOTO_REFERENCES_MAX - picked.length;
     for (const file of Array.from(files)) {
       const problem = photoProblem(file);
       if (problem) {
         showSnackbar(problem, 'error');
         continue;
       }
-      accepted.push({ file, preview: URL.createObjectURL(file) });
+      if (accepted.length < room) accepted.push({ file, preview: previews.create(file) });
     }
-    setPicked((current) => {
-      const room = PHOTOS_MAX - current.length;
-      accepted.slice(room).forEach((photo) => URL.revokeObjectURL(photo.preview));
-      return [...current, ...accepted.slice(0, room)];
-    });
+    setPicked((current) => [...current, ...accepted]);
   };
 
   const send = async () => {
@@ -82,7 +72,7 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
         kind: 'photoRequest',
         formId: component.formId,
         imageUrls,
-        notes: notes.trim() === '' ? null : notes.trim(),
+        prompt: promptAnswer(prompt, component.defaultPrompt ?? null),
       });
     } catch {
       showSnackbar('The photos didn’t upload. Check your connection and try again.', 'error');
@@ -98,7 +88,7 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
       title="Photos of one item"
       footer={answered ? <SentNote text="Photos sent" /> : (
         <Button data-component="photoRequestSend" loading={uploading} disabled={picked.length === 0 || busy} onClick={send}>
-          Make {PHOTOS_MADE} photos
+          Make {PHOTOS_PER_CALL} photos
         </Button>
       )}
     >
@@ -131,7 +121,7 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
                 </Button>
               </div>
             ))}
-            {picked.length < PHOTOS_MAX && (
+            {picked.length < PHOTO_REFERENCES_MAX && (
               <label
                 htmlFor={inputId}
                 className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-muted-foreground text-xs hover:bg-accent/50 has-disabled:pointer-events-none has-disabled:opacity-64"
@@ -151,12 +141,14 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
               </label>
             )}
           </div>
-          <p className="text-muted-foreground text-xs">Up to 10 JPG, PNG or WebP photos of the same item, each under 10 MB.</p>
-          <Field>
-            <FieldLabel>Special request <span className="font-normal text-muted-foreground">(optional)</span></FieldLabel>
-            <Textarea data-component="photoRequestNotes" value={notes} maxLength={NOTES_MAX} placeholder="Show it from above" disabled={locked} onChange={(event) => setNotes(event.target.value)} />
-            <FieldDescription>Photo 1 uses your brand colors; photos 2 and 3 also use your store’s photo style.</FieldDescription>
-          </Field>
+          <p className="text-muted-foreground text-xs">Up to {PHOTO_REFERENCES_MAX} JPG, PNG or WebP photos of the same item, each under {PHOTO_UPLOAD_MAX_BYTES / (1024 * 1024)} MB.</p>
+          <PhotoPromptBox
+            dataComponent="photoRequestPrompt"
+            value={prompt}
+            defaultValue={component.defaultPrompt ?? ''}
+            disabled={locked}
+            onChange={setPrompt}
+          />
         </div>
       )}
     </ChatCard>

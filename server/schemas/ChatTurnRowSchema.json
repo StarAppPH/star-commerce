@@ -2315,8 +2315,51 @@
             "type": "object",
             "additionalProperties": false
         },
+        "PhotoOfferRow": {
+            "description": "A product on the photo offer card: its uploaded photo, now on it,\nand the prompt better photos would be made from. Each row is answered\non its own (its own formId), once.",
+            "properties": {
+                "formId": {
+                    "description": "Answer it with this id",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "title": "Formid",
+                    "type": "string"
+                },
+                "productId": {
+                    "description": "The Products _id",
+                    "title": "Productid",
+                    "type": "string"
+                },
+                "productName": {
+                    "description": "Product name",
+                    "title": "Productname",
+                    "type": "string"
+                },
+                "photoUrl": {
+                    "description": "Its uploaded photo, now on it",
+                    "title": "Photourl",
+                    "type": "string"
+                },
+                "defaultPrompt": {
+                    "description": "The prompt the edit box starts with",
+                    "maxLength": 2000,
+                    "title": "Defaultprompt",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "formId",
+                "productId",
+                "productName",
+                "photoUrl",
+                "defaultPrompt"
+            ],
+            "title": "PhotoOfferRow",
+            "type": "object",
+            "additionalProperties": false
+        },
         "PhotoRequestForm": {
-            "description": "Asks the admin for photos of one item to turn into product photos.\nAnswered with PhotoRequestAnswer.",
+            "description": "Asks the admin for photos of one item to turn into product photos,\nand the prompt they are made from (an edit box starting with\ndefaultPrompt). Answered with PhotoRequestAnswer.",
             "properties": {
                 "kind": {
                     "const": "photoRequestForm",
@@ -2330,6 +2373,20 @@
                     "minLength": 1,
                     "title": "Formid",
                     "type": "string"
+                },
+                "defaultPrompt": {
+                    "anyOf": [
+                        {
+                            "maxLength": 2000,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The prompt the edit box starts with",
+                    "title": "Defaultprompt"
                 }
             },
             "required": [
@@ -2777,6 +2834,34 @@
             "type": "object",
             "additionalProperties": false
         },
+        "ProductPhotoOfferCard": {
+            "description": "The new products whose uploaded photos are now on them, offering to\nmake better photos of each (setUploadedProductPhotos). Each row is\nanswered with ProductPhotoOfferAnswer (its own formId: the admin may\nmake photos for one product now and another later); \"No thanks\" sends\nnothing. The card has no formId of its own.",
+            "properties": {
+                "kind": {
+                    "const": "productPhotoOffer",
+                    "description": "The card",
+                    "title": "Kind",
+                    "type": "string"
+                },
+                "products": {
+                    "description": "The products, in the order they were added",
+                    "items": {
+                        "$ref": "#/$defs/PhotoOfferRow"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "title": "Products",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "kind",
+                "products"
+            ],
+            "title": "ProductPhotoOfferCard",
+            "type": "object",
+            "additionalProperties": false
+        },
         "ReturnItemRow": {
             "description": "One item of a return as a route sends it: ReturnItem without its\nproductId.",
             "properties": {
@@ -3215,6 +3300,7 @@
                         "photos": "#/$defs/PhotosCard",
                         "policy": "#/$defs/PolicyCard",
                         "productPhotoChoice": "#/$defs/ProductPhotoChoiceCard",
+                        "productPhotoOffer": "#/$defs/ProductPhotoOfferCard",
                         "shopProducts": "#/$defs/ShopProductsCard",
                         "store": "#/$defs/StoreCard",
                         "storeOrders": "#/$defs/StoreOrdersCard",
@@ -3256,6 +3342,9 @@
                     },
                     {
                         "$ref": "#/$defs/ProductPhotoChoiceCard"
+                    },
+                    {
+                        "$ref": "#/$defs/ProductPhotoOfferCard"
                     },
                     {
                         "$ref": "#/$defs/PhotoColorsCard"

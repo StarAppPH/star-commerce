@@ -1,0 +1,22 @@
+{
+    "description": "One product of a setUploadedProductPhotos call: the photo the admin\nuploaded for it on the new products form. Types only: the tool checks\nthe values, naming the product's position.",
+    "properties": {
+        "productId": {
+            "description": "The Products _id",
+            "title": "Productid",
+            "type": "string"
+        },
+        "imageUrl": {
+            "description": "The uploaded photo's download URL, the admin's own upload",
+            "title": "Imageurl",
+            "type": "string"
+        }
+    },
+    "required": [
+        "productId",
+        "imageUrl"
+    ],
+    "title": "UploadedProductPhoto",
+    "type": "object",
+    "additionalProperties": false
+}

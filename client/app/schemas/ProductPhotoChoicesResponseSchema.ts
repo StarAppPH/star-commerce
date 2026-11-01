@@ -41,7 +41,7 @@ export type Source = "generated" | "original";
  */
 export type Prompt = string | null;
 /**
- * Why fewer photos than asked were made (no photo style, today's limit reached, generation unavailable); null when all were
+ * Why fewer photos than asked were made (today's limit reached, generation unavailable); null when all were
  */
 export type Notgenerated = string | null;
 

@@ -11,11 +11,15 @@ turn's tools have run (build), in the order the tools ran:
   getStoreOrders, say) updates its row on the turn's card that lists it, so
   a card never shows a row as it was before the turn changed it; one that no
   card lists gets a card of its own;
-- a form a form tool opened (chatForms.py) takes its place among them.
+- a form a form tool opened (chatForms.py) takes its place among them;
+- the photo offer (setUploadedProductPhotos) also puts each product's new
+  photo on the turn's card that lists it (the products addStoreProducts
+  just added).
 
 A card that takes a choice gets a formId (chatForms.ANSWERS_TO): products to
 order, a checkout summary to place, an order to pay, paid orders to hand over, requested returns to
-decide, colors to pick the brand colors from. A tool that refused (an {"error": ...} result) shows nothing, and so
+decide, colors to pick the brand colors from; the photo offer gives each of
+its products a formId of its own instead, each answered once. A tool that refused (an {"error": ...} result) shows nothing, and so
 does a result that does not fit its card: it is logged, and the turn goes on.
 At most CHAT_COMPONENTS_PER_TURN_MAX components are kept, the latest.
 
@@ -26,8 +30,8 @@ ignores it, so the tool never sees it). `showCard: false` drops the card the
 call would add, yet a row it changed still updates the turn's card that
 lists it, so a card on screen never shows a row as it was. Left out, the
 card shows. A card that is the only way to finish an action (the order to
-place or pay, a new product's photo choices, the brand colors to pick)
-always shows:
+place or pay, the offer to make a new product's photos and their choices,
+the brand colors to pick) always shows:
 its tools take no `showCard` (ALWAYS_SHOWN).
 """
 
@@ -218,6 +222,20 @@ def _photoChoice(result: dict, context: CardContext) -> dict:
             'notGenerated': result['notGenerated']}
 
 
+def _photoOffer(result: dict, context: CardContext) -> dict | None:
+    """The new products whose uploaded photo is now on them, each offering
+    to make better photos with an editable prompt (answered with
+    ProductPhotoOfferAnswer, per product: each row its own formId); none
+    saved, no card."""
+    if not result['products']:
+        return None
+    return {'kind': 'productPhotoOffer', 'products': [
+        {'formId': newFormId(),
+         **_pick(p, ('productId', 'productName', 'photoUrl',
+                     'defaultPrompt'))}
+        for p in result['products']]}
+
+
 def _photoColors(result: dict, context: CardContext) -> dict | None:
     """The colors read from a photo, the admin picking the brand colors
     from them (answered with BrandColorsAnswer); none read, no card."""
@@ -272,6 +290,7 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'getStorePolicy': _policy,
     'generateProductPhotos': _photos,
     'makeProductPhotoChoices': _photoChoice,
+    'setUploadedProductPhotos': _photoOffer,
     'findColorsInPhoto': _photoColors,
     'getUserStore': _store,
     'createUserStore': _store,
@@ -281,7 +300,8 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
 
 # The cards that are the only way to finish an action: shown whatever the
 # model says, so their tools take no showCard.
-ALWAYS_SHOWN = (_checkout, _checkoutSummary, _photoChoice, _photoColors)
+ALWAYS_SHOWN = (_checkout, _checkoutSummary, _photoChoice, _photoOffer,
+                _photoColors)
 SHOW_CARD = 'showCard'
 # The tools whose card the model may leave out.
 SHOW_CARD_TOOLS = frozenset(name for name, makeCard in CARDS.items()
@@ -355,6 +375,19 @@ def _merged(cards: list[dict], card: dict) -> bool:
     return False
 
 
+def _withOfferedPhotos(cards: list[dict], offer: dict) -> None:
+    """Put each product of the photo offer `offer` its new photo on the
+    turn's product cards that list it, so none shows it without."""
+    photos = {row['productId']: row['photoUrl'] for row in offer['products']}
+    for index, card in enumerate(cards):
+        if card['kind'] != 'storeProducts' or not any(
+                row['_id'] in photos for row in card['products']):
+            continue
+        cards[index] = {**card, 'products': [
+            {**row, 'photoUrl': photos[row['_id']]} if row['_id'] in photos
+            else row for row in card['products']]}
+
+
 def _validCard(card: dict, tool: str) -> dict | None:
     """`card` as it is sent and stored; None (logged) when the tool's
     result did not fit it."""
@@ -418,6 +451,8 @@ def build(steps: list[dict], forms: dict[str, dict],
         card = _validCard(card, name)
         if card is None:
             continue
+        if card['kind'] == 'productPhotoOffer':
+            _withOfferedPhotos(components, card)
         # A hidden card still updates the row on a card that lists it.
         if not _merged(components, card) and callId not in hidden:
             components.append(card)

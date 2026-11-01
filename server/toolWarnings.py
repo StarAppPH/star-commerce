@@ -72,8 +72,10 @@ class WarningRule:
 WARNINGS = {
     'noPhoto': WarningRule(
         SETUP_COOLDOWN,
-        'Products shown in the shop with no photo. Offer to make photos '
-        '(makeProductPhotoChoices).'),
+        'Products shown in the shop with no photo. Offer first: "attach a '
+        'photo of it in chat and I\'ll put it on the product" '
+        '(setUploadedProductPhotos); better photos made from it are '
+        'optional, afterwards.'),
     'outOfStock': WarningRule(
         STOCK_COOLDOWN,
         'Products shown in the shop with 0 units left: customers see them '

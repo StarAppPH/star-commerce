@@ -5,6 +5,7 @@ receives (see objects/__init__.py)."""
 import datetime
 
 from pydantic import Field, model_validator
+from sharedConstants import PHOTO_UPLOAD_MAX_BYTES
 from typing import Literal
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
@@ -43,7 +44,7 @@ CHAT_ATTACHMENT_EXTENSIONS = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
 CHAT_ATTACHMENTS_MAX = 4
 # Each file at most (storage.rules allows no larger upload), and one
 # request's files together: this message's, then the history's.
-CHAT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
+CHAT_ATTACHMENT_MAX_BYTES = PHOTO_UPLOAD_MAX_BYTES
 CHAT_ATTACHMENTS_MAX_TOTAL_BYTES = 20 * 1024 * 1024
 CHAT_ATTACHMENT_NAME_MAX_LENGTH = 120
 # The files of the last HISTORY_ATTACHMENT_TURNS turns are sent to the

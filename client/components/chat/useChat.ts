@@ -8,6 +8,7 @@ import type { SpokenThinkingResponse } from '@/app/schemas/SpokenThinkingRespons
 import type { ConversationTurnsResponse } from '@/app/schemas/ConversationTurnsResponseSchema';
 import type { ChatComponent, ChatFormAnswer } from './cards/types';
 import type { TurnFile, UploadedFiles } from './attachments';
+import { PHOTOS_PER_CALL } from '@/lib/generated/serverConstants';
 
 // The most turns one page of history loads (getConversationTurns takes 1-50).
 export const TURNS_PAGE = 20;
@@ -145,7 +146,7 @@ export function answerLabel(form: ChatFormAnswer): string {
     case 'location': return 'Here is the store’s pin.';
     case 'newProducts': return `Add ${form.products.length === 1 ? 'this product' : `these ${form.products.length} products`}.`;
     case 'phoneVerified': return 'I verified my phone number.';
-    case 'photoRequest': return 'Make 3 product photos.';
+    case 'photoRequest': return `Make ${PHOTOS_PER_CALL} product photos.`;
     case 'orderItems': return 'I’d like to order these.';
     case 'payment': return 'I’ll pay now.';
     case 'handover': return `Mark ${form.orderIds.length === 1 ? 'this order' : `these ${form.orderIds.length} orders`} handed over.`;

@@ -120,7 +120,7 @@ def test_eachAudienceListsOnlyItsTools():
         'approveReturn', 'rejectReturn', 'receiveReturn', 'listVoices',
         'setUserStoreLocation', 'suggestStoreAddress', 'updateMyStoreDetails',
         'makeProductPhotoChoices', 'confirmOrderPayment', 'findColorsInPhoto',
-        'findProductsInPhoto', 'storeReport'
+        'findProductsInPhoto', 'storeReport', 'setUploadedProductPhotos'
     }
 
 

@@ -32,6 +32,7 @@ from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
                                   OUTSIDE_DELIVERY_ZONES,
                                   bookableFulfillments, offeredFulfillments,
                                   storeDelivery)
+from actions.PhotoActions import PROMPT_STORE_FIELDS, defaultPhotoPrompt
 from actions.StoreActions import STORES, ownerQuery
 import geocoding
 import photoStorage
@@ -100,6 +101,7 @@ ANSWERS_TO = {
     'deliveryPin': 'deliveryPinForm',
     'deliveryZones': 'deliveryZonesForm',
     'productPhoto': 'productPhotoChoice',
+    'makeProductPhotos': 'productPhotoOffer',
     'brandColors': 'photoColors',
     'placeOrder': 'checkoutSummary',
 }
@@ -262,8 +264,9 @@ def _newProductsForm(userId: str, storeId: str,
 
 def _photoRequestForm(userId: str, storeId: str,
                       args: ShowPhotoRequestFormArgs) -> dict:
-    _ownStore(userId, {'_id': 1})
-    return {'kind': 'photoRequestForm', 'formId': newFormId()}
+    store = _ownStore(userId, PROMPT_STORE_FIELDS)
+    return {'kind': 'photoRequestForm', 'formId': newFormId(),
+            'defaultPrompt': defaultPhotoPrompt(store)}
 
 
 def _phoneVerification(userId: str, storeId: str,
@@ -357,18 +360,21 @@ FORM_TOOLS: dict[str, FormTool] = {
         'so the owner checks it. Use it to add products instead of asking '
         'each detail in chat. The owner may upload one photo per product '
         'there. Their list comes as their next message: then call '
-        'addStoreProducts with it. For each product sent with an imageUrl, '
-        'then call makeProductPhotoChoices with its new _id and that '
-        'imageUrl, one product per turn, the first right after '
-        'addStoreProducts; the owner picks a photo on its card, and you then '
-        'call setProductPhoto and go on to the next.',
+        'addStoreProducts with it, then call setUploadedProductPhotos with '
+        'every product sent with an imageUrl and its new _id, and in one '
+        'line tell the owner their photos are on and that they can make '
+        'better photos from them on the card. Make photos '
+        '(makeProductPhotoChoices) only when they ask.',
         ShowNewProductsFormArgs, _newProductsForm),
     'showPhotoRequestForm': FormTool(
         ('admin', ),
         "Open a form under your reply where the owner uploads 1 to 10 plain "
-        f'photos of one item and adds notes; {PHOTOS_PER_CALL} product photos '
-        'are made from them. The upload comes as their next message: then '
-        'call generateProductPhotos with its imageUrls and notes.',
+        f'photos of one item; {PHOTOS_PER_CALL} product photos are made from '
+        'them, from a prompt they can edit there. The upload comes as their '
+        'next message: then call generateProductPhotos with its imageUrls '
+        'and its prompt copied character for character (never shortened, '
+        'translated or reworded; left out when it is null: an unchanged '
+        "box means the store's current default prompt).",
         ShowPhotoRequestFormArgs, _photoRequestForm),
     'showPhoneVerification': FormTool(
         ('customer', ),
@@ -516,14 +522,26 @@ def validAnswer(form) -> BaseModel | None:
             fields=_fieldsOf(error))) from None
 
 
+def _answers(component: dict, formId: str) -> bool:
+    """Whether `formId` is the component's: its own, or one of a photo
+    offer's rows (each answered on its own)."""
+    if component.get('formId') == formId:
+        return True
+    return component.get('kind') == 'productPhotoOffer' and any(
+        row.get('formId') == formId
+        for row in component.get('products') or [])
+
+
 def _answeredComponent(conversationId: str, answer: BaseModel) -> dict:
     """The component `answer` answers, in this conversation: refused when
-    it is not there, is of another kind, or was answered already."""
+    it is not there, is of another kind, or was answered already (a photo
+    offer's row: that row)."""
     turn = db.read({'conversationId': conversationId,
-                    'components.formId': answer.formId}, CHAT_TURNS,
-                   projection={'components': 1}, findOne=True)
+                    '$or': [{'components.formId': answer.formId},
+                            {'components.products.formId': answer.formId}]},
+                   CHAT_TURNS, projection={'components': 1}, findOne=True)
     component = next((c for c in (turn or {}).get('components', [])
-                      if c.get('formId') == answer.formId), None)
+                      if _answers(c, answer.formId)), None)
     if component is None:
         raise ValueError(FORM_NOT_FOUND)
     if ANSWERS_TO[answer.kind] != component['kind']:
@@ -553,7 +571,7 @@ def _location(answer, component, userId) -> tuple[str, dict]:
 def _newProducts(answer, component, userId) -> tuple[str, dict]:
     currency = component['currency']
     # Each photo is the user's own upload, checked here (nothing read) so
-    # the model is never handed another URL; makeProductPhotoChoices
+    # the model is never handed another URL; setUploadedProductPhotos
     # checks it again.
     for i, product in enumerate(answer.products):
         if product.imageUrl is not None:
@@ -577,12 +595,26 @@ def _phoneVerified(answer, component, userId) -> tuple[str, dict]:
     return 'I verified my phone number.', {'kind': 'phoneVerified'}
 
 
+def _ownPrompt(prompt: str | None, defaultPrompt: str | None) -> str | None:
+    """The prompt a photo answer sent, as the model passes it on: None when
+    it is blank or the default unchanged (the tool then writes the default
+    itself), else stripped. The client applies the same rule before sending
+    (client/components/chat/cards/PhotoPromptBox.tsx, promptAnswer): change
+    both together."""
+    prompt = (prompt or '').strip() or None
+    if prompt is not None and prompt == (defaultPrompt or '').strip():
+        return None
+    return prompt
+
+
 def _photoRequest(answer, component, userId) -> tuple[str, dict]:
+    prompt = _ownPrompt(answer.prompt, component.get('defaultPrompt'))
     text = (f'Make {PHOTOS_PER_CALL} product photos from my '
             f'{len(answer.imageUrls)} photo'
-            f'{"s" if len(answer.imageUrls) > 1 else ""}.'
-            + (f' Notes: {answer.notes}' if answer.notes else ''))
-    return text, answer.model_dump(exclude={'formId'})
+            f'{"s" if len(answer.imageUrls) > 1 else ""}'
+            + (' with my prompt.' if prompt is not None else '.'))
+    return text, {'kind': 'photoRequest', 'imageUrls': answer.imageUrls,
+                  'prompt': prompt}
 
 
 def _orderItems(answer, component, userId) -> tuple[str, dict]:
@@ -667,6 +699,20 @@ def _productPhoto(answer, component, userId) -> tuple[str, dict]:
              'photoId': answer.photoId})
 
 
+def _makeProductPhotos(answer, component, userId) -> tuple[str, dict]:
+    """A photo offer row's "Make photos": makeProductPhotoChoices for that
+    product, with the prompt the admin sent (None: the default one)."""
+    row = next(row for row in component['products']
+               if row['formId'] == answer.formId)
+    if answer.productId != row['productId']:
+        raise ValueError(NOT_ON_THE_CARD)
+    prompt = _ownPrompt(answer.prompt, row['defaultPrompt'])
+    return (f'Make photos of {row["productName"]}'
+            + (' with my prompt' if prompt is not None else ''),
+            {'kind': 'makeProductPhotos', 'productId': row['productId'],
+             'prompt': prompt})
+
+
 def _brandColors(answer, component, userId) -> tuple[str, dict]:
     picks = [(role, color.upper()) for role, color in
              (('primary', answer.primaryColor),
@@ -749,6 +795,7 @@ _ANSWER_TURNS = {
     'deliveryPin': _deliveryPin,
     'deliveryZones': _deliveryZones,
     'productPhoto': _productPhoto,
+    'makeProductPhotos': _makeProductPhotos,
     'brandColors': _brandColors,
     'placeOrder': _placeOrder,
 }

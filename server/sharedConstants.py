@@ -90,5 +90,22 @@ SALES_STATUSES = ('paid', 'completed')
 # year, a leap year's included.
 REPORT_RANGE_DAYS_MAX = 366
 
+# Product photos (objects/photo.py, PhotoActions), which the admin's photo
+# forms and cards check before sending:
+#   PHOTOS_PER_CALL: the photos every photo call makes, all from its one
+#     prompt;
+#   PHOTO_PROMPT_MAX_LENGTH: the longest prompt the admin may write (or edit
+#     from the default one) on a photo form or the photo offer card;
+#   PHOTO_NOTES_MAX_LENGTH: the longest direction typed in chat, added to the
+#     prompt as its special request;
+#   PHOTO_REFERENCES_MAX: the most photos of one item a photo call takes;
+#   PHOTO_UPLOAD_MAX_BYTES: the largest photo or file the admin or a
+#     customer may upload (storage.rules allows no larger one).
+PHOTOS_PER_CALL = 3
+PHOTO_PROMPT_MAX_LENGTH = 2000
+PHOTO_NOTES_MAX_LENGTH = 300
+PHOTO_REFERENCES_MAX = 10
+PHOTO_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
+
 # Everything above this line ships to every browser. No credentials, no API
 # keys, no bank details, no internal limits.

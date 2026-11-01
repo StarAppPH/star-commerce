@@ -27,7 +27,7 @@ from objects.order import (MANUAL_PAYMENT_REFERENCE_MAX_LENGTH,
 from objects.payment import (OrderPaymentMethod, PaymentMethod,
                              PaymentOption, PaymentProvider)
 from objects.photo import (PHOTO_COLOR_FOCUS_MAX_LENGTH, PHOTO_COLORS_MAX,
-                           PHOTO_NOTES_MAX_LENGTH, PHOTO_REFERENCES_MAX,
+                           PHOTO_PROMPT_MAX_LENGTH, PHOTO_REFERENCES_MAX,
                            PHOTOS_PER_CALL, GeneratedPhotoRow,
                            PhotoChoiceRow, PhotoColorRow)
 from objects.policy import (AcceptsReturns, AuthorizedPaymentMethodRows,
@@ -319,6 +319,31 @@ class ProductPhotoChoiceCard(ResponseModel):
                                      'asked were made; null when all were')
 
 
+class PhotoOfferRow(ResponseModel):
+    """A product on the photo offer card: its uploaded photo, now on it,
+    and the prompt better photos would be made from. Each row is answered
+    on its own (its own formId), once."""
+    formId: FormId
+    productId: str = Field(..., description='The Products _id')
+    productName: str = Field(..., description='Product name')
+    photoUrl: str = Field(..., description='Its uploaded photo, now on it')
+    defaultPrompt: str = Field(
+        ..., max_length=PHOTO_PROMPT_MAX_LENGTH,
+        description='The prompt the edit box starts with')
+
+
+class ProductPhotoOfferCard(ResponseModel):
+    """The new products whose uploaded photos are now on them, offering to
+    make better photos of each (setUploadedProductPhotos). Each row is
+    answered with ProductPhotoOfferAnswer (its own formId: the admin may
+    make photos for one product now and another later); "No thanks" sends
+    nothing. The card has no formId of its own."""
+    kind: Literal['productPhotoOffer'] = Field(..., description='The card')
+    products: list[PhotoOfferRow] = Field(
+        ..., min_length=1, max_length=PRODUCT_BATCH_MAX,
+        description='The products, in the order they were added')
+
+
 class PhotoColorsCard(ResponseModel):
     """The main colors findColorsInPhoto read from a photo the admin
     attached, as swatches. Answered with BrandColorsAnswer."""
@@ -398,10 +423,15 @@ class PhoneVerificationForm(ResponseModel):
 
 
 class PhotoRequestForm(ResponseModel):
-    """Asks the admin for photos of one item to turn into product photos.
-    Answered with PhotoRequestAnswer."""
+    """Asks the admin for photos of one item to turn into product photos,
+    and the prompt they are made from (an edit box starting with
+    defaultPrompt). Answered with PhotoRequestAnswer."""
     kind: Literal['photoRequestForm'] = Field(..., description='The form')
     formId: FormId
+    # Null on a form saved before the prompt was editable.
+    defaultPrompt: str | None = Field(
+        None, max_length=PHOTO_PROMPT_MAX_LENGTH,
+        description='The prompt the edit box starts with')
 
 
 class DeliveryPinForm(ResponseModel):
@@ -443,7 +473,8 @@ class DeliveryZonesForm(ResponseModel):
 ChatComponent = Annotated[Union[
     ShopProductsCard, StoreProductsCard, StoreOrdersCard, MyOrdersCard,
     CheckoutCard, CheckoutSummaryCard, StoreReturnsCard, MyReturnsCard, PolicyCard, PhotosCard,
-    ProductPhotoChoiceCard, PhotoColorsCard, StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
+    ProductPhotoChoiceCard, ProductPhotoOfferCard, PhotoColorsCard,
+    StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
     PhotoRequestForm, DeliveryPinForm, DeliveryZonesForm,
 ], Field(discriminator='kind')]
 
@@ -490,15 +521,17 @@ class PhoneVerifiedAnswer(AppModel):
 
 
 class PhotoRequestAnswer(AppModel):
-    """A PhotoRequestForm, filled in: the uploaded photos' URLs."""
+    """A PhotoRequestForm, filled in: the uploaded photos' URLs and the
+    prompt (null, or the default unchanged: the default one)."""
     kind: Literal['photoRequest'] = Field(..., description='The answer')
     formId: FormId
     imageUrls: list[Annotated[str, Field(
         min_length=1, max_length=CHAT_PHOTO_URL_MAX_LENGTH)]] = Field(
             ..., min_length=1, max_length=PHOTO_REFERENCES_MAX,
             description='The download URLs of the uploaded photos')
-    notes: str | None = Field(None, max_length=PHOTO_NOTES_MAX_LENGTH,
-                              description='Extra direction')
+    prompt: str | None = Field(None, max_length=PHOTO_PROMPT_MAX_LENGTH,
+                               description='The prompt the photos are made '
+                               'from; null: the default one')
 
 
 class OrderItemsAnswer(AppModel):
@@ -563,6 +596,17 @@ class ProductPhotoAnswer(AppModel):
     photoId: AnswerId = Field(..., description='The GeneratedPhotos _id')
 
 
+class ProductPhotoOfferAnswer(AppModel):
+    """A ProductPhotoOfferCard row's "Make photos": make better photos of
+    that product from its uploaded photo and this prompt."""
+    kind: Literal['makeProductPhotos'] = Field(..., description='The answer')
+    formId: FormId = Field(..., description="The row's formId")
+    productId: AnswerId = Field(..., description="The row's Products _id")
+    prompt: str | None = Field(None, max_length=PHOTO_PROMPT_MAX_LENGTH,
+                               description='The prompt the photos are made '
+                               'from; null: the default one')
+
+
 class BrandColorsAnswer(AppModel):
     """A PhotoColorsCard's picks: the store's brand colors, each one of the
     card's colors (null: keep the store's own)."""
@@ -587,5 +631,6 @@ ChatFormAnswer = (LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer
                   | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer
                   | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer
                   | DeliveryZonesAnswer | ProductPhotoAnswer
-                  | BrandColorsAnswer | PlaceOrderAnswer)
+                  | ProductPhotoOfferAnswer | BrandColorsAnswer
+                  | PlaceOrderAnswer)
 ChatFormAnswerTagged = Annotated[ChatFormAnswer, Field(discriminator='kind')]

@@ -1,0 +1,31 @@
+{
+    "description": "A product whose uploaded photo could not be put on it.",
+    "properties": {
+        "productId": {
+            "description": "The Products _id",
+            "minLength": 1,
+            "title": "Productid",
+            "type": "string"
+        },
+        "productName": {
+            "description": "Product name",
+            "minLength": 1,
+            "title": "Productname",
+            "type": "string"
+        },
+        "reason": {
+            "description": "Why it was not saved",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+        }
+    },
+    "required": [
+        "productId",
+        "productName",
+        "reason"
+    ],
+    "title": "PhotoNotSavedRow",
+    "type": "object",
+    "additionalProperties": false
+}

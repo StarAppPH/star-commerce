@@ -1,5 +1,5 @@
 {
-    "description": "Asks the admin for photos of one item to turn into product photos.\nAnswered with PhotoRequestAnswer.",
+    "description": "Asks the admin for photos of one item to turn into product photos,\nand the prompt they are made from (an edit box starting with\ndefaultPrompt). Answered with PhotoRequestAnswer.",
     "properties": {
         "kind": {
             "const": "photoRequestForm",
@@ -13,6 +13,20 @@
             "minLength": 1,
             "title": "Formid",
             "type": "string"
+        },
+        "defaultPrompt": {
+            "anyOf": [
+                {
+                    "maxLength": 2000,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The prompt the edit box starts with",
+            "title": "Defaultprompt"
         }
     },
     "required": [

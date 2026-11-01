@@ -1,0 +1,109 @@
+{
+    "$defs": {
+        "PhotoNotSavedRow": {
+            "description": "A product whose uploaded photo could not be put on it.",
+            "properties": {
+                "productId": {
+                    "description": "The Products _id",
+                    "minLength": 1,
+                    "title": "Productid",
+                    "type": "string"
+                },
+                "productName": {
+                    "description": "Product name",
+                    "minLength": 1,
+                    "title": "Productname",
+                    "type": "string"
+                },
+                "reason": {
+                    "description": "Why it was not saved",
+                    "minLength": 1,
+                    "title": "Reason",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "productId",
+                "productName",
+                "reason"
+            ],
+            "title": "PhotoNotSavedRow",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "UploadedProductPhotoRow": {
+            "description": "A product whose uploaded photo is now on it: the original, kept as\none of the store's photos, and the prompt better photos are made from\nunless the admin edits it.",
+            "properties": {
+                "productId": {
+                    "description": "The Products _id",
+                    "minLength": 1,
+                    "title": "Productid",
+                    "type": "string"
+                },
+                "productName": {
+                    "description": "Product name",
+                    "minLength": 1,
+                    "title": "Productname",
+                    "type": "string"
+                },
+                "photoId": {
+                    "description": "The original's GeneratedPhotos _id",
+                    "minLength": 1,
+                    "title": "Photoid",
+                    "type": "string"
+                },
+                "photoUrl": {
+                    "description": "The original's download URL, now the product's photo",
+                    "minLength": 1,
+                    "title": "Photourl",
+                    "type": "string"
+                },
+                "defaultPrompt": {
+                    "description": "The prompt better photos are made from unless the admin edits it",
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "title": "Defaultprompt",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "productId",
+                "productName",
+                "photoId",
+                "photoUrl",
+                "defaultPrompt"
+            ],
+            "title": "UploadedProductPhotoRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "What setUploadedProductPhotos sends: the products whose uploaded\nphoto is now on them, and those it could not be put on.",
+    "properties": {
+        "products": {
+            "description": "The products whose photo is on, in the order sent",
+            "items": {
+                "$ref": "#/$defs/UploadedProductPhotoRow"
+            },
+            "maxItems": 50,
+            "title": "Products",
+            "type": "array"
+        },
+        "notSaved": {
+            "description": "The products whose photo could not be saved; empty when all were",
+            "items": {
+                "$ref": "#/$defs/PhotoNotSavedRow"
+            },
+            "maxItems": 50,
+            "title": "Notsaved",
+            "type": "array"
+        }
+    },
+    "required": [
+        "products",
+        "notSaved"
+    ],
+    "title": "UploadedProductPhotosResponse",
+    "type": "object",
+    "additionalProperties": false
+}

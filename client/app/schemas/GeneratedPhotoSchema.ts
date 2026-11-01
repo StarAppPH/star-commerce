@@ -24,7 +24,7 @@ export type Path = string;
  */
 export type Url = string;
 /**
- * The object paths of the admin's reference photos
+ * The object paths of the admin's reference photos (an original's: the upload it was copied from, which setUploadedProductPhotos compares to copy an upload once)
  *
  * @minItems 1
  * @maxItems 10
@@ -41,9 +41,13 @@ export type Sourcepaths =
   | [string, string, string, string, string, string, string, string, string]
   | [string, string, string, string, string, string, string, string, string, string];
 /**
- * The admin's notes for this call
+ * The admin's direction typed in chat for this call, added to its prompt as the special request
  */
 export type Notes = string | null;
+/**
+ * The Products _id it was copied for (an original, setUploadedProductPhotos) or made for (makeProductPhotoChoices); null otherwise, and on a photo saved before photos kept it
+ */
+export type Productid = string | null;
 /**
  * The image model that made it; null for an original
  */
@@ -75,6 +79,7 @@ export interface GeneratedPhoto {
   url: Url;
   sourcePaths: Sourcepaths;
   notes?: Notes;
+  productId?: Productid;
   model: Model;
   source?: Source;
   prompt?: Prompt;

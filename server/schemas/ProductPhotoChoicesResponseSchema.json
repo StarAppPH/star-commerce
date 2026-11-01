@@ -80,7 +80,7 @@
                     "type": "null"
                 }
             ],
-            "description": "Why fewer photos than asked were made (no photo style, today's limit reached, generation unavailable); null when all were",
+            "description": "Why fewer photos than asked were made (today's limit reached, generation unavailable); null when all were",
             "title": "Notgenerated"
         }
     },

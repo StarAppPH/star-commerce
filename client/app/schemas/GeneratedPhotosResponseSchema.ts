@@ -6,7 +6,7 @@
  */
 
 /**
- * The photos made, in order: the first in the global prompt, the others in the store's photo style too
+ * The photos made, all from the one prompt
  *
  * @maxItems 3
  */
@@ -28,7 +28,7 @@ export type Url = string;
  */
 export type Prompt = string | null;
 /**
- * Why fewer photos than asked were made (no photo style, a model call failed); null when all were
+ * Why fewer photos than asked were made; null when all were
  */
 export type Notgenerated = string | null;
 

@@ -4,12 +4,12 @@ Muse Image, imageModel.py).
 The admin uploads plain photos of an item to their own users/<uid>/ folder
 in the Firebase bucket; generateProductPhotos reads them there by bucket
 and path (photoStorage, never by fetching a URL), asks the image model for
-PHOTOS_PER_CALL photos (photoPrompts: the first in the global prompt, with
-the store's brand colors, the others in that plus the store's photoStyle,
-StoreActions.updateMyStoreTheme; a store with no photo style gets the first
-only), saves each under stores/<storeId>/photos/ and returns their download
-URLs. Admins only, at
-the store they own (requireOwnerStore); the call runs inside the request.
+PHOTOS_PER_CALL photos from one prompt (the admin's own, else
+defaultPhotoPrompt: the store's photo style and brand colors when it has a
+style, StoreActions.updateMyStoreTheme, else just the product on a plain
+background in its primary color), saves each under stores/<storeId>/photos/
+and returns their download URLs. Admins only, at the store they own
+(requireOwnerStore); the call runs inside the request.
 
 Each store makes at most STORE_DAILY_PHOTO_CAP photos a day (UTC+8), and
 all stores together at most PHOTO_DAILY_CAP_ALL (every Google sign-in
@@ -25,27 +25,43 @@ model call; the model is skipped (a 503) with under MODEL_MIN_SECONDS
 left. Each photo is recorded (a GeneratedPhotos document) right after its
 upload: when a later one fails, the saved ones are still returned.
 
-makeProductPhotoChoices is the photo step of adding a product with a
-photo: it copies the admin's original into the store's photos (no model, so
-no photo quota) and makes PHOTOS_PER_CALL photos from it as
-generateProductPhotos does, so the admin picks one of them all (the chat's
-ProductPhotoChoiceCard). When fewer can be made (no photo style, a daily cap
-reached, the model unavailable or declining), the original and those made
-are still offered, with the reason.
+A product's uploaded photo is simply used: setUploadedProductPhotos,
+called once after addStoreProducts for every product the new products form
+sent with a photo (or for an existing product and a photo the admin
+attached in chat), copies each upload into the store's photos as an
+original, re-encoded with no metadata (photoStorage.storeOriginal: a
+phone's EXIF location never goes public), and puts it on the product. No
+model, so no photo quota: its own daily ORIGINALS_KIND counters bound the
+copies instead, and its own slots (_copySlots) keep it off the generation
+slots. An upload already copied for that product (its latest original's
+sourcePaths) is put back on it, not copied again. The GeneratedPhotos
+document keeps the productId. Its card offers to make better photos of
+each product, with an edit box starting with defaultPhotoPrompt.
+makeProductPhotoChoices makes them, only when the admin asks (on that card
+or in chat): PHOTOS_PER_CALL photos from the product's original (its latest
+original, else the photo on it) and one prompt, so the admin picks one of
+them all, that photo first (the chat's ProductPhotoChoiceCard). When fewer
+can be made (a daily cap reached, the model unavailable or declining), that
+photo and those made are still offered, with the reason.
+
+The prompt is the admin's own only from a form (the photo request form, the
+photo offer card), else defaultPhotoPrompt (the store's current one); what
+the admin types in chat is notes, added to either as its last line
+("Special request: ...").
 
 findProductsInPhoto is the first step of adding several products from one
 group photo the admin attached: productFinder.py names each product (Muse
 Spark) and finds it (SAM, samModel.py), cuts each one out and saves it in
 the admin's own users/<uid>/found/ folder, and returns each name with its
 cut-out's URL, which the new products form then takes as that row's photo
-(and makeProductPhotoChoices as its original). Each store looks through at
+(and setUploadedProductPhotos its original). Each store looks through at
 most STORE_DAILY_FIND_CAP group photos a day, and all stores together at
 most PRODUCT_FIND_DAILY_CAP_ALL (PhotoUsage counters, given back when the
 find fails).
 
 Every photo the model made keeps its prompt (GeneratedPhoto.prompt), and
 both photo tools return it on each photo: the admin sees what the model was
-asked.
+asked. No log carries a prompt.
 
 findColorsInPhoto reads the main colors of a photo the admin attached
 (colorFinder.py, Pillow), for the store's brand colors: the chat model
@@ -59,7 +75,7 @@ too, so a new admin's brand colors can come from their logo.
 setProductPhoto shows one of the store's photos on one of its products
 (Product.photoUrl, the photo's download URL): the shop shows it. Only a
 photo the store holds can be set (made by the model, or an original
-makeProductPhotoChoices copied), never a URL the client or the AI sends.
+setUploadedProductPhotos copied), never a URL the client or the AI sends.
 
 The clock: every read of now is _now(), which reads this module's
 `datetime`, so a test freezes it by replacing PhotoActions.datetime.
@@ -69,7 +85,6 @@ import datetime
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import colorFinder
 import imageModel
@@ -78,7 +93,7 @@ import productFinder
 import samModel
 from actions.callSlots import slot
 from actions.ProductActions import (PRODUCT_NOT_FOUND, PRODUCTS,
-                                    adminProductRow)
+                                    adminProductRow, validBatch)
 from actions.StoreActions import (_validText, requireAnyOwnerStore,
                                   requireOwnerStore)
 # ALL_STORES is imported for the tests, which read it here.
@@ -87,12 +102,14 @@ from actions.usageCounters import (ALL_STORES, appDay, envCap,
 from mcpTools import mcp_tool
 from mongoDb import db
 from services.__request import ServiceUnavailable
-from objects import (PHOTO_NOTES_MAX_LENGTH, FoundProductsResponse,
+from objects import (PHOTO_NOTES_MAX_LENGTH, PHOTO_PROMPT_MAX_LENGTH,
+                     FoundProductsResponse,
                      PHOTO_COLOR_FOCUS_MAX_LENGTH, PhotoColorsResponse,
-                     PHOTO_REFERENCES_MAX, PHOTOS_PER_CALL, PHOTOS_THEMED,
-                     PRODUCT_NAME_MAX_LENGTH,
+                     PHOTO_REFERENCES_MAX, PHOTOS_PER_CALL,
+                     PRODUCT_BATCH_MAX, PRODUCT_NAME_MAX_LENGTH,
                      AdminProductRow, GeneratedPhoto, GeneratedPhotosResponse,
-                     ProductPhotoChoicesResponse, projectedCopy,
+                     ProductPhotoChoicesResponse, UploadedProductPhoto,
+                     UploadedProductPhotosResponse, projectedCopy,
                      projection_of)
 from utils import generateRandomString
 
@@ -104,8 +121,11 @@ PHOTOS_KIND = 'photos'
 FINDS_KIND = 'productFinds'
 # The kind of the focused color read counters (findColorsInPhoto).
 COLOR_FINDS_KIND = 'colorFinds'
+# The kind of the counters of originals copied (setUploadedProductPhotos).
+ORIGINALS_KIND = 'originals'
 # What a store reset carries over to the new store (StoreActions).
-STORE_USAGE_KINDS = (PHOTO_USAGE, (PHOTOS_KIND, FINDS_KIND, COLOR_FINDS_KIND))
+STORE_USAGE_KINDS = (PHOTO_USAGE, (PHOTOS_KIND, FINDS_KIND, COLOR_FINDS_KIND,
+                                   ORIGINALS_KIND))
 # Read at import, so it stays the real timezone when a test replaces this
 # module's `datetime`.
 UTC = datetime.timezone.utc
@@ -136,6 +156,23 @@ COLOR_FIND_ALL_CAP_REACHED = ('Reading part of a photo is busy today: ask '
 COLOR_FINDS_TURNED_OFF = ('Reading part of a photo is turned off right '
                           "now: ask for the whole photo's colors")
 COLOR_FOCUS_LABEL = 'The part of the photo'
+# Originals a store, and all stores together, copy a day
+# (setUploadedProductPhotos: Storage reads, re-encodes and writes, no
+# model): ORIGINAL_DAILY_CAP_ALL (0 turns it off), else the default. A
+# store's cap is a day of busy listing (several full new products forms).
+STORE_DAILY_ORIGINAL_CAP = 300
+ORIGINAL_DAILY_CAP_ALL_VARIABLE = 'ORIGINAL_DAILY_CAP_ALL'
+DEFAULT_ORIGINAL_DAILY_CAP_ALL = 5000
+ORIGINAL_CAP_REACHED = ("Your store has reached today's limit of product "
+                        'photos saved, try again tomorrow')
+ORIGINAL_ALL_CAP_REACHED = 'Saving product photos is busy today, try again tomorrow'
+ORIGINALS_TURNED_OFF = 'Saving product photos is turned off right now'
+# The copies one process runs at once, apart from the generation slots:
+# each holds a thread (inside a chat turn's, or an MCP call's) and decodes
+# one photo at a time (up to MODEL_IMAGE_MAX_PIXELS), so this bounds the
+# memory the copies take; a call past it is a 503 before any quota.
+COPY_CALLS_AT_ONCE = 2
+_copySlots = threading.BoundedSemaphore(COPY_CALLS_AT_ONCE)
 # The photo calls one process runs at once: each holds one of gunicorn's 8
 # threads for up to PHOTO_DEADLINE_SECONDS. With the chat's 4, 2 stay free
 # for the rest of the app.
@@ -156,14 +193,23 @@ PHOTOS_TURNED_OFF = 'Photo generation is turned off right now'
 IMAGE_URLS_COUNT = f'Send 1 to {PHOTO_REFERENCES_MAX} imageUrls'
 IMAGE_URLS_TWICE = 'imageUrls lists the same photo twice'
 IMAGE_URL_MISSING = 'Send the imageUrl of the photo you uploaded'
+PROMPT_LABEL = 'The prompt'
 NOTES_LABEL = 'The notes'
 PRODUCT_NAME_LABEL = "The product's name"
 PHOTO_NOT_FOUND = 'Photo not found'
+# setUploadedProductPhotos' refusals (before any write) and per-product
+# failures (after).
+UPLOADED_PHOTOS_COUNT = f'Send 1 to {PRODUCT_BATCH_MAX} products at a time'
+PRODUCT_TWICE = 'this product is already in the list'
+PHOTO_NOT_SAVED = 'Its photo could not be saved right now: try again'
+# makeProductPhotoChoices for a product with no photo of the store's.
+NO_PRODUCT_PHOTO = ('This product has no photo yet: photos are made from '
+                    'the photo uploaded for it')
+# What the AI reads of a store to write its default prompt.
+PROMPT_STORE_FIELDS = {'_id': 1, 'photoStyle': 1, 'primaryColor': 1,
+                       'secondaryColor': 1}
 # Why a photo call made fewer than PHOTOS_PER_CALL photos (with a cap's own
 # message, or the model's refusal).
-NO_STYLE_GLOBAL_ONLY = (f'Your store has no photo style yet, so only 1 of the '
-                        f'{PHOTOS_PER_CALL} photos was made: set one to get '
-                        'the others')
 UNAVAILABLE_ORIGINAL_ONLY = ('Photo generation is unavailable right now, so '
                              'no styled photos were made')
 SOME_NOT_MADE = (f'Some of the {PHOTOS_PER_CALL} photos could not be made '
@@ -224,13 +270,11 @@ def backgroundLine(primaryColor: str) -> str:
             'surfaces or scenery.')
 
 
-def _promptLines(notes: str | None, productName: str | None) -> list[str]:
-    """The lines every prompt starts with: the fixed instruction, the
-    admin's notes as its special request (when sent) and the product's
-    name (when known, so the model knows which item is the product)."""
+def _promptLines(productName: str | None) -> list[str]:
+    """The lines every default prompt starts with: the fixed instruction
+    and the product's name (when known, so the model knows which item is
+    the product)."""
     lines = [PHOTO_INSTRUCTION]
-    if notes is not None:
-        lines.append(f'Special request: {notes}')
     if productName is not None:
         lines.append(f'Product: {productName}')
     return lines
@@ -243,13 +287,12 @@ def _withBrandColors(lines: list[str], store: dict) -> list[str]:
     return lines if colors is None else [*lines, colors]
 
 
-def globalPhotoPrompt(store: dict, notes: str | None,
-                      productName: str | None = None) -> str:
-    """The global prompt, every photo call's first photo: the first lines
+def globalPhotoPrompt(store: dict, productName: str | None = None) -> str:
+    """The default prompt of a store with no photo style: the first lines
     (_promptLines), then just the product on a plain background in the
     store's primary color (backgroundLine), or, for a store without one,
     its brand colors (when set)."""
-    lines = _promptLines(notes, productName)
+    lines = _promptLines(productName)
     primaryColor = store.get('primaryColor')
     if primaryColor:
         lines.append(backgroundLine(primaryColor))
@@ -258,36 +301,47 @@ def globalPhotoPrompt(store: dict, notes: str | None,
     return '\n'.join(lines)
 
 
-def photoPrompt(store: dict, notes: str | None,
-                productName: str | None = None) -> str:
-    """The themed prompt, every photo call's other photos: the first lines
+def photoPrompt(store: dict, productName: str | None = None) -> str:
+    """The default prompt of a store with a photo style: the first lines
     (_promptLines), the store's brand colors (when set) and its photo
-    style; never the global prompt's plain background."""
-    lines = _withBrandColors(_promptLines(notes, productName), store)
+    style; never the plain background."""
+    lines = _withBrandColors(_promptLines(productName), store)
     return '\n'.join([*lines, f'Style: {store["photoStyle"]}'])
 
 
-def photoPrompts(store: dict, notes: str | None,
-                 productName: str | None = None) -> list[tuple[str, int]]:
-    """The prompts of a photo call, each with how many photos it makes:
-    1 in the global prompt, then PHOTOS_THEMED in the themed one, which a
-    store with no photo style does not get."""
-    prompts = [(globalPhotoPrompt(store, notes, productName), 1)]
+def defaultPhotoPrompt(store: dict, productName: str | None = None) -> str:
+    """The prompt a photo call makes its PHOTOS_PER_CALL photos from when
+    the admin sends none (and the one their edit box starts with): the
+    themed prompt (photoPrompt) for a store with a photo style, else the
+    global one (globalPhotoPrompt). `store` holds PROMPT_STORE_FIELDS."""
     if store.get('photoStyle'):
-        prompts.append((photoPrompt(store, notes, productName),
-                        PHOTOS_THEMED))
-    return prompts
+        return photoPrompt(store, productName)
+    return globalPhotoPrompt(store, productName)
 
 
-def _notGenerated(store: dict, made: int) -> str | None:
+def _prompt(store: dict, prompt, notes,
+            productName: str | None) -> tuple[str, str | None]:
+    """The prompt of a photo call and its notes: the admin's own prompt
+    from a form (stripped, at most PHOTO_PROMPT_MAX_LENGTH), else, null or
+    blank, the default one (defaultPhotoPrompt), then the notes typed in
+    chat (stripped, at most PHOTO_NOTES_MAX_LENGTH, blank is none) as its
+    last line, its special request. A refusal names neither's text."""
+    prompt = _validText(prompt, PROMPT_LABEL, PHOTO_PROMPT_MAX_LENGTH,
+                        required=False)
+    notes = _validText(notes, NOTES_LABEL, PHOTO_NOTES_MAX_LENGTH,
+                       required=False)
+    if prompt is None:
+        prompt = defaultPhotoPrompt(store, productName)
+    if notes is not None:
+        prompt = f'{prompt}\nSpecial request: {notes}'
+    return prompt, notes
+
+
+def _notGenerated(made: int) -> str | None:
     """Why a photo call that made `made` photos made fewer than
-    PHOTOS_PER_CALL: the store has no photo style, or a model call failed;
-    null when it made them all."""
-    if made >= PHOTOS_PER_CALL:
-        return None
-    if not store.get('photoStyle'):
-        return NO_STYLE_GLOBAL_ONLY
-    return SOME_NOT_MADE
+    PHOTOS_PER_CALL (the model returned fewer); null when it made them
+    all."""
+    return None if made >= PHOTOS_PER_CALL else SOME_NOT_MADE
 
 
 def dailyCapAll() -> int:
@@ -297,42 +351,63 @@ def dailyCapAll() -> int:
                   'photoDailyCapAllInvalid')
 
 
+def _takeStoreQuota(kind: str, storeId: str, storeCap: int, capAll: int,
+                    refusals: tuple[str, str, str],
+                    amount: int = 1) -> list[str]:
+    """Count `amount` of `kind` (a PhotoUsage counter) on today's app day
+    against the store's daily cap and all stores' (`capAll`, read by the
+    caller: dailyCapAll or envCap), refused when either would pass (and
+    then counted against neither: usageCounters.takeQuotas). `refusals`
+    are the store cap's, all stores' and the turned-off (capAll 0)
+    messages. Returns the two counters' keys."""
+    storeRefusal, allRefusal, turnedOff = refusals
+    return takeDailyQuotas(
+        PHOTO_USAGE, [(kind, storeId, storeCap, storeRefusal)],
+        (kind, allRefusal), capAll, turnedOff, appDay(_now()),
+        amount=amount)
+
+
 def _takePhotoQuota(storeId: str, count: int) -> list[str]:
     """Count `count` photos against the store's daily cap and all stores'
-    (dailyCapAll), refused when either would pass (and then counted against
-    neither: usageCounters.takeQuotas). A cap of 0 is photos turned off.
-    Returns the two counters' keys."""
-    return takeDailyQuotas(
-        PHOTO_USAGE,
-        [(PHOTOS_KIND, storeId, STORE_DAILY_PHOTO_CAP, PHOTO_CAP_REACHED)],
-        (PHOTOS_KIND, PHOTO_ALL_CAP_REACHED), dailyCapAll(),
-        PHOTOS_TURNED_OFF, appDay(_now()), amount=count)
+    (dailyCapAll). A cap of 0 is photos turned off."""
+    return _takeStoreQuota(
+        PHOTOS_KIND, storeId, STORE_DAILY_PHOTO_CAP, dailyCapAll(),
+        (PHOTO_CAP_REACHED, PHOTO_ALL_CAP_REACHED, PHOTOS_TURNED_OFF),
+        amount=count)
+
+
+def _takeOriginalQuota(storeId: str, count: int) -> list[str]:
+    """Count `count` originals copied against the store's daily cap and all
+    stores' (ORIGINAL_DAILY_CAP_ALL)."""
+    return _takeStoreQuota(
+        ORIGINALS_KIND, storeId, STORE_DAILY_ORIGINAL_CAP,
+        envCap(ORIGINAL_DAILY_CAP_ALL_VARIABLE,
+               DEFAULT_ORIGINAL_DAILY_CAP_ALL, 'originalDailyCapAllInvalid'),
+        (ORIGINAL_CAP_REACHED, ORIGINAL_ALL_CAP_REACHED,
+         ORIGINALS_TURNED_OFF),
+        amount=count)
 
 
 def _takeFindQuota(storeId: str) -> list[str]:
     """Count one group photo against the store's daily cap and all
-    stores' (PRODUCT_FIND_DAILY_CAP_ALL), as _takePhotoQuota does."""
-    capAll = envCap(FIND_DAILY_CAP_ALL_VARIABLE, DEFAULT_FIND_DAILY_CAP_ALL,
-                    'productFindDailyCapAllInvalid')
-    return takeDailyQuotas(
-        PHOTO_USAGE,
-        [(FINDS_KIND, storeId, STORE_DAILY_FIND_CAP, FIND_CAP_REACHED)],
-        (FINDS_KIND, FIND_ALL_CAP_REACHED), capAll, FINDS_TURNED_OFF,
-        appDay(_now()))
+    stores' (PRODUCT_FIND_DAILY_CAP_ALL)."""
+    return _takeStoreQuota(
+        FINDS_KIND, storeId, STORE_DAILY_FIND_CAP,
+        envCap(FIND_DAILY_CAP_ALL_VARIABLE, DEFAULT_FIND_DAILY_CAP_ALL,
+               'productFindDailyCapAllInvalid'),
+        (FIND_CAP_REACHED, FIND_ALL_CAP_REACHED, FINDS_TURNED_OFF))
 
 
 def _takeColorFindQuota(storeId: str) -> list[str]:
     """Count one focused color read against the store's daily cap and all
-    stores' (COLOR_FIND_DAILY_CAP_ALL), as _takePhotoQuota does."""
-    capAll = envCap(COLOR_FIND_DAILY_CAP_ALL_VARIABLE,
-                    DEFAULT_COLOR_FIND_DAILY_CAP_ALL,
-                    'colorFindDailyCapAllInvalid')
-    return takeDailyQuotas(
-        PHOTO_USAGE,
-        [(COLOR_FINDS_KIND, storeId, STORE_DAILY_COLOR_FIND_CAP,
-          COLOR_FIND_CAP_REACHED)],
-        (COLOR_FINDS_KIND, COLOR_FIND_ALL_CAP_REACHED), capAll,
-        COLOR_FINDS_TURNED_OFF, appDay(_now()))
+    stores' (COLOR_FIND_DAILY_CAP_ALL)."""
+    return _takeStoreQuota(
+        COLOR_FINDS_KIND, storeId, STORE_DAILY_COLOR_FIND_CAP,
+        envCap(COLOR_FIND_DAILY_CAP_ALL_VARIABLE,
+               DEFAULT_COLOR_FIND_DAILY_CAP_ALL,
+               'colorFindDailyCapAllInvalid'),
+        (COLOR_FIND_CAP_REACHED, COLOR_FIND_ALL_CAP_REACHED,
+         COLOR_FINDS_TURNED_OFF))
 
 
 def _readFocusedColors(storeId: str, data: bytes, focus: str,
@@ -362,20 +437,16 @@ def _references(read: list[tuple[bytes, str]]
     return references
 
 
-def _makeImages(userId: str, store: dict, paths: list[str],
-                prompts: list[tuple[str, int]], deadline: float,
+def _makeImages(userId: str, store: dict, paths: list[str], prompt: str,
+                deadline: float,
                 references: list[tuple[str, bytes, str]] | None = None
-                ) -> list[tuple[bytes, str]]:
-    """The photos of the store from the reference photos at `paths` (or
-    `references`, already read), each with its prompt, in the order of
-    `prompts` (photoPrompts), whose model calls run at once. They are
-    counted against the daily caps: those the model did not return are
-    given back (all of them when this fails). When one call fails and
-    another returns photos, those are returned (the failure logged, class
-    only); when none returns any, the first call's failure is raised."""
-    count = sum(n for _, n in prompts)
-    keys = _takePhotoQuota(store['_id'], count)
-    images = []
+                ) -> list[bytes]:
+    """PHOTOS_PER_CALL photos of the store from the reference photos at
+    `paths` (or `references`, already read) and `prompt`, one model call.
+    They are counted against the daily caps: those the model did not
+    return are given back (all of them when this fails)."""
+    keys = _takePhotoQuota(store['_id'], PHOTOS_PER_CALL)
+    images: list[bytes] = []
     try:
         if references is None:
             references = _references(photoStorage.readOwnImages(
@@ -384,37 +455,25 @@ def _makeImages(userId: str, store: dict, paths: list[str],
                 deadline))
         if deadline - time.monotonic() < MODEL_MIN_SECONDS:
             raise imageModel.unavailable()
-        with ThreadPoolExecutor(max_workers=len(prompts)) as pool:
-            calls = [pool.submit(imageModel.editImages, references, prompt, n,
-                                 deadline)
-                     for prompt, n in prompts]
-        failures = []
-        for (prompt, _), call in zip(prompts, calls):
-            try:
-                images += [(image, prompt) for image in call.result()]
-            except Exception as error:
-                failures.append(error)
-        if failures and not images:
-            raise failures[0]
-        for error in failures:
-            logging.warning({'event': 'productPhotoCallFailed',
-                             'errorClass': type(error).__name__})
+        images = imageModel.editImages(references, prompt, PHOTOS_PER_CALL,
+                                       deadline)
     finally:
         # Only the photos returned are billed: the rest are not counted.
-        giveBackQuotas(PHOTO_USAGE, keys, count - len(images))
+        giveBackQuotas(PHOTO_USAGE, keys, PHOTOS_PER_CALL - len(images))
     if not images:
         raise imageModel.unavailable()
     return images
 
 
 def _savePhoto(userId: str, store: dict, paths: list[str], data: bytes,
-               deadline: float, *, notes: str | None = None,
-               prompt: str | None = None,
+               deadline: float, *, prompt: str | None = None,
+               notes: str | None = None, productId: str | None = None,
                contentType: str = photoStorage.STORE_PHOTO_CONTENT_TYPE
                ) -> dict:
-    """Upload one store photo and record it (a GeneratedPhotos document):
-    one the model made (with its prompt), or, with no prompt, the admin's
-    original. Returns its _id and url."""
+    """Upload one store photo and record it (a GeneratedPhotos document,
+    with the product it is for when there is one): one the model made
+    (with its prompt), or, with no prompt, the admin's original. Returns
+    its _id and url."""
     photoId = generateRandomString()
     url = photoStorage.saveStorePhoto(store['_id'], photoId, data, deadline,
                                       contentType)
@@ -427,6 +486,7 @@ def _savePhoto(userId: str, store: dict, paths: list[str], data: bytes,
         url=url,
         sourcePaths=paths,
         notes=notes,
+        productId=productId,
         model=None if original else imageModel.IMAGE_MODEL,
         source='original' if original else 'generated',
         prompt=prompt,
@@ -435,9 +495,9 @@ def _savePhoto(userId: str, store: dict, paths: list[str], data: bytes,
     return {'_id': photoId, 'url': url}
 
 
-def _saveImages(userId: str, store: dict, paths: list[str],
-                notes: str | None,
-                images: list[tuple[bytes, str]]) -> list[dict]:
+def _saveImages(userId: str, store: dict, paths: list[str], prompt: str,
+                images: list[bytes], *, notes: str | None = None,
+                productId: str | None = None) -> list[dict]:
     """Upload each image and record it (a GeneratedPhotos document, with
     its prompt) right after, within SAVE_SECONDS. Returns the response's
     rows. When one fails, the saved ones are returned (the failure logged,
@@ -445,9 +505,10 @@ def _saveImages(userId: str, store: dict, paths: list[str],
     deadline = time.monotonic() + SAVE_SECONDS
     saved = []
     try:
-        for image, prompt in images:
+        for image in images:
             saved.append({**_savePhoto(userId, store, paths, image, deadline,
-                                       notes=notes, prompt=prompt),
+                                       prompt=prompt, notes=notes,
+                                       productId=productId),
                           'prompt': prompt})
     except Exception as error:
         if not saved:
@@ -459,97 +520,281 @@ def _saveImages(userId: str, store: dict, paths: list[str],
     return saved
 
 
+def _makeAndSave(userId: str, store: dict, paths: list[str], prompt: str,
+                 deadline: float, *, notes: str | None = None,
+                 productId: str | None = None,
+                 readReferences=None,
+                 keepRefusals: bool = False
+                 ) -> tuple[int, list[dict], str | None]:
+    """The core of both photo tools: in a photo slot, the references read
+    (`readReferences()`, else the admin's photos at `paths`, after the
+    quota is taken), PHOTOS_PER_CALL photos made from `prompt`
+    (_makeImages) and saved (_saveImages). Returns how many the model
+    returned, the rows saved and notGenerated. With `keepRefusals` a cap,
+    the model declining or it being unavailable is notGenerated
+    (CAPS_ORIGINAL_ONLY, UNAVAILABLE_ORIGINAL_ONLY) with nothing made;
+    without, it is raised. A full slot, or a failed readReferences, is
+    always raised."""
+    with slot(_photoSlots, imageModel.unavailable):
+        references = readReferences() if readReferences else None
+        try:
+            images = _makeImages(userId, store, paths, prompt, deadline,
+                                 references)
+            photos = _saveImages(userId, store, paths, prompt, images,
+                                 notes=notes, productId=productId)
+        except ValueError as refusal:
+            # A cap reached, photos turned off, or the model declining:
+            # the admin's to read.
+            if not keepRefusals:
+                raise
+            return 0, [], CAPS_ORIGINAL_ONLY.get(str(refusal), str(refusal))
+        except ServiceUnavailable:
+            if not keepRefusals:
+                raise
+            return 0, [], UNAVAILABLE_ORIGINAL_ONLY
+    return len(images), photos, _notGenerated(len(photos))
+
+
 def generateProductPhotos(model,
                           userId: str,
                           imageUrls: list[str],
-                          notes: str | None = None,
-                          productName: str | None = None) -> dict:
+                          prompt: str | None = None,
+                          productName: str | None = None,
+                          notes: str | None = None) -> dict:
     deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
-    store = requireOwnerStore(userId, {'_id': 1, 'photoStyle': 1,
-                                       'primaryColor': 1,
-                                       'secondaryColor': 1})
+    store = requireOwnerStore(userId, PROMPT_STORE_FIELDS)
     paths = _validImageUrls(userId, imageUrls)
-    notes = _validText(notes, NOTES_LABEL, PHOTO_NOTES_MAX_LENGTH,
-                       required=False)
     productName = _validText(productName, PRODUCT_NAME_LABEL,
                              PRODUCT_NAME_MAX_LENGTH, required=False)
-    prompts = photoPrompts(store, notes, productName)
+    prompt, notes = _prompt(store, prompt, notes, productName)
     started = time.monotonic()
-    with slot(_photoSlots, imageModel.unavailable):
-        images = _makeImages(userId, store, paths, prompts, deadline)
-        photos = _saveImages(userId, store, paths, notes, images)
-    # Never the URLs, the paths, the prompts, the notes or the key.
+    returned, photos, notGenerated = _makeAndSave(userId, store, paths,
+                                                  prompt, deadline,
+                                                  notes=notes)
+    # Never the URLs, the paths, the prompt, the notes or the key.
     logging.info({
         'event': 'productPhotos',
         'storeId': store['_id'],
-        'count': sum(n for _, n in prompts),
-        'returned': len(images),
+        'count': PHOTOS_PER_CALL,
+        'returned': returned,
         'saved': len(photos),
         'durationMs': round((time.monotonic() - started) * 1000),
     })
-    return projectedCopy(model, {
-        'photos': photos,
-        'notGenerated': _notGenerated(store, len(photos))})
+    return projectedCopy(model, {'photos': photos,
+                                 'notGenerated': notGenerated})
 
 
-def makeProductPhotoChoices(model,
-                            userId: str,
-                            productId: str,
-                            imageUrl: str,
-                            notes: str | None = None) -> dict:
-    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
-    store = requireOwnerStore(userId, {'_id': 1, 'photoStyle': 1,
-                                       'primaryColor': 1,
-                                       'secondaryColor': 1})
-    product = None
-    if isinstance(productId, str) and productId:
-        product = db.read({'_id': productId, 'storeId': store['_id']},
-                          PRODUCTS, projection={'name': 1}, findOne=True)
-    if product is None:
+def _validUpload(userId: str, item: dict, earlier: list) -> tuple[str, str]:
+    """A setUploadedProductPhotos item as (productId, the photo's object
+    path): a productId not sent before in the list, and the admin's own
+    upload (never naming the URL)."""
+    productId = item.get('productId')
+    if not isinstance(productId, str) or not productId:
         raise ValueError(PRODUCT_NOT_FOUND)
+    if any(productId == done for done, _ in earlier):
+        raise ValueError(PRODUCT_TWICE)
+    imageUrl = item.get('imageUrl')
     if not isinstance(imageUrl, str) or not imageUrl.strip():
         raise ValueError(IMAGE_URL_MISSING)
     path = photoStorage.ownImagePath(
         userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
         'imageUrl')
-    paths = [path]
-    notes = _validText(notes, NOTES_LABEL, PHOTO_NOTES_MAX_LENGTH,
-                       required=False)
+    return productId, path
+
+
+def _putPhotoOnProduct(storeId: str, productId: str, photoUrl: str | None,
+                       projection: dict) -> dict | None:
+    """Set the product's photoUrl (the _version bump of every product
+    write, Product) and return it as `projection` reads it; None when the
+    store has no such product."""
+    return db.findOneAndUpdate(
+        {'_id': productId, 'storeId': storeId},
+        {'$set': {'photoUrl': photoUrl}, '$inc': {'_version': 1}},
+        PRODUCTS, upsert=False, projection=projection)
+
+
+def _failure(error: Exception) -> str:
+    """Why a product's uploaded photo was not saved, for the admin: a
+    refusal's own message (it names no URL or path), else
+    PHOTO_NOT_SAVED."""
+    return str(error) if isinstance(error, ValueError) else PHOTO_NOT_SAVED
+
+
+def _latestOriginal(storeId: str, productId: str) -> dict | None:
+    """The product's latest original (setUploadedProductPhotos), the
+    newest _id first on a createdAt tie; index (storeId, productId, source,
+    createdAt, _id)."""
+    return db.aggregate([
+        {'$match': {'storeId': storeId, 'productId': productId,
+                    'source': 'original'}},
+        {'$sort': {'createdAt': -1, '_id': -1}},
+        {'$limit': 1},
+        {'$project': {'url': 1, 'path': 1, 'sourcePaths': 1, 'source': 1}},
+    ], GENERATED_PHOTOS, findOne=True)
+
+
+def _copyOriginal(userId: str, store: dict, productId: str, path: str,
+                  deadline: float) -> dict:
+    """Copy the admin's upload at `path` into the store's photos as the
+    product's original, re-encoded (photoStorage.storeOriginal). Returns
+    its _id and url."""
+    [(data, contentType)] = photoStorage.readOwnImages(
+        userId, [('imageUrl', path)], deadline)
+    data, contentType = photoStorage.storeOriginal(data, contentType,
+                                                   'imageUrl')
+    return _savePhoto(userId, store, [path], data, deadline,
+                      productId=productId, contentType=contentType)
+
+
+def setUploadedProductPhotos(model,
+                             userId: str,
+                             products: list[UploadedProductPhoto]) -> dict:
+    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+    store = requireOwnerStore(userId, PROMPT_STORE_FIELDS)
+    if (not isinstance(products, list)
+            or not 1 <= len(products) <= PRODUCT_BATCH_MAX):
+        raise ValueError(UPLOADED_PHOTOS_COUNT)
+    items = validBatch(products, UploadedProductPhoto, 'Product',
+                       lambda item, earlier: _validUpload(userId, item,
+                                                          earlier))
+    names = {product['_id']: product['name'] for product in db.read(
+        {'_id': {'$in': [productId for productId, _ in items]},
+         'storeId': store['_id']}, PRODUCTS, projection={'name': 1})}
+    for position, (productId, _) in enumerate(items, start=1):
+        if productId not in names:
+            raise ValueError(f'Product {position}: product not found')
     started = time.monotonic()
-    notGenerated = None
-    images: list[tuple[bytes, str]] = []
-    with slot(_photoSlots, imageModel.unavailable):
-        read = photoStorage.readOwnImages(userId, [('imageUrl', path)],
-                                          deadline)
-        [(data, contentType)] = read
-        original = _savePhoto(userId, store, paths, data,
-                              time.monotonic() + SAVE_SECONDS,
-                              contentType=contentType)
-        photos = [{**original, 'source': 'original', 'prompt': None}]
-        generated = []
+    done, notSaved, failures = [], [], []
+    copied = reused = 0
+    with slot(_copySlots, photoStorage.unavailable):
+        # An upload already copied for its product is put back, not copied
+        # (nor counted) again.
+        latest = {productId: _latestOriginal(store['_id'], productId)
+                  for productId, _ in items}
+        toCopy = sum(1 for productId, path in items
+                     if (latest[productId] or {}).get('sourcePaths')
+                     != [path])
+        keys = _takeOriginalQuota(store['_id'], toCopy) if toCopy else []
         try:
-            images = _makeImages(userId, store, paths,
-                                 photoPrompts(store, notes,
-                                              product['name']),
-                                 deadline, _references(read))
-            generated = _saveImages(userId, store, paths, notes, images)
-        except ValueError as refusal:
-            # A cap reached, photos turned off, or the model declining:
-            # the admin's to read.
-            notGenerated = CAPS_ORIGINAL_ONLY.get(str(refusal),
-                                                  str(refusal))
-        except ServiceUnavailable:
-            notGenerated = UNAVAILABLE_ORIGINAL_ONLY
-        photos += [{**photo, 'source': 'generated'}
-                   for photo in generated]
-        if generated:
-            notGenerated = _notGenerated(store, len(generated))
-    # Never the URL, the path, the prompts or the refusal's text.
+            for productId, path in items:
+                original = latest[productId]
+                try:
+                    if (original or {}).get('sourcePaths') == [path]:
+                        original = {'_id': original['_id'],
+                                    'url': original['url']}
+                        reused += 1
+                    else:
+                        original = _copyOriginal(userId, store, productId,
+                                                 path, deadline)
+                        copied += 1
+                    if _putPhotoOnProduct(store['_id'], productId,
+                                          original['url'],
+                                          {'_id': 1}) is None:
+                        # Deleted since the check: its photo stays an
+                        # orphan.
+                        raise ValueError(PRODUCT_NOT_FOUND)
+                except Exception as error:
+                    failures.append(error)
+                    if not isinstance(error, (ValueError,
+                                              ServiceUnavailable)):
+                        logging.warning({'event': 'uploadedPhotoFailed',
+                                         'errorClass': type(error).__name__})
+                    notSaved.append({'productId': productId,
+                                     'productName': names[productId],
+                                     'reason': _failure(error)})
+                    continue
+                done.append({'productId': productId,
+                             'productName': names[productId],
+                             'photoId': original['_id'],
+                             'photoUrl': original['url'],
+                             'defaultPrompt': defaultPhotoPrompt(
+                                 store, names[productId])})
+        finally:
+            # Only the copies made count.
+            giveBackQuotas(PHOTO_USAGE, keys, toCopy - copied)
+    # Never the URLs, the paths or the names.
+    logging.info({
+        'event': 'uploadedProductPhotos',
+        'storeId': store['_id'],
+        'copied': copied,
+        'reused': reused,
+        'notSaved': len(notSaved),
+        'durationMs': round((time.monotonic() - started) * 1000),
+    })
+    if not done:
+        raise failures[0]
+    return projectedCopy(model, {'products': done, 'notSaved': notSaved})
+
+
+def _photoIdOfUrl(storeId: str, photoUrl) -> str | None:
+    """The _id of the store photo whose download URL is `photoUrl`
+    (storePhotoPath's file name), None for any other URL."""
+    try:
+        path = photoStorage.objectPathFromUrl(photoUrl, 'photoUrl')
+    except ValueError:
+        return None
+    folder = photoStorage.storePhotosFolder(storeId)
+    if not path.startswith(folder) or '/' in path[len(folder):]:
+        return None
+    return path[len(folder):].rpartition('.')[0] or None
+
+
+def _productReference(storeId: str, product: dict) -> dict | None:
+    """The store photo makeProductPhotoChoices makes a product's photos
+    from: its latest original (setUploadedProductPhotos), else the photo
+    on it, when that is one of the store's (an original copied before
+    originals kept their product, or a photo made earlier); None without
+    either."""
+    projection = {'url': 1, 'path': 1, 'sourcePaths': 1, 'source': 1}
+    original = _latestOriginal(storeId, product['_id'])
+    if original is not None:
+        return original
+    photoId = _photoIdOfUrl(storeId, product.get('photoUrl'))
+    if photoId is None:
+        return None
+    photo = db.read({'_id': photoId, 'storeId': storeId}, GENERATED_PHOTOS,
+                    projection=projection, findOne=True)
+    # The URL carries its own token: the photo on the product is this one.
+    if photo is None or photo['url'] != product['photoUrl']:
+        return None
+    return photo
+
+
+def makeProductPhotoChoices(model,
+                            userId: str,
+                            productId: str,
+                            prompt: str | None = None,
+                            notes: str | None = None) -> dict:
+    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+    store = requireOwnerStore(userId, PROMPT_STORE_FIELDS)
+    product = None
+    if isinstance(productId, str) and productId:
+        product = db.read({'_id': productId, 'storeId': store['_id']},
+                          PRODUCTS, projection={'name': 1, 'photoUrl': 1},
+                          findOne=True)
+    if product is None:
+        raise ValueError(PRODUCT_NOT_FOUND)
+    prompt, notes = _prompt(store, prompt, notes, product['name'])
+    reference = _productReference(store['_id'], product)
+    if reference is None:
+        raise ValueError(NO_PRODUCT_PHOTO)
+    started = time.monotonic()
+    returned, generated, notGenerated = _makeAndSave(
+        userId, store, reference['sourcePaths'], prompt, deadline,
+        notes=notes, productId=productId,
+        readReferences=lambda: _references([photoStorage.readStorePhoto(
+            store['_id'], reference['path'], deadline)]),
+        keepRefusals=True)
+    photos = [{'_id': reference['_id'], 'url': reference['url'],
+               'source': reference.get('source', 'generated'),
+               'prompt': None},
+              *({**photo, 'source': 'generated'} for photo in generated)]
+    # Never the URL, the path, the prompt, the notes or the refusal's text.
     logging.info({
         'event': 'productPhotoChoices',
         'storeId': store['_id'],
-        'returned': len(images),
-        'saved': len(photos) - 1,
+        'returned': returned,
+        'saved': len(generated),
         'generated': notGenerated is None,
         'durationMs': round((time.monotonic() - started) * 1000),
     })
@@ -654,12 +899,8 @@ def setProductPhoto(model,
         photoUrl = photo['url']
     updated = None
     if productId:
-        # The _version bump of every product write (Product).
-        updated = db.findOneAndUpdate(
-            {'_id': productId, 'storeId': store['_id']},
-            {'$set': {'photoUrl': photoUrl}, '$inc': {'_version': 1}},
-            PRODUCTS, upsert=False,
-            projection=projection_of(model))
+        updated = _putPhotoOnProduct(store['_id'], productId, photoUrl,
+                                     projection_of(model))
     if updated is None:
         raise ValueError(PRODUCT_NOT_FOUND)
     return adminProductRow(model, updated)
@@ -676,27 +917,70 @@ class PhotoTools():
     def generateProductPhotos(self,
                               userId: str,
                               imageUrls: list[str],
-                              notes: str | None = None,
-                              productName: str | None = None) -> dict:
+                              prompt: str | None = None,
+                              productName: str | None = None,
+                              notes: str | None = None) -> dict:
         """Turn the admin's plain photos of one item into 3 polished
-        product photos: the 1st in the store's brand colors, the 2nd and
-        3rd in its photo style too (both set with updateMyStoreTheme; a
-        store with no photo style gets the 1st only). imageUrls are 1 to 10
-        photos of the same item that the admin uploaded in the app (their
-        download URLs, each once): never invent or change one. A store
-        makes at most 100 photos a day, and the app has a daily limit
-        across all stores too. notes is optional extra direction from the
-        admin for these photos (up to 300 characters), e.g. "show it from
-        above". productName is optional: the product's name (up to 80
-        characters), when the photos are for one of the store's products,
-        so the model knows which item to photograph. Returns each photo's
-        _id, and notGenerated, why fewer than 3 were made (null when all
-        were): tell the admin. The chat shows the photos, and the prompts
-        they were made from, on a card. To show one in the shop, put it on its product with
+        product photos, all made from one text of instructions for the
+        image model (up to 2000 characters). imageUrls are 1 to 10 photos
+        of the same item that the admin uploaded in the app (their
+        download URLs, each once): never invent or change one. Pass
+        the instructions the admin sent on a form answer: copy them
+        character for character, never shorten, translate or reword them,
+        and leave them out when the answer's instructions are null (an
+        unchanged box on the form means the store's current default
+        instructions, so null is sent). Never write these instructions
+        yourself: what the admin asks for in chat ("make it brighter", "on
+        a wooden table") goes in notes (up to 300 characters, in their
+        words), which is added to whichever instructions are used as their
+        last line, the special request. Left out, the store's default instructions are
+        used (its photo style and brand colors, set with
+        updateMyStoreTheme). productName is optional: the product's name
+        (up to 80 characters), when the photos are for one of the store's
+        products, so the default instructions name it. A store makes at
+        most 100 photos a day, and the app has a daily limit across all
+        stores too. Returns each photo's _id, and notGenerated, why fewer
+        than 3 were made (null when all were): tell the admin. The chat
+        shows the photos, and the instructions they were made from, on a
+        card. To show one in the shop, put it on its product with
         setProductPhoto. If this tool refuses, relay its message to the
         admin."""
         return generateProductPhotos(GeneratedPhotosResponse, userId,
-                                     imageUrls, notes, productName)
+                                     imageUrls, prompt, productName, notes)
+
+    @mcp_tool('admin',
+              thinkingText=['Putting your photos on your products',
+                            'Saving your product photos',
+                            'Adding the photos you uploaded'],
+              responseModel=UploadedProductPhotosResponse,
+              twinOf=None)
+    def setUploadedProductPhotos(self,
+                                 userId: str,
+                                 products: list[UploadedProductPhoto]
+                                 ) -> dict:
+        """Put on products of the admin's store the photo the admin
+        uploaded for each, as it is: no photo is generated. Call it once,
+        right after addStoreProducts, with every product the new products
+        form sent with an imageUrl (its new _id from addStoreProducts). It
+        also puts a plain photo on any EXISTING product of the store (its
+        productId from listMyStoreProducts): when the admin attaches a
+        photo in chat for a product, pass that attached image's url. Each
+        item is a productId and an imageUrl (never invent or change one),
+        each product once, 1 to 50. A store saves at most 300 such photos a
+        day (a photo it already holds for that product is not counted
+        again), taken for the whole call at once: a call with more photos
+        than are left today is refused and nothing is saved. Only the product ids and the photo URLs are checked first:
+        a refusal names the product's position (Product 1 is the first)
+        and nothing is saved; relay it. A photo that then cannot be read or
+        saved is listed in notSaved with why, the others are still saved:
+        tell the admin which. Returns the products whose photo is on; the
+        chat shows them on a card that offers to make better photos of
+        each, with instructions for the image model the admin can edit
+        there. In one line, tell the admin their photos are on and that
+        they can make better photos from them on the card; never call
+        makeProductPhotoChoices unless they ask."""
+        return setUploadedProductPhotos(UploadedProductPhotosResponse,
+                                        userId, products)
 
     @mcp_tool('admin',
               thinkingText=['Styling your product photo',
@@ -707,30 +991,39 @@ class PhotoTools():
     def makeProductPhotoChoices(self,
                                 userId: str,
                                 productId: str,
-                                imageUrl: str,
+                                prompt: str | None = None,
                                 notes: str | None = None) -> dict:
-        """Make photo choices for one product of the admin's store (its
-        productId from addStoreProducts or listMyStoreProducts) from the one
-        photo the admin uploaded for it (imageUrl, its download URL from
-        the new products form: never invent or change one). Keeps the
-        original as one of the store's photos and makes 3 photos from it:
-        the 1st in the store's brand colors, the 2nd and 3rd in its photo
-        style too (a store with no photo style gets the 1st only); they
-        count against the daily photo limits. When fewer are made (no photo
-        style, today's limit reached, generation unavailable), the
-        original and those made are still returned and notGenerated says
-        why: tell the admin. notes is optional extra direction from the
-        admin for these photos (up to 300 characters), only when they gave
-        one. Returns the photos (original first), each with its _id and
-        source; the chat shows them, with the prompts they were made from,
-        as a card the admin picks from, numbered in this order (1 is the
-        original). Call it for one product per turn; when the admin picks a
-        photo on the card, or names one by its number ("use the 2nd"), call
-        setProductPhoto with it, then call
-        this for the next product with a photo. If this tool refuses, relay
-        its message to the admin."""
+        """Make better photos of one product of the admin's store (its
+        productId from addStoreProducts or listMyStoreProducts) from the
+        photo it has (the one setUploadedProductPhotos put on it, else the
+        photo on it), only when the admin asks: on the photo offer card
+        ("Make photos of ...", a form answer) or in chat. Makes 3 photos,
+        which count against the daily photo limits, all from one text of
+        instructions for the image model (up to 2000 characters): pass
+        the instructions the admin sent on a form answer: copy them
+        character for character, never shorten, translate or reword them,
+        and leave them out when the answer's instructions are null (an
+        unchanged box on the form means the store's current default
+        instructions, so null is sent). Never write these instructions
+        yourself: what the admin asks for in chat ("make it brighter", "on
+        a wooden table") goes in notes (up to 300 characters, in their
+        words), which is added to whichever instructions are used as their
+        last line, the special request. Left out, the store's default instructions are
+        used. When fewer are made (today's limit reached, generation
+        unavailable), the photo they were to be made from and those made
+        are still returned and notGenerated says why: tell the admin.
+        Returns the photos (that photo first), each with its _id and
+        source; the chat shows them, with the instructions they were made
+        from, as a card the admin picks from, numbered in this order (1 is
+        the photo they were made from). Call it for one product per turn;
+        when the admin picks a photo on the card, or names one by its
+        number ("use the 2nd"), call setProductPhoto with it. A product
+        with no photo of its own is refused: ask the admin to attach a
+        photo of it in chat (then setUploadedProductPhotos), or offer the
+        photo request form. If this tool refuses, relay its message to the
+        admin."""
         return makeProductPhotoChoices(ProductPhotoChoicesResponse, userId,
-                                       productId, imageUrl, notes)
+                                       productId, prompt, notes)
 
     @mcp_tool('admin',
               thinkingText=['Looking for products in your photo',
@@ -797,11 +1090,12 @@ class PhotoTools():
                         productId: str,
                         photoId: str | None = None) -> dict:
         """Show one of the store's product photos (its _id from
-        generateProductPhotos or makeProductPhotoChoices) on a product of
-        the admin's store (its productId from listMyStoreProducts): customers
-        see it in the shop. Leave photoId out to take the product's photo
-        off. Confirm the product and the photo with the admin before
-        calling, unless they picked it on a photo choice card or named its
-        number there. If it
-        refuses, relay its message to the admin."""
+        generateProductPhotos, makeProductPhotoChoices or
+        setUploadedProductPhotos) on any product of the admin's own store
+        (its productId from listMyStoreProducts), whichever product the
+        photo was first made for: customers see it in the shop. Leave
+        photoId out to take the product's photo off. Confirm the product
+        and the photo with the admin before calling, unless they picked it
+        on a photo choice card or named its number there. If it refuses,
+        relay its message to the admin."""
         return setProductPhoto(AdminProductRow, userId, productId, photoId)

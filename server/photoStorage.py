@@ -59,6 +59,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 from AppConfig import Environment
 from services.__request import ServiceUnavailable
+from sharedConstants import PHOTO_UPLOAD_MAX_BYTES
 
 BUCKET_VARIABLE = 'FIREBASE_STORAGE_BUCKET'
 EMULATOR_VARIABLES = ('STORAGE_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST')
@@ -70,7 +71,7 @@ DOWNLOAD_HOST = 'firebasestorage.googleapis.com'
 STORAGE_API_ENDPOINT = 'https://storage.googleapis.com'
 # /v0/b/<bucket>/o/<the object path, URL-encoded: its / are %2F>
 DOWNLOAD_PATH_PATTERN = re.compile(r'/v0/b/([^/]+)/o/([^/]+)')
-MAX_IMAGE_BYTES = 10 * 1024 * 1024
+MAX_IMAGE_BYTES = PHOTO_UPLOAD_MAX_BYTES
 # The reference photos of one call together (checked before any download).
 PHOTO_REFERENCES_MAX_TOTAL_BYTES = 25 * 1024 * 1024
 REFERENCES_TOO_LARGE = ('The photos are over 25 MB together: send fewer or '
@@ -369,11 +370,22 @@ def _ownBlob(uid: str, path: str, label: str, allowedTypes: tuple[str, ...],
              extensionTypes: dict[str, str] | None, kind: str,
              deadline: float) -> OwnFile:
     """The file at `path` under the caller `uid`'s own folder
-    (ownImagePath), its metadata checked: it must exist (else _Gone), be of
-    `allowedTypes` (else `wrongType`, after the label) and, with
-    `extensionTypes` (extension: type), the type its name's extension
-    names, and be at most `maxBytes`."""
-    path = ownImagePath(uid, path, label, kind)
+    (ownImagePath), its metadata checked (_checkedBlob)."""
+    return _checkedBlob(ownImagePath(uid, path, label, kind), label,
+                        allowedTypes, wrongType, maxBytes, extensionTypes,
+                        deadline)
+
+
+def _checkedBlob(path: str, label: str, allowedTypes: tuple[str, ...],
+                 wrongType: str, maxBytes: int,
+                 extensionTypes: dict[str, str] | None,
+                 deadline: float) -> OwnFile:
+    """The file at the already checked `path` (an own upload, ownImagePath,
+    or a store photo, readStorePhoto), its metadata checked: it must exist
+    (else _Gone), be of `allowedTypes` (else `wrongType`, after the label)
+    and, with `extensionTypes` (extension: type), the type its name's
+    extension names, and be at most `maxBytes`. Nothing downloaded yet
+    (downloadFiles)."""
     blob = _bucket().get_blob(path, **_limits(deadline))
     if blob is None:
         raise _Gone(f'{label} was not found: upload it again')
@@ -519,13 +531,56 @@ def modelImage(data: bytes, contentType: str,
     return out.getvalue(), 'image/jpeg'
 
 
+# The quality an admin's original is re-encoded at (storeOriginal).
+ORIGINAL_JPEG_QUALITY = 92
+ORIGINAL_WEBP_QUALITY = 90
+
+
+def storeOriginal(data: bytes, contentType: str,
+                  label: str) -> tuple[bytes, str]:
+    """An admin's checked photo (a JPEG, PNG or WebP: readOwnImages) as the
+    store keeps and shows it: re-encoded in its own type, turned upright
+    (its EXIF orientation), with no metadata (a phone's EXIF location, its
+    camera, its text chunks: only the color profile is kept), and a PNG's
+    or WebP's transparency kept. One that cannot be read is
+    NOT_A_REAL_PHOTO, one over MODEL_IMAGE_MAX_PIXELS MODEL_IMAGE_TOO_LARGE
+    (after the label)."""
+    from PIL import Image, ImageOps
+    try:
+        with Image.open(io.BytesIO(data)) as opened:
+            if opened.width * opened.height > MODEL_IMAGE_MAX_PIXELS:
+                raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}')
+            iccProfile = opened.info.get('icc_profile')
+            hasAlpha = opened.mode in ('RGBA', 'LA', 'PA') or (
+                'transparency' in opened.info)
+            image = ImageOps.exif_transpose(opened)
+            if contentType == 'image/jpeg' or not hasAlpha:
+                image = image.convert('RGB')
+            else:
+                image = image.convert('RGBA')
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}') from None
+    except (OSError, SyntaxError):
+        raise ValueError(f'{label} {NOT_A_REAL_PHOTO}') from None
+    options = {'icc_profile': iccProfile} if iccProfile else {}
+    out = io.BytesIO()
+    if contentType == 'image/png':
+        image.save(out, 'PNG', optimize=True, **options)
+    elif contentType == WEBP_CONTENT_TYPE:
+        image.save(out, 'WEBP', quality=ORIGINAL_WEBP_QUALITY, **options)
+    else:
+        image.save(out, 'JPEG', quality=ORIGINAL_JPEG_QUALITY, **options)
+        contentType = 'image/jpeg'
+    return out.getvalue(), contentType
+
+
 def storePhotoPath(storeId: str, photoId: str,
                    contentType: str = STORE_PHOTO_CONTENT_TYPE) -> str:
     """Where a store photo of `contentType` (a JPEG, or an admin's PNG or
     WebP original) is saved."""
     extension = {'image/png': 'png', WEBP_CONTENT_TYPE: 'webp'}.get(
         contentType, 'jpg')
-    return f'{storeFolder(storeId)}photos/{photoId}.{extension}'
+    return f'{storePhotosFolder(storeId)}{photoId}.{extension}'
 
 
 def publicPathUrl(path: str) -> str:
@@ -578,6 +633,34 @@ def saveStorePhoto(storeId: str, photoId: str, data: bytes,
         raise ValueError('A store photo is a JPEG, a PNG or a WebP')
     return _upload(storePhotoPath(storeId, photoId, contentType), data,
                    contentType, deadline)
+
+
+STORE_PHOTO_LABEL = "The product's photo"
+STORE_PHOTO_GONE = f'{STORE_PHOTO_LABEL} was not found: upload it again'
+
+
+def readStorePhoto(storeId: str, path: str,
+                   deadline: float) -> tuple[bytes, str]:
+    """The bytes and content type of the store `storeId`'s photo at `path`
+    (one of storePhotosFolder(storeId)'s), read before `deadline`
+    (time.monotonic()) and checked as an upload is (_checkedBlob, then
+    downloadFiles): a JPEG, PNG or WebP of at most MAX_IMAGE_BYTES whose
+    first bytes are its type's. Gone (or another folder's file) is
+    STORE_PHOTO_GONE, a Storage failure a 503. Never names the path."""
+    if not isinstance(path, str) or not path.startswith(
+            storePhotosFolder(storeId)):
+        raise ValueError(STORE_PHOTO_GONE)
+    try:
+        file = _checkedBlob(path, STORE_PHOTO_LABEL, IMAGE_CONTENT_TYPES,
+                            'must be a JPG, PNG or WebP photo',
+                            MAX_IMAGE_BYTES, None, deadline)
+    except _Gone as error:
+        raise ValueError(str(error)) from None
+    except _storageErrors() as error:
+        raise _storageFailure(error) from None
+    [data] = downloadFiles([file], MAX_IMAGE_BYTES, deadline,
+                           notReal=NOT_A_REAL_PHOTO)
+    return data, file.contentType
 
 
 def foundPhotoPath(uid: str, photoId: str) -> str:
@@ -682,6 +765,12 @@ def storeFolder(storeId: str) -> str:
     """The folder of the store `storeId`'s files (its photos), with its
     trailing slash."""
     return f'{STORE_FOLDER}/{storeId}/'
+
+
+def storePhotosFolder(storeId: str) -> str:
+    """The folder of the store `storeId`'s photos (storePhotoPath), with
+    its trailing slash."""
+    return f'{storeFolder(storeId)}photos/'
 
 
 def userFolder(uid: str) -> str:

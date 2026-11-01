@@ -8,22 +8,20 @@ from typing import Literal
 from typing import ClassVar
 from pydantic import Field
 
-from objects.base import MongoModel, ResponseModel
+from objects.base import AppModel, MongoModel, ResponseModel
+from objects.product import PRODUCT_BATCH_MAX
 from objects.store import HEX_COLOR_PATTERN
+# The photo limits the client checks too (sharedConstants.py says each):
+# the photos a call makes, the longest prompt and notes, the most reference
+# photos per call.
+from sharedConstants import (PHOTO_NOTES_MAX_LENGTH, PHOTO_PROMPT_MAX_LENGTH,
+                             PHOTO_REFERENCES_MAX, PHOTOS_PER_CALL)
 
 
 # ──────────────────────────────────────────────
 # Generated product photos
 # ──────────────────────────────────────────────
 
-PHOTO_NOTES_MAX_LENGTH = 300
-# The admin's reference photos per call.
-PHOTO_REFERENCES_MAX = 10
-# The photos every photo call makes (generateProductPhotos, and
-# makeProductPhotoChoices next to the original): the first in the global
-# prompt, the others in the global prompt plus the store's photo style.
-PHOTOS_PER_CALL = 3
-PHOTOS_THEMED = PHOTOS_PER_CALL - 1
 # The most products findProductsInPhoto finds in one photo.
 PHOTO_FIND_ITEMS_MAX = 12
 # The most colors findColorsInPhoto reads from one photo, and the longest
@@ -32,7 +30,8 @@ PHOTO_COLORS_MAX = 6
 PHOTO_COLOR_FOCUS_MAX_LENGTH = 60
 
 # Where a store photo came from: the image model made it, or it is the
-# admin's own photo, copied as it is (makeProductPhotoChoices).
+# admin's own photo, copied as it is (setUploadedProductPhotos; before it,
+# makeProductPhotoChoices).
 PhotoSource = Literal['generated', 'original']
 
 
@@ -48,9 +47,17 @@ class GeneratedPhoto(MongoModel):
     url: str = Field(..., min_length=1, description='Its download URL')
     sourcePaths: list[str] = Field(
         ..., min_length=1, max_length=PHOTO_REFERENCES_MAX,
-        description="The object paths of the admin's reference photos")
+        description="The object paths of the admin's reference photos (an "
+        "original's: the upload it was copied from, which "
+        'setUploadedProductPhotos compares to copy an upload once)')
     notes: str | None = Field(None, max_length=PHOTO_NOTES_MAX_LENGTH,
-                              description="The admin's notes for this call")
+                              description="The admin's direction typed in "
+                              'chat for this call, added to its prompt as '
+                              'the special request')
+    productId: str | None = Field(
+        None, description='The Products _id it was copied for (an original, '
+        'setUploadedProductPhotos) or made for (makeProductPhotoChoices); '
+        'null otherwise, and on a photo saved before photos kept it')
     model: str | None = Field(
         ..., description='The image model that made it; null for an '
         'original')
@@ -83,11 +90,10 @@ class GeneratedPhotosResponse(ResponseModel):
     }
     photos: list[GeneratedPhotoRow] = Field(
         ..., max_length=PHOTOS_PER_CALL,
-        description='The photos made, in order: the first in the global '
-        'prompt, the others in the store\'s photo style too')
+        description='The photos made, all from the one prompt')
     notGenerated: str | None = Field(
-        ..., description='Why fewer photos than asked were made (no photo '
-        'style, a model call failed); null when all were')
+        ..., description='Why fewer photos than asked were made; null when '
+        'all were')
 
 
 class PhotoChoiceRow(ResponseModel):
@@ -120,9 +126,67 @@ class ProductPhotoChoicesResponse(ResponseModel):
         ..., min_length=1, max_length=1 + PHOTOS_PER_CALL,
         description='The original first, then the photos made')
     notGenerated: str | None = Field(
-        ..., description='Why fewer photos than asked were made (no photo '
-        "style, today's limit reached, generation unavailable); null when "
-        'all were')
+        ..., description="Why fewer photos than asked were made (today's "
+        'limit reached, generation unavailable); null when all were')
+
+
+class UploadedProductPhoto(AppModel):
+    """One product of a setUploadedProductPhotos call: the photo the admin
+    uploaded for it on the new products form. Types only: the tool checks
+    the values, naming the product's position."""
+    productId: str = Field(..., description='The Products _id')
+    imageUrl: str = Field(..., description="The uploaded photo's download "
+                          "URL, the admin's own upload")
+
+
+class UploadedProductPhotoRow(ResponseModel):
+    """A product whose uploaded photo is now on it: the original, kept as
+    one of the store's photos, and the prompt better photos are made from
+    unless the admin edits it."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'productId': 'makeProductPhotoChoices takes it',
+        'productName': 'names the product',
+        'photoId': 'setProductPhoto takes it to put the original back',
+    }
+    productId: str = Field(..., min_length=1, description='The Products _id')
+    productName: str = Field(..., min_length=1, description='Product name')
+    photoId: str = Field(..., min_length=1,
+                         description="The original's GeneratedPhotos _id")
+    photoUrl: str = Field(..., min_length=1,
+                          description="The original's download URL, now the "
+                          "product's photo")
+    defaultPrompt: str = Field(
+        ..., min_length=1, max_length=PHOTO_PROMPT_MAX_LENGTH,
+        description='The prompt better photos are made from unless the '
+        'admin edits it')
+
+
+class PhotoNotSavedRow(ResponseModel):
+    """A product whose uploaded photo could not be put on it."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'productId': 'names the product',
+        'productName': 'names the product',
+        'reason': 'told to the admin',
+    }
+    productId: str = Field(..., min_length=1, description='The Products _id')
+    productName: str = Field(..., min_length=1, description='Product name')
+    reason: str = Field(..., min_length=1, description='Why it was not saved')
+
+
+class UploadedProductPhotosResponse(ResponseModel):
+    """What setUploadedProductPhotos sends: the products whose uploaded
+    photo is now on them, and those it could not be put on."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'products': 'the products whose photo is on',
+        'notSaved': 'told to the admin',
+    }
+    products: list[UploadedProductPhotoRow] = Field(
+        ..., max_length=PRODUCT_BATCH_MAX,
+        description='The products whose photo is on, in the order sent')
+    notSaved: list[PhotoNotSavedRow] = Field(
+        ..., max_length=PRODUCT_BATCH_MAX,
+        description='The products whose photo could not be saved; empty '
+        'when all were')
 
 
 class FoundProductRow(ResponseModel):
