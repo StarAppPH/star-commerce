@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from pydantic_core import to_json
 from pymongo.errors import DuplicateKeyError
 
+import chatCards
 import chatForms
 import chatModel
 import chatTools
@@ -418,7 +419,20 @@ def test_toolLists_matchTheMcpServers():
         for tool in routeTools:
             mcpTool = byName[tool['function']['name']]
             assert tool['function']['description'] == mcpTool.description
-            assert tool['function']['parameters'] == mcpTool.input_schema
+            # The chat adds only showCard (chatCards.chatParameters), to
+            # the tools whose card the model may leave out.
+            parameters = tool['function']['parameters']
+            properties = dict(parameters.get('properties', {}))
+            hasShowCard = properties.pop(chatCards.SHOW_CARD, None) is not None
+            assert hasShowCard == (
+                tool['function']['name'] in chatCards.SHOW_CARD_TOOLS)
+            assert chatCards.SHOW_CARD not in parameters.get('required', [])
+            assert chatCards.SHOW_CARD not in mcpTool.input_schema.get(
+                'properties', {})
+            withoutShowCard = {**parameters, 'properties': properties}
+            if 'properties' not in mcpTool.input_schema and not properties:
+                withoutShowCard.pop('properties')
+            assert withoutShowCard == mcpTool.input_schema
 
 
 def test_theGeneratedSource_isTheSameUnderAnyHashSeed():

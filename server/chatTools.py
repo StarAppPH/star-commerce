@@ -8,6 +8,7 @@ tools of chatForms.py.
 
 from pydantic import BaseModel, ConfigDict
 
+import chatCards
 import chatForms
 from ToolRequests import ToolRequests
 from mcpRuntime import callToolFull
@@ -771,7 +772,8 @@ def _tool(name: str, argsModel: type[BaseModel]) -> dict:
         'function': {
             'name': name,
             'description': DESCRIPTIONS[name],
-            'parameters': argsModel.model_json_schema(by_alias=True),
+            'parameters': chatCards.chatParameters(
+                name, argsModel.model_json_schema(by_alias=True)),
         },
     }
 

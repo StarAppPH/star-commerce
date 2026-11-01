@@ -1023,6 +1023,134 @@ def test_cards_aLaterRowUpdatesTheCardThatListsIt():
     assert chatCards.build(refused, {}, context) == []
 
 
+
+def test_showCard_isTheChatsOwn_andNeverOnACardThatFinishesAnAction():
+    """Every card tool but the ones whose card is the only way to finish an
+    action takes an optional showCard in the chat, never on the MCP
+    servers, and the tool itself never gets it."""
+    alwaysShown = {'createOrder', 'checkoutMyCart',
+                   'makeProductPhotoChoices', 'findColorsInPhoto'}
+    assert chatCards.SHOW_CARD_TOOLS == set(chatCards.CARDS) - alwaysShown
+    seen = set()
+    for toolset, tools in chatTools.TOOLS.items():
+        for tool in tools:
+            name = tool['function']['name']
+            parameters = tool['function']['parameters']
+            properties = parameters.get('properties', {})
+            if name in chatCards.SHOW_CARD_TOOLS:
+                seen.add(name)
+                assert properties[chatCards.SHOW_CARD]['type'] == 'boolean'
+                assert properties[chatCards.SHOW_CARD]['default'] is True
+                assert chatCards.SHOW_CARD not in parameters.get(
+                    'required', [])
+            else:
+                assert chatCards.SHOW_CARD not in properties, name
+    assert seen == chatCards.SHOW_CARD_TOOLS
+    # The tool's own args model drops it.
+    argsModel, _ = chatTools.TOOL_CALLS['admin']['getMyStorePolicy']
+    assert chatCards.SHOW_CARD not in argsModel.model_validate(
+        {chatCards.SHOW_CARD: False}).model_dump()
+
+
+def _cardStep(callId, name, result, arguments='{}'):
+    return [{'role': 'assistant', 'toolCalls': [
+        {'id': callId, 'name': name, 'arguments': arguments}]},
+        {'role': 'tool', 'toolCallId': callId,
+         'content': json.dumps(result)}]
+
+
+def _cardOrder(orderId, status):
+    return {'_id': orderId, 'status': status, 'items': [
+        {'name': 'A', 'price': 1, 'quantity': 1}], 'total': 1,
+        'currency': 'PHP', 'contactNumber': '+639171234567',
+        'createdAt': '2099-01-01T00:00:00Z', 'paymentMethod': 'gcash',
+        'paidAt': '2099-01-01T00:00:00Z', 'completedAt': None,
+        'cancelReason': None, **PICKUP}
+
+
+def test_cards_showCardFalse_hidesTheCard_leftOutShowsIt():
+    context = chatCards.CardContext('store-1')
+    context._currency = 'PHP'
+    policy = {field: None for field in POLICY_ANSWER_FIELDS}
+    hide = json.dumps({chatCards.SHOW_CARD: False})
+    show = json.dumps({chatCards.SHOW_CARD: True})
+    assert chatCards.build(_cardStep('c1', 'getMyStorePolicy', policy, hide),
+                           {}, context) == []
+    for arguments in ('{}', show, 'not json', '[]',
+                      json.dumps({chatCards.SHOW_CARD: 'false'})):
+        [card] = chatCards.build(
+            _cardStep('c1', 'getMyStorePolicy', policy, arguments), {},
+            context)
+        assert card['kind'] == 'policy'
+    # Hidden on one call, shown on the other, in one turn.
+    listed = _cardStep('c1', 'getStoreOrders',
+                       {'orders': [_cardOrder('o1', 'paid')]}, hide)
+    cards = chatCards.build(
+        listed + _cardStep('c2', 'getMyStorePolicy', policy), {}, context)
+    assert [c['kind'] for c in cards] == ['policy']
+
+
+def test_cards_aCardThatFinishesAnAction_showsWhateverTheModelSays():
+    context = chatCards.CardContext('store-1')
+    context._currency = 'PHP'
+    hide = json.dumps({chatCards.SHOW_CARD: False})
+    checkout = {'order': {**_cardOrder('o1', 'pending'),
+                          'expiresAt': '2099-01-01T00:30:00Z'},
+                'paymentOptions': [
+        {'method': 'cash', 'provider': None, 'eWallets': None,
+         'banks': None, 'checkPayees': None}]}
+    results = {
+        'createOrder': checkout,
+        'checkoutMyCart': checkout,
+        'makeProductPhotoChoices': {
+            'productId': 'p1', 'productName': 'A', 'photos': [
+                {'_id': 'o1', 'url': 'https://x', 'source': 'original'}],
+            'notGenerated': None},
+        'findColorsInPhoto': {
+            'colors': [{'hex': '#112233', 'share': 0.6, 'neutral': False}],
+            'focus': None, 'focusFound': True},
+    }
+    for name, result in results.items():
+        [card] = chatCards.build(_cardStep('c1', name, result, hide), {},
+                                 context)
+        assert card['formId'], name
+
+
+def test_cards_aHiddenRowUpdate_stillUpdatesTheCardThatListsIt():
+    """completeOrder with showCard false after getStoreOrders: the listed
+    row changes; one that no card lists adds no card."""
+    context = chatCards.CardContext('store-1')
+    context._currency = 'PHP'
+    hide = json.dumps({chatCards.SHOW_CARD: False})
+    listed = _cardStep('c1', 'getStoreOrders',
+                       {'orders': [_cardOrder('o1', 'paid'),
+                                   _cardOrder('o2', 'paid')]})
+    completeOne = _cardStep('c2', 'completeOrder',
+                            _cardOrder('o1', 'completed'), hide)
+    unlisted = _cardStep('c3', 'completeOrder',
+                         _cardOrder('o3', 'completed'), hide)
+    [card] = chatCards.build(listed + completeOne + unlisted, {}, context)
+    assert [o['_id'] for o in card['orders']] == ['o1', 'o2']
+    assert [o['status'] for o in card['orders']] == ['completed', 'paid']
+    assert card['formId']
+    assert chatCards.build(unlisted, {}, context) == []
+
+
+def test_aHiddenCard_isLeftOutOfTheSavedTurn(wiped, model):
+    createTestStore(ADMIN)
+    model(calls(('c1', 'getMyStorePolicy',
+                 json.dumps({chatCards.SHOW_CARD: False}))),
+          reply('Returns are not set yet.'))
+    res = adminSays('Do I accept returns?')
+    [saved] = turns(res['conversationId'])
+    assert saved['components'] == []
+
+
+def test_bothPrompts_letTheModelHideACard():
+    for audience in ('admin', 'customer'):
+        assert chatModel.SHOW_CARD_RULE in chatModel.CHAT_PROMPTS[audience]
+
+
 # ------------------------- new products with photos ------------------------- #
 
 PHOTO_BUCKET = 'cc-test-bucket.firebasestorage.app'

@@ -18,6 +18,16 @@ order, an order to pay, paid orders to hand over, requested returns to
 decide, colors to pick the brand colors from. A tool that refused (an {"error": ...} result) shows nothing, and so
 does a result that does not fit its card: it is logged, and the turn goes on.
 At most CHAT_COMPONENTS_PER_TURN_MAX components are kept, the latest.
+
+The model decides whether a card is worth showing: in the chat (never on
+the MCP servers), each tool of SHOW_CARD_TOOLS takes a `showCard` argument
+(chatParameters adds it to the tool's schema; the tool's own args model
+ignores it, so the tool never sees it). `showCard: false` drops the card the
+call would add, yet a row it changed still updates the turn's card that
+lists it, so a card on screen never shows a row as it was. Left out, the
+card shows. A card that is the only way to finish an action (the order to
+pay, a new product's photo choices, the brand colors to pick) always shows:
+its tools take no `showCard` (ALWAYS_SHOWN).
 """
 
 import json
@@ -252,6 +262,47 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'updateMyStoreDetails': _store,
 }
 
+# The cards that are the only way to finish an action: shown whatever the
+# model says, so their tools take no showCard.
+ALWAYS_SHOWN = (_checkout, _photoChoice, _photoColors)
+SHOW_CARD = 'showCard'
+# The tools whose card the model may leave out.
+SHOW_CARD_TOOLS = frozenset(name for name, makeCard in CARDS.items()
+                            if makeCard not in ALWAYS_SHOWN)
+_SHOW_CARD_SCHEMA = {
+    'default': True,
+    'description': ('Whether the app shows this result as a card under '
+                    'your reply. false when the card would not help the '
+                    'user: a look-up for yourself (an id before another '
+                    'tool), a short answer, or what a card in this '
+                    'conversation already shows; then say what they need '
+                    'in your text.'),
+    'title': 'Showcard',
+    'type': 'boolean',
+}
+
+
+def chatParameters(name: str, schema: dict) -> dict:
+    """The chat's parameter schema of tool `name`: `schema` (the MCP
+    server's), plus the optional showCard of a SHOW_CARD_TOOLS tool."""
+    if name not in SHOW_CARD_TOOLS:
+        return schema
+    return {**schema, 'properties': {**schema.get('properties', {}),
+                                     SHOW_CARD: _SHOW_CARD_SCHEMA}}
+
+
+def _hidesCard(call: dict) -> bool:
+    """Whether the model's tool call said showCard false (a tool of
+    SHOW_CARD_TOOLS only; arguments that are no JSON object show it)."""
+    if call.get('name') not in SHOW_CARD_TOOLS:
+        return False
+    try:
+        arguments = json.loads(call.get('arguments') or '{}')
+    except (TypeError, ValueError):
+        return False
+    return isinstance(arguments, dict) and arguments.get(SHOW_CARD) is False
+
+
 # A card listing rows of one kind, and the key that lists them: a later
 # single-row card of that kind updates the row there.
 _ROWS = {'storeProducts': 'products', 'storeOrders': 'orders',
@@ -309,15 +360,17 @@ def build(steps: list[dict], forms: dict[str, dict],
           cardResults: dict[str, str] | None = None) -> list[dict]:
     """The components of a turn whose tool steps are `steps`: a card per
     tool result, the forms the form tools opened (`forms`, by tool call id)
-    in their place, the latest CHAT_COMPONENTS_PER_TURN_MAX of them. A card
+    in their place, the latest CHAT_COMPONENTS_PER_TURN_MAX of them; a
+    call with showCard false adds no card, only updates a listed row. A card
     is built from the tool's full result (`cardResults[callId]`, its JSON,
     held for the turn by ChatActions._runModel) when there is one, else
     from the step's content: a step holds the AI copy (chatModel.
     aiContent), which leaves out what only the card shows."""
     cardResults = cardResults or {}
-    names = {call['id']: call['name']
-             for step in steps if step['role'] == 'assistant'
-             for call in step.get('toolCalls') or []}
+    calls = [call for step in steps if step['role'] == 'assistant'
+             for call in step.get('toolCalls') or []]
+    names = {call['id']: call['name'] for call in calls}
+    hidden = {call['id'] for call in calls if _hidesCard(call)}
     components: list[dict] = []
     for step in steps:
         if step['role'] != 'tool':
@@ -346,6 +399,9 @@ def build(steps: list[dict], forms: dict[str, dict],
         if card is None:
             continue
         card = _validCard(card, name)
-        if card is not None and not _merged(components, card):
+        if card is None:
+            continue
+        # A hidden card still updates the row on a card that lists it.
+        if not _merged(components, card) and callId not in hidden:
             components.append(card)
     return components[-CHAT_COMPONENTS_PER_TURN_MAX:]

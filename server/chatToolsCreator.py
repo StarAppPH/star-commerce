@@ -20,7 +20,9 @@ Per tool, chatTools.py holds:
   - THINKING_TEXTS, each tool's thinking texts (mcpTools), which
     chatThinking.py picks from while the tool runs;
   - TOOLS, each toolset's tool list as Meta's chat API takes it, sorted by
-    name: byte-stable, so Meta's prompt cache matches. A toolset's list is
+    name: byte-stable, so Meta's prompt cache matches. A tool's parameters
+    are the MCP server's, plus the chat-only `showCard` of a tool whose card
+    the model may leave out (chatCards.chatParameters). A toolset's list is
     its tools and its form tools (chatForms.py: chat-only, never on the
     MCP servers);
   - TOOL_CALLS, each toolset's tools, {name: (ArgsModel, call)}: an
@@ -117,6 +119,7 @@ def render(specs: list) -> str:
     parts = [
         HEADER,
         'from pydantic import BaseModel, ConfigDict\n',
+        'import chatCards',
         'import chatForms',
         'from ToolRequests import ToolRequests',
         'from mcpRuntime import callToolFull',
@@ -142,7 +145,8 @@ def _tool(name: str, argsModel: type[BaseModel]) -> dict:
         'function': {
             'name': name,
             'description': DESCRIPTIONS[name],
-            'parameters': argsModel.model_json_schema(by_alias=True),
+            'parameters': chatCards.chatParameters(
+                name, argsModel.model_json_schema(by_alias=True)),
         },
     }
 '''

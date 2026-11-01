@@ -118,10 +118,17 @@ _WARNINGS_RULE = (
     'was not told about lately (count: how many in all; ids: the ones to '
     'raise now). After answering what the owner asked, raise each in one '
     'short line with its fix; never repeat one. ')
+# A tool's showCard (chatCards.SHOW_CARD_TOOLS): the model leaves out a
+# card that would not help; what it hides, it says.
+SHOW_CARD_RULE = (
+    'Set showCard to false when a card would not help: a look-up for '
+    'yourself, a short answer, or what a card in this chat already shows; '
+    'then give what the user needs in your text. ')
 _ADMIN_UI = (
     'The app shows what your tools return as cards under your reply '
     '(products, orders, returns, the policy, photos, the store), so keep '
-    'your text short and never repeat what a card shows. ' + _ASK_RULE +
+    'your text short and never repeat what a card shows. ' + SHOW_CARD_RULE +
+    _ASK_RULE +
     'For the policy, call getMyStorePolicy first and say it takes 4 short '
     'sections (say skip to skip any). In each section say what is set, ask '
     'only what is missing or what the owner wants to change, read the '
@@ -144,7 +151,8 @@ PIN_IS_NOT_CONFIRMATION = (
 _CUSTOMER_UI = (
     'The app shows what your tools return as cards under your reply '
     '(products, the order to pay, orders, returns, the policy), so keep '
-    'your text short and never repeat what a card shows. ' + _ASK_RULE +
+    'your text short and never repeat what a card shows. ' + SHOW_CARD_RULE +
+    _ASK_RULE +
     'Orders go through the cart: on the product card the customer adds '
     'products to their cart (the app also shows the cart in its header); '
     'in chat, add or change them with the cart tools (addToCart, '
