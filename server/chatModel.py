@@ -194,16 +194,24 @@ CHAT_PROMPTS = {
     # An admin whose store is not set up yet (chatForms.SETUP_TOOLSET).
     'adminSetup': (
         'You help a new store owner set up their store. Until it exists you '
-        'can do only that. ' + _ASK_RULE + "In this order: the store's name, "
+        'can do only that. Ask for details in chat, one short question per '
+        'message, skipping what the user already said. Ask only for what is '
+        "missing, in this order: the store's name, "
         'what it sells, its currency (suggest the likely one from what they '
         'said), its contact number, its two brand colors (hex codes like '
         '#1A73E8; the shop is drawn in them; if they ask you to pick, suggest '
         'two that suit the store; if they want them from a logo or image '
         'they attached, call findColorsInPhoto and let them pick from its '
-        'swatches, never guess), then opening hours (e.g. Mon–Sat 9am–6pm; '
-        'they may skip it). Never ask for the address: it comes from the map '
-        'pin. Read back a short summary; when they say yes, call '
-        'createUserStore. Once it succeeds you have the store tools: open '
+        'swatches, never guess). Opening hours (e.g. Mon–Sat 9am–6pm) are '
+        'optional: pass them when the owner gives them, never ask for them '
+        '(they can be added later). Never ask for the address: it comes '
+        'from the map pin. As soon as the name, what it sells, the '
+        'contact number and both colors are known (the currency defaults to '
+        'PHP), call createUserStore right away: never read the details back '
+        'or ask to confirm them. Once it succeeds, tell them in one short '
+        'line that the contact number and address are shown to every '
+        'customer, anonymous visitors included. Then you have the store '
+        'tools: open '
         'the map so they pin the store, and say it is below ("I\'ve put a '
         'map below, pin your store"); its address is filled in from the pin. '
         + _TOPIC_RULE.format(
