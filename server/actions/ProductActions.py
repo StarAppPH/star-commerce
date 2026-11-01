@@ -11,6 +11,8 @@ import re
 
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
+from actions.adminQueries import (ADMIN_QUERY_MAX_TIME_MS, queryBudget,
+                                  validFlag)
 from actions.CustomerActions import requireCustomer
 from actions.StoreActions import _validText, requireOwnerStore, setUpStore
 from mcpTools import mcp_tool
@@ -40,6 +42,7 @@ ADMIN_PRODUCT_SORT_STAGES = {
     'name': {'nameKey': 1},
     'soldCount': {'soldCount': -1, 'nameKey': 1},
     'inventory': {'inventory': 1, 'nameKey': 1},
+    'price': {'price': -1, 'nameKey': 1},
 }
 SORT_BY_CHOICES = ('sortBy is one of: ' + ', '.join(ADMIN_PRODUCT_SORTS))
 if set(ADMIN_PRODUCT_SORT_STAGES) != set(ADMIN_PRODUCT_SORTS):
@@ -382,13 +385,47 @@ def _adminProductSort(sortBy) -> dict:
     return ADMIN_PRODUCT_SORT_STAGES[sortBy]
 
 
+def _inventoryAtMost(inventoryAtMost) -> dict:
+    """The low-stock filter: products with at most `inventoryAtMost`
+    units free to sell (None: no filter)."""
+    if inventoryAtMost is None:
+        return {}
+    return {'inventory': {'$lte': wholeNumber(
+        inventoryAtMost, 0, PRODUCT_INVENTORY_MAX,
+        'inventoryAtMost is a whole number from 0 to '
+        f'{PRODUCT_INVENTORY_MAX}')}}
+
+
+def _hasPhotoMatch(hasPhoto) -> dict:
+    """The photo filter, as adminProductRow's hasPhoto reads it: a
+    photoUrl set, or missing or null (None: no filter)."""
+    hasPhoto = validFlag(hasPhoto, 'hasPhoto')
+    if hasPhoto is None:
+        return {}
+    return {'photoUrl': {'$ne': None} if hasPhoto else None}
+
+
+def _isAvailableMatch(isAvailable) -> dict:
+    """The shown/hidden filter (None: both)."""
+    isAvailable = validFlag(isAvailable, 'isAvailable')
+    return {} if isAvailable is None else {'isAvailable': isAvailable}
+
+
 def listMyStoreProducts(model,
                         userId: str,
                         search: str | None = None,
                         limit: int = PRODUCT_LIST_DEFAULT_LIMIT,
-                        sortBy: AdminProductSort = 'name') -> dict:
+                        sortBy: AdminProductSort = 'name',
+                        isAvailable: bool | None = None,
+                        inventoryAtMost: int | None = None,
+                        hasPhoto: bool | None = None) -> dict:
     store = _adminStore(userId)
-    match = {'storeId': store['_id'], **_nameSearch(search)}
+    # Each filter is one fixed clause: the store's products are under
+    # PRODUCTS_PER_STORE_MAX, and the sort's index bounds the scan to them.
+    match = {'storeId': store['_id'], **_nameSearch(search),
+             **_isAvailableMatch(isAvailable),
+             **_inventoryAtMost(inventoryAtMost),
+             **_hasPhotoMatch(hasPhoto)}
     limit = _validLimit(limit)
     pipeline = [
         {'$match': match},
@@ -402,11 +439,11 @@ def listMyStoreProducts(model,
         }},
         HAS_PHOTO_STAGE,
     ]
-    return {
-        'currency': store['currency'],
-        'products': db.aggregateResponses(fieldModel(model, 'products'),
-                                          pipeline, PRODUCTS),
-    }
+    with queryBudget():
+        products = db.aggregateResponses(fieldModel(model, 'products'),
+                                         pipeline, PRODUCTS,
+                                         maxTimeMS=ADMIN_QUERY_MAX_TIME_MS)
+    return {'currency': store['currency'], 'products': products}
 
 
 class ProductTools():
@@ -525,17 +562,27 @@ class ProductTools():
                             userId: str,
                             search: str | None = None,
                             limit: int = PRODUCT_LIST_DEFAULT_LIMIT,
-                            sortBy: AdminProductSort = 'name') -> dict:
+                            sortBy: AdminProductSort = 'name',
+                            isAvailable: bool | None = None,
+                            inventoryAtMost: int | None = None,
+                            hasPhoto: bool | None = None) -> dict:
         """List the products of the admin's store, hidden ones (isAvailable
         false) included, each with its productId (_id), price, inventory,
         the units orders are holding (reservedQuantity), the units sold
         (soldCount) and hasPhoto (whether the shop shows a photo of it).
         `sortBy` orders the whole store before `limit` cuts
         it: 'name' (the default), 'soldCount' (best sellers first: use it
-        for the top or best-selling products) or 'inventory' (fewest units
-        left first: use it for low or out-of-stock products). Pass `search`
-        to find products whose name contains that text, and `limit` (1 to
-        50, default 10) for how many to return. Use it to find a product's
-        productId before calling updateStoreProduct."""
+        for the top or best-selling products), 'inventory' (fewest units
+        left first: use it for low or out-of-stock products) or 'price'
+        (the most expensive first). Filters, each left out for all
+        products: `isAvailable` false for the hidden products only (true
+        for the shown ones), `inventoryAtMost` for those with at most that
+        many units left (0 for sold out, 4 for "under 5"), `hasPhoto`
+        false for those without a photo. Pass `search` to find products
+        whose name contains that text, and `limit` (1 to 50, default 10)
+        for how many to return. For units sold over a period, use
+        storeReport instead: soldCount is all time. Use it to find a
+        product's productId before calling updateStoreProduct."""
         return listMyStoreProducts(AdminProductListResponse, userId, search,
-                                   limit, sortBy)
+                                   limit, sortBy, isAvailable,
+                                   inventoryAtMost, hasPhoto)

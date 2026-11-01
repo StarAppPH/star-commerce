@@ -315,6 +315,10 @@ from objects.voice import (VOICE_NAME_MAX_LENGTH,
 from objects.thinking import (TURN_KEY_PATTERN, ChatThinking, ThinkingSpeech,
                               ChatThinkingResponse, SpokenThinkingResponse)
 from objects.toolWarning import ToolWarningCode, ToolWarningShown
+from objects.report import (StoreReportKind, STORE_REPORT_KINDS,
+                            STORE_REPORT_DEFAULT_LIMIT,
+                            STORE_REPORT_MAX_LIMIT, StoreReportRow,
+                            StoreReportResponse)
 
 
 # AppCreator (_classes_from_module) generates TS schemas only for classes

@@ -114,7 +114,7 @@ def test_eachAudienceListsOnlyItsTools():
         'approveReturn', 'rejectReturn', 'receiveReturn', 'listVoices',
         'setUserStoreLocation', 'suggestStoreAddress', 'updateMyStoreDetails',
         'makeProductPhotoChoices', 'confirmOrderPayment', 'findColorsInPhoto',
-        'findProductsInPhoto'
+        'findProductsInPhoto', 'storeReport'
     }
 
 
@@ -624,7 +624,9 @@ def test_theAdminProductToolsArguments_leaveOutTheInjectedParams():
     assert set(update['required']) == {'productId'}
 
     listing = byName['listMyStoreProducts'].input_schema
-    assert set(listing['properties']) == {'search', 'limit', 'sortBy'}
+    assert set(listing['properties']) == {'search', 'limit', 'sortBy',
+                                          'isAvailable', 'inventoryAtMost',
+                                          'hasPhoto'}
     assert not listing.get('required')
 
 
@@ -782,7 +784,8 @@ def test_theOrderToolsArguments_leaveOutTheInjectedParams():
     customer = asyncio.run(tools('customer'))['getMyOrders'].input_schema
 
     assert set(admin['properties']) == {
-        'status', 'period', 'startDate', 'endDate', 'limit'
+        'status', 'period', 'startDate', 'endDate', 'limit', 'fulfillment',
+        'paymentMethod', 'sortBy'
     }
     assert not admin.get('required')
     assert set(customer['properties']) == {'status', 'limit'}
@@ -792,6 +795,29 @@ def test_theOrderToolsArguments_leaveOutTheInjectedParams():
     assert 'enum' not in str(admin['properties']['status'])
     assert 'enum' not in str(admin['properties']['period'])
     assert 'enum' not in str(customer['properties']['status'])
+    for name in ('fulfillment', 'paymentMethod', 'sortBy'):
+        assert 'enum' not in str(admin['properties'][name])
+
+
+def test_theReportAndReturnListArguments_leaveOutTheInjectedParams():
+    async def tools():
+        return {t.name: t for t in await mcpServer.servers['admin'].list_tools()}
+
+    byName = asyncio.run(tools())
+    report = byName['storeReport'].input_schema
+    returns = byName['getStoreReturns'].input_schema
+
+    assert set(report['properties']) == {'kind', 'period', 'startDate',
+                                         'endDate', 'limit'}
+    assert report['required'] == ['kind']
+    # The kind is the one enum: the AI picks from the server's list.
+    assert 'salesByProduct' in str(report['properties']['kind'])
+    assert set(returns['properties']) == {'status', 'limit', 'period',
+                                          'startDate', 'endDate', 'reason',
+                                          'sortBy'}
+    assert not returns.get('required')
+    for name in ('reason', 'sortBy', 'period'):
+        assert 'enum' not in str(returns['properties'][name])
 
 
 def test_e2e_getStoreOrders_listsTheAdminsStoreOrders(clean, firebase):

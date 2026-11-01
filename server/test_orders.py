@@ -15,29 +15,29 @@ ids seeds createdAt = base + i minutes; the others compare sets.
 import datetime
 import json
 import re
-from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
 import actions.OrderActions as orderActions
+from actions.adminQueries import RANGE_TOO_LONG, START_AFTER_END
 from actions.OrderActions import (INVALID_PERIOD, INVALID_STATUS,
                                   ORDER_PERIODS, ORDER_STATUSES,
-                                  PERIOD_AND_DATES, START_AFTER_END)
+                                  PERIOD_AND_DATES)
 from actions.ProductActions import (PRODUCT_LIST_DEFAULT_LIMIT,
                                     PRODUCT_LIST_MAX_LIMIT)
-from AppConfig import Timezone
 from ApiRequests import ApiRequests
 from ToolRequests import ToolRequests
 from conftest import (addOrder, appTime, assertExactShape, assertRowKeys,
-                      createTestStore, createTestUser, guestAt, orderIds,
-                      storeWithProducts, utcNow, wipeCollections)
+                      createTestStore, createTestUser, freezeOrderClock,
+                      guestAt, orderIds, planStages, storeWithProducts, utcNow,
+                      wipeCollections)
 from mongoDb import db
 from objects import (ORDER_ITEMS_MAX, MyOrderListResponse, MyOrderRow,
                      Order, OrderItemRow, StoreOrderListResponse,
                      StoreOrderRow, WaitingOnYouResponse)
 from sharedConstants import WAITING_COUNT_CAP
-from utils import _ISO_DATE_MESSAGE
+from utils import _ISO_DATE_MESSAGE, appDayBounds
 
 COLLECTIONS = [
     'Users', 'Bootstrap', 'Stores', 'Customers', 'Products', 'Orders'
@@ -103,23 +103,6 @@ def _storeAndCustomer(firebase) -> tuple[dict, str]:
 # Two instants of one local day, 2026-03-10: just after midnight and a
 # second before the next one.
 CLOCKS = [appTime(2026, 3, 10, 0, 30), appTime(2026, 3, 10, 23, 59, 59)]
-
-
-def _frozenDatetime(instant: datetime.datetime) -> SimpleNamespace:
-    """The `datetime` module as OrderActions sees it, with now() fixed."""
-
-    class Frozen:
-
-        @staticmethod
-        def now(tz):
-            assert tz == Timezone().getTimezone()
-            return instant.astimezone(tz)
-
-    return SimpleNamespace(datetime=Frozen, timedelta=datetime.timedelta)
-
-
-def _freeze(monkeypatch, instant: datetime.datetime) -> None:
-    monkeypatch.setattr(orderActions, 'datetime', _frozenDatetime(instant))
 
 
 # ----------------------------- the model ----------------------------- #
@@ -231,7 +214,7 @@ def test_getStoreOrders_statusFilter(clean, firebase):
 
 def test_getStoreOrders_statusAndPeriod_combine(clean, firebase, monkeypatch):
     store, customerId = _storeAndCustomer(firebase)
-    _freeze(monkeypatch, CLOCKS[0])
+    freezeOrderClock(monkeypatch, CLOCKS[0])
     today = appTime(2026, 3, 10, 9)
     keep = addOrder(store['_id'], customerId, ITEMS, 'paid',
                     today)['_id']
@@ -374,6 +357,11 @@ PERIOD_INDEXES = {
     'yesterday': [5, 6],
     'last7Days': [3, 4, 5, 6, 7, 8],
     'last30Days': [1, 2, 3, 4, 5, 6, 7, 8],
+    # 2026-03-10 is a Tuesday: this week began Monday the 9th.
+    'thisWeek': [5, 6, 7, 8],
+    'lastWeek': [2, 3, 4],
+    'thisMonth': [2, 3, 4, 5, 6, 7, 8],
+    'lastMonth': [0, 1],
 }
 
 
@@ -390,7 +378,7 @@ def test_getStoreOrders_periods_areWholeLocalDays(clean, firebase,
         addOrder(store['_id'], customerId, ITEMS, createdAt=at)['_id']
         for at in PERIOD_INSTANTS
     ]
-    _freeze(monkeypatch, clock)
+    freezeOrderClock(monkeypatch, clock)
 
     res = tools.getStoreOrders(ADMIN, period=period)
 
@@ -676,3 +664,267 @@ def test_getWaitingOnYou_refusesACustomer_andAnAdminWithoutAStore(
         api.getWaitingOnYou(customerId)
     with pytest.raises(ValueError, match=exactly(NO_STORE)):
         api.getWaitingOnYou(OTHER_ADMIN)
+
+
+# ------------- getStoreOrders: filters, sorts and the range cap ------------- #
+
+
+def test_getStoreOrders_fulfillmentFilter_anOldOrderIsAPickup(clean, firebase):
+    store, customerId = _storeAndCustomer(firebase)
+    pickup = addOrder(store['_id'], customerId, ITEMS,
+                      createdAt=_minute(0))['_id']
+    delivery = addOrder(store['_id'], customerId, ITEMS,
+                        createdAt=_minute(1), fulfillment='delivery',
+                        deliveryAddress='1 Main St', deliveryLatitude=14.5,
+                        deliveryLongitude=121.0)['_id']
+    legacy = addOrder(store['_id'], customerId, ITEMS,
+                      createdAt=_minute(2))['_id']
+    db.db['Orders'].update_one({'_id': legacy},
+                               {'$unset': {'fulfillment': ''}})
+
+    assert orderIds(tools.getStoreOrders(ADMIN, fulfillment='pickup')) == [
+        legacy, pickup]
+    assert orderIds(tools.getStoreOrders(ADMIN, fulfillment='delivery')) == [
+        delivery]
+    for none in (None, ''):
+        assert len(orderIds(tools.getStoreOrders(
+            ADMIN, fulfillment=none))) == 3
+
+
+def test_getStoreOrders_paymentMethodFilter_anOldEwalletIsAnEwallet(
+        clean, firebase):
+    store, customerId = _storeAndCustomer(firebase)
+    ids = {
+        method: addOrder(store['_id'], customerId, ITEMS, 'paid',
+                         _minute(i), paymentMethod=method)['_id']
+        for i, method in enumerate(['cash', 'card', 'eWallet', 'gcash',
+                                    'bankTransfer', 'check', 'crypto'])
+    }
+    unchosen = addOrder(store['_id'], customerId, ITEMS,
+                        createdAt=_minute(9))['_id']
+
+    def found(method):
+        return orderIds(tools.getStoreOrders(ADMIN, paymentMethod=method))
+
+    assert found('eWallet') == [ids['gcash'], ids['eWallet']]
+    for method in ('cash', 'card', 'bankTransfer', 'check', 'crypto'):
+        assert found(method) == [ids[method]]
+    assert unchosen in found(None)
+
+
+def test_getStoreOrders_filtersCombine(clean, firebase):
+    store, customerId = _storeAndCustomer(firebase)
+    keep = addOrder(store['_id'], customerId, ITEMS, 'paid', _minute(0),
+                    paymentMethod='cash')['_id']
+    addOrder(store['_id'], customerId, ITEMS, 'completed', _minute(1),
+             paymentMethod='cash')
+    addOrder(store['_id'], customerId, ITEMS, 'paid', _minute(2),
+             paymentMethod='card')
+    addOrder(store['_id'], customerId, ITEMS, 'paid', _minute(3),
+             paymentMethod='cash', fulfillment='delivery',
+             deliveryAddress='1 Main St', deliveryLatitude=14.5,
+             deliveryLongitude=121.0)
+
+    assert orderIds(tools.getStoreOrders(
+        ADMIN, status='paid', paymentMethod='cash', fulfillment='pickup',
+        startDate='2026-01-15', endDate='2026-01-15')) == [keep]
+
+
+def test_getStoreOrders_sorts_tiedOnTheNewest(clean, firebase):
+    store, customerId = _storeAndCustomer(firebase)
+
+    def placed(minute: int, price: float) -> str:
+        return addOrder(store['_id'], customerId,
+                        [{**ITEMS[0], 'price': price, 'quantity': 1}],
+                        ['paid', 'pending', 'completed'][minute % 3],
+                        _minute(minute))['_id']
+
+    small, big, tieOld, tieNew = (placed(0, 5), placed(1, 900),
+                                  placed(2, 50), placed(3, 50))
+
+    def ids(**kwargs):
+        return orderIds(tools.getStoreOrders(ADMIN, **kwargs))
+
+    assert ids() == ids(sortBy='newest') == ids(sortBy='') == [
+        tieNew, tieOld, big, small]
+    assert ids(sortBy='oldest') == [small, big, tieOld, tieNew]
+    assert ids(sortBy='total') == [big, tieNew, tieOld, small]
+    # The whole store is sorted before the limit cuts it.
+    assert ids(sortBy='total', limit=2) == [big, tieNew]
+
+
+def test_getStoreOrders_aRangeOfAtMost366Days(clean, firebase):
+    store, customerId = _storeAndCustomer(firebase)
+    first = addOrder(store['_id'], customerId, ITEMS,
+                     createdAt=appTime(2028, 1, 1))['_id']
+    last = addOrder(store['_id'], customerId, ITEMS,
+                    createdAt=appTime(2028, 12, 31, 23, 59, 59, 999))['_id']
+
+    # 2028 is a leap year: its 366 days are one range.
+    assert set(orderIds(tools.getStoreOrders(
+        ADMIN, startDate='2028-01-01', endDate='2028-12-31'))) == {first,
+                                                                    last}
+    for start, end in (('2028-01-01', '2029-01-01'),
+                       ('2026-03-10', '2027-03-11')):
+        with pytest.raises(ValueError, match=exactly(RANGE_TOO_LONG)):
+            tools.getStoreOrders(ADMIN, startDate=start, endDate=end)
+    tools.getStoreOrders(ADMIN, startDate='2026-03-10', endDate='2027-03-10')
+    # An open end is no range to cap: the limit bounds the list.
+    assert first in orderIds(tools.getStoreOrders(ADMIN,
+                                                  startDate='2020-01-01'))
+
+
+@pytest.mark.parametrize('kwargs, message', [
+    ({'fulfillment': 'Pickup'}, 'fulfillment is one of pickup, delivery'),
+    ({'fulfillment': SENTINEL}, 'fulfillment is one of pickup, delivery'),
+    ({'fulfillment': ['pickup']}, 'fulfillment is one of pickup, delivery'),
+    ({'paymentMethod': 'gcash'},
+     'paymentMethod is one of cash, card, eWallet, bankTransfer, check, '
+     'crypto'),
+    ({'paymentMethod': {'$ne': None}},
+     'paymentMethod is one of cash, card, eWallet, bankTransfer, check, '
+     'crypto'),
+    ({'sortBy': 'createdAt'}, 'sortBy is one of newest, oldest, total'),
+    ({'sortBy': {'total': -1}}, 'sortBy is one of newest, oldest, total'),
+    ({'sortBy': SENTINEL}, 'sortBy is one of newest, oldest, total'),
+])
+def test_getStoreOrders_refusesABadFilterOrSort_neverQuotingIt(
+        clean, kwargs, message):
+    createTestStore(ADMIN)
+
+    with pytest.raises(ValueError, match=exactly(message)) as error:
+        tools.getStoreOrders(ADMIN, **kwargs)
+
+    assert SENTINEL not in str(error.value)
+
+
+def test_getStoreOrders_filtersNeverReachAnotherStore(clean, firebase):
+    store, customerId = _storeAndCustomer(firebase)
+    other = createTestStore(OTHER_ADMIN, 'Coffee B')
+    addOrder(other['_id'], customerId, ITEMS, 'paid', _minute(0),
+             paymentMethod='cash')
+
+    assert tools.getStoreOrders(ADMIN, status='paid', paymentMethod='cash',
+                                fulfillment='pickup',
+                                sortBy='total') == {'orders': []}
+
+
+@pytest.mark.parametrize('sortBy', ['newest', 'oldest', 'total'])
+@pytest.mark.parametrize('status', [None, 'paid'])
+def test_getStoreOrders_eachSort_isServedByAnIndex(clean, firebase,
+                                                   sentPipelines, sortBy,
+                                                   status):
+    """The plan the local mongod picks for the real pipeline: the sort's
+    index read in order (no sort in memory) with the filters on. With a
+    date range too, the planner may sort the range's orders instead (a
+    range is at most 366 days), but it still scans an index, never the
+    collection. More orders than the limit, as a real store has: with a
+    handful, every plan ties and the planner may pick any."""
+    from actions.adminQueries import ADMIN_QUERY_MAX_TIME_MS
+    db.ensureIndexes()
+    store, customerId = _storeAndCustomer(firebase)
+    for i, orderStatus in enumerate(ORDER_STATUSES * 8):
+        addOrder(store['_id'], customerId,
+                 [{**ITEMS[0], 'price': i + 1}], orderStatus, _minute(i),
+                 paymentMethod='cash')
+
+    tools.getStoreOrders(ADMIN, status=status, sortBy=sortBy,
+                         fulfillment='pickup', paymentMethod='cash')
+    tools.getStoreOrders(ADMIN, status=status, sortBy=sortBy,
+                         startDate='2026-01-01', endDate='2026-12-31')
+
+    [(collection, pipeline, maxTimeMS), (_, ranged, _)] = sentPipelines
+    stages, indexes = planStages(collection, pipeline)
+    assert 'SORT' not in stages and 'COLLSCAN' not in stages
+    assert indexes and all(index[:2] == [('storeId', 1), ('status', 1)]
+                           for index in indexes)
+    assert maxTimeMS == ADMIN_QUERY_MAX_TIME_MS
+    stages, indexes = planStages(collection, ranged)
+    assert 'COLLSCAN' not in stages
+    assert indexes and all(index[:2] == [('storeId', 1), ('status', 1)]
+                           for index in indexes)
+
+
+def test_getStoreOrders_aReadPastItsBudget_isTooBroad(clean, monkeypatch):
+    from pymongo.errors import ExecutionTimeout
+    from actions.adminQueries import TOO_BROAD
+    createTestStore(ADMIN)
+
+    def timesOut(*args, **kwargs):
+        raise ExecutionTimeout('operation exceeded time limit', 50)
+
+    monkeypatch.setattr(db, 'aggregate', timesOut)
+
+    with pytest.raises(ValueError, match=exactly(TOO_BROAD)):
+        tools.getStoreOrders(ADMIN, sortBy='total')
+
+
+# ------------------------- the calendar periods ------------------------- #
+
+# Each clock (an app-timezone wall time) and the first and last day of each
+# calendar period on it. 2026-03-09 is a Monday, 2026-03-15 a Sunday,
+# 2026-01-01 a Thursday, 2028-03-01 a Wednesday of a leap year.
+CALENDAR_PERIODS = [
+    (appTime(2026, 3, 9, 0, 30), {
+        'thisWeek': ('2026-03-09', '2026-03-09'),
+        'lastWeek': ('2026-03-02', '2026-03-08'),
+        'thisMonth': ('2026-03-01', '2026-03-09'),
+        'lastMonth': ('2026-02-01', '2026-02-28'),
+    }),
+    (appTime(2026, 3, 15, 23, 59, 59), {
+        'thisWeek': ('2026-03-09', '2026-03-15'),
+        'lastWeek': ('2026-03-02', '2026-03-08'),
+        'thisMonth': ('2026-03-01', '2026-03-15'),
+        'lastMonth': ('2026-02-01', '2026-02-28'),
+    }),
+    (appTime(2026, 1, 1, 0, 30), {
+        'thisWeek': ('2025-12-29', '2026-01-01'),
+        'lastWeek': ('2025-12-22', '2025-12-28'),
+        'thisMonth': ('2026-01-01', '2026-01-01'),
+        'lastMonth': ('2025-12-01', '2025-12-31'),
+    }),
+    (appTime(2028, 3, 1, 12), {
+        'thisWeek': ('2028-02-28', '2028-03-01'),
+        'lastWeek': ('2028-02-21', '2028-02-27'),
+        'thisMonth': ('2028-03-01', '2028-03-01'),
+        'lastMonth': ('2028-02-01', '2028-02-29'),
+    }),
+]
+
+
+@pytest.mark.parametrize('clock, periods', CALENDAR_PERIODS,
+                         ids=['monday0030', 'sunday235959', 'january1',
+                              'leapMarch1'])
+def test_calendarPeriods_areWholeUtcPlus8DaysOnTheServersClock(
+        monkeypatch, clock, periods):
+    """thisWeek runs Monday to today, lastWeek the whole Monday-to-Sunday
+    week before, thisMonth the 1st to today, lastMonth the whole month
+    before, each from the first instant of its first UTC+8 day to the last
+    of its last."""
+    freezeOrderClock(monkeypatch, clock)
+
+    for period, (first, last) in periods.items():
+        # appDayBounds: first's midnight to last's final microsecond, UTC+8.
+        assert orderActions._periodBounds(period) == appDayBounds(
+            first, last), period
+
+
+def test_calendarPeriods_filterTheOrdersList_atAMondayMidnight(
+        clean, firebase, monkeypatch):
+    """On a Monday at 00:30 local, thisWeek holds only that half hour's
+    orders, and lastWeek ends at the Sunday's last millisecond."""
+    store, customerId = _storeAndCustomer(firebase)
+    sunday = addOrder(store['_id'], customerId, ITEMS,
+                      createdAt=appTime(2026, 3, 8, 23, 59, 59, 999))['_id']
+    monday = addOrder(store['_id'], customerId, ITEMS,
+                      createdAt=appTime(2026, 3, 9, 0, 10))['_id']
+    lastMonday = addOrder(store['_id'], customerId, ITEMS,
+                          createdAt=appTime(2026, 3, 2, 0, 0))['_id']
+    addOrder(store['_id'], customerId, ITEMS,
+             createdAt=appTime(2026, 3, 1, 23, 59, 59, 999))
+    freezeOrderClock(monkeypatch, appTime(2026, 3, 9, 0, 30))
+
+    assert orderIds(tools.getStoreOrders(ADMIN, period='thisWeek')) == [
+        monday]
+    assert orderIds(tools.getStoreOrders(ADMIN, period='lastWeek')) == [
+        sunday, lastMonday]

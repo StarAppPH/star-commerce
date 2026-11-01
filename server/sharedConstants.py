@@ -66,5 +66,29 @@ DELIVERY_ZONE_BORDER_TOLERANCE = 1e-9
 # screen shows a count that reaches it as "50+".
 WAITING_COUNT_CAP = 50
 
+# The order statuses that count as a sale in storeReport (its sales kinds:
+# salesByProduct, salesByDay, salesByFulfillment), from the order lifecycle
+# (objects/order.py OrderStatus):
+#   paid: the money is in (payOrder through a provider, or
+#     confirmOrderPayment for one paid by hand);
+#   completed: paid and handed over (completeOrder moves only a paid order).
+# Left out:
+#   pending and awaitingPayment: nothing is paid yet (an awaitingPayment
+#     order is only the customer's promise to pay by hand);
+#   cancelled: whatever happened before, no sale stands. A paid order
+#     cancelled later (by the store, or by the customer as the policy
+#     allows) was refunded through its provider, or is given back by hand by
+#     the store, so it is out of sales, and it is NOT in storeReport's
+#     `refunds` either (that total is the received Returns only), so it is
+#     never subtracted twice.
+# A completed order with a return keeps its gross revenue here: the return's
+# refund is counted in `refunds`, in the range its refundedAt falls in.
+SALES_STATUSES = ('paid', 'completed')
+
+# The longest date range (in whole days, both ends included) the admin's
+# filtered lists (getStoreOrders, getStoreReturns) and storeReport take: a
+# year, a leap year's included.
+REPORT_RANGE_DAYS_MAX = 366
+
 # Everything above this line ships to every browser. No credentials, no API
 # keys, no bank details, no internal limits.

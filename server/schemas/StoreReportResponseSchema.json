@@ -1,0 +1,165 @@
+{
+    "$defs": {
+        "StoreReportRow": {
+            "description": "One row of a store report (a product, a day, a status, a way to get\nthe order), or the report's total. One model for every kind: a field a\nkind does not count is null.",
+            "properties": {
+                "label": {
+                    "description": "What the row counts: the product name, the UTC+8 day (YYYY-MM-DD), the status, pickup or delivery, or \"total\"",
+                    "title": "Label",
+                    "type": "string"
+                },
+                "orders": {
+                    "description": "Orders counted",
+                    "minimum": 0,
+                    "title": "Orders",
+                    "type": "integer"
+                },
+                "units": {
+                    "anyOf": [
+                        {
+                            "minimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Units in those orders; null when the kind does not count them",
+                    "title": "Units"
+                },
+                "revenue": {
+                    "anyOf": [
+                        {
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "What they sold for, in the currency; null when the kind does not count it",
+                    "title": "Revenue"
+                },
+                "deliveryFees": {
+                    "anyOf": [
+                        {
+                            "minimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The delivery fees in that revenue; null when the kind does not count them",
+                    "title": "Deliveryfees"
+                }
+            },
+            "required": [
+                "label",
+                "orders",
+                "units",
+                "revenue",
+                "deliveryFees"
+            ],
+            "title": "StoreReportRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "What storeReport sends: the kind's rows over the whole UTC+8 days\nfrom startDate to endDate, the total of the whole range (never cut by\nthe limit), and the store's refunds in that range.",
+    "properties": {
+        "kind": {
+            "description": "The report",
+            "enum": [
+                "salesByProduct",
+                "salesByDay",
+                "ordersByStatus",
+                "salesByFulfillment"
+            ],
+            "title": "Kind",
+            "type": "string"
+        },
+        "startDate": {
+            "description": "The first day counted, YYYY-MM-DD in UTC+8",
+            "title": "Startdate",
+            "type": "string"
+        },
+        "endDate": {
+            "description": "The last day counted, YYYY-MM-DD in UTC+8",
+            "title": "Enddate",
+            "type": "string"
+        },
+        "currency": {
+            "description": "ISO 4217 code of every amount",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "rows": {
+            "description": "The kind's rows, in its order",
+            "items": {
+                "$ref": "#/$defs/StoreReportRow"
+            },
+            "maxItems": 50,
+            "title": "Rows",
+            "type": "array"
+        },
+        "total": {
+            "allOf": [
+                {
+                    "$ref": "#/$defs/StoreReportRow"
+                }
+            ],
+            "description": "Every order the report counts, labelled \"total\""
+        },
+        "truncated": {
+            "description": "Whether there were more rows than the limit",
+            "title": "Truncated",
+            "type": "boolean"
+        },
+        "refunds": {
+            "anyOf": [
+                {
+                    "minimum": 0,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "What the returns refunded through the app in the range (by refundedAt); null for ordersByStatus",
+            "title": "Refunds"
+        }
+    },
+    "required": [
+        "kind",
+        "startDate",
+        "endDate",
+        "currency",
+        "rows",
+        "total",
+        "truncated",
+        "refunds"
+    ],
+    "title": "StoreReportResponse",
+    "type": "object",
+    "additionalProperties": false
+}

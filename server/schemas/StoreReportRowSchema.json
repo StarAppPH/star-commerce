@@ -1,0 +1,65 @@
+{
+    "description": "One row of a store report (a product, a day, a status, a way to get\nthe order), or the report's total. One model for every kind: a field a\nkind does not count is null.",
+    "properties": {
+        "label": {
+            "description": "What the row counts: the product name, the UTC+8 day (YYYY-MM-DD), the status, pickup or delivery, or \"total\"",
+            "title": "Label",
+            "type": "string"
+        },
+        "orders": {
+            "description": "Orders counted",
+            "minimum": 0,
+            "title": "Orders",
+            "type": "integer"
+        },
+        "units": {
+            "anyOf": [
+                {
+                    "minimum": 0,
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Units in those orders; null when the kind does not count them",
+            "title": "Units"
+        },
+        "revenue": {
+            "anyOf": [
+                {
+                    "minimum": 0,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "What they sold for, in the currency; null when the kind does not count it",
+            "title": "Revenue"
+        },
+        "deliveryFees": {
+            "anyOf": [
+                {
+                    "minimum": 0,
+                    "type": "number"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The delivery fees in that revenue; null when the kind does not count them",
+            "title": "Deliveryfees"
+        }
+    },
+    "required": [
+        "label",
+        "orders",
+        "units",
+        "revenue",
+        "deliveryFees"
+    ],
+    "title": "StoreReportRow",
+    "type": "object",
+    "additionalProperties": false
+}

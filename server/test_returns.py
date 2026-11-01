@@ -15,12 +15,13 @@ from actions.ReturnActions import (ALREADY_IN_RETURN, HANDOVER_UNKNOWN,
                                    NOT_RETURNABLE, PAST_STOCK_LIMIT,
                                    RESTOCK_NOT_BOOL, RETURN_CHANGED,
                                    RETURN_NOT_FOUND, TOO_MANY_REQUESTS)
-from actions.OrderActions import ORDER_NOT_FOUND
+from actions.OrderActions import INVALID_PERIOD, ORDER_NOT_FOUND
 from actions.StoreActions import NO_STORE_YET
 from ApiRequests import ApiRequests
 from ToolRequests import ToolRequests
-from conftest import (addOrder, addProduct, assertExactShape, createTestStore,
-                      createTestUser, verifiedGuestAt, wipeCollections)
+from conftest import (addOrder, addProduct, addReturn, assertExactShape,
+                      createTestStore, createTestUser, freezeOrderClock,
+                      planStages, verifiedGuestAt, wipeCollections)
 from mongoDb import db
 from objects import (ORDER_ITEMS_MAX, PRODUCT_INVENTORY_MAX,
                      REFUND_REFERENCE_PREFIX,
@@ -1050,3 +1051,154 @@ def test_returnMove_thatMissesWhileTheReturnIsStillRequested_saysItChanged(
     assert missed
     assert _doc(returnId) == before
     assert tools.approveReturn(ADMIN, returnId)['status'] == 'approved'
+
+
+# ----------- getStoreReturns: dates, reason, sorts and the budget ----------- #
+
+
+def _returnIds(**kwargs) -> list:
+    return [r['_id'] for r in tools.getStoreReturns(ADMIN, **kwargs)[
+        'returns']]
+
+
+def test_getStoreReturns_dateBounds_areWholeDaysInUtcPlus8(clean):
+    store = createTestStore(ADMIN)
+    # Day D is 2026-03-10 local = 03-09 16:00Z up to 03-10 15:59:59.999Z.
+    instants = [
+        datetime.datetime(2026, 3, 9, 15, 59, 59, 999000, tzinfo=UTC),  # D-1
+        datetime.datetime(2026, 3, 9, 16, 0, tzinfo=UTC),  # D start
+        datetime.datetime(2026, 3, 10, 15, 59, 59, 999000, tzinfo=UTC),  # D end
+        datetime.datetime(2026, 3, 10, 16, 0, tzinfo=UTC),  # D+1 start
+    ]
+    ids = [addReturn(store['_id'], at)['_id'] for at in instants]
+
+    assert set(_returnIds(startDate='2026-03-10',
+                          endDate='2026-03-10')) == {ids[1], ids[2]}
+    assert set(_returnIds(startDate='2026-03-11')) == {ids[3]}
+    assert set(_returnIds(endDate='2026-03-09')) == {ids[0]}
+    assert set(_returnIds(startDate='', endDate='')) == set(ids)
+
+
+def test_getStoreReturns_period_isWholeLocalDays(clean, monkeypatch):
+    store = createTestStore(ADMIN)
+    freezeOrderClock(monkeypatch,
+                     datetime.datetime(2026, 3, 10, 1, tzinfo=UTC))
+    today = addReturn(store['_id'], datetime.datetime(2026, 3, 9, 16,
+                                                      tzinfo=UTC))['_id']
+    addReturn(store['_id'], datetime.datetime(2026, 3, 9, 15, 59,
+                                              tzinfo=UTC))
+
+    assert _returnIds(period='today') == [today]
+
+
+def test_getStoreReturns_reasonFilter_combinesWithStatusAndDates(clean):
+    store = createTestStore(ADMIN)
+    at = datetime.datetime(2026, 3, 10, 4, tzinfo=UTC)
+    byReason = {reason: addReturn(store['_id'], at, reason=reason)['_id']
+                for reason in ('changedMind', 'defective', 'wrongItem')}
+    approved = addReturn(store['_id'], at, 'approved',
+                         reason='defective')['_id']
+    addReturn(store['_id'], at - datetime.timedelta(days=30),
+              reason='defective')
+
+    for reason, returnId in byReason.items():
+        assert returnId in _returnIds(reason=reason)
+    assert _returnIds(reason='defective', status='approved') == [approved]
+    assert set(_returnIds(reason='defective', startDate='2026-03-10',
+                          endDate='2026-03-10')) == {byReason['defective'],
+                                                     approved}
+
+
+def test_getStoreReturns_sorts_tiedOnTheNewest(clean):
+    store = createTestStore(ADMIN)
+
+    def asked(minute: int, amount: float) -> str:
+        return addReturn(store['_id'],
+                         T0 + datetime.timedelta(minutes=minute),
+                         ['requested', 'approved', 'received'][minute % 3],
+                         refundAmount=amount)['_id']
+
+    small, big, tieOld, tieNew = (asked(0, 5), asked(1, 900), asked(2, 50),
+                                  asked(3, 50))
+
+    assert _returnIds() == _returnIds(sortBy='newest') == [
+        tieNew, tieOld, big, small]
+    assert _returnIds(sortBy='oldest') == [small, big, tieOld, tieNew]
+    assert _returnIds(sortBy='refundAmount') == [big, tieNew, tieOld, small]
+    assert _returnIds(sortBy='refundAmount', limit=1) == [big]
+
+
+@pytest.mark.parametrize('kwargs, message', [
+    ({'reason': 'Defective'},
+     'reason is one of changedMind, defective, wrongItem'),
+    ({'reason': {'$ne': None}},
+     'reason is one of changedMind, defective, wrongItem'),
+    ({'reason': SENTINEL},
+     'reason is one of changedMind, defective, wrongItem'),
+    ({'sortBy': 'createdAt'}, 'sortBy is one of newest, oldest, refundAmount'),
+    ({'sortBy': SENTINEL}, 'sortBy is one of newest, oldest, refundAmount'),
+    ({'period': SENTINEL},
+     INVALID_PERIOD),
+    ({'startDate': SENTINEL}, 'dates must be ISO YYYY-MM-DD dates'),
+    ({'startDate': '2026-03-11', 'endDate': '2026-03-10'},
+     'startDate is after endDate'),
+    ({'startDate': '2026-01-01', 'endDate': '2027-01-02'},
+     'A date range is at most 366 days: narrow it'),
+    ({'period': 'today', 'startDate': '2026-03-10'},
+     'Send either period or startDate/endDate, not both'),
+])
+def test_getStoreReturns_refusesABadFilter_neverQuotingIt(clean, kwargs,
+                                                           message):
+    createTestStore(ADMIN)
+
+    with pytest.raises(ValueError, match=exactly(message)) as error:
+        tools.getStoreReturns(ADMIN, **kwargs)
+
+    assert SENTINEL not in str(error.value)
+
+
+def test_getStoreReturns_filtersNeverReachAnotherStore(clean):
+    createTestStore(ADMIN)
+    other = createTestStore(OTHER_ADMIN, 'Coffee B')
+    addReturn(other['_id'], T0, reason='defective')
+
+    assert tools.getStoreReturns(ADMIN, reason='defective',
+                                 sortBy='refundAmount',
+                                 period='last30Days') == {'returns': []}
+
+
+@pytest.mark.parametrize('sortBy', ['newest', 'oldest', 'refundAmount'])
+def test_getStoreReturns_eachSort_isServedByAnIndex(clean, sentPipelines,
+                                                    sortBy):
+    """The real pipeline's plan, with more returns than the limit (with a
+    handful every plan ties): the sort's index read in order."""
+    from actions.adminQueries import ADMIN_QUERY_MAX_TIME_MS
+    db.ensureIndexes()
+    store = createTestStore(ADMIN)
+    for i in range(40):
+        addReturn(store['_id'], T0 + datetime.timedelta(minutes=i),
+                  ['requested', 'approved', 'received', 'rejected'][i % 4],
+                  refundAmount=i + 1)
+
+    tools.getStoreReturns(ADMIN, sortBy=sortBy, reason='defective')
+
+    [(collection, pipeline, maxTimeMS)] = sentPipelines
+    stages, indexes = planStages(collection, pipeline)
+    assert 'SORT' not in stages and 'COLLSCAN' not in stages
+    assert indexes and all(index[:2] == [('storeId', 1), ('status', 1)]
+                           for index in indexes)
+    assert maxTimeMS == ADMIN_QUERY_MAX_TIME_MS
+
+
+def test_getStoreReturns_aReadPastItsBudget_isTooBroad(clean, monkeypatch):
+    from pymongo.errors import ExecutionTimeout
+    from actions.adminQueries import TOO_BROAD
+    createTestStore(ADMIN)
+
+    def timesOut(*args, **kwargs):
+        raise ExecutionTimeout('operation exceeded time limit', 50)
+
+    monkeypatch.setattr(db, 'aggregate', timesOut)
+
+    with pytest.raises(ValueError, match=exactly(TOO_BROAD)):
+        tools.getStoreReturns(ADMIN)

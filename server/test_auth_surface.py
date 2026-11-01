@@ -184,6 +184,9 @@ TOOL_PERMISSION_CHECKS = {
     # (ownerStoreScope).
     'addPaymentReference': 'customerAtStore',
     'confirmOrderPayment': 'ownerStoreScope',
+    # Store reports: only the orders and returns of the store the caller
+    # owns (requireOwnerStore), its storeId in every $match.
+    'storeReport': 'requireOwnerStore',
 }
 
 # The functions an action may reach first to check its caller.

@@ -731,22 +731,28 @@ def addOrder(storeId: str, customerId: str, items: list[dict],
              createdAt: datetime.datetime | None = None, *,
              currency: str = 'PHP',
              contactNumber: str = '+639171234567',
+             deliveryFee: float = 0,
              **fields):
     """An Orders document, stored and returned. `items` is a list of
     {'productId', 'name', 'price', 'quantity'} dicts; the total is summed
     from them. createdAt defaults to now (UTC); a naive one is refused, so
     a test cannot seed a local time 8 hours off. The total and expiresAt
     are createOrder's (orderTotal, orderExpiresAt). `fields` sets any other
-    Order field (paymentMethod, paidAt, ...)."""
+    Order field (paymentMethod, paidAt, ...). A `deliveryFee` makes it a
+    delivery (fulfillment) and adds to the total, as createOrder stores
+    it; the delivery address fields still come through `fields`."""
     from actions.OrderActions import orderExpiresAt, orderTotal
     from objects import Order
+    if deliveryFee:
+        fields = {'fulfillment': 'delivery', 'deliveryFee': deliveryFee,
+                  **fields}
     if createdAt is not None and createdAt.utcoffset() is None:
         raise ValueError('addOrder needs a timezone-aware createdAt')
     createdAt = createdAt or datetime.datetime.now(tz=datetime.timezone.utc)
     order = Order(storeId=storeId,
                   customerId=customerId,
                   items=items,
-                  total=orderTotal(items),
+                  total=round(orderTotal(items) + deliveryFee, 2),
                   currency=currency,
                   contactNumber=contactNumber,
                   status=status,
@@ -766,6 +772,98 @@ def noExpirySweep(monkeypatch):
     import actions.OrderActions as orderActions
     monkeypatch.setattr(orderActions, 'cancelExpiredOrders',
                         lambda storeId=None: 0)
+
+
+def addReturn(storeId: str, createdAt: datetime.datetime,
+              status: str = 'requested', *, reason: str = 'defective',
+              refundAmount: float = 10, customerId: str = 'c1',
+              orderId: str = 'o1', **fields) -> dict:
+    """A Returns document of one item, stored and returned, for the list
+    and report tests (the return flow is test_returns.py's). createdAt
+    must be timezone aware; `fields` sets any other Return field
+    (refundedAt, receivedAt, ...)."""
+    from objects import Return
+    if createdAt.utcoffset() is None:
+        raise ValueError('addReturn needs a timezone-aware createdAt')
+    document = Return(storeId=storeId, customerId=customerId,
+                      orderId=orderId,
+                      items=[{'productId': 'p1', 'name': 'Ube Cake',
+                              'price': refundAmount, 'quantity': 1}],
+                      reason=reason, refundAmount=refundAmount,
+                      currency='PHP', contactNumber='+639171234567',
+                      status=status, createdAt=createdAt, _version=0,
+                      **fields)
+    return db.create(document.model_dump(by_alias=True), 'Returns')
+
+
+@pytest.fixture
+def sentPipelines(monkeypatch):
+    """The (collection, pipeline, maxTimeMS) of every db.aggregate call
+    while the test runs (aggregateResponses goes through it), in order;
+    each call still runs."""
+    sent = []
+    realAggregate = db.aggregate
+
+    def recording(pipeline, collection_name, *args, maxTimeMS=None,
+                  **kwargs):
+        sent.append((collection_name, pipeline, maxTimeMS))
+        return realAggregate(pipeline, collection_name, *args,
+                             maxTimeMS=maxTimeMS, **kwargs)
+
+    monkeypatch.setattr(db, 'aggregate', recording)
+    return sent
+
+
+def planStages(collection: str, pipeline: list) -> tuple[set, list]:
+    """The stage names of the plan the local mongod picks for `pipeline`
+    (explain, queryPlanner), and the key patterns of the indexes it scans:
+    a 'SORT' stage is a sort in memory, 'COLLSCAN' a read of the whole
+    collection."""
+    explained = db.db.command('explain', {'aggregate': collection,
+                                          'pipeline': pipeline,
+                                          'cursor': {}},
+                              verbosity='queryPlanner')
+    stages, indexes = set(), []
+
+    def walk(node):
+        if isinstance(node, dict):
+            if 'rejectedPlans' in node:
+                node = {k: v for k, v in node.items() if k != 'rejectedPlans'}
+            if isinstance(node.get('stage'), str):
+                stages.add(node['stage'])
+                if node['stage'] == 'IXSCAN':
+                    indexes.append(list(node['keyPattern'].items()))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(explained)
+    return stages, indexes
+
+
+def frozenDatetime(instant: datetime.datetime):
+    """The `datetime` module as OrderActions sees it, with now() fixed at
+    `instant` (timedelta kept, for the period arithmetic)."""
+    from types import SimpleNamespace
+    from AppConfig import Timezone
+
+    class Frozen:
+
+        @staticmethod
+        def now(tz):
+            assert tz == Timezone().getTimezone()
+            return instant.astimezone(tz)
+
+    return SimpleNamespace(datetime=Frozen, timedelta=datetime.timedelta)
+
+
+def freezeOrderClock(monkeypatch, instant: datetime.datetime) -> None:
+    """Every read of now in OrderActions (its _now, which payOrder, the
+    periods and the expiry sweep use) fixed at `instant`."""
+    import actions.OrderActions as orderActions
+    monkeypatch.setattr(orderActions, 'datetime', frozenDatetime(instant))
 
 
 def orderIds(res: dict) -> list[str]:

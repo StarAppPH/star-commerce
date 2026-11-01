@@ -20,7 +20,7 @@ from actions.StoreActions import ownerStore
 from ApiRequests import ApiRequests
 from ToolRequests import ToolRequests
 from conftest import (addProduct, assertExactShape, assertRowKeys,
-                      createTestStore, createTestUser, guestAt,
+                      createTestStore, createTestUser, guestAt, planStages,
                       storeWithProducts, wipeCollections)
 from mongoDb import OutdatedDataError, db
 from objects import (PRODUCT_INVENTORY_MAX, AdminProductListResponse, AdminProductListRow,
@@ -872,13 +872,13 @@ def test_listMyStoreProducts_sortByWithSearch(clean):
 def test_listMyStoreProducts_refusesAnUnknownSort(clean):
     createTestStore(ADMIN)
 
-    for sortBy in ('price', 'NAME', '', 5, ['name'], {'$ne': 1}, True):
+    for sortBy in ('cost', 'NAME', '', 5, ['name'], {'$ne': 1}, True):
         with pytest.raises(ValueError, match=exactly(
-                'sortBy is one of: name, soldCount, inventory')):
+                'sortBy is one of: name, soldCount, inventory, price')):
             _sortedNames(sortBy=sortBy)
     # The search and the limit are checked first.
     with pytest.raises(ValueError, match=exactly(LIMIT)):
-        _sortedNames(limit=0, sortBy='price')
+        _sortedNames(limit=0, sortBy='cost')
 
 
 def test_listMyStoreProducts_eachSortHasItsIndex(clean):
@@ -977,3 +977,147 @@ def test_updateStoreProduct_inventoryPlusReservedUnits_staysWithinTheMax(
                                inventory=PRODUCT_INVENTORY_MAX - 5)
     stored = db.read({'_id': over['_id']}, 'Products', findOne=True)
     assert stored == over
+
+
+# ---------------- listMyStoreProducts: filters and price ---------------- #
+
+
+def _filterStore() -> dict:
+    """A store whose products differ in each filtered field, plus another
+    store's product that matches every filter."""
+    store = createTestStore(ADMIN)
+    addProduct(store['_id'], 'Shown photo', 30, inventory=10)
+    addProduct(store['_id'], 'Shown low', 20, inventory=2)
+    addProduct(store['_id'], 'Hidden low', 10, inventory=0,
+               isAvailable=False)
+    addProduct(store['_id'], 'Hidden photo', 40, inventory=50,
+               isAvailable=False)
+    for name in ('Shown photo', 'Hidden photo'):
+        db.db['Products'].update_one({'name': name}, {'$set': {
+            'photoUrl': f'https://x/{name}.png'}})
+    # A product stored before photoUrl existed: no photo.
+    db.db['Products'].update_one({'name': 'Shown low'},
+                                 {'$unset': {'photoUrl': ''}})
+    other = createTestStore(OTHER_ADMIN, 'Coffee B')
+    addProduct(other['_id'], 'Other hidden low', 1, inventory=0,
+               isAvailable=False)
+    return store
+
+
+def test_listMyStoreProducts_eachFilterAlone(clean):
+    _filterStore()
+
+    assert _sortedNames(isAvailable=False) == ['Hidden low', 'Hidden photo']
+    assert _sortedNames(isAvailable=True) == ['Shown low', 'Shown photo']
+    assert _sortedNames(inventoryAtMost=2) == ['Hidden low', 'Shown low']
+    assert _sortedNames(inventoryAtMost=0) == ['Hidden low']
+    assert _sortedNames(hasPhoto=True) == ['Hidden photo', 'Shown photo']
+    assert _sortedNames(hasPhoto=False) == ['Hidden low', 'Shown low']
+    # None is no filter.
+    assert _sortedNames(isAvailable=None, inventoryAtMost=None,
+                        hasPhoto=None) == ['Hidden low', 'Hidden photo',
+                                           'Shown low', 'Shown photo']
+
+
+def test_listMyStoreProducts_filtersCombine_withTheSearchAndASort(clean):
+    _filterStore()
+
+    assert _sortedNames(isAvailable=False, inventoryAtMost=5) == [
+        'Hidden low']
+    assert _sortedNames(isAvailable=True, hasPhoto=False,
+                        inventoryAtMost=5) == ['Shown low']
+    assert _sortedNames(search='photo', isAvailable=False) == [
+        'Hidden photo']
+    assert _sortedNames(hasPhoto=True, sortBy='price') == [
+        'Hidden photo', 'Shown photo']
+    assert _sortedNames(isAvailable=True, hasPhoto=True,
+                        inventoryAtMost=0) == []
+
+
+@pytest.mark.parametrize('kwargs, message', [
+    ({'isAvailable': 'false'}, 'isAvailable is true or false'),
+    ({'isAvailable': 0}, 'isAvailable is true or false'),
+    ({'hasPhoto': 'yes'}, 'hasPhoto is true or false'),
+    ({'hasPhoto': {'$ne': None}}, 'hasPhoto is true or false'),
+    ({'inventoryAtMost': -1},
+     'inventoryAtMost is a whole number from 0 to 1000000'),
+    ({'inventoryAtMost': PRODUCT_INVENTORY_MAX + 1},
+     'inventoryAtMost is a whole number from 0 to 1000000'),
+    ({'inventoryAtMost': 2.5},
+     'inventoryAtMost is a whole number from 0 to 1000000'),
+    ({'inventoryAtMost': True},
+     'inventoryAtMost is a whole number from 0 to 1000000'),
+    ({'inventoryAtMost': {'$gt': 0}},
+     'inventoryAtMost is a whole number from 0 to 1000000'),
+    ({'inventoryAtMost': SECRET},
+     'inventoryAtMost is a whole number from 0 to 1000000'),
+])
+def test_listMyStoreProducts_refusesABadFilter_neverQuotingIt(
+        clean, kwargs, message):
+    createTestStore(ADMIN)
+
+    with pytest.raises(ValueError, match=exactly(message)) as error:
+        _sortedNames(**kwargs)
+
+    assert SECRET not in str(error.value)
+
+
+def test_listMyStoreProducts_sortByPrice_mostExpensiveFirst_tiedByName(
+        clean):
+    store = createTestStore(ADMIN)
+    for number in range(55):
+        addProduct(store['_id'], f'Item {number:02d}', number)
+    addProduct(store['_id'], 'zz tie', 54)
+    addProduct(store['_id'], 'Aa tie', 54, isAvailable=False)
+
+    products = tools.listMyStoreProducts(ADMIN, sortBy='price',
+                                         limit=4)['products']
+
+    assert [(p['name'], p['price']) for p in products] == [
+        ('Aa tie', 54), ('Item 54', 54), ('zz tie', 54), ('Item 53', 53)]
+
+
+@pytest.mark.parametrize('sortBy', ['name', 'soldCount', 'inventory',
+                                    'price'])
+def test_listMyStoreProducts_eachSort_isServedByItsIndex_withEveryFilter(
+        clean, sentPipelines, sortBy):
+    """The plan the local mongod picks for the real pipeline, every filter
+    on: an index scan in the sort's order, no sort in memory, no read of
+    the whole collection, and a time budget. More matching products than
+    the limit, as a real store has: with a handful, every plan ties and
+    the planner may pick any."""
+    from actions.adminQueries import ADMIN_QUERY_MAX_TIME_MS
+    from actions.ProductActions import ADMIN_PRODUCT_SORT_STAGES
+    db.ensureIndexes()
+    store = _filterStore()
+    for number in range(45):
+        addProduct(store['_id'], f'Filler low {number:02d}', number,
+                   soldCount=number, inventory=number % 6,
+                   isAvailable=False)
+
+    tools.listMyStoreProducts(ADMIN, sortBy=sortBy, isAvailable=False,
+                              inventoryAtMost=5, hasPhoto=False,
+                              search='low')
+
+    [(collection, pipeline, maxTimeMS)] = sentPipelines
+    stages, indexes = planStages(collection, pipeline)
+    assert 'SORT' not in stages and 'COLLSCAN' not in stages
+    assert indexes and all(index[0] == ('storeId', 1) for index in indexes)
+    sortKey = next(iter(ADMIN_PRODUCT_SORT_STAGES[sortBy]))
+    assert all(index[1][0] == sortKey for index in indexes)
+    assert maxTimeMS == ADMIN_QUERY_MAX_TIME_MS
+
+
+def test_listMyStoreProducts_aReadPastItsBudget_isTooBroad(clean,
+                                                            monkeypatch):
+    from pymongo.errors import ExecutionTimeout
+    from actions.adminQueries import TOO_BROAD
+    createTestStore(ADMIN)
+
+    def timesOut(*args, **kwargs):
+        raise ExecutionTimeout('operation exceeded time limit', 50)
+
+    monkeypatch.setattr(db, 'aggregate', timesOut)
+
+    with pytest.raises(ValueError, match=exactly(TOO_BROAD)):
+        tools.listMyStoreProducts(ADMIN)

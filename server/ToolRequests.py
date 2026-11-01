@@ -24,6 +24,7 @@ from actions.PaymentActions import PaymentTools
 from actions.PhotoActions import PhotoTools
 from actions.PolicyActions import PolicyTools
 from actions.ProductActions import ProductTools
+from actions.ReportActions import ReportTools
 from actions.ReturnActions import ReturnTools
 from actions.StoreActions import StoreTools
 from actions.VoiceActions import VoiceTools
@@ -31,5 +32,5 @@ from actions.VoiceActions import VoiceTools
 
 class ToolRequests(StoreTools, ProductTools, OrderTools, PaymentTools,
                    FulfillmentTools, ReturnTools, PolicyTools, VoiceTools,
-                   PhotoTools):
+                   PhotoTools, ReportTools):
     pass

@@ -43,6 +43,18 @@ def _sessionKwargs(session: Optional[ClientSession]) -> dict:
     return {} if session is None else {'session': session}
 
 
+def _maxTimeKwargs(maxTimeMS: Optional[int]) -> dict:
+    """`maxTimeMS` as a pymongo read's keyword (find, find_one,
+    count_documents and aggregate all take it), only when there is one."""
+    if maxTimeMS is None:
+        return {}
+    if (isinstance(maxTimeMS, bool) or not isinstance(maxTimeMS, int)
+            or maxTimeMS < 1):
+        raise TypeError('maxTimeMS is a whole number of milliseconds, at '
+                         'least 1')
+    return {'maxTimeMS': maxTimeMS}
+
+
 def _cutResponse(model, doc: dict, prepare: Optional[Callable]) -> dict:
     """A document a read-and-cut helper read, prepared, then cut down to
     `model`."""
@@ -160,6 +172,9 @@ class mongoDb():
                                           ('nameKey', 1)])
         self.db['Products'].create_index([('storeId', 1), ('inventory', 1),
                                           ('nameKey', 1)])
+        # ...and the most expensive first (sortBy price).
+        self.db['Products'].create_index([('storeId', 1), ('price', -1),
+                                          ('nameKey', 1)])
         # No two products of one store share a name (productNameKey), so
         # two racing adds of the same name cannot both win.
         self.db['Products'].create_index([('storeId', 1), ('nameKey', 1)],
@@ -169,6 +184,10 @@ class mongoDb():
         # so the prefix still applies).
         self.db['Orders'].create_index([('storeId', 1), ('status', 1),
                                         ('createdAt', -1)])
+        # A store's orders, the biggest total first (getStoreOrders' sortBy
+        # total), tied on the newest.
+        self.db['Orders'].create_index([('storeId', 1), ('status', 1),
+                                        ('total', -1), ('createdAt', -1)])
         # A customer's orders at one store, newest first (getMyOrders).
         self.db['Orders'].create_index([('customerId', 1), ('storeId', 1),
                                         ('createdAt', -1)])
@@ -187,6 +206,13 @@ class mongoDb():
         self.db['Returns'].create_index([('customerId', 1), ('storeId', 1),
                                          ('createdAt', -1)])
         self.db['Returns'].create_index([('orderId', 1), ('status', 1)])
+        # A store's returns, the biggest refund first (getStoreReturns'
+        # sortBy refundAmount), tied on the newest; and its returns
+        # refunded in a date range (storeReport's refunds).
+        self.db['Returns'].create_index([('storeId', 1), ('status', 1),
+                                         ('refundAmount', -1),
+                                         ('createdAt', -1)])
+        self.db['Returns'].create_index([('storeId', 1), ('refundedAt', 1)])
         # A user's conversations at one store, newest first
         # (listMyConversations).
         self.db['Conversations'].create_index([('userId', 1), ('storeId', 1),
@@ -248,12 +274,17 @@ class mongoDb():
                   pipeline: list,
                   collection_name: str,
                   session: Optional[ClientSession] = None,
-                  findOne: bool = False) -> Optional[dict] | list:
+                  findOne: bool = False,
+                  maxTimeMS: Optional[int] = None) -> Optional[dict] | list:
+        """The documents `pipeline` yields (the first, or None, with
+        findOne). `maxTimeMS` is the server's time budget for it: past it
+        pymongo raises ExecutionTimeout (None: no budget)."""
         if any(isinstance(stage, _ProjectionStage) for stage in pipeline):
             raise TypeError('a projectionStage reads sub-documents whole, so '
                             'only db.aggregateResponses (which cuts every row) '
                             'takes one')
-        cursor = self.db[collection_name].aggregate(pipeline, session=session)
+        cursor = self.db[collection_name].aggregate(
+            pipeline, session=session, **_maxTimeKwargs(maxTimeMS))
         if findOne:
             try:
                 return next(cursor, None)
@@ -270,20 +301,27 @@ class mongoDb():
         findOne: bool = False,
         countOnly: bool = False,
         limit: Optional[int] = None,
+        maxTimeMS: Optional[int] = None,
     ) -> Optional[dict] | list | int:
-        """Read documents from the collection."""
+        """Read documents from the collection. `maxTimeMS` is the server's
+        time budget for the read: past it pymongo raises ExecutionTimeout
+        (None: no budget)."""
+        budget = _maxTimeKwargs(maxTimeMS)
         with _timed(f"{collection_name} read {sorted(query)}"):
             if findOne:
                 data = self.db[collection_name].find_one(query,
                                                          projection,
-                                                         session=session)
+                                                         session=session,
+                                                         **budget)
             elif countOnly:
                 data = self.db[collection_name].count_documents(query,
-                                                                session=session)
+                                                                session=session,
+                                                                **budget)
             else:
                 cursor = self.db[collection_name].find(query,
                                                        projection,
-                                                       session=session)
+                                                       session=session,
+                                                       **budget)
                 if limit is not None:
                     cursor = cursor.limit(limit)
                 data = list(cursor)
@@ -339,11 +377,12 @@ class mongoDb():
     def aggregateResponses(self, model, pipeline: list, collection_name: str,
                            session: Optional[ClientSession] = None, *,
                            readWhole: tuple = (),
-                           prepare: Optional[Callable] = None) -> list:
+                           prepare: Optional[Callable] = None,
+                           maxTimeMS: Optional[int] = None) -> list:
         """The rows `pipeline` yields as `model` sends them: every
         projectionStage expanded, the pipeline ended with model's projection
         (a $project stage appended, the input not changed) and every row cut,
-        as readResponses does for a find."""
+        as readResponses does for a find. `maxTimeMS` as aggregate()."""
         from objects import _projection_of_for_cut
         stages = [
             {'$project': _projection_of_for_cut(stage.model, stage.readWhole)}
@@ -352,7 +391,8 @@ class mongoDb():
         ]
         rows = self.aggregate(
             [*stages, {'$project': _projection_of_for_cut(model, readWhole)}],
-            collection_name, **_sessionKwargs(session))
+            collection_name, **_sessionKwargs(session),
+            **({} if maxTimeMS is None else {'maxTimeMS': maxTimeMS}))
         return [_cutResponse(model, row, prepare) for row in rows]
 
     def readWithPagination(self,

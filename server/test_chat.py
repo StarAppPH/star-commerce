@@ -361,7 +361,8 @@ ADMIN_TOOLS = {
     'setProductPhoto', 'getStoreReturns', 'approveReturn', 'rejectReturn',
     'receiveReturn', 'listVoices', 'setUserStoreLocation',
     'suggestStoreAddress', 'updateMyStoreDetails', 'makeProductPhotoChoices',
-    'findProductsInPhoto', 'findColorsInPhoto', 'confirmOrderPayment'
+    'findProductsInPhoto', 'findColorsInPhoto', 'confirmOrderPayment',
+    'storeReport'
 }
 CUSTOMER_TOOLS = {
     'listStoreProducts', 'getMyOrders', 'createOrder', 'payOrder',
@@ -386,7 +387,7 @@ def test_toolLists_haveExactlyTheAudiencesTools():
     }
     assert set(names['admin']) == ADMIN_TOOLS | ADMIN_FORM_TOOLS
     assert set(names['customer']) == CUSTOMER_TOOLS | CUSTOMER_FORM_TOOLS
-    assert len(names['admin']) == 30 and len(names['customer']) == 12
+    assert len(names['admin']) == 31 and len(names['customer']) == 12
     for audience, tools in chatTools.TOOLS.items():
         assert [t['function']['name'] for t in tools] == sorted(names[audience])
         for tool in tools:

@@ -784,6 +784,38 @@ Every `@mcp_tool` tool declares `thinkingText`, required (`mcpTools.mcp_tool`: a
 
 Voice mode also says it: `speakChatThinking(turnKey)` speaks the current text in the store's voice (`Store.voiceId`, else `ELEVENLABS_DEFAULT_VOICE_ID`). ElevenLabs speaks each (voice, text) once: the clip is kept in ThinkingSpeech (`_id` = sha256 of the voice and the text) and reused for every turn after, so only that first time counts against the store's and all stores' daily character caps (never a customer's: the clip serves everyone). The client plays one clip at a time, never over the reply, and stops it when the reply comes. At every deploy `job_predeploy.py` runs `chatThinking.syncThinkingSpeech()`, which keeps the clips in step with the texts: it deletes those of a text no tool has any more (an edited text is a removed one and a new one), then speaks every missing (voice, text) of the default voice and each store's voice, up to 500 clips in 240 s. It never fails the deploy; what it misses is spoken on first use. The texts are the app's own strings, never a user's words.
 
+## Admin queries
+
+The admin's chat answers questions about the store's data through two kinds of tool, never a raw query: the AI picks only from server-owned lists of filters, sorts and report kinds, and the server writes every `$match`. There is no generic `findMyStoreData(collection, ...)` (each list keeps its own response model, card, AI_READS and gate coverage) and no collection name, field name or operator as a param.
+
+**Filtered lists.** The three admin list tools take optional, typed filters and a `sortBy`; each param becomes one fixed clause:
+
+| Tool | Filters | `sortBy` (each tied on a stable key) |
+|---|---|---|
+| `listMyStoreProducts` | `search`, `isAvailable` (true/false), `inventoryAtMost` (0 to `PRODUCT_INVENTORY_MAX`), `hasPhoto` (true/false, as `hasPhoto` reads `photoUrl`) | `name` (default), `soldCount`, `inventory`, `price` (most expensive first), each tied on `nameKey` |
+| `getStoreOrders` | `status`, `period` or `startDate`/`endDate`, `fulfillment` (an order with none is a pickup), `paymentMethod` (`eWallet` also finds the legacy `gcash`/`maya`/`grabPay`) | `newest` (default), `oldest`, `total` (tied on the newest) |
+| `getStoreReturns` | `status`, `period` or `startDate`/`endDate`, `reason` | `newest` (default), `oldest`, `refundAmount` (tied on the newest) |
+
+- The store is always the caller's own (`_adminStore` / `requireOwnerStore`).
+- The choice params are plain `str` checked by `adminQueries.validChoice` (the reason `OrderActions._statusMatch` gives: the SDK's enum check would quote a bad value); a flag is `adminQueries.validFlag`. Every refusal names the choices, never the value.
+- Dates are ISO `YYYY-MM-DD`, whole UTC+8 days (`utils.appDayBounds`). A closed range is at most `REPORT_RANGE_DAYS_MAX` (366) days, both ends included (`adminQueries.boundedDays`, with `listSort`, `inMatch` and `dayRange` beside it), and a start after the end is refused. A `period` is computed on the server's clock in whole UTC+8 days (`OrderActions.ORDER_PERIODS`): today, yesterday, last7Days, last30Days, and the calendar ones: thisWeek (Monday to today), lastWeek (the whole Monday-to-Sunday week before), thisMonth (the 1st to today), lastMonth (the whole month before), so the AI never works out a date. An open end (one date only) is still taken by the lists: their `limit` (1 to 50) bounds what they read.
+- Every sort is index-backed (`mongoDb.ensureIndexes`): Products (storeId, price -1, nameKey) for `price`; Orders (storeId, status, total -1, createdAt -1) and Returns (storeId, status, refundAmount -1, createdAt -1) for the amount sorts; `newest`/`oldest` read the (storeId, status, createdAt) index either way. With no status, status is matched with `$in`, which the planner serves with a SORT_MERGE of the per-status index scans. The tests run explain on the local mongod against the real pipeline (`conftest.planStages`, `sentPipelines`). With a date range and an amount sort, the planner may sort the range's documents in memory instead: still through an index, and bounded by the range cap and the time budget.
+
+**`storeReport(kind, period | startDate+endDate, limit)`** (`actions/ReportActions.py`, `ReportTools`, objects/report.py) answers "how much" and "how many" over the whole range, so the AI never adds up a list cut at 50. A range is required (a period, or both dates). Each kind is a fixed pipeline (`REPORT_GROUPS`): `$match` {storeId, status in the kind's set, createdAt in the range} on the (storeId, status, createdAt) index, then a `$facet` of the kind's rows (`$group`, `$sort` ending on the label, `$limit` limit+1, so `truncated` says whether it cut) and the range's `total` (one `$group`, never cut). No `$lookup`: a product's label is the name its newest order item stored (`$top`).
+
+| kind | rows | revenue |
+|---|---|---|
+| `salesByProduct` | per productId: orders, units, revenue, top revenue first | the items' value, no delivery fee |
+| `salesByDay` | per UTC+8 day (`$dateToString` with the app timezone's offset): orders, units, revenue, deliveryFees, oldest day first; a day with no sale has no row | the orders' totals, fees included |
+| `ordersByStatus` | per status, any status: orders only (the expired pending orders are cancelled first) | null |
+| `salesByFulfillment` | pickup and delivery (none stored: pickup): orders, units, revenue, deliveryFees | the orders' totals, fees included |
+
+- **Sales** are the orders of `SALES_STATUSES` (sharedConstants.py: paid and completed), counted on the UTC+8 day they were placed (createdAt). Pending and awaitingPayment are not paid yet; a cancelled order is no sale, including a paid one cancelled later (refunded through its provider, or given back by hand by the store).
+- **Refunds** are apart from revenue, which is gross: `refunds` is the sum of `refundAmount` of the store's Returns whose `refundedAt` falls in the range (the (storeId, refundedAt) index), whenever the order was placed. A return of an order paid by hand is given back by the store, never recorded (`refundedAt` null), so it is not in `refunds`; a cancelled paid order's refund is not either (it is already out of sales, so it is never subtracted twice). `refunds` is null for `ordersByStatus`.
+- The response is one generic model (`StoreReportResponse` with `StoreReportRow` rows and total), no union: a field a kind does not count is null. Every field is in AI_READS. There is no card: the AI answers in text.
+
+**Time budget.** Every read of these tools passes `maxTimeMS=ADMIN_QUERY_MAX_TIME_MS` (5000) through `db.read` / `db.aggregate` / `db.aggregateResponses`, inside `adminQueries.queryBudget()`, which turns pymongo's `ExecutionTimeout` into a ValueError the AI relays (`TOO_BROAD`: narrow the dates or the filters). The customer's chat gets none of these tools.
+
 ## Tool warnings
 
 In the admin's chat, a read tool's tool message also tells the model what the store's data lacks (`toolWarnings.py`). `ChatActions._runModel` passes each tool's content through a per-turn `toolWarnings.TurnWarnings`; for the tools of `toolWarnings.FINDERS` it adds a `warnings` list next to the tool's own keys, each `{code, count, ids, message}`: `code` one of `ToolWarningCode` (objects/toolWarning.py), `count` how many items have it in the whole store (not only the rows the tool listed), `ids` the ones the model was not told about lately (at most 10: product, order or return `_id`s, or policy and store field names), and `message` the app's own text with the fix (never a name or note the store or a customer wrote). The admin prompt (`chatModel._WARNINGS_RULE`) has the model raise each once, in a short line, after answering.

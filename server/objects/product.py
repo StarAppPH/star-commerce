@@ -32,10 +32,11 @@ PRODUCT_BATCH_MAX = 50
 # The most products one store holds.
 PRODUCTS_PER_STORE_MAX = 2000
 # How listMyStoreProducts orders an admin's products: by name, best sellers
-# first (soldCount), or fewest units left first (inventory). Each sort ties
-# on the name and has its own (storeId, ..., nameKey) index
-# (mongoDb.ensureIndexes), so a list longer than its limit is cut in order.
-AdminProductSort = typing.Literal['name', 'soldCount', 'inventory']
+# first (soldCount), fewest units left first (inventory), or the most
+# expensive first (price). Each sort ties on the name and has its own
+# (storeId, ..., nameKey) index (mongoDb.ensureIndexes), so a list longer
+# than its limit is cut in order.
+AdminProductSort = typing.Literal['name', 'soldCount', 'inventory', 'price']
 ADMIN_PRODUCT_SORTS = typing.get_args(AdminProductSort)
 
 
