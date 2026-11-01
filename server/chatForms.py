@@ -32,7 +32,8 @@ from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
                                   OUTSIDE_DELIVERY_ZONES,
                                   bookableFulfillments, offeredFulfillments,
                                   storeDelivery)
-from actions.PhotoActions import PROMPT_STORE_FIELDS, defaultPhotoPrompt
+from actions.PhotoActions import (PROMPT_STORE_FIELDS, defaultPhotoPrompt,
+                                  cardShots)
 from actions.StoreActions import STORES, ownerQuery
 import geocoding
 import photoStorage
@@ -266,7 +267,8 @@ def _photoRequestForm(userId: str, storeId: str,
                       args: ShowPhotoRequestFormArgs) -> dict:
     store = _ownStore(userId, PROMPT_STORE_FIELDS)
     return {'kind': 'photoRequestForm', 'formId': newFormId(),
-            'defaultPrompt': defaultPhotoPrompt(store)}
+            'defaultPrompt': defaultPhotoPrompt(store),
+            'shots': cardShots(store)}
 
 
 def _phoneVerification(userId: str, storeId: str,

@@ -17,6 +17,20 @@ export type Formid = string;
  * The prompt the edit box starts with
  */
 export type Defaultprompt = string | null;
+/**
+ * The fixed shot each of the photos adds to the prompt, shown read-only under the edit box
+ *
+ * @maxItems 3
+ */
+export type Shots = [] | [PhotoShotRow] | [PhotoShotRow, PhotoShotRow] | [PhotoShotRow, PhotoShotRow, PhotoShotRow];
+/**
+ * The shot's short name
+ */
+export type Label = string;
+/**
+ * The shot's line, added to the base prompt for its photo
+ */
+export type Line = string;
 
 /**
  * Asks the admin for photos of one item to turn into product photos,
@@ -27,4 +41,14 @@ export interface PhotoRequestForm {
   kind: Kind;
   formId: Formid;
   defaultPrompt?: Defaultprompt;
+  shots?: Shots;
+}
+/**
+ * One of the fixed shots every photo call makes (PhotoActions.PHOTO_SHOTS),
+ * its line as the store's brand colors write it: the edit box shows it
+ * read-only under the base prompt.
+ */
+export interface PhotoShotRow {
+  label: Label;
+  line: Line;
 }

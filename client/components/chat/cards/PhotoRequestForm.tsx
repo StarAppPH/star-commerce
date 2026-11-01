@@ -148,6 +148,7 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
             defaultValue={component.defaultPrompt ?? ''}
             disabled={locked}
             onChange={setPrompt}
+            shots={component.shots}
           />
         </div>
       )}

@@ -233,7 +233,8 @@ def _photoOffer(result: dict, context: CardContext) -> dict | None:
         {'formId': newFormId(),
          **_pick(p, ('productId', 'productName', 'photoUrl',
                      'defaultPrompt'))}
-        for p in result['products']]}
+        for p in result['products']],
+        'shots': [_pick(shot, ('label', 'line')) for shot in result['shots']]}
 
 
 def _photoColors(result: dict, context: CardContext) -> dict | None:

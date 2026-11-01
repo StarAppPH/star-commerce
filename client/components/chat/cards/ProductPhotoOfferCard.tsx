@@ -14,12 +14,13 @@ interface OfferRowViewProps {
   row: OfferRow;
   // The row's position on the card, for its data-component names.
   index: number;
+  shots: ComponentOf<'productPhotoOffer'>['shots'];
   answered: boolean;
   busy: boolean;
   onMake: (row: OfferRow, prompt: string) => void;
 }
 
-function OfferRowView({ row, index, answered, busy, onMake }: OfferRowViewProps) {
+function OfferRowView({ row, index, shots, answered, busy, onMake }: OfferRowViewProps) {
   const [open, setOpen] = useState(false);
   const boxId = useId();
   const [prompt, setPrompt] = useState(row.defaultPrompt);
@@ -46,6 +47,7 @@ function OfferRowView({ row, index, answered, busy, onMake }: OfferRowViewProps)
           defaultValue={row.defaultPrompt}
           disabled={busy}
           onChange={setPrompt}
+          shots={shots}
           submit={{ label: `Make ${PHOTOS_PER_CALL} photos`, loading: busy, onSubmit: () => onMake(row, prompt) }}
         />
       )}
@@ -84,6 +86,7 @@ export function ProductPhotoOfferCard({ component, answeredFormIds, busy, onAnsw
           <OfferRowView
             key={row.formId}
             row={row}
+            shots={component.shots}
             index={component.products.indexOf(row)}
             answered={answeredFormIds.has(row.formId)}
             busy={busy}
