@@ -232,6 +232,7 @@ CARDS: dict[str, Callable[[dict, CardContext], dict | None]] = {
     'confirmOrderPayment': _storeOrder,
     'cancelMyOrder': _myOrder,
     'createOrder': _checkout,
+    'checkoutMyCart': _checkout,
     'getStoreReturns': _storeReturns,
     'approveReturn': _storeReturn,
     'rejectReturn': _storeReturn,

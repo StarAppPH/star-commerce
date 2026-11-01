@@ -320,6 +320,188 @@ def verifyCustomerPhone():
 
 
 
+@app.route('/getMyCart', methods=['POST'])
+@jwt_required()
+def getMyCart():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().getMyCart(userId, storeId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'getMyCart', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'getMyCart', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'getMyCart', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Cart fetched", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/addToCart', methods=['POST'])
+@jwt_required()
+def addToCart():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    items = data.get('items')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if not isinstance(items, list):
+            raise ValueError('Invalid items')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().addToCart(userId, storeId, items)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'addToCart', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'items')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'addToCart', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'items')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'addToCart', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'items'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Added to your cart", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/setCartItemQuantity', methods=['POST'])
+@jwt_required()
+def setCartItemQuantity():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    productId = data.get('productId')
+    quantity = data.get('quantity')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(productId, (dict, list)):
+            raise ValueError('Invalid productId')
+        if isinstance(quantity, (dict, list)):
+            raise ValueError('Invalid quantity')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().setCartItemQuantity(userId, storeId, productId, quantity)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'setCartItemQuantity', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'productId', 'quantity')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'setCartItemQuantity', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'productId', 'quantity')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'setCartItemQuantity', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'productId', 'quantity'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Cart updated", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/removeFromCart', methods=['POST'])
+@jwt_required()
+def removeFromCart():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    productId = data.get('productId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(productId, (dict, list)):
+            raise ValueError('Invalid productId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().removeFromCart(userId, storeId, productId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'removeFromCart', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'productId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'removeFromCart', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'productId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'removeFromCart', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId', 'productId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Removed from your cart", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
+@app.route('/clearMyCart', methods=['POST'])
+@jwt_required()
+def clearMyCart():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    storeId = data.get('storeId')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().clearMyCart(userId, storeId)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'clearMyCart', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'clearMyCart', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'clearMyCart', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'storeId'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Cart emptied", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 @app.route('/getWaitingOnYou', methods=['POST'])
 @jwt_required()
 def getWaitingOnYou():

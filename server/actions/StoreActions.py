@@ -282,6 +282,7 @@ def _deleteStoreData(storeId: str, chatPaths: list[str]) -> dict:
     them for _deleteResetFiles. Returns the count deleted per collection.
     Never the usage counters, Users, Customers or Bootstrap."""
     # Imported here: each of these modules imports this one.
+    from actions.CartActions import CARTS
     from actions.ChatActions import CHAT_TURNS, CONVERSATIONS
     from actions.OrderActions import ORDER_LOCKS, ORDERS
     from actions.PhotoActions import GENERATED_PHOTOS
@@ -306,7 +307,7 @@ def _deleteStoreData(storeId: str, chatPaths: list[str]) -> dict:
     # OrderLocks has no storeId index: an accepted collection scan, once
     # per reset (the route ends at STORE_RESET_ENDS_AT).
     for collection in (PRODUCTS, ORDERS, ORDER_LOCKS, RETURNS, POLICIES,
-                       GENERATED_PHOTOS):
+                       GENERATED_PHOTOS, CARTS):
         deleted[collection] = _deletedCount(
             db.deleteMany({'storeId': storeId}, collection))
     return deleted

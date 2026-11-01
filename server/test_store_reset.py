@@ -43,7 +43,7 @@ from conftest import (BRAND_COLORS, STORE_DETAILS, TOKEN, addOrder,
                       addProduct, assertExactShape, createTestStore, createTestUser,
                       guestClaims, wipeCollections)
 from mongoDb import db
-from objects import (ChatAttachment, ChatTurn, Conversation, Customer,
+from objects import (Cart, ChatAttachment, ChatTurn, Conversation, Customer,
                      GeneratedPhoto, NoContentResponse, Policy, Return)
 from utils import generateRandomString
 
@@ -79,9 +79,10 @@ STORE_KINDS = [(CHAT_USAGE, 'store'), (CHAT_USAGE, 'attachmentsStore'),
 # The collections the reset empties for the old store, as storeReset's
 # `deleted` names them.
 DELETED_COLLECTIONS = {'ChatTurns', 'Conversations', 'Products', 'Orders',
-                       'OrderLocks', 'Returns', 'Policies', 'GeneratedPhotos'}
+                       'OrderLocks', 'Returns', 'Policies', 'GeneratedPhotos',
+                       'Carts'}
 STORE_DATA = ['Products', 'Orders', 'OrderLocks', 'Returns', 'Policies',
-              'GeneratedPhotos', 'Conversations', 'ChatTurns']
+              'GeneratedPhotos', 'Conversations', 'ChatTurns', 'Carts']
 KEPT = ['Users', 'Customers', 'Bootstrap']
 COLLECTIONS = (['Stores'] + STORE_DATA + KEPT + USAGE_COLLECTIONS)
 
@@ -210,7 +211,8 @@ def chatFile(uid: str, name: str) -> str:
 
 def seedStoreData(store: dict, adminId: str, customerId: str) -> None:
     """Products, orders (and the customer's lock), returns, generated
-    photos and chats of `store`, the policy it already has aside."""
+    photos, chats and the customer's cart of `store`, the policy it already
+    has aside."""
     storeId = store['_id']
     product = addProduct(storeId, 'Pandesal', 5)
     items = [{'productId': product['_id'], 'name': 'Pandesal', 'price': 5,
@@ -225,6 +227,11 @@ def seedStoreData(store: dict, adminId: str, customerId: str) -> None:
                       contactNumber=PHONE, status='requested',
                       createdAt=BEFORE, _version=0)
     db.create(returned.model_dump(by_alias=True), 'Returns')
+    cart = Cart(_id=f'{customerId}:{storeId}', customerId=customerId,
+                storeId=storeId,
+                items=[{'productId': product['_id'], 'quantity': 1}],
+                updatedAt=BEFORE, _version=0)
+    db.create(cart.model_dump(by_alias=True), 'Carts')
     photoPath = f'stores/{storeId}/photos/p1.jpg'
     photo = GeneratedPhoto(storeId=storeId, createdBy=adminId,
                            path=photoPath, url='https://example.com/p1',

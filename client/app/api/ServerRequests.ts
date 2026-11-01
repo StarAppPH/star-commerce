@@ -1,6 +1,7 @@
 import Server from "./Server";
 import type { ApiResponse } from "./ApiResponse";
 import type { BrandColorsAnswer } from '../schemas/BrandColorsAnswerSchema';
+import type { CartScreenResponse } from '../schemas/CartScreenResponseSchema';
 import type { ChatReplyResponse } from '../schemas/ChatReplyResponseSchema';
 import type { ChatThinkingResponse } from '../schemas/ChatThinkingResponseSchema';
 import type { ConversationListResponse } from '../schemas/ConversationListResponseSchema';
@@ -14,6 +15,7 @@ import type { HandoverAnswer } from '../schemas/HandoverAnswerSchema';
 import type { LocationAnswer } from '../schemas/LocationAnswerSchema';
 import type { MyStoreScreenResponse } from '../schemas/MyStoreScreenResponseSchema';
 import type { NewDeliveryZone } from '../schemas/NewDeliveryZoneSchema';
+import type { NewOrderItem } from '../schemas/NewOrderItemSchema';
 import type { NewProductsAnswer } from '../schemas/NewProductsAnswerSchema';
 import type { NoContentResponse } from '../schemas/NoContentResponseSchema';
 import type { OrderItemsAnswer } from '../schemas/OrderItemsAnswerSchema';
@@ -231,6 +233,121 @@ import type { WaitingOnYouResponse } from '../schemas/WaitingOnYouResponseSchema
             cache: 'no-store'
         });
         const data: ApiResponse<NoContentResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async getMyCart(userId: string, storeId: string): Promise<ApiResponse<CartScreenResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/getMyCart`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<CartScreenResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async addToCart(userId: string, storeId: string, items: NewOrderItem[]): Promise<ApiResponse<CartScreenResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/addToCart`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "items": items}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<CartScreenResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async setCartItemQuantity(userId: string, storeId: string, productId: string, quantity: number): Promise<ApiResponse<CartScreenResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/setCartItemQuantity`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "productId": productId, "quantity": quantity}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<CartScreenResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async removeFromCart(userId: string, storeId: string, productId: string): Promise<ApiResponse<CartScreenResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/removeFromCart`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId, "productId": productId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<CartScreenResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async clearMyCart(userId: string, storeId: string): Promise<ApiResponse<CartScreenResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/clearMyCart`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "storeId": storeId}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<CartScreenResponse> & { msg?: string } = await res.json();
         if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
         
         if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
@@ -483,6 +600,11 @@ export interface RouteResponseModels {
     resetMyStore: NoContentResponse;
     startGuestSession: CustomerSessionResponse;
     verifyCustomerPhone: NoContentResponse;
+    getMyCart: CartScreenResponse;
+    addToCart: CartScreenResponse;
+    setCartItemQuantity: CartScreenResponse;
+    removeFromCart: CartScreenResponse;
+    clearMyCart: CartScreenResponse;
     getWaitingOnYou: WaitingOnYouResponse;
     addPaymentReceipt: NoContentResponse;
     getPaymentReceipt: PaymentReceiptResponse;
@@ -505,6 +627,11 @@ export interface RouteRequestBodies {
     resetMyStore: { userId: string; confirmName: string };
     startGuestSession: { idToken: string; storeSlug: string };
     verifyCustomerPhone: { userId: string; idToken: string };
+    getMyCart: { userId: string; storeId: string };
+    addToCart: { userId: string; storeId: string; items: NewOrderItem[] };
+    setCartItemQuantity: { userId: string; storeId: string; productId: string; quantity: number };
+    removeFromCart: { userId: string; storeId: string; productId: string };
+    clearMyCart: { userId: string; storeId: string };
     getWaitingOnYou: { userId: string };
     addPaymentReceipt: { userId: string; storeId: string; orderId: string; receiptUrl: string };
     getPaymentReceipt: { userId: string; orderId: string };

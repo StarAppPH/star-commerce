@@ -1,0 +1,63 @@
+{
+    "description": "A cart row as the shop's cart panel shows it.",
+    "properties": {
+        "productId": {
+            "description": "The Products _id",
+            "minLength": 1,
+            "title": "Productid",
+            "type": "string"
+        },
+        "name": {
+            "description": "Product name",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+        },
+        "price": {
+            "description": "Unit price now, in the store's currency",
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Price",
+            "type": "number"
+        },
+        "quantity": {
+            "description": "Units in the cart",
+            "maximum": 1000000,
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+        },
+        "inventory": {
+            "description": "Units free to sell now; 0 is sold out",
+            "maximum": 1000000,
+            "minimum": 0,
+            "title": "Inventory",
+            "type": "integer"
+        },
+        "photoUrl": {
+            "anyOf": [
+                {
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The product's photo; null when it has none",
+            "title": "Photourl"
+        }
+    },
+    "required": [
+        "productId",
+        "name",
+        "price",
+        "quantity",
+        "inventory"
+    ],
+    "title": "CartScreenItemRow",
+    "type": "object",
+    "additionalProperties": false
+}

@@ -1,0 +1,79 @@
+{
+    "$defs": {
+        "CartLine": {
+            "description": "One product in a cart: only its id and how many. The name, price and\nstock are read from the product each time the cart is shown, so a cart\nnever shows a stale price.",
+            "properties": {
+                "productId": {
+                    "description": "The Products _id",
+                    "minLength": 1,
+                    "title": "Productid",
+                    "type": "string"
+                },
+                "quantity": {
+                    "description": "Units the customer wants",
+                    "maximum": 1000000,
+                    "minimum": 1,
+                    "title": "Quantity",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "productId",
+                "quantity"
+            ],
+            "title": "CartLine",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "A Carts document as stored.",
+    "properties": {
+        "_id": {
+            "description": "Document _id",
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "description": "Optimistic-lock version",
+            "title": "Version",
+            "type": "integer"
+        },
+        "customerId": {
+            "description": "The Customers _id",
+            "minLength": 1,
+            "title": "Customerid",
+            "type": "string"
+        },
+        "storeId": {
+            "description": "The Stores _id",
+            "minLength": 1,
+            "title": "Storeid",
+            "type": "string"
+        },
+        "items": {
+            "description": "The products, in the order they were added",
+            "items": {
+                "$ref": "#/$defs/CartLine"
+            },
+            "maxItems": 50,
+            "title": "Items",
+            "type": "array"
+        },
+        "updatedAt": {
+            "description": "Last changed",
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "_id",
+        "_version",
+        "customerId",
+        "storeId",
+        "updatedAt"
+    ],
+    "title": "CartView",
+    "type": "object",
+    "additionalProperties": false
+}

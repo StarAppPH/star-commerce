@@ -1,23 +1,29 @@
 'use client';
 import { useState } from 'react';
-import { ShoppingBagIcon } from 'lucide-react';
+import { ShoppingBagIcon, ShoppingCartIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChatCard, ProductPhoto, QuantityStepper, SentNote } from './ChatCard';
 import { formatMoney, nonEmpty } from './format';
+import { useOptionalShopCart } from '@/lib/ShopCartContext';
 import type { ComponentProps } from './types';
 
-// The products a shopper asked about: pick quantities, then order them
-// through the chat (the assistant places the order).
-export function ShopProductsCard({ component, answered, busy, onAnswer }: ComponentProps<'shopProducts'>) {
+// The products a shopper asked about: pick quantities and add them to the
+// cart (checked out from the cart in the shop's header, or in the chat).
+// A card answered before the cart (an order placed from it) says so.
+export function ShopProductsCard({ component, answered, busy }: ComponentProps<'shopProducts'>) {
+  const shopCart = useOptionalShopCart();
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const picked = component.products.filter((product) => (quantities[product._id] ?? 0) > 0);
   const total = picked.reduce((sum, product) => sum + product.price * (quantities[product._id] ?? 0), 0);
   const count = picked.reduce((sum, product) => sum + (quantities[product._id] ?? 0), 0);
 
-  const order = () => {
+  const working = busy || (shopCart?.busy ?? false);
+
+  const addToCart = async () => {
     const items = nonEmpty(picked.map((product) => ({ productId: product._id, quantity: quantities[product._id] ?? 0 })));
-    if (items) onAnswer({ kind: 'orderItems', formId: component.formId, items });
+    if (!items || !shopCart) return;
+    if (await shopCart.add(items)) setQuantities({});
   };
 
   return (
@@ -25,18 +31,19 @@ export function ShopProductsCard({ component, answered, busy, onAnswer }: Compon
       dataComponent="shopProductsCard"
       icon={<ShoppingBagIcon />}
       title={component.products.length === 1 ? '1 product' : `${component.products.length} products`}
-      footer={answered ? <SentNote text="Ordered in the chat" /> : (
+      footer={answered ? <SentNote text="Ordered in the chat" /> : shopCart ? (
         <>
           {count > 0 && (
             <span className="me-auto text-muted-foreground text-sm">
               {count} {count === 1 ? 'item' : 'items'} · {formatMoney(total, component.currency)}
             </span>
           )}
-          <Button data-component="shopProductsOrder" disabled={count === 0 || busy} onClick={order}>
-            Order {count > 0 ? `${count} ${count === 1 ? 'item' : 'items'}` : ''}
+          <Button data-component="shopProductsAddToCart" disabled={count === 0 || working} onClick={() => { void addToCart(); }}>
+            <ShoppingCartIcon />
+            Add {count > 0 ? `${count} ${count === 1 ? 'item' : 'items'} ` : ''}to cart
           </Button>
         </>
-      )}
+      ) : undefined}
     >
       <ul className="divide-y">
         {component.products.map((product) => {
@@ -58,13 +65,13 @@ export function ShopProductsCard({ component, answered, busy, onAnswer }: Compon
                   ) : null}
                 </span>
               </div>
-              {!answered && (
+              {!answered && shopCart && (
                 <QuantityStepper
                   dataComponent="shopProductsQuantity"
                   label={product.name}
                   value={quantities[product._id] ?? 0}
                   max={product.inventory}
-                  disabled={busy}
+                  disabled={working}
                   onChange={(value) => setQuantities((current) => ({ ...current, [product._id]: value }))}
                 />
               )}

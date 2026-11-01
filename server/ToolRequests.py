@@ -18,6 +18,7 @@ ADDING A NEW TOOL CLASS: define it in its actions module, under the route
 class, and add it to the ToolRequests bases below.
 """
 
+from actions.CartActions import CartTools
 from actions.FulfillmentActions import FulfillmentTools
 from actions.OrderActions import OrderTools
 from actions.PaymentActions import PaymentTools
@@ -30,7 +31,7 @@ from actions.StoreActions import StoreTools
 from actions.VoiceActions import VoiceTools
 
 
-class ToolRequests(StoreTools, ProductTools, OrderTools, PaymentTools,
-                   FulfillmentTools, ReturnTools, PolicyTools, VoiceTools,
-                   PhotoTools, ReportTools):
+class ToolRequests(StoreTools, ProductTools, OrderTools, CartTools,
+                   PaymentTools, FulfillmentTools, ReturnTools, PolicyTools,
+                   VoiceTools, PhotoTools, ReportTools):
     pass

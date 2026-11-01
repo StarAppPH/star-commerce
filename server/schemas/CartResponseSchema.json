@@ -1,0 +1,103 @@
+{
+    "$defs": {
+        "CartItemRow": {
+            "description": "One product of the customer's cart, with the product's current name,\nprice and stock.",
+            "properties": {
+                "productId": {
+                    "description": "The Products _id",
+                    "minLength": 1,
+                    "title": "Productid",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Product name",
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "price": {
+                    "description": "Unit price now, in the store's currency",
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "title": "Price",
+                    "type": "number"
+                },
+                "quantity": {
+                    "description": "Units in the cart",
+                    "maximum": 1000000,
+                    "minimum": 1,
+                    "title": "Quantity",
+                    "type": "integer"
+                },
+                "inventory": {
+                    "description": "Units free to sell now; 0 is sold out",
+                    "maximum": 1000000,
+                    "minimum": 0,
+                    "title": "Inventory",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "productId",
+                "name",
+                "price",
+                "quantity",
+                "inventory"
+            ],
+            "title": "CartItemRow",
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "description": "The customer's cart at the store, as the AI reads it.",
+    "properties": {
+        "currency": {
+            "description": "ISO 4217 code of every price in the cart",
+            "enum": [
+                "PHP",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "SGD",
+                "AUD",
+                "CAD",
+                "HKD",
+                "CNY",
+                "KRW",
+                "MYR",
+                "THB",
+                "IDR",
+                "VND",
+                "INR",
+                "AED"
+            ],
+            "title": "Currency",
+            "type": "string"
+        },
+        "items": {
+            "description": "The products still sold, in the order they were added",
+            "items": {
+                "$ref": "#/$defs/CartItemRow"
+            },
+            "maxItems": 50,
+            "title": "Items",
+            "type": "array"
+        },
+        "subtotal": {
+            "description": "Every item at its price now, times its quantity",
+            "minimum": 0,
+            "title": "Subtotal",
+            "type": "number"
+        }
+    },
+    "required": [
+        "currency",
+        "items",
+        "subtotal"
+    ],
+    "title": "CartResponse",
+    "type": "object",
+    "additionalProperties": false
+}

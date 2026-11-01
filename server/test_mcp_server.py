@@ -104,7 +104,12 @@ def test_eachAudienceListsOnlyItsTools():
                                               'getStorePolicy',
                                               'requestReturn', 'getMyReturns',
                                               'cancelMyReturn',
-                                              'addPaymentReference'}
+                                              'addPaymentReference',
+                                              'getMyCart', 'addToCart',
+                                              'setCartItemQuantity',
+                                              'removeFromCart',
+                                              'clearMyCart',
+                                              'checkoutMyCart'}
     assert asyncio.run(names('admin')) == {
         'getUserStore', 'createUserStore', 'addStoreProduct',
         'addStoreProducts', 'updateStoreProduct', 'listMyStoreProducts',

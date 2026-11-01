@@ -100,6 +100,13 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     # reads "<userId>:<turnKey>" with that userId).
     'getChatThinking',
     'speakChatThinking',
+    # The cart: the caller's own cart at the store (customerAtStore; its _id
+    # is "<userId>:<storeId>").
+    'getMyCart',
+    'addToCart',
+    'setCartItemQuantity',
+    'removeFromCart',
+    'clearMyCart',
 }
 
 # Every AI tool and the permission check its action reaches first (the tools
@@ -187,6 +194,15 @@ TOOL_PERMISSION_CHECKS = {
     # Store reports: only the orders and returns of the store the caller
     # owns (requireOwnerStore), its storeId in every $match.
     'storeReport': 'requireOwnerStore',
+    # The cart: only the caller's own cart at the connection's store
+    # (customerAtStore; its _id is "<userId>:<storeId>"); checkout places
+    # the order through createOrder.
+    'getMyCart': 'customerAtStore',
+    'addToCart': 'customerAtStore',
+    'setCartItemQuantity': 'customerAtStore',
+    'removeFromCart': 'customerAtStore',
+    'clearMyCart': 'customerAtStore',
+    'checkoutMyCart': 'customerAtStore',
 }
 
 # The functions an action may reach first to check its caller.
