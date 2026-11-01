@@ -847,9 +847,10 @@ class StoreTools():
         the default voice; getUserStore shows the voice saved). Never invent a style or a voice: use only
         what the owner said. If the owner asks you to pick the colors,
         suggest two that suit the store; if they want them from a logo or
-        image they attached, read them with findColorsInPhoto first. Confirm
-        every value with the owner before calling, unless they picked the
-        colors on its color card. Send only the fields the owner wants changed: a field left
+        image they attached, read them with findColorsInPhoto first. Call it
+        as soon as the owner names or picks a value (on the color card, or
+        the voice they chose): never ask them to confirm it; confirm only
+        colors you suggested yourself. Send only the fields the owner wants changed: a field left
         out keeps its value, and an empty one ("") clears it. If this tool
         refuses, relay its message to the owner and ask again."""
         return updateMyStoreTheme(StoreThemeResponse, userId, photoStyle,
