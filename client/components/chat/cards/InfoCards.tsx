@@ -90,11 +90,13 @@ export function policyRows(
   ];
 }
 
-// The store's policy: every answer, each delivery zone's own policy, and how
-// many questions that apply the store has not answered yet.
-export function PolicyCard({ component }: ComponentProps<'policy'>) {
+// The store's policy: every answer and each delivery zone's own policy. Only
+// the admin's card says how many questions that apply are not answered yet,
+// and that delivery has no zone: a customer sees only what the store said.
+export function PolicyCard({ component, variant }: ComponentProps<'policy'> & { variant: 'admin' | 'shop' }) {
+  const isAdmin = variant === 'admin';
   const rows = policyRows(component).filter((row) => policyQuestionApplies(row.question, component));
-  const open = unansweredPolicyQuestions(component);
+  const open = isAdmin ? unansweredPolicyQuestions(component) : 0;
   const money = (amount: number) => formatMoney(amount, component.currency);
   const zones = offersDelivery(component) ? component.deliveryZones ?? [] : [];
   const answeredRows = rows.filter((row) => row.value !== null);
@@ -118,13 +120,17 @@ export function PolicyCard({ component }: ComponentProps<'policy'>) {
             <dd data-component="policyCardDeliveryZone">{zoneRuleText(zone, component.currency)}</dd>
           </div>
         ))}
-        {missingDeliveryZones(component) && (
+        {isAdmin && missingDeliveryZones(component) && (
           <div className="contents">
             <dt className="text-muted-foreground">Delivery zones</dt>
             <dd data-component="policyCardNoDeliveryZones">None yet: no deliveries until you draw one</dd>
           </div>
         )}
-        {answeredRows.length === 0 && <p className="col-span-2 text-muted-foreground">Nothing answered yet.</p>}
+        {answeredRows.length === 0 && (
+          <p className="col-span-2 text-muted-foreground">
+            {isAdmin ? 'Nothing answered yet.' : 'The store hasn’t shared its policy yet.'}
+          </p>
+        )}
       </dl>
     </ChatCard>
   );

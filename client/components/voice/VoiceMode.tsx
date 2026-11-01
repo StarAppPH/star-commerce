@@ -526,6 +526,7 @@ export function VoiceMode({ open, onClose, ask, title, subtitle, glow, glowSecon
             {reply && <AssistantText text={reply} />}
             <ChatComponents
               components={forms}
+              variant={variant}
               place="below"
               answeredFormIds={NONE_ANSWERED}
               busy={state === 'thinking'}

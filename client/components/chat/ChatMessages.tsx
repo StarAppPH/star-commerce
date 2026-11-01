@@ -81,6 +81,7 @@ export function ChatMessages({
           {turn.status === 'done' && (
             <ChatComponents
               components={turn.components}
+              variant={variant}
               place="above"
               answeredFormIds={answeredFormIds}
               busy={busy}
@@ -91,6 +92,7 @@ export function ChatMessages({
           {turn.status === 'done' && (
             <ChatComponents
               components={turn.components}
+              variant={variant}
               place="below"
               answeredFormIds={answeredFormIds}
               busy={busy}

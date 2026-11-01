@@ -15,6 +15,8 @@ import type { ChatComponent, ChatFormAnswer } from './types';
 
 interface ChatComponentsProps {
   components: ChatComponent[];
+  // Whose chat: the admin's cards also say what the store has left unanswered.
+  variant: 'admin' | 'shop';
   // Above the reply's text, or below it.
   place: 'above' | 'below';
   answeredFormIds: ReadonlySet<string>;
@@ -34,7 +36,7 @@ function isAnswerable(component: ChatComponent): boolean {
 
 // The cards and forms of one assistant reply, on one side of its text. An
 // index is the component's position in the whole reply.
-export function ChatComponents({ components, place, answeredFormIds, busy, onAnswer }: ChatComponentsProps) {
+export function ChatComponents({ components, variant, place, answeredFormIds, busy, onAnswer }: ChatComponentsProps) {
   const placed = components
     .map((component, index) => ({ component, index }))
     .filter(({ component }) => isAnswerable(component) === (place === 'below'));
@@ -56,7 +58,7 @@ export function ChatComponents({ components, place, answeredFormIds, busy, onAns
           case 'checkout': return <CheckoutCard key={key} component={component} {...shared} />;
           case 'storeReturns': return <StoreReturnsCard key={key} component={component} {...shared} />;
           case 'myReturns': return <MyReturnsCard key={key} component={component} {...shared} />;
-          case 'policy': return <PolicyCard key={key} component={component} {...shared} />;
+          case 'policy': return <PolicyCard key={key} component={component} variant={variant} {...shared} />;
           case 'photos': return <PhotosCard key={key} component={component} {...shared} />;
           case 'productPhotoChoice': return <ProductPhotoChoiceCard key={key} component={component} {...shared} />;
           case 'photoColors': return <PhotoColorsCard key={key} component={component} {...shared} />;
