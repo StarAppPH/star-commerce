@@ -235,8 +235,9 @@ may skip any):
   returnShippingPaidBy ({_oneOf(ReturnShippingPayer)}); defectReportDays, how
   long a customer has to report a defective or wrong item;
 - then the rest: additionalTerms.
-Use only what the admin said, never guess, and confirm the answers with the
-admin before calling. Send only the fields the admin answered: a field left
+Use only what the admin said, never guess. Call it as soon as the admin's
+answer is clear ("cash only" is the payment methods): never read a clear
+answer back or ask for a yes; confirm only what you had to interpret. Send only the fields the admin answered: a field left
 out keeps its answer. To take an answer back, list the field in `clear`
 (never with a value too). returnWindowDays and defectReportDays count from
 the handover (pickup or delivery); handoverDays counts from payment. Amounts

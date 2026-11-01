@@ -21,6 +21,9 @@ export function PhotoColorsCard({ component, answered, busy, onAnswer }: Compone
   const [picked, setPicked] = useState<Record<Role, string | null>>({ primary: null, secondary: null });
   const [active, setActive] = useState<Role>('primary');
   const locked = answered || busy;
+  // Picking only marks the swatches: nothing is saved until the button is
+  // tapped, so once both are picked the hint points at it.
+  const bothPicked = picked.primary !== null && picked.secondary !== null;
   const title = component.focus && component.focusFound ? `Colors in the ${component.focus}` : 'Colors in your photo';
 
   function pick(hex: string) {
@@ -36,7 +39,12 @@ export function PhotoColorsCard({ component, answered, busy, onAnswer }: Compone
       title={title}
       footer={answered ? <SentNote text="Colors picked" /> : (
         <>
-          <span className="me-auto text-muted-foreground text-xs">Tap a slot, then a color.</span>
+          <span
+            data-component="photoColorsHint"
+            className={cn('me-auto text-xs', bothPicked ? 'font-medium text-foreground' : 'text-muted-foreground')}
+          >
+            {bothPicked ? 'Tap Use these colors to save them.' : 'Tap a slot, then a color.'}
+          </span>
           <Button
             data-component="photoColorsSend"
             disabled={(picked.primary === null && picked.secondary === null) || busy}
