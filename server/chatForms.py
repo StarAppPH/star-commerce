@@ -38,7 +38,8 @@ from actions.StoreActions import STORES, ownerQuery
 import geocoding
 import photoStorage
 from mongoDb import db
-from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_MESSAGE_MAX_LENGTH,
+from objects import (BRAND_COLOR_SUGGESTIONS_MAX, HEX_COLOR_PATTERN,
+                     CHAT_ATTACHMENT_EXTENSIONS, CHAT_MESSAGE_MAX_LENGTH,
                      PHOTOS_PER_CALL, PRODUCT_BATCH_MAX,
                      PRODUCT_DESCRIPTION_MAX_LENGTH, PRODUCT_INVENTORY_MAX,
                      PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
@@ -49,7 +50,8 @@ from utils import generateRandomString
 # ChatActions.CHAT_TURNS (ChatActions imports this module).
 CHAT_TURNS = 'ChatTurns'
 # The toolset of an admin whose store is not set up yet: the store's
-# details, and its brand colors read from a logo (findColorsInPhoto, the one
+# details, and its brand colors picked on the color picker
+# (showBrandColorsForm) or read from a logo (findColorsInPhoto, the one
 # tool that needs no set-up store).
 SETUP_TOOLSET = 'adminSetup'
 # Its tools (chatToolsCreator.py copies them from the admin's).
@@ -104,6 +106,7 @@ ANSWERS_TO = {
     'productPhoto': 'productPhotoChoice',
     'makeProductPhotos': 'productPhotoOffer',
     'brandColors': 'photoColors',
+    'brandColorsPicked': 'brandColorsForm',
     'placeOrder': 'checkoutSummary',
 }
 
@@ -186,6 +189,13 @@ class ShowDeliveryPinFormArgs(_Args):
 
 class ShowDeliveryZonesFormArgs(_Args):
     model_config = ConfigDict(title='showDeliveryZonesFormArguments')
+
+
+class ShowBrandColorsFormArgs(_Args):
+    model_config = ConfigDict(title='showBrandColorsFormArguments')
+    suggestions: list[str] | None = Field(
+        None, description=f'Up to {BRAND_COLOR_SUGGESTIONS_MAX} hex colors '
+        'like #1A73E8 that suit the store, shown as swatches to tap')
 
 
 class FormRefused(Exception):
@@ -319,6 +329,33 @@ def _deliveryZonesForm(userId: str, storeId: str,
     }
 
 
+def _suggestedColors(suggestions: list | None) -> list[str]:
+    """The model's suggestions the picker shows: the hex colors among
+    them, uppercase, each once, at most BRAND_COLOR_SUGGESTIONS_MAX
+    (anything else is dropped, never refused)."""
+    colors = []
+    for value in suggestions or []:
+        if not isinstance(value, str):
+            continue
+        value = value.strip().upper()
+        if re.fullmatch(HEX_COLOR_PATTERN, value) and value not in colors:
+            colors.append(value)
+    return colors[:BRAND_COLOR_SUGGESTIONS_MAX]
+
+
+def _brandColorsForm(userId: str, storeId: str,
+                     args: ShowBrandColorsFormArgs) -> dict:
+    # The store a sign-up creates (createEmptyStore) is there before setup.
+    store = _ownStore(userId, {'primaryColor': 1, 'secondaryColor': 1})
+    return {
+        'kind': 'brandColorsForm',
+        'formId': newFormId(),
+        'primaryColor': store.get('primaryColor'),
+        'secondaryColor': store.get('secondaryColor'),
+        'suggestions': _suggestedColors(args.suggestions),
+    }
+
+
 @dataclass(frozen=True)
 class FormTool:
     toolsets: tuple[str, ...]
@@ -413,6 +450,20 @@ FORM_TOOLS: dict[str, FormTool] = {
         'zones itself; their next message lists them: then ask, optionally, '
         'for deliveryAreas, a name for them all (e.g. Metro Manila).',
         ShowDeliveryZonesFormArgs, _deliveryZonesForm),
+    'showBrandColorsForm': FormTool(
+        ('admin', SETUP_TOOLSET),
+        "Open a color picker under your reply where the owner picks the "
+        "store's two brand colors, primary and secondary (the shop is drawn "
+        'in them): a color square, a hue slider and a hex field each. Give '
+        f'it up to {BRAND_COLOR_SUGGESTIONS_MAX} `suggestions`, hex colors '
+        'that suit what the store sells, shown as swatches to tap. Use it '
+        'whenever the brand colors are asked or changed, instead of asking '
+        'for hex codes in chat (a code the owner types in chat still '
+        'counts). Their picks come as their next message: that is their '
+        'choice, so take both at once, never asking to confirm them: while '
+        'the store is being set up, pass them to createUserStore; once it '
+        'is set up, save them with updateMyStoreTheme.',
+        ShowBrandColorsFormArgs, _brandColorsForm),
 }
 
 
@@ -732,6 +783,17 @@ def _brandColors(answer, component, userId) -> tuple[str, dict]:
                                        for role, color in picks}})
 
 
+def _brandColorsPicked(answer, component, userId) -> tuple[str, dict]:
+    """The color picker's two colors: any hex colors, not the same one."""
+    primary = answer.primaryColor.upper()
+    secondary = answer.secondaryColor.upper()
+    _unique([primary, secondary])
+    return (f'Use {primary} as the primary color and {secondary} as the '
+            'secondary color',
+            {'kind': 'brandColorsPicked', 'primaryColor': primary,
+             'secondaryColor': secondary})
+
+
 def _placeOrder(answer, component, userId) -> tuple[str, dict]:
     """The summary's Place order: checkoutMyCart with the fulfillment and
     delivery the card was priced on (checkoutMyCart prices the cart again,
@@ -799,6 +861,7 @@ _ANSWER_TURNS = {
     'productPhoto': _productPhoto,
     'makeProductPhotos': _makeProductPhotos,
     'brandColors': _brandColors,
+    'brandColorsPicked': _brandColorsPicked,
     'placeOrder': _placeOrder,
 }
 assert set(_ANSWER_TURNS) == set(ANSWERS_TO)

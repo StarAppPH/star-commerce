@@ -60,6 +60,9 @@ CHAT_PHOTO_URL_MAX_LENGTH = 2048
 
 FormId = Annotated[str, Field(min_length=1, max_length=CHAT_FORM_ID_MAX_LENGTH,
                               description='Answer it with this id')]
+HexColor = Annotated[str, Field(pattern=HEX_COLOR_PATTERN)]
+# The most colors a BrandColorsForm suggests.
+BRAND_COLOR_SUGGESTIONS_MAX = 6
 
 
 # ──────────────────────────────────────────────
@@ -481,12 +484,33 @@ class DeliveryZonesForm(ResponseModel):
         description='The areas drawn so far; empty: none')
 
 
+class BrandColorsForm(ResponseModel):
+    """Asks the admin for the store's two brand colors: a color picker
+    (a color square, a hue slider and a hex field) for each, with the
+    colors the model suggests as swatches. Answered with
+    BrandColorsPickedAnswer."""
+    kind: Literal['brandColorsForm'] = Field(..., description='The form')
+    formId: FormId
+    primaryColor: str | None = Field(
+        ..., pattern=HEX_COLOR_PATTERN,
+        description="The store's primary color the picker starts at; null "
+        'until it has one')
+    secondaryColor: str | None = Field(
+        ..., pattern=HEX_COLOR_PATTERN,
+        description="The store's secondary color the picker starts at; "
+        'null until it has one')
+    suggestions: list[HexColor] = Field(
+        ..., max_length=BRAND_COLOR_SUGGESTIONS_MAX,
+        description='Colors the model suggests for the store, shown as '
+        'swatches to tap; empty: none')
+
+
 ChatComponent = Annotated[Union[
     ShopProductsCard, StoreProductsCard, StoreOrdersCard, MyOrdersCard,
     CheckoutCard, CheckoutSummaryCard, StoreReturnsCard, MyReturnsCard, PolicyCard, PhotosCard,
     ProductPhotoChoiceCard, ProductPhotoOfferCard, PhotoColorsCard,
     StoreCard, LocationForm, NewProductsForm, PhoneVerificationForm,
-    PhotoRequestForm, DeliveryPinForm, DeliveryZonesForm,
+    PhotoRequestForm, DeliveryPinForm, DeliveryZonesForm, BrandColorsForm,
 ], Field(discriminator='kind')]
 
 
@@ -629,6 +653,17 @@ class BrandColorsAnswer(AppModel):
                                        description='The secondary color')
 
 
+class BrandColorsPickedAnswer(AppModel):
+    """A BrandColorsForm's picks: the store's two brand colors, any hex
+    colors, never the same one twice."""
+    kind: Literal['brandColorsPicked'] = Field(..., description='The answer')
+    formId: FormId
+    primaryColor: str = Field(..., pattern=HEX_COLOR_PATTERN,
+                              description='The primary color')
+    secondaryColor: str = Field(..., pattern=HEX_COLOR_PATTERN,
+                                description='The secondary color')
+
+
 class PlaceOrderAnswer(AppModel):
     """A CheckoutSummaryCard's Place order: check the cart out as the card
     showed it."""
@@ -643,5 +678,5 @@ ChatFormAnswer = (LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer
                   | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer
                   | DeliveryZonesAnswer | ProductPhotoAnswer
                   | ProductPhotoOfferAnswer | BrandColorsAnswer
-                  | PlaceOrderAnswer)
+                  | BrandColorsPickedAnswer | PlaceOrderAnswer)
 ChatFormAnswerTagged = Annotated[ChatFormAnswer, Field(discriminator='kind')]
