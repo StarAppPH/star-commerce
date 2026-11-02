@@ -36,7 +36,6 @@ const NAV = [
   { href: '#photos', label: 'Photos' },
   { href: '#features', label: 'Features' },
   { href: '#shoppers', label: 'For shoppers' },
-  { href: '#pricing', label: 'Pricing' },
   { href: '#faq', label: 'FAQ' },
 ];
 
@@ -58,50 +57,13 @@ const TRUST = [
   { title: 'Everything stays findable', body: 'Every chat is saved. Search them, reopen one, or start fresh with New chat.' },
 ];
 
-const PLANS = [
-  {
-    name: 'Free',
-    price: '₱0',
-    period: 'forever',
-    blurb: 'Open your store and make your first sales.',
-    cta: 'Start free',
-    featured: false,
-    features: [
-      'Your store link and shop chat',
-      'Up to 25 products',
-      '100 AI replies a month, yours and your customers’',
-      '15 AI product photos a month',
-      'Voice mode: 30 spoken replies a month',
-      'Cash, e-wallet and bank transfer payments',
-    ],
-  },
-  {
-    name: 'Pro',
-    price: '₱1,490',
-    period: 'a month',
-    blurb: 'For a store that sells every day.',
-    cta: 'Start free, upgrade any time',
-    featured: true,
-    features: [
-      'Everything in Free',
-      'Up to 2,000 products',
-      '1,000 AI replies a month',
-      '120 AI product photos a month',
-      'Voice mode: 150 spoken replies a month',
-      'Delivery zones, sales reports and store warnings',
-      'Need more? Add 500 replies for ₱400',
-    ],
-  },
-];
-
 const FAQ = [
   { q: 'Do my customers need to download anything?', a: 'No. They open your store link in their phone’s browser and chat. There’s no account. A text code confirms their number when they place an order.' },
   { q: 'How do the product photos work?', a: 'Send a phone photo of your product. You get 3 new photos of it, made in your brand colors: a clean catalog shot, one in use and a bold hero shot. You pick the one your shop shows, or keep your own.' },
   { q: 'How do my customers pay?', a: 'Cash, e-wallets such as GCash and Maya, or bank transfer, to your own accounts. The customer can send the reference and a photo of the receipt, and you confirm the payment in the chat.' },
   { q: 'What if a customer asks something I haven’t answered?', a: 'The assistant tells them the store hasn’t said and gives them your number. It never guesses a price, a stock count or a policy.' },
   { q: 'Does it change things on its own?', a: 'No. Before it completes an order, refunds, approves a return or changes a product, it shows you exactly what it will do and waits for you.' },
-  { q: 'What counts as an AI reply?', a: 'Each answer the assistant sends, to you or to a customer. Cards and buttons you tap inside that answer are part of it. Free includes 100 a month and Pro 1,000.' },
-  { q: 'How much does it cost?', a: 'Free is free for good, with 25 products and 100 AI replies a month. Pro is ₱1,490 a month for up to 2,000 products and 1,000 replies. No card is needed to start.' },
+  { q: 'How much does it cost?', a: 'It’s free while we’re in demo. Every store gets every feature, with no card needed.' },
 ];
 
 function SectionHeading({ eyebrow, title, id, body, center = false }: { eyebrow: string; title: string; id: string; body?: string; center?: boolean }) {
@@ -163,7 +125,7 @@ export default function LandingPage() {
                 <Button data-component="landingHeroSecondary" variant="outline" size="xl" render={<a href="#photos" />}>See what it makes</Button>
               </div>
               <ul aria-label="What you get" className="m-0 flex list-none flex-wrap justify-center gap-x-5 gap-y-1.5 p-0 text-muted-foreground text-sm">
-                {['Free plan, no card', 'Set up in one chat', 'No app for your customers'].map((point) => (
+                {['Free demo, no card', 'Set up in one chat', 'No app for your customers'].map((point) => (
                   <li key={point} className="flex items-center gap-1.5"><CheckIcon aria-hidden="true" className="size-4 text-teal-600" />{point}</li>
                 ))}
               </ul>
@@ -361,35 +323,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="pricing" aria-labelledby="pricingTitle" className="mx-auto flex max-w-6xl flex-col items-center gap-10 px-4 pt-12 pb-18 sm:px-6">
-          <SectionHeading eyebrow="Pricing" title="Start free. Upgrade when you’re busy." body="No card to start. Every plan has the shop chat, the product photos and voice." id="pricingTitle" center />
-          <div className="grid w-full max-w-4xl grid-cols-1 gap-4 md:grid-cols-2">
-            {PLANS.map((plan) => (
-              <div key={plan.name} className={plan.featured ? 'rounded-[22px] bg-primary p-1' : 'rounded-[22px] bg-muted/72 p-1'}>
-                {plan.featured && <span className="block px-4 py-1.5 font-medium text-primary-foreground text-xs">Recommended</span>}
-                <Card className="h-full">
-                  <CardPanel className="flex h-full flex-col gap-6 p-8">
-                    <div className="flex flex-col gap-1.5">
-                      <span className="font-semibold">{plan.name}</span>
-                      <span className="flex items-baseline gap-1.5">
-                        <span className="font-heading text-[44px] leading-none">{plan.price}</span>
-                        <span className="text-muted-foreground">{plan.period}</span>
-                      </span>
-                      <span className="text-muted-foreground">{plan.blurb}</span>
-                    </div>
-                    <ul className="m-0 flex flex-1 list-none flex-col gap-3 p-0">
-                      {plan.features.map((feature) => (
-                        <li key={feature} className="flex gap-2.5"><CheckIcon aria-hidden="true" className="mt-0.5 size-4.5 shrink-0" />{feature}</li>
-                      ))}
-                    </ul>
-                    <Button data-component={`landingPricing${plan.name}Cta`} size="xl" variant={plan.featured ? 'default' : 'outline'} render={<Link href={CTA_HREF} />}>{plan.cta}</Button>
-                  </CardPanel>
-                </Card>
-              </div>
-            ))}
-          </div>
-        </section>
-
         <section id="faq" aria-labelledby="faqTitle" className="mx-auto flex max-w-3xl flex-col gap-7 px-4 pt-12 pb-24 sm:px-6">
           <h2 id="faqTitle" className="m-0 text-center font-heading font-normal text-4xl leading-[1.1] sm:text-[44px]">Questions</h2>
           <div className="flex flex-col rounded-2xl border">
@@ -410,7 +343,7 @@ export default function LandingPage() {
             <h2 id="ctaTitle" className="m-0 max-w-2xl text-balance font-heading font-normal text-[clamp(34px,5vw,54px)] leading-[1.08]">Open your store today. Sell by tonight.</h2>
             <p className="m-0 max-w-lg text-lg text-neutral-300 leading-relaxed">Sign in with Google, chat your store into shape, send a photo of your products, and share your link.</p>
             <CtaButton dataComponent="landingFooterCta" variant="outline" />
-            <span className="text-neutral-400 text-sm">Free plan · No card needed</span>
+            <span className="text-neutral-400 text-sm">Free demo · No card needed</span>
           </div>
         </section>
       </main>
@@ -427,7 +360,7 @@ export default function LandingPage() {
       <div data-component="landingMobileCtaBar" className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t bg-background/95 px-4 py-3 backdrop-blur sm:hidden">
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate font-medium text-sm">Your store, as a chat</span>
-          <span className="text-muted-foreground text-xs">Free plan · No card</span>
+          <span className="text-muted-foreground text-xs">Free demo · No card</span>
         </span>
         <Button data-component="landingMobileCta" render={<Link href={CTA_HREF} />}>Start free<ArrowRightIcon aria-hidden="true" /></Button>
       </div>
