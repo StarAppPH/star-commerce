@@ -1,7 +1,10 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { FirebaseError } from 'firebase/app';
-import { RecaptchaVerifier, linkWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
+import {
+  PhoneAuthProvider, RecaptchaVerifier, linkWithPhoneNumber, signInWithCredential,
+  type ConfirmationResult, type User,
+} from 'firebase/auth';
 import { SmartphoneIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
@@ -32,9 +35,7 @@ function phoneProblem(error: unknown): string {
   if (code === 'auth/invalid-verification-code') return 'That code is not the one we sent. Check it and try again.';
   if (code === 'auth/code-expired') return 'That code expired. Send a new one.';
   if (code === 'auth/too-many-requests') return 'Too many tries. Wait a little, then try again.';
-  if (code === 'auth/credential-already-in-use' || code === 'auth/account-exists-with-different-credential') {
-    return 'That number is already used by another visitor.';
-  }
+  if (code === 'auth/account-exists-with-different-credential') return 'That number is already used by another visitor.';
   return 'We couldn’t verify your number. Try again.';
 }
 
@@ -88,13 +89,43 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
     }
   };
 
+  // A number already linked to another account is a returning customer's
+  // (their earlier guest, on another device or before the site data was
+  // cleared): sign in as that account with the same code instead.
+  // verifyCustomerPhone then gives it this guest's chats here, and its cart
+  // when it was used last; `guestIdToken` proves we were this guest.
+  const signInAsReturningCustomer = async (error: unknown, newGuest: User): Promise<{ user: User; guestIdToken: string } | null> => {
+    if (!guest || !(error instanceof FirebaseError) || error.code !== 'auth/credential-already-in-use') throw error;
+    const phoneCredential = PhoneAuthProvider.credentialFromError(error);
+    if (!phoneCredential) throw error;
+    // Read before the switch, while this guest is still signed in.
+    const guestIdToken = await newGuest.getIdToken();
+    const { user } = await signInWithCredential(guestAuth, phoneCredential);
+    if (!(await guest.restart())) {
+      showSnackbar('We couldn’t open your account. Reload the page and try again.', 'error');
+      return null;
+    }
+    return { user, guestIdToken };
+  };
+
   const confirm = async () => {
-    if (!confirmation || !guest) return;
+    const newGuest = guestAuth.currentUser;
+    if (!confirmation || !guest || !newGuest) return;
     setWorking(true);
     try {
-      const credential = await confirmation.confirm(code.trim());
-      const idToken = await credential.user.getIdToken(true);
-      const res = await guest.guestRequest((session) => server.verifyCustomerPhone(session.customerId, idToken));
+      let user: User;
+      let guestIdToken: string | null = null;
+      try {
+        user = (await confirmation.confirm(code.trim())).user;
+      } catch (error) {
+        const returning = await signInAsReturningCustomer(error, newGuest);
+        if (!returning) return;
+        ({ user, guestIdToken } = returning);
+      }
+      const idToken = await user.getIdToken(true);
+      const res = await guest.guestRequest((session) => server.verifyCustomerPhone(
+        session.customerId, idToken, guestIdToken ? session.store.id : null, guestIdToken,
+      ));
       showApiResponseSnackbar(res);
       if (res.status === 200) onAnswer({ kind: 'phoneVerified', formId: component.formId });
     } catch (error) {

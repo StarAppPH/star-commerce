@@ -224,7 +224,7 @@ import type { WaitingOnYouResponse } from '../schemas/WaitingOnYouResponseSchema
         }
     }
 
-    async verifyCustomerPhone(userId: string, idToken: string): Promise<ApiResponse<NoContentResponse>> {
+    async verifyCustomerPhone(userId: string, idToken: string, storeId: string | null, guestIdToken: string | null): Promise<ApiResponse<NoContentResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/verifyCustomerPhone`, {
             method: 'POST',
@@ -232,7 +232,7 @@ import type { WaitingOnYouResponse } from '../schemas/WaitingOnYouResponseSchema
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
-            body: JSON.stringify({"userId": userId, "idToken": idToken}),
+            body: JSON.stringify({"userId": userId, "idToken": idToken, "storeId": storeId, "guestIdToken": guestIdToken}),
             cache: 'no-store'
         });
         const data: ApiResponse<NoContentResponse> & { msg?: string } = await res.json();
@@ -629,7 +629,7 @@ export interface RouteRequestBodies {
     setMyDeliveryZones: { userId: string; zones: NewDeliveryZone[] };
     resetMyStore: { userId: string; confirmName: string };
     startGuestSession: { idToken: string; storeSlug: string };
-    verifyCustomerPhone: { userId: string; idToken: string };
+    verifyCustomerPhone: { userId: string; idToken: string; storeId: string | null; guestIdToken: string | null };
     getMyCart: { userId: string; storeId: string };
     addToCart: { userId: string; storeId: string; items: NewOrderItem[] };
     setCartItemQuantity: { userId: string; storeId: string; productId: string; quantity: number };

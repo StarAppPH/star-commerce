@@ -794,6 +794,199 @@ def test_verifyCustomerPhone_refusesAnAdmin(clean, firebase):
     assert db.read({}, 'Customers') == []
 
 
+# ------------------- a returning customer on a new guest ------------------- #
+
+VISIT_COLLECTIONS = ['Carts', 'Conversations', 'ChatTurns']
+EARLIER = datetime.datetime(2026, 11, 1, 8, tzinfo=datetime.timezone.utc)
+LATER = datetime.datetime(2026, 11, 2, 8, tzinfo=datetime.timezone.utc)
+
+
+PHONE_TOKEN = 'sc-phone-token'
+GUEST_TOKEN = 'sc-new-guest-token'
+
+
+@pytest.fixture
+def visit(clean, firebase, monkeypatch):
+    """A store, its returning customer GUEST and their new anonymous guest
+    OTHER_GUEST. PHONE_TOKEN is GUEST signed in with their number,
+    GUEST_TOKEN the new guest's own token (`tokens` changes either). Yields
+    the store's _id and the tokens."""
+    import AuthHandler as AuthHandlerModule
+    wipeCollections(VISIT_COLLECTIONS)
+    storeId = createTestStore(ADMIN)['_id']
+    _guestSession(firebase)
+    _guestSession(firebase, OTHER_GUEST)
+    tokens = {PHONE_TOKEN: guestClaims(GUEST, provider='phone',
+                                       phoneNumber=PHONE),
+              GUEST_TOKEN: guestClaims(OTHER_GUEST)}
+
+    def decode(idToken, projectId):
+        if idToken not in tokens:
+            raise ValueError('Could not verify the token')
+        return tokens[idToken]
+
+    monkeypatch.setattr(AuthHandlerModule, '_decodeFirebaseIdToken', decode)
+    yield storeId, tokens
+    wipeCollections(VISIT_COLLECTIONS)
+
+
+def _returnAs(visit, guestIdToken=GUEST_TOKEN, userId=GUEST) -> dict:
+    """The returning customer verifies their number, taking over the visit
+    of the guest of `guestIdToken`."""
+    storeId, _ = visit
+    return api.verifyCustomerPhone(userId, PHONE_TOKEN, storeId, guestIdToken)
+
+
+def _cart(customerId: str, storeId: str, productId: str, quantity: int,
+          updatedAt: datetime.datetime) -> None:
+    db.create({'_id': f'{customerId}:{storeId}', 'customerId': customerId,
+               'storeId': storeId,
+               'items': [{'productId': productId, 'quantity': quantity}],
+               'updatedAt': updatedAt, '_version': 0}, 'Carts')
+
+
+def _cartOf(customerId: str, storeId: str) -> dict | None:
+    return db.read({'_id': f'{customerId}:{storeId}'}, 'Carts', findOne=True)
+
+
+def _conversation(conversationId: str, userId: str, storeId: str,
+                  turns: int) -> None:
+    db.create({'_id': conversationId, 'userId': userId, 'storeId': storeId,
+               'audience': 'customer', 'turnCount': turns,
+               'createdAt': EARLIER, 'lastMessageAt': EARLIER,
+               'busyUntil': None, '_version': 0}, 'Conversations')
+    for seq in range(turns):
+        db.create({'_id': f'{conversationId}-{seq}',
+                   'conversationId': conversationId, 'userId': userId,
+                   'storeId': storeId, 'seq': seq, '_version': 0},
+                  'ChatTurns')
+
+
+def test_verifyCustomerPhone_aReturningCustomer_getsTheGuestsCartUsedLast(
+        visit):
+    storeId, _ = visit
+    _cart(GUEST, storeId, 'own-product', 2, EARLIER)
+    _cart(OTHER_GUEST, storeId, 'guest-product', 1, LATER)
+
+    res = _returnAs(visit)
+
+    assertExactShape(NoContentResponse, res)
+    assert _storedPhone() == PHONE
+    cart = _cartOf(GUEST, storeId)
+    assert cart['items'] == [{'productId': 'guest-product', 'quantity': 1}]
+    assert cart['updatedAt'] == LATER
+    assert cart['_version'] == 1
+    assert _cartOf(OTHER_GUEST, storeId) is None
+
+
+def test_verifyCustomerPhone_aReturningCustomer_keepsTheOwnCartUsedLast(
+        visit):
+    storeId, _ = visit
+    _cart(GUEST, storeId, 'own-product', 2, LATER)
+    _cart(OTHER_GUEST, storeId, 'guest-product', 1, EARLIER)
+
+    _returnAs(visit)
+
+    cart = _cartOf(GUEST, storeId)
+    assert cart['items'] == [{'productId': 'own-product', 'quantity': 2}]
+    assert cart['_version'] == 0
+    assert _cartOf(OTHER_GUEST, storeId) is None
+
+
+def test_verifyCustomerPhone_aReturningCustomerWithoutACart_getsTheGuests(
+        visit):
+    storeId, _ = visit
+    _cart(OTHER_GUEST, storeId, 'guest-product', 3, EARLIER)
+
+    _returnAs(visit)
+
+    cart = _cartOf(GUEST, storeId)
+    assert cart['customerId'] == GUEST
+    assert cart['storeId'] == storeId
+    assert cart['items'] == [{'productId': 'guest-product', 'quantity': 3}]
+    assert _cartOf(OTHER_GUEST, storeId) is None
+
+
+def test_verifyCustomerPhone_aGuestWithoutACart_leavesTheOwnCart(visit):
+    storeId, _ = visit
+    _cart(GUEST, storeId, 'own-product', 2, EARLIER)
+
+    _returnAs(visit)
+
+    assert _cartOf(GUEST, storeId)['items'] == [
+        {'productId': 'own-product', 'quantity': 2}]
+
+
+def test_verifyCustomerPhone_aReturningCustomer_getsTheGuestsChatsHereOnly(
+        visit):
+    storeId, _ = visit
+    _conversation('guest-here', OTHER_GUEST, storeId, 2)
+    _conversation('guest-elsewhere', OTHER_GUEST, 'another-store', 1)
+    _conversation('own-here', GUEST, storeId, 1)
+
+    _returnAs(visit)
+
+    def owner(collection, _id):
+        return db.read({'_id': _id}, collection, findOne=True)['userId']
+    assert owner('Conversations', 'guest-here') == GUEST
+    assert owner('ChatTurns', 'guest-here-0') == GUEST
+    assert owner('ChatTurns', 'guest-here-1') == GUEST
+    assert owner('Conversations', 'guest-elsewhere') == OTHER_GUEST
+    assert owner('ChatTurns', 'guest-elsewhere-0') == OTHER_GUEST
+    assert owner('Conversations', 'own-here') == GUEST
+
+
+@pytest.mark.parametrize('guestClaimsNow', [
+    lambda: guestClaims(OTHER_GUEST, provider='phone', phoneNumber=PHONE),
+    lambda: guestClaims(GUEST),
+])
+def test_verifyCustomerPhone_refusesAGuestTokenOfNoOtherGuest(
+        visit, guestClaimsNow):
+    storeId, tokens = visit
+    tokens[GUEST_TOKEN] = guestClaimsNow()
+    _cart(OTHER_GUEST, storeId, 'guest-product', 1, LATER)
+
+    with pytest.raises(PermissionError, match='^That sign-in is not a guest'):
+        _returnAs(visit)
+    assert _storedPhone() is None
+    assert _cartOf(GUEST, storeId) is None
+    assert _cartOf(OTHER_GUEST, storeId) is not None
+
+
+def test_verifyCustomerPhone_refusesAGuestTokenThatDoesNotVerify(visit):
+    storeId, _ = visit
+    _cart(OTHER_GUEST, storeId, 'guest-product', 1, LATER)
+
+    with pytest.raises(PermissionError,
+                       match='^Sign-in could not be verified'):
+        _returnAs(visit, guestIdToken='sc-forged-token')
+    assert _storedPhone() is None
+    assert _cartOf(OTHER_GUEST, storeId) is not None
+
+
+@pytest.mark.parametrize('storeId, guestIdToken', [
+    (None, GUEST_TOKEN), ('', GUEST_TOKEN), ('a-store', None),
+    ('a-store', ''),
+])
+def test_verifyCustomerPhone_needsTheStoreAndTheGuestTokenTogether(
+        visit, storeId, guestIdToken):
+    with pytest.raises(ValueError, match='^Send both storeId and guestIdToken'):
+        api.verifyCustomerPhone(GUEST, PHONE_TOKEN, storeId, guestIdToken)
+    assert _storedPhone() is None
+
+
+def test_verifyCustomerPhone_withNeitherStoreNorGuest_takesOverNothing(
+        visit):
+    storeId, _ = visit
+    _cart(OTHER_GUEST, storeId, 'guest-product', 1, LATER)
+
+    api.verifyCustomerPhone(GUEST, PHONE_TOKEN, '', '')
+
+    assert _storedPhone() == PHONE
+    assert _cartOf(GUEST, storeId) is None
+    assert _cartOf(OTHER_GUEST, storeId) is not None
+
+
 # ------------------------- the getUserStore route ------------------------- #
 
 
