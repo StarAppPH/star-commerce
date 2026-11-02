@@ -32,6 +32,10 @@ export type Price = number;
  */
 export type Inventory = number;
 /**
+ * Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)
+ */
+export type Hasinventory = boolean;
+/**
  * The Orders _id
  */
 export type Orderid = string;
@@ -39,6 +43,10 @@ export type Orderid = string;
  * Units the order holds
  */
 export type Quantity = number;
+/**
+ * Whether the units came out of inventory: false for a product with hasInventory false, so a cancel puts nothing back (missing in documents stored before: true)
+ */
+export type Tracked = boolean;
 /**
  * Units orders are holding
  */
@@ -70,6 +78,10 @@ export type Photourl = string | null;
  * releasing units included) must also $inc _version, or
  * updateStoreProduct's _version lock misses it and the admin's save
  * overwrites it.
+ *
+ * hasInventory false: customers order unlimited units; inventory stays 0
+ * and no order moves it. Documents stored before hasInventory read as
+ * true: every query matches {'hasInventory': {'$ne': False}}.
  */
 export interface Product {
   _id?: Id;
@@ -80,6 +92,7 @@ export interface Product {
   description?: Description;
   price: Price;
   inventory: Inventory;
+  hasInventory?: Hasinventory;
   reservedInventory?: Reservedinventory;
   soldCount?: Soldcount;
   isAvailable?: Isavailable;
@@ -92,4 +105,5 @@ export interface Product {
 export interface ReservedInventory {
   orderId: Orderid;
   quantity: Quantity;
+  tracked?: Tracked;
 }

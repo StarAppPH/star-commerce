@@ -67,6 +67,10 @@ export type Price = number;
  */
 export type Inventory = number;
 /**
+ * Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)
+ */
+export type Hasinventory = boolean;
+/**
  * Its photo; null when it has none
  */
 export type Photourl = string | null;
@@ -117,6 +121,10 @@ export type Price1 = number;
  * Units free to sell
  */
 export type Inventory1 = number;
+/**
+ * Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)
+ */
+export type Hasinventory1 = boolean;
 /**
  * Units unpaid orders hold
  */
@@ -1263,6 +1271,10 @@ export type Price5 = number | null;
  */
 export type Inventory2 = number | null;
 /**
+ * Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)
+ */
+export type Hasinventory2 = boolean;
+/**
  * What it is
  */
 export type Description2 = string | null;
@@ -1625,6 +1637,7 @@ export interface ChatShopProductRow {
   description: Description;
   price: Price;
   inventory: Inventory;
+  hasInventory?: Hasinventory;
   photoUrl: Photourl;
 }
 /**
@@ -1643,6 +1656,7 @@ export interface ChatStoreProductRow {
   name: Name1;
   price: Price1;
   inventory: Inventory1;
+  hasInventory?: Hasinventory1;
   reservedQuantity: Reservedquantity;
   isAvailable: Isavailable;
   soldCount: Soldcount;
@@ -2052,6 +2066,7 @@ export interface ChatProductDraft {
   name: Name7;
   price: Price5;
   inventory: Inventory2;
+  hasInventory?: Hasinventory2;
   description: Description2;
 }
 /**

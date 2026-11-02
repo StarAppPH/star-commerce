@@ -13,6 +13,10 @@ export type Orderid = string;
  * Units the order holds
  */
 export type Quantity = number;
+/**
+ * Whether the units came out of inventory: false for a product with hasInventory false, so a cancel puts nothing back (missing in documents stored before: true)
+ */
+export type Tracked = boolean;
 
 /**
  * Units of a product an order is holding (taken out of inventory).
@@ -20,4 +24,5 @@ export type Quantity = number;
 export interface ReservedInventory {
   orderId: Orderid;
   quantity: Quantity;
+  tracked?: Tracked;
 }

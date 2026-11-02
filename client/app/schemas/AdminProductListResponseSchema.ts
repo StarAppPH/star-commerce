@@ -47,6 +47,10 @@ export type Price = number;
  */
 export type Inventory = number;
 /**
+ * Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)
+ */
+export type Hasinventory = boolean;
+/**
  * Units orders are holding, all orders summed
  */
 export type Reservedquantity = number;
@@ -87,6 +91,7 @@ export interface AdminProductListRow {
   description: Description;
   price: Price;
   inventory: Inventory;
+  hasInventory: Hasinventory;
   reservedQuantity: Reservedquantity;
   isAvailable: Isavailable;
   soldCount: Soldcount;

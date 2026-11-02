@@ -37,6 +37,11 @@
                     "title": "Inventory",
                     "type": "integer"
                 },
+                "hasInventory": {
+                    "description": "Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)",
+                    "title": "Hasinventory",
+                    "type": "boolean"
+                },
                 "photoUrl": {
                     "anyOf": [
                         {
@@ -57,7 +62,8 @@
                 "name",
                 "price",
                 "quantity",
-                "inventory"
+                "inventory",
+                "hasInventory"
             ],
             "title": "CartScreenItemRow",
             "type": "object",
