@@ -3,13 +3,13 @@ import { useRef, useState } from 'react';
 import Image from 'next/image';
 import { ImageUpIcon, ReceiptTextIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/lib/AuthContext';
 import { guestAuth, guestStorage } from '@/lib/guestFirebase';
 import { useOptionalGuestSession } from '@/lib/GuestSessionContext';
 import { useServer } from '@/lib/ServerContext';
 import { useSnackbar } from '@/lib/SnackbarContext';
 import { PHOTO_ACCEPT, photoProblem, uploadOwnPhoto } from './photoUpload';
+import { PhotoDialog } from '../PhotoDialog';
 
 // The shopper sends a photo of the receipt of a payment made by hand: it goes
 // to their own folder, and the server keeps a copy only the store reads.
@@ -106,26 +106,14 @@ export function ViewReceiptButton({ orderId }: { orderId: string }) {
         <ReceiptTextIcon />
         View receipt
       </Button>
-      <Dialog open={image !== null} onOpenChange={(next) => { if (!next) setImage(null); }}>
-        <DialogPopup data-component="storeOrdersReceiptDialog">
-          <DialogHeader>
-            <DialogTitle>Payment receipt</DialogTitle>
-          </DialogHeader>
-          <DialogPanel>
-            {image !== null && (
-              <Image
-                src={image}
-                alt="The customer’s payment receipt"
-                width={1600}
-                height={1600}
-                // eslint-disable-next-line no-restricted-syntax -- a data: URL from getPaymentReceipt: the receipt is in no place a server can fetch it from
-                unoptimized
-                className="h-auto max-h-[70vh] w-full object-contain"
-              />
-            )}
-          </DialogPanel>
-        </DialogPopup>
-      </Dialog>
+      <PhotoDialog
+        open={image !== null}
+        onOpenChange={(next) => { if (!next) setImage(null); }}
+        title="Payment receipt"
+        src={image}
+        alt="The customer’s payment receipt"
+        dataComponent="storeOrdersReceiptDialog"
+      />
     </>
   );
 }

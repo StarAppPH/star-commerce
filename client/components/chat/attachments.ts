@@ -80,9 +80,9 @@ export async function uploadChatFiles(storage: FirebaseStorage, uid: string, fil
 // the chat opened again tries it again.
 const fileUrls = new Map<string, Promise<string>>();
 
-// The download URL of the user's own chat file at `path`, read with the
-// chat's own storage (the rules let only the owner read it).
-export function chatFileUrl(storage: FirebaseStorage, path: string): Promise<string> {
+// The download URL of the user's own file at `path`, read with the storage
+// the user signed in to (the rules let only the owner read it).
+export function ownFileUrl(storage: FirebaseStorage, path: string): Promise<string> {
   const key = `${storage.app.name}:${path}`;
   const known = fileUrls.get(key);
   if (known) return known;

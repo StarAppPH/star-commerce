@@ -4,7 +4,7 @@ import { useGuestSession, type GuestSession } from '@/lib/GuestSessionContext';
 import { useServer } from '@/lib/ServerContext';
 import { guestAuth, guestStorage } from '@/lib/guestFirebase';
 import type { ChatTransport } from '@/components/chat/useChat';
-import { chatFileUrl, uploadChatFiles } from '@/components/chat/attachments';
+import { ownFileUrl, uploadChatFiles } from '@/components/chat/attachments';
 import { CONVERSATIONS_PAGE, useConversationList, type ConversationList } from '@/components/chat/useConversationList';
 
 interface ShopWorkspaceValue extends ConversationList {
@@ -41,7 +41,7 @@ export function ShopWorkspaceProvider({ session, children }: { session: GuestSes
       if (!user) return Promise.reject(new Error('No guest session'));
       return uploadChatFiles(guestStorage, user.uid, files);
     },
-    fileUrl: (path) => chatFileUrl(guestStorage, path),
+    fileUrl: (path) => ownFileUrl(guestStorage, path),
     loadTurns: (conversationId, beforeSeq, limit) => guestRequest((current) => server.getConversationTurns(
       current.customerId, conversationId, beforeSeq, limit,
     )),

@@ -4,13 +4,13 @@ import Image from 'next/image';
 import { FileTextIcon, ImageIcon, RotateCwIcon } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { formatStoreTime } from '@/lib/storeTime';
 import { AssistantText } from './AssistantText';
 import { ChatComponents } from './cards/ChatComponents';
+import { PhotoDialog } from './PhotoDialog';
 import type { ChatFormAnswer } from './cards/types';
 import type { TurnFile } from './attachments';
 import type { ChatTurnView } from './useChat';
@@ -127,12 +127,21 @@ export function ChatMessages({
 
 // The files a turn's message carried: a photo as itself, a PDF by name.
 function TurnFiles({ files, fileUrl }: { files: TurnFile[]; fileUrl: (path: string) => Promise<string> }) {
+  // One photo shows large; several share the row smaller.
+  const photos = files.filter((file) => file.contentType !== 'application/pdf').length;
   return (
     <div data-component="chatTurnFiles" className="flex max-w-[85%] flex-wrap justify-end gap-2 self-end">
       {files.map((file, index) => (
         file.contentType === 'application/pdf'
           ? <FileChip key={`${file.name}-${index}`} file={file} />
-          : <TurnPhoto key={`${file.path ?? file.url ?? file.name}-${index}`} file={file} fileUrl={fileUrl} />
+          : (
+            <TurnPhoto
+              key={`${file.path ?? file.url ?? file.name}-${index}`}
+              file={file}
+              fileUrl={fileUrl}
+              sizeClass={photos > 1 ? 'size-24 sm:size-32' : 'size-40 sm:size-48'}
+            />
+          )
       ))}
     </div>
   );
@@ -148,12 +157,15 @@ function FileChip({ file }: { file: TurnFile }) {
   );
 }
 
-const THUMBNAIL_CLASS = 'size-40 rounded-xl sm:size-48';
-
 // A photo the message carried: a thumbnail that opens the full photo. Its
 // URL is read from Storage when it has none yet; a photo that can't be read
 // (refused, deleted, offline) shows as its name.
-function TurnPhoto({ file, fileUrl }: { file: TurnFile; fileUrl: (path: string) => Promise<string> }) {
+function TurnPhoto({ file, fileUrl, sizeClass }: {
+  file: TurnFile;
+  fileUrl: (path: string) => Promise<string>;
+  // The thumbnail's size, by how many photos the message carried.
+  sizeClass: string;
+}) {
   const [resolved, setResolved] = useState<{ path: string; url: string | null } | null>(null);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState(false);
@@ -172,7 +184,7 @@ function TurnPhoto({ file, fileUrl }: { file: TurnFile; fileUrl: (path: string) 
   const url = file.url ?? (resolved !== null && resolved.path === path ? resolved.url : undefined);
   if (failed || url === null || (url === undefined && path === null)) return <FileChip file={file} />;
   if (url === undefined) {
-    return <Skeleton data-component="chatTurnFilePhotoLoading" className={THUMBNAIL_CLASS} aria-label={`Loading ${file.name}`} />;
+    return <Skeleton data-component="chatTurnFilePhotoLoading" role="img" className={cn('rounded-xl', sizeClass)} aria-label={`Loading ${file.name}`} />;
   }
 
   return (
@@ -180,7 +192,7 @@ function TurnPhoto({ file, fileUrl }: { file: TurnFile; fileUrl: (path: string) 
       <button
         type="button"
         data-component="chatTurnFilePhoto"
-        className={cn('relative overflow-hidden border bg-muted focus-visible:outline-2 focus-visible:outline-ring', THUMBNAIL_CLASS)}
+        className={cn('relative overflow-hidden rounded-xl border bg-muted focus-visible:outline-2 focus-visible:outline-ring', sizeClass)}
         onClick={() => setOpen(true)}
         aria-label={`Open ${file.name}`}
         title={file.name}
@@ -189,28 +201,23 @@ function TurnPhoto({ file, fileUrl }: { file: TurnFile; fileUrl: (path: string) 
           src={url}
           alt={file.name}
           fill
-          sizes="192px"
+          // A private chat photo is never sent through the optimizer: its
+          // tokened URL would land in Vercel's logs and a cached copy would
+          // outlive its deletion (resetMyStore).
+          // eslint-disable-next-line no-restricted-syntax
+          unoptimized
           className="object-cover"
           onError={() => setFailed(true)}
         />
       </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogPopup data-component="chatTurnFileDialog">
-          <DialogHeader>
-            <DialogTitle className="truncate">{file.name}</DialogTitle>
-          </DialogHeader>
-          <DialogPanel>
-            <Image
-              src={url}
-              alt={file.name}
-              width={1600}
-              height={1600}
-              sizes="(max-width: 640px) 100vw, 600px"
-              className="h-auto max-h-[70vh] w-full object-contain"
-            />
-          </DialogPanel>
-        </DialogPopup>
-      </Dialog>
+      <PhotoDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={file.name}
+        src={url}
+        alt={file.name}
+        dataComponent="chatTurnFileDialog"
+      />
     </>
   );
 }
