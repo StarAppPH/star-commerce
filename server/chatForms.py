@@ -448,7 +448,9 @@ FORM_TOOLS: dict[str, FormTool] = {
         'chat: never ask for a zone\'s policy in chat. A store that delivers '
         'takes no delivery order until it has a zone. The map saves the '
         'zones itself; their next message lists them: then ask, optionally, '
-        'for deliveryAreas, a name for them all (e.g. Metro Manila).',
+        'how the store delivers (deliveryMethod, in their own words, e.g. '
+        'own rider or a courier) and for deliveryAreas, a name for them all '
+        '(e.g. Metro Manila).',
         ShowDeliveryZonesFormArgs, _deliveryZonesForm),
     'showBrandColorsForm': FormTool(
         ('admin', SETUP_TOOLSET),

@@ -227,9 +227,11 @@ may skip any):
   order and an order total from which delivery is free), drawn and set on
   a map (in the chat, showDeliveryZonesForm; never asked as text or saved
   with this tool): a store that delivers takes no delivery order until it
-  has a zone; then deliveryAreas, an optional name for them all (e.g. Metro
-  Manila); handoverDays, the days from payment until a pickup order is
-  ready (a delivery takes its zone's days);
+  has a zone; then deliveryMethod, how the store delivers in the admin's
+  own words (e.g. own rider, a courier such as Lalamove), and deliveryAreas,
+  a name for the zones (e.g. Metro Manila), both optional (ask once, move on
+  when skipped); handoverDays, the days from payment until a pickup order
+  is ready (a delivery takes its zone's days);
 - returns: acceptsReturns; if so, returnWindowDays, returnConditions,
   nonReturnableItems, refundMethod ({_oneOf(RefundMethod)}) and
   returnShippingPaidBy ({_oneOf(ReturnShippingPayer)}); defectReportDays, how
@@ -243,7 +245,8 @@ out keeps its answer. To take an answer back, list the field in `clear`
 the handover (pickup or delivery); handoverDays counts from payment. Amounts
 are in the store's currency. Setting acceptsReturns to false drops the
 return window, conditions, refund method and who pays return shipping;
-leaving delivery out of deliveryOptions drops deliveryAreas; a
+leaving delivery out of deliveryOptions drops deliveryMethod and
+deliveryAreas; a
 paidOrderCancellation other than withinHours drops its hours. A customer
 cancels a paid order themselves (refunded) when paidOrderCancellation allows
 it. The time a customer has to pay an order, and a customer cancelling an
@@ -333,6 +336,7 @@ def updateMyStorePolicy(model,
                         returnShippingPaidBy: str | None = None,
                         defectReportDays: int | None = None,
                         deliveryOptions: list[str] | None = None,
+                        deliveryMethod: str | None = None,
                         deliveryAreas: str | None = None,
                         handoverDays: int | None = None,
                         authorizedPaymentMethods:
@@ -467,6 +471,7 @@ class PolicyTools():
                             returnShippingPaidBy: str | None = None,
                             defectReportDays: int | None = None,
                             deliveryOptions: list[str] | None = None,
+                            deliveryMethod: str | None = None,
                             deliveryAreas: str | None = None,
                             handoverDays: int | None = None,
                             authorizedPaymentMethods:
@@ -479,7 +484,8 @@ class PolicyTools():
                                    returnWindowDays, returnConditions,
                                    nonReturnableItems, refundMethod,
                                    returnShippingPaidBy, defectReportDays,
-                                   deliveryOptions, deliveryAreas,
+                                   deliveryOptions, deliveryMethod,
+                                   deliveryAreas,
                                    handoverDays, authorizedPaymentMethods,
                                    paidOrderCancellation,
                                    paidOrderCancellationHours, additionalTerms,
