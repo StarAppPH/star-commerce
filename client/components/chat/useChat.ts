@@ -230,38 +230,16 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     return next;
   }, []);
 
-  // Sends one turn (a message with the files `uploaded`, or a form's
-  // answer) and resolves to the saved reply (null when it failed: the turn
-  // then shows the error and a way to try again). While it waits, the turn
-  // shows what the assistant is doing, also passed to onThinking. `speak`
-  // asks for its speech.
-  const send = useCallback(async (
+  // Sends the turn `key` already on screen, once its turn in the queue has
+  // come; see send.
+  const sendNow = useCallback(async (
+    key: string,
     message: string | null,
     form: ChatFormAnswer | null,
-    onThinking?: OnThinking,
-    speak = false,
-    uploaded: UploadedFiles | null = null,
+    onThinking: OnThinking | undefined,
+    speak: boolean,
+    uploaded: UploadedFiles | null,
   ): Promise<ChatReplyResponse | null> => {
-    const key = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const pending: ChatTurnView = {
-      key,
-      seq: null,
-      userText: form ? answerLabel(form) : message ?? '',
-      files: uploaded?.files ?? [],
-      reply: null,
-      components: [],
-      answeredFormId: form?.formId ?? null,
-      createdAt: null,
-      status: 'sending',
-      error: null,
-      form,
-      uploaded,
-      thinkingText: null,
-    };
-    const withPending = [...turnsRef.current, pending];
-    turnsRef.current = withPending;
-    setTurns(withPending);
-
     const isNew = idRef.current === null;
     const turnKey = newTurnKey();
     const stopPolling = pollThinking(transport, turnKey, (text) => {
@@ -299,6 +277,49 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     if (isNew) onStarted?.(res.data.conversationId, done);
     return res.data;
   }, [transport, onStarted, onSaved, replaceTurn]);
+
+  // The turn being sent, if any: the next one waits for it, as the server
+  // answers one turn of a conversation at a time. Never rejects.
+  const queueRef = useRef<Promise<unknown>>(Promise.resolve());
+
+  // Sends one turn (a message with the files `uploaded`, or a form's
+  // answer) and resolves to the saved reply (null when it failed: the turn
+  // then shows the error and a way to try again). It shows at once, and is
+  // sent once every turn sent before it has its answer (a failed one too),
+  // so turns go one at a time, in order. While it waits for its own answer,
+  // the turn shows what the assistant is doing, also passed to onThinking.
+  // `speak` asks for its speech.
+  const send = useCallback(async (
+    message: string | null,
+    form: ChatFormAnswer | null,
+    onThinking?: OnThinking,
+    speak = false,
+    uploaded: UploadedFiles | null = null,
+  ): Promise<ChatReplyResponse | null> => {
+    const key = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const pending: ChatTurnView = {
+      key,
+      seq: null,
+      userText: form ? answerLabel(form) : message ?? '',
+      files: uploaded?.files ?? [],
+      reply: null,
+      components: [],
+      answeredFormId: form?.formId ?? null,
+      createdAt: null,
+      status: 'sending',
+      error: null,
+      form,
+      uploaded,
+      thinkingText: null,
+    };
+    const withPending = [...turnsRef.current, pending];
+    turnsRef.current = withPending;
+    setTurns(withPending);
+
+    const run = queueRef.current.then(() => sendNow(key, message, form, onThinking, speak, uploaded));
+    queueRef.current = run.catch(() => null);
+    return run;
+  }, [sendNow]);
 
   const ask = useCallback(async (text: string): Promise<string | null> => {
     const message = text.trim();

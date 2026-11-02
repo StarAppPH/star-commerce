@@ -16,6 +16,8 @@ import { PHOTO_ACCEPT, photoProblem, uploadOwnPhoto } from './photoUpload';
 interface SendReceiptButtonProps {
   orderId: string;
   sent: boolean;
+  // The chat is answering a turn: no receipt is sent meanwhile.
+  disabled: boolean;
   // Called with the time the receipt was sent, once the server has it.
   onSent: (sentAt: string) => void;
 }
@@ -23,7 +25,7 @@ interface SendReceiptButtonProps {
 // The shopper sends a photo of the receipt of a payment made by hand: it goes
 // to their own folder, and the server keeps a copy only the store reads. The
 // chat on screen then tells the assistant, so it answers.
-export function SendReceiptButton({ orderId, sent, onSent }: SendReceiptButtonProps) {
+export function SendReceiptButton({ orderId, sent, disabled, onSent }: SendReceiptButtonProps) {
   const guest = useOptionalGuestSession();
   const shell = useOptionalChatShell();
   const { server } = useServer();
@@ -77,6 +79,7 @@ export function SendReceiptButton({ orderId, sent, onSent }: SendReceiptButtonPr
         variant="outline"
         className="self-start"
         loading={working}
+        disabled={disabled}
         onClick={() => input.current?.click()}
       >
         <ImageUpIcon />

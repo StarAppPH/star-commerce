@@ -107,7 +107,7 @@ export function StoreOrdersCard({ component, answered, busy, onAnswer }: Compone
 }
 
 // The shopper's own orders.
-export function MyOrdersCard({ component }: ComponentProps<'myOrders'>) {
+export function MyOrdersCard({ component, busy }: ComponentProps<'myOrders'>) {
   return (
     <ChatCard
       dataComponent="myOrdersCard"
@@ -115,7 +115,7 @@ export function MyOrdersCard({ component }: ComponentProps<'myOrders'>) {
       title={component.orders.length === 1 ? `Order ${orderRef(component.orders[0]._id)}` : `${component.orders.length} orders`}
     >
       <ul className="divide-y">
-        {component.orders.map((order) => <MyOrderRow key={order._id} order={order} />)}
+        {component.orders.map((order) => <MyOrderRow key={order._id} order={order} busy={busy} />)}
       </ul>
     </ChatCard>
   );
@@ -124,8 +124,9 @@ export function MyOrdersCard({ component }: ComponentProps<'myOrders'>) {
 type MyOrder = ComponentProps<'myOrders'>['component']['orders'][number];
 
 // One of the shopper's orders. A receipt sent from this row shows at once,
-// before the card's data is read again.
-function MyOrderRow({ order }: { order: MyOrder }) {
+// before the card's data is read again. No receipt goes while the chat is
+// answering.
+function MyOrderRow({ order, busy }: { order: MyOrder; busy: boolean }) {
   const [receiptSentAt, setReceiptSentAt] = useState<string | null>(null);
   const paymentReceiptAt = receiptSentAt ?? order.paymentReceiptAt;
   return (
@@ -154,7 +155,7 @@ function MyOrderRow({ order }: { order: MyOrder }) {
         ].filter(Boolean).join(' · ')}
       </span>
       {order.status === 'awaitingPayment' && order.paymentMethod !== 'cash' && (
-        <SendReceiptButton orderId={order._id} sent={Boolean(paymentReceiptAt)} onSent={setReceiptSentAt} />
+        <SendReceiptButton orderId={order._id} sent={Boolean(paymentReceiptAt)} disabled={busy} onSent={setReceiptSentAt} />
       )}
     </li>
   );
