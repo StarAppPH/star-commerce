@@ -368,6 +368,65 @@ def _fakeGeocoding(monkeypatch):
     yield session
 
 
+# A public address the fake web answers on (urlImport refuses a private one).
+TEST_PUBLIC_ADDRESS = '93.184.215.14'
+
+
+class FakeLinkResponse:
+    """A urllib3 response of the fake web: status, headers, the body
+    streamed in chunks."""
+
+    def __init__(self, status: int, headers: dict, body: bytes):
+        from urllib3 import HTTPHeaderDict
+        self.status = status
+        self.headers = HTTPHeaderDict(headers)
+        self.body = body
+        self.released = False
+
+    def stream(self, chunkSize):
+        for start in range(0, len(self.body), chunkSize):
+            yield self.body[start:start + chunkSize]
+
+    def release_conn(self) -> None:
+        self.released = True
+
+
+class FakeLinkWeb:
+    """urlImport's network: `addresses` a host's DNS answer (default
+    TEST_PUBLIC_ADDRESS), `pages` what each https://<host><target> answers
+    (status, headers, body); any other request fails as unreachable.
+    `requests` records each (address, host, target)."""
+
+    def __init__(self):
+        self.addresses = {}
+        self.pages = {}
+        self.requests = []
+
+    def serve(self, url: str, body: bytes = b'', status: int = 200,
+              headers: dict | None = None) -> None:
+        self.pages[url] = (status, headers or {}, body)
+
+    def resolve(self, host: str) -> list[str]:
+        return self.addresses.get(host, [TEST_PUBLIC_ADDRESS])
+
+    def request(self, address, host, target, deadline):
+        self.requests.append((address, host, target))
+        page = self.pages.get(f'https://{host}{target}')
+        if page is None:
+            raise OSError('unreachable')
+        return FakeLinkResponse(*page)
+
+
+@pytest.fixture(autouse=True)
+def linkWeb(monkeypatch):
+    """No test reaches the network for a photo link (urlImport)."""
+    import urlImport
+    web = FakeLinkWeb()
+    monkeypatch.setattr(urlImport, '_resolve', web.resolve)
+    monkeypatch.setattr(urlImport, '_request', web.request)
+    yield web
+
+
 def lastPublishedPayload(functionName):
     """The message the last publish of `functionName` (a publisher route or
     a module-level publisher) sent in this test."""

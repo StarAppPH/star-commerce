@@ -33,6 +33,7 @@ from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
                                   bookableFulfillments, offeredFulfillments,
                                   storeDelivery)
 from actions.PhotoActions import (PROMPT_STORE_FIELDS, defaultPhotoPrompt,
+                                  importLinkedPhotos,
                                   cardShots)
 from actions.StoreActions import STORES, ownerQuery
 import geocoding
@@ -77,6 +78,9 @@ PICKED_TWICE = 'Each one once'
 REJECT_NEEDS_REASON = 'Say why you reject it'
 PHONE_NOT_VERIFIED = 'Verify your phone number first'
 FORM_ANSWER_PREFIX = 'Form answer: '
+# A form builder's notes for the model (beside FORM_SHOWN in the tool's
+# message), taken off the form before it is checked and shown.
+TOOL_NOTES = '_toolNotes'
 # The attachments a new products row may take as its photo.
 PHOTO_EXTENSIONS = tuple(extension for extension, contentType
                          in CHAT_ATTACHMENT_EXTENSIONS.items()
@@ -248,10 +252,68 @@ def _draftPhoto(userId: str, imageUrl) -> str | None:
     return path if photoStorage.hasExtension(path, PHOTO_EXTENSIONS) else None
 
 
+def _photoLink(userId: str, imageUrl, label: str):
+    """What a prefill's photo link is: ('own', path) for the owner's own
+    photo (_draftPhoto), ('link', url) for a link outside our bucket
+    (importLinkedPhotos downloads it), or (None, why) for a file of our
+    bucket that cannot be the row's photo; None with no link."""
+    if imageUrl is None:
+        return None
+    path = _draftPhoto(userId, imageUrl)
+    if path is not None:
+        return 'own', path
+    try:
+        path = photoStorage.objectPathFromUrl(imageUrl, label)
+    except ValueError:
+        # Not our bucket: a link elsewhere, checked when it is downloaded.
+        return 'link', imageUrl.strip()
+    try:
+        photoStorage.ownImagePath(userId, path, label)
+    except ValueError as refusal:
+        return None, str(refusal)
+    return None, f'{label} {photoStorage.NOT_A_REAL_PHOTO}'
+
+
+def _rowPhotos(userId: str, storeId: str, imageUrls: list
+               ) -> tuple[list[str | None], list[dict]]:
+    """Each row's photo path (None for none) and, for each row whose link
+    did not become its photo, {row, reason} for the model to tell the
+    owner. A link on several rows (a list, a screenshot) is no row's own
+    photo; a public https link is downloaded into the owner's own folder
+    (importLinkedPhotos)."""
+    labels = [f'The photo of row {i + 1}' for i in range(len(imageUrls))]
+    drafts = [_photoLink(userId, url, label)
+              for url, label in zip(imageUrls, labels)]
+    keys = [draft[1] if draft and draft[0] else None for draft in drafts]
+    photos, notes, links = [None] * len(drafts), [], {}
+    for i, draft in enumerate(drafts):
+        if draft is None:
+            continue
+        kind, value = draft
+        if kind is None:
+            notes.append({'row': i + 1, 'reason': value})
+        elif keys.count(value) > 1:
+            notes.append({'row': i + 1, 'reason': (
+                f'{labels[i]} is on several rows, so no row got it')})
+        elif kind == 'own':
+            photos[i] = value
+        else:
+            links[i] = value
+    imported = importLinkedPhotos(
+        userId, storeId, [(labels[i], url) for i, url in links.items()])
+    for i, url in links.items():
+        path, reason = imported[url]
+        photos[i] = path
+        if path is None:
+            notes.append({'row': i + 1, 'reason': reason})
+    notes.sort(key=lambda note: note['row'])
+    return photos, notes
+
+
 def _newProductsForm(userId: str, storeId: str,
                      args: ShowNewProductsFormArgs) -> dict:
     store = _ownStore(userId, {'currency': 1})
-    drafts, photos = [], []
+    drafts = []
     for draft in args.products or []:
         price, inventory = draft.price, draft.inventory
         drafts.append({
@@ -268,13 +330,15 @@ def _newProductsForm(userId: str, storeId: str,
             'description': _clip(draft.description,
                                  PRODUCT_DESCRIPTION_MAX_LENGTH),
         })
-        photos.append(_draftPhoto(userId, draft.imageUrl))
-    # A photo on several rows shows them all (a list, a screenshot): no
-    # row's own photo.
-    photos = [None if photos.count(path) > 1 else path for path in photos]
-    return {'kind': 'newProductsForm', 'formId': newFormId(),
+    photos, notes = _rowPhotos(
+        userId, store['_id'],
+        [draft.imageUrl for draft in args.products or []])
+    form = {'kind': 'newProductsForm', 'formId': newFormId(),
             'currency': store['currency'], 'products': drafts,
             'rowPhotos': photos}
+    if notes:
+        form[TOOL_NOTES] = {'photosNotAdded': notes}
+    return form
 
 
 def _photoRequestForm(userId: str, storeId: str,
@@ -402,8 +466,12 @@ FORM_TOOLS: dict[str, FormTool] = {
         'description. Give a row '
         'imageUrl, the url of an attached image, only when that image is a '
         'photo of that one product alone, never a list or a screenshot of '
-        'several. In your reply, say what you filled in from their files '
-        'so the owner checks it. Use it to add products instead of asking '
+        'several; or a public https photo link the owner wrote for that '
+        'product, copied exactly (never one cut off): it is downloaded '
+        'into their own photos. When the result has photosNotAdded, those '
+        "rows have no photo: tell the owner which ones and why, never that "
+        'their photo is on. In your reply, say what you filled in from '
+        'their files so the owner checks it. Use it to add products instead of asking '
         'each detail in chat. The owner may upload one photo per product '
         'there. Their list comes as their next message: then call '
         'addStoreProducts with it, then call setUploadedProductPhotos with '
@@ -562,10 +630,12 @@ def runFormTool(toolset: str, name: str, argumentsJson: str, userId: str,
         return json.dumps({'error': f'Invalid arguments for {name}: '
                            f'{_fieldsOf(error)}'}), None
     try:
-        form = _component(tool.build(userId, storeId, args))
+        built = tool.build(userId, storeId, args)
+        notes = built.pop(TOOL_NOTES, None)
+        form = _component(built)
     except FormRefused as refusal:
         return json.dumps({'error': str(refusal)}), None
-    return json.dumps({'result': FORM_SHOWN}), form
+    return json.dumps({'result': FORM_SHOWN, **(notes or {})}), form
 
 
 # ── Form answers ────────────────────────────

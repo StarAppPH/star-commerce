@@ -109,6 +109,7 @@ import imageModel
 import photoStorage
 import productFinder
 import samModel
+import urlImport
 from actions.callSlots import slot
 from actions.ProductActions import (PRODUCT_NOT_FOUND, PRODUCTS,
                                     adminProductRow, validBatch)
@@ -141,6 +142,10 @@ FINDS_KIND = 'productFinds'
 COLOR_FINDS_KIND = 'colorFinds'
 # The kind of the counters of originals copied (setUploadedProductPhotos).
 ORIGINALS_KIND = 'originals'
+# The kind of the counters of photos downloaded from a link
+# (importLinkedPhotos). Not carried over by a store reset: no model is
+# called, and the all stores cap still holds.
+IMPORTS_KIND = 'linkImports'
 # What a store reset carries over to the new store (StoreActions).
 STORE_USAGE_KINDS = (PHOTO_USAGE, (PHOTOS_KIND, FINDS_KIND, COLOR_FINDS_KIND,
                                    ORIGINALS_KIND))
@@ -185,6 +190,23 @@ ORIGINAL_CAP_REACHED = ("Your store has reached today's limit of product "
                         'photos saved, try again tomorrow')
 ORIGINAL_ALL_CAP_REACHED = 'Saving product photos is busy today, try again tomorrow'
 ORIGINALS_TURNED_OFF = 'Saving product photos is turned off right now'
+# Photos a store, and all stores together, download from a link a day
+# (importLinkedPhotos: a download, a re-encode and a Storage write, no
+# model): URL_IMPORT_DAILY_CAP_ALL (0 turns it off), else the default.
+STORE_DAILY_IMPORT_CAP = 300
+IMPORT_DAILY_CAP_ALL_VARIABLE = 'URL_IMPORT_DAILY_CAP_ALL'
+DEFAULT_IMPORT_DAILY_CAP_ALL = 3000
+IMPORT_CAP_REACHED = ("Your store has reached today's limit of photos from "
+                      'links: add these photos on the card')
+IMPORT_ALL_CAP_REACHED = ('Photos from links are busy today: add these '
+                          'photos on the card')
+IMPORTS_TURNED_OFF = ('Photos from links are turned off right now: add '
+                      'these photos on the card')
+IMPORT_BUSY = 'Photos from links are busy right now: add it on the card'
+# One form's downloads: at most this many at once, all done within
+# IMPORT_SECONDS (each within urlImport.PHOTO_SECONDS).
+IMPORTS_AT_ONCE = 6
+IMPORT_SECONDS = 25
 # The copies one process runs at once, apart from the generation slots:
 # each holds a thread (inside a chat turn's, or an MCP call's) and decodes
 # one photo at a time (up to MODEL_IMAGE_MAX_PIXELS), so this bounds the
@@ -461,6 +483,17 @@ def _takeOriginalQuota(storeId: str, count: int) -> list[str]:
                DEFAULT_ORIGINAL_DAILY_CAP_ALL, 'originalDailyCapAllInvalid'),
         (ORIGINAL_CAP_REACHED, ORIGINAL_ALL_CAP_REACHED,
          ORIGINALS_TURNED_OFF),
+        amount=count)
+
+
+def _takeImportQuota(storeId: str, count: int) -> list[str]:
+    """Count `count` photos from links against the store's daily cap and
+    all stores' (URL_IMPORT_DAILY_CAP_ALL)."""
+    return _takeStoreQuota(
+        IMPORTS_KIND, storeId, STORE_DAILY_IMPORT_CAP,
+        envCap(IMPORT_DAILY_CAP_ALL_VARIABLE, DEFAULT_IMPORT_DAILY_CAP_ALL,
+               'urlImportDailyCapAllInvalid'),
+        (IMPORT_CAP_REACHED, IMPORT_ALL_CAP_REACHED, IMPORTS_TURNED_OFF),
         amount=count)
 
 
@@ -741,6 +774,58 @@ def _copyOriginal(userId: str, store: dict, productId: str, path: str,
                                                    'imageUrl')
     return _savePhoto(userId, store, [path], data, deadline,
                       productId=productId, contentType=contentType)
+
+
+def importLinkedPhotos(userId: str, storeId: str,
+                       links: list[tuple[str, str]]
+                       ) -> dict[str, tuple[str | None, str | None]]:
+    """Download each photo link of `links` ((label, url): public https
+    links the admin gave, each url once) with urlImport.fetchImage,
+    re-encode it (photoStorage.storeOriginal: no metadata) and save it in
+    the admin's own users/<uid>/imported/ folder. Returns, by url, its
+    (path, None), or (None, why) for the admin when it was not saved.
+    Never raises: a refusal is every link's reason. Counted against the
+    store's and all stores' daily caps (_takeImportQuota; given back for
+    the links not saved). Runs in one of the copy slots (_copySlots), the
+    downloads IMPORTS_AT_ONCE at a time, the decodes one at a time."""
+    if not links:
+        return {}
+    deadline = time.monotonic() + IMPORT_SECONDS
+    try:
+        with slot(_copySlots, photoStorage.unavailable):
+            keys = _takeImportQuota(storeId, len(links))
+            decodeLock = threading.Lock()
+
+            def one(link: tuple[str, str]):
+                label, url = link
+                try:
+                    data, contentType = urlImport.fetchImage(url, label,
+                                                             deadline)
+                    with decodeLock:
+                        data, contentType = photoStorage.storeOriginal(
+                            data, contentType, label)
+                    return url, (photoStorage.saveImportedPhoto(
+                        userId, generateRandomString(), data, contentType,
+                        deadline), None)
+                except ValueError as error:
+                    return url, (None, str(error))
+                except Exception as error:
+                    logging.warning({'event': 'linkedPhotoFailed',
+                                     'errorClass': type(error).__name__})
+                    return url, (None, f'{label} could not be saved right '
+                                 'now: add it on the card')
+
+            with ThreadPoolExecutor(IMPORTS_AT_ONCE) as pool:
+                results = dict(pool.map(one, links))
+            failed = sum(1 for path, _ in results.values() if path is None)
+            if failed:
+                giveBackQuotas(PHOTO_USAGE, keys, failed)
+            return results
+    except ValueError as refusal:
+        return {url: (None, f'{label}: {refusal}') for label, url in links}
+    except ServiceUnavailable:
+        return {url: (None, f'{label}: {IMPORT_BUSY}')
+                for label, url in links}
 
 
 def setUploadedProductPhotos(model,

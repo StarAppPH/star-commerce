@@ -13,7 +13,8 @@ bucket. Every other environment ignores both.
   scheme, host or bucket is refused.
 - readOwnFiles(): files of the allowed types and sizes under the caller's
   own users/<uid>/ folder, read by bucket and path through the Storage
-  SDK. Nothing is ever fetched by URL, so no request can make the server
+  SDK. Nothing here is fetched by URL (the one fetch of a link is
+  urlImport's, with its own guards), so no request can make this module
   fetch an address of its choosing. HEIC/HEIF is refused by name and by
   type, and by contents: a file's first bytes must be its type's
   (SIGNATURES). ownFiles() and downloadFiles() are its two steps, for a
@@ -102,6 +103,8 @@ USER_FOLDER = 'users'
 USER_CHAT_FOLDER = 'chat'
 # The products cut out of a user's group photos (saveFoundPhoto).
 USER_FOUND_FOLDER = 'found'
+# The photos copied from a link the admin gave (saveImportedPhoto).
+USER_IMPORTED_FOLDER = 'imported'
 # The one folder deletePrefix may empty: stores/<id>/ or users/<id>/, the
 # id one segment with no backslash or control character.
 FOLDER_PREFIX_PATTERN = re.compile(
@@ -769,6 +772,19 @@ def saveFoundPhoto(uid: str, photoId: str, data: bytes,
     return the path."""
     path = foundPhotoPath(uid, photoId)
     _upload(path, data, STORE_PHOTO_CONTENT_TYPE, deadline)
+    return path
+
+
+def saveImportedPhoto(uid: str, photoId: str, data: bytes, contentType: str,
+                      deadline: float) -> str:
+    """Write a photo downloaded from a link (urlImport) and re-encoded
+    (storeOriginal: a JPEG, PNG or WebP) to the user `uid`'s own
+    users/<uid>/imported/<photoId>.<ext>, so it is theirs to put on a
+    product, and return the path."""
+    extension = {'image/png': 'png', WEBP_CONTENT_TYPE: 'webp'}.get(
+        contentType, 'jpg')
+    path = f'{userFolder(uid)}{USER_IMPORTED_FOLDER}/{photoId}.{extension}'
+    _upload(path, data, contentType, deadline)
     return path
 
 
