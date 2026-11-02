@@ -90,10 +90,12 @@ export type VoiceInput = string | ChatFormAnswer;
 // `turnKey` names a turn being sent, so thinking and speakThinking can ask
 // what it is doing; `speak` asks for the reply's speech (voice mode).
 // `upload` puts files in the user's own chat folder, for `attachments`
-// (their download URLs).
+// (their download URLs); `fileUrl` reads the download URL of one of the
+// user's own chat files by its Storage path.
 export interface ChatTransport {
   send: (message: string | null, conversationId: string | null, form: ChatFormAnswer | null, attachments: string[] | null, turnKey: string, speak: boolean) => Promise<ApiResponse<ChatReplyResponse>>;
   upload: (files: File[]) => Promise<UploadedFiles>;
+  fileUrl: (path: string) => Promise<string>;
   loadTurns: (conversationId: string, beforeSeq: number | null, limit: number) => Promise<ApiResponse<ConversationTurnsResponse>>;
   thinking: (turnKey: string) => Promise<ApiResponse<ChatThinkingResponse>>;
   speakThinking: (turnKey: string) => Promise<ApiResponse<SpokenThinkingResponse>>;
@@ -180,7 +182,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
         key: `seq-${row.seq}`,
         seq: row.seq,
         userText: row.userText,
-        files: (row.attachments ?? []).map((file) => ({ name: file.name, contentType: file.contentType })),
+        files: (row.attachments ?? []).map((file) => ({ name: file.name, contentType: file.contentType, url: null, path: file.path })),
         reply: row.replyText,
         components: row.components,
         answeredFormId: row.answeredFormId,
@@ -347,5 +349,5 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     return answered;
   }, [turns]);
 
-  return { turns, loading, loadError, hasEarlier, loadingEarlier, sending, answeredFormIds, ask, sendMessage, upload: transport.upload, talk, answer, retry, reload, loadEarlier };
+  return { turns, loading, loadError, hasEarlier, loadingEarlier, sending, answeredFormIds, ask, sendMessage, upload: transport.upload, fileUrl: transport.fileUrl, talk, answer, retry, reload, loadEarlier };
 }

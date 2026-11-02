@@ -46,6 +46,7 @@ export function ChatThread({ chat, variant, placeholder, dataComponent, onVoice,
               answeredFormIds={chat.answeredFormIds}
               busy={chat.sending}
               onAnswer={chat.answer}
+              fileUrl={chat.fileUrl}
             />
           )}
         </div>

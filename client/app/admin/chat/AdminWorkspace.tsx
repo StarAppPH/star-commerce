@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { auth, storage } from '@/lib/firebase';
 import { useServer } from '@/lib/ServerContext';
 import type { ChatTransport } from '@/components/chat/useChat';
-import { uploadChatFiles } from '@/components/chat/attachments';
+import { chatFileUrl, uploadChatFiles } from '@/components/chat/attachments';
 import { CONVERSATIONS_PAGE, useConversationList, type ConversationList } from '@/components/chat/useConversationList';
 import type { AdminStoreScreenRow } from '@/app/schemas/MyStoreScreenResponseSchema';
 
@@ -64,6 +64,7 @@ export function AdminWorkspaceProvider({ userId, children }: { userId: string; c
       if (!user) return Promise.reject(new Error('Signed out'));
       return uploadChatFiles(storage, user.uid, files);
     },
+    fileUrl: (path) => chatFileUrl(storage, path),
     loadTurns: (conversationId, beforeSeq, limit) => adminRequest(() => server.getConversationTurns(userId, conversationId, beforeSeq, limit)),
     thinking: (turnKey) => adminRequest(() => server.getChatThinking(userId, turnKey)),
     speakThinking: (turnKey) => adminRequest(() => server.speakChatThinking(userId, turnKey)),
