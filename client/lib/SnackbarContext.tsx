@@ -30,7 +30,7 @@ export function SnackbarProvider({ children }: { children: React.ReactNode }) {
   }), []);
 
   return (
-    <ToastProvider position="bottom-center">
+    <ToastProvider position="top-center">
       <SnackbarContext.Provider value={value}>{children}</SnackbarContext.Provider>
     </ToastProvider>
   );
