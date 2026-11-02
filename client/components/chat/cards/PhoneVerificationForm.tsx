@@ -15,10 +15,20 @@ import type { ComponentProps } from './types';
 
 const PHONE_PATTERN = /^\+[1-9][0-9]{6,14}$/;
 
+// The error's code (or text) for the console: never the phone number.
+function errorCode(error: unknown): string {
+  if (error instanceof FirebaseError) return error.code;
+  return error instanceof Error ? error.message : String(error);
+}
+
 // What Firebase's refusals mean to a shopper.
 function phoneProblem(error: unknown): string {
   const code = error instanceof FirebaseError ? error.code : '';
   if (code === 'auth/invalid-phone-number') return 'That number doesn’t look right. Use the country code, e.g. +639171234567.';
+  if (code === 'auth/invalid-app-credential' || code === 'auth/captcha-check-failed') {
+    return 'We couldn’t check that you’re not a robot. Reload the page and try again.';
+  }
+  if (code === 'auth/operation-not-allowed') return 'Phone verification isn’t available right now. Try again later.';
   if (code === 'auth/invalid-verification-code') return 'That code is not the one we sent. Check it and try again.';
   if (code === 'auth/code-expired') return 'That code expired. Send a new one.';
   if (code === 'auth/too-many-requests') return 'Too many tries. Wait a little, then try again.';
@@ -26,6 +36,20 @@ function phoneProblem(error: unknown): string {
     return 'That number is already used by another visitor.';
   }
   return 'We couldn’t verify your number. Try again.';
+}
+
+interface Captcha {
+  verifier: RecaptchaVerifier;
+  element: HTMLDivElement;
+}
+
+// reCAPTCHA renders once per element, and an invisible verifier's clear()
+// leaves its widget in the element: each verifier gets an element of its
+// own, removed with it, so a retry renders into a clean one.
+function dropCaptcha(captcha: { current: Captcha | null }) {
+  captcha.current?.verifier.clear();
+  captcha.current?.element.remove();
+  captcha.current = null;
 }
 
 // The shopper verifies their phone number with a code Firebase texts them;
@@ -38,22 +62,26 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
   const [code, setCode] = useState('');
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
   const [working, setWorking] = useState(false);
-  const captcha = useRef<HTMLDivElement>(null);
-  const verifier = useRef<RecaptchaVerifier | null>(null);
+  const captchaHost = useRef<HTMLDivElement>(null);
+  const captcha = useRef<Captcha | null>(null);
   const locked = answered || busy || working;
 
-  useEffect(() => () => { verifier.current?.clear(); verifier.current = null; }, []);
+  useEffect(() => () => dropCaptcha(captcha), []);
 
   const sendCode = async () => {
     const user = guestAuth.currentUser;
-    if (!user || !captcha.current) return;
+    if (!user || !captchaHost.current) return;
     setWorking(true);
     try {
-      verifier.current ??= new RecaptchaVerifier(guestAuth, captcha.current, { size: 'invisible' });
-      setConfirmation(await linkWithPhoneNumber(user, phone.trim(), verifier.current));
+      if (!captcha.current) {
+        const element = document.createElement('div');
+        captchaHost.current.appendChild(element);
+        captcha.current = { verifier: new RecaptchaVerifier(guestAuth, element, { size: 'invisible' }), element };
+      }
+      setConfirmation(await linkWithPhoneNumber(user, phone.trim(), captcha.current.verifier));
     } catch (error) {
-      verifier.current?.clear();
-      verifier.current = null;
+      console.error('Phone verification failed to send a code:', errorCode(error));
+      dropCaptcha(captcha);
       showSnackbar(phoneProblem(error), 'error');
     } finally {
       setWorking(false);
@@ -70,6 +98,7 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
       showApiResponseSnackbar(res);
       if (res.status === 200) onAnswer({ kind: 'phoneVerified', formId: component.formId });
     } catch (error) {
+      console.error('Phone verification failed to confirm the code:', errorCode(error));
       showSnackbar(phoneProblem(error), 'error');
     } finally {
       setWorking(false);
@@ -125,7 +154,7 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
             <FieldDescription>The store uses it only about your orders.</FieldDescription>
           </Field>
         ))}
-        <div ref={captcha} />
+        <div ref={captchaHost} />
       </div>
     </ChatCard>
   );
