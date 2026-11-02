@@ -357,3 +357,16 @@ def test_thePrompt_previewsBeforeCheckingOut():
     assert prompt.index('previewMyCheckout') < prompt.index(
         'check out with checkoutMyCart')
     assert 'never ask "confirm checkout?"' in prompt
+
+
+def test_thePrompt_offersCheckout_afterTheCardAddsToTheCart():
+    """The product card tells the chat what it added (ShopProductsCard's
+    "I added ... to my cart."): the cart is saved, so the model asks about
+    checking out instead of adding it again."""
+    import chatModel
+    prompt = chatModel.CHAT_PROMPTS['customer']
+    assert 'When the customer says they added products to their cart' in prompt
+    assert 'call no cart tool' in prompt
+    assert 'asking whether they would like to check out' in prompt
+    assert 'asking whether they would like to check out' not in (
+        chatModel.CHAT_PROMPTS['admin'])
