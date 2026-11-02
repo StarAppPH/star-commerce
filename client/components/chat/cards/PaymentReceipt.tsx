@@ -48,6 +48,7 @@ export function SendReceiptButton({ orderId, sent, disabled, onSent }: SendRecei
       showApiResponseSnackbar(res);
       if (res.status === 200) {
         onSent(new Date().toISOString());
+        // Refused or no chat on screen: the snackbar alone tells the shopper.
         shell?.sendText(`I sent the receipt photo for order ${orderRef(orderId)}.`);
       }
     } catch (error) {

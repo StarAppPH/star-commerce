@@ -86,6 +86,11 @@ export interface VoiceAnswer {
 // opened.
 export type VoiceInput = string | ChatFormAnswer;
 
+// What a message asked for outside the chat came to: sent (or queued behind
+// the turn being answered), or refused because the chat is new and its first
+// turn is still being answered (the move to its thread page would lose it).
+export type OutsideSendResult = 'sent' | 'busy';
+
 // How a chat reaches the server: the admin's routes or a shopper's.
 // `turnKey` names a turn being sent, so thinking and speakThinking can ask
 // what it is doing; `speak` asks for the reply's speech (voice mode).
@@ -352,6 +357,14 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
 
   const answer = useCallback(async (form: ChatFormAnswer) => (await send(null, form))?.reply ?? null, [send]);
 
+  // A message asked for outside the chat (the shop's cart, a receipt sent):
+  // see OutsideSendResult.
+  const sendOutside = useCallback((text: string): OutsideSendResult => {
+    if (idRef.current === null && turnsRef.current.some((turn) => turn.status === 'sending')) return 'busy';
+    void ask(text);
+    return 'sent';
+  }, [ask]);
+
   const retry = useCallback(async (key: string) => {
     const failed = turnsRef.current.find((turn) => turn.key === key);
     if (!failed) return;
@@ -368,5 +381,5 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     return answered;
   }, [turns]);
 
-  return { turns, loading, loadError, hasEarlier, loadingEarlier, sending, answeredFormIds, ask, sendMessage, upload: transport.upload, talk, answer, retry, reload, loadEarlier };
+  return { turns, loading, loadError, hasEarlier, loadingEarlier, sending, answeredFormIds, ask, sendMessage, upload: transport.upload, talk, answer, sendOutside, retry, reload, loadEarlier };
 }
