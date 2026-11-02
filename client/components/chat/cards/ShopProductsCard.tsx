@@ -6,13 +6,21 @@ import { Button } from '@/components/ui/button';
 import { ChatCard, ProductPhoto, QuantityStepper, SentNote, countsStock, stockMax } from './ChatCard';
 import { formatMoney, nonEmpty } from './format';
 import { useOptionalShopCart } from '@/lib/ShopCartContext';
+import { useOptionalChatShell } from '@/components/chat/ChatShell';
 import type { ComponentProps } from './types';
+
+// What the chat is told after an add, so the assistant can offer checkout
+// (chatModel's customer prompt answers it).
+function addedMessage(lines: { name: string; quantity: number }[]): string {
+  return `I added ${lines.map((line) => `${line.quantity} × ${line.name}`).join(', ')} to my cart.`;
+}
 
 // The products a shopper asked about: pick quantities and add them to the
 // cart (checked out from the cart in the shop's header, or in the chat).
 // A card answered before the cart (an order placed from it) says so.
 export function ShopProductsCard({ component, answered, busy }: ComponentProps<'shopProducts'>) {
   const shopCart = useOptionalShopCart();
+  const shell = useOptionalChatShell();
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const picked = component.products.filter((product) => (quantities[product._id] ?? 0) > 0);
   const total = picked.reduce((sum, product) => sum + product.price * (quantities[product._id] ?? 0), 0);
@@ -23,7 +31,12 @@ export function ShopProductsCard({ component, answered, busy }: ComponentProps<'
   const addToCart = async () => {
     const items = nonEmpty(picked.map((product) => ({ productId: product._id, quantity: quantities[product._id] ?? 0 })));
     if (!items || !shopCart) return;
-    if (await shopCart.add(items)) setQuantities({});
+    if (!(await shopCart.add(items))) return;
+    const lines = picked.map((product) => ({ name: product.name, quantity: quantities[product._id] ?? 0 }));
+    setQuantities({});
+    // The cart is saved either way; when no chat is on screen, or a reply is
+    // still on its way, the snackbar alone confirms it.
+    shell?.sendText(addedMessage(lines));
   };
 
   return (
