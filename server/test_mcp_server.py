@@ -675,8 +675,8 @@ def test_e2e_adminProducts_addBatchListUpdate(clean, firebase):
     assert [p['name'] for p in listed.structured_content['products']
             ] == ['Cake', 'Pandesal', 'Tea']
     assert all(set(p) == {'_id', 'name', 'description', 'price', 'inventory',
-                          'isAvailable', 'reservedQuantity', 'soldCount',
-                          'hasPhoto'}
+                          'hasInventory', 'isAvailable', 'reservedQuantity',
+                          'soldCount', 'hasPhoto'}
                for p in listed.structured_content['products'])
 
     updated = callTool(headers, 'updateStoreProduct',
