@@ -8,7 +8,8 @@ import {
 import { SmartphoneIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@/components/ui/input-group';
+import { OTPField, OTPFieldInput } from '@/components/ui/otp-field';
 import { guestAuth } from '@/lib/guestFirebase';
 import { useOptionalGuestSession } from '@/lib/GuestSessionContext';
 import { useServer } from '@/lib/ServerContext';
@@ -17,6 +18,18 @@ import { ChatCard, SentNote } from './ChatCard';
 import type { ComponentProps } from './types';
 
 const PHONE_PATTERN = /^\+[1-9][0-9]{6,14}$/;
+const CODE_LENGTH = 6;
+const RESEND_AFTER_SECONDS = 30;
+const DEFAULT_COUNTRY_CODE = '+63';
+
+// The number as Firebase wants it (E.164). The box holds the local number
+// after the +63 prefix ("917 123 4567" or "0917..."), or a whole number
+// with another country's code when it starts with "+".
+function e164(typed: string): string {
+  const trimmed = typed.trim();
+  if (trimmed.startsWith('+')) return `+${trimmed.replace(/\D/g, '')}`;
+  return `${DEFAULT_COUNTRY_CODE}${trimmed.replace(/\D/g, '').replace(/^0+/, '')}`;
+}
 
 // The error's code (or text) for the console: never the phone number.
 function errorCode(error: unknown): string {
@@ -59,27 +72,41 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
   const guest = useOptionalGuestSession();
   const { server } = useServer();
   const { showApiResponseSnackbar, showSnackbar } = useSnackbar();
-  const [phone, setPhone] = useState('+63');
+  const [typed, setTyped] = useState('');
   const [code, setCode] = useState('');
+  const [resendIn, setResendIn] = useState(0);
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
   const [working, setWorking] = useState(false);
   const captchaHost = useRef<HTMLDivElement>(null);
   const captcha = useRef<Captcha | null>(null);
   const locked = answered || busy || working;
+  const phone = e164(typed);
+  const international = typed.trim().startsWith('+');
 
   useEffect(() => () => dropCaptcha(captcha), []);
+
+  // Counts down to when another code may be sent.
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = window.setTimeout(() => setResendIn((left) => left - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendIn]);
 
   const sendCode = async () => {
     const user = guestAuth.currentUser;
     if (!user || !captchaHost.current) return;
     setWorking(true);
+    // A resend renders a fresh reCAPTCHA: the last one's token is spent.
+    if (confirmation) dropCaptcha(captcha);
     try {
       if (!captcha.current) {
         const element = document.createElement('div');
         captchaHost.current.appendChild(element);
         captcha.current = { verifier: new RecaptchaVerifier(guestAuth, element, { size: 'invisible' }), element };
       }
-      setConfirmation(await linkWithPhoneNumber(user, phone.trim(), captcha.current.verifier));
+      setConfirmation(await linkWithPhoneNumber(user, phone, captcha.current.verifier));
+      setCode('');
+      setResendIn(RESEND_AFTER_SECONDS);
     } catch (error) {
       console.error('Phone verification failed to send a code:', errorCode(error));
       dropCaptcha(captcha);
@@ -108,15 +135,15 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
     return { user, guestIdToken };
   };
 
-  const confirm = async () => {
+  const confirm = async (entered: string) => {
     const newGuest = guestAuth.currentUser;
-    if (!confirmation || !guest || !newGuest) return;
+    if (!confirmation || !guest || !newGuest || working || entered.length < CODE_LENGTH) return;
     setWorking(true);
     try {
       let user: User;
       let guestIdToken: string | null = null;
       try {
-        user = (await confirmation.confirm(code.trim())).user;
+        user = (await confirmation.confirm(entered)).user;
       } catch (error) {
         const returning = await signInAsReturningCustomer(error, newGuest);
         if (!returning) return;
@@ -131,6 +158,7 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
     } catch (error) {
       console.error('Phone verification failed to confirm the code:', errorCode(error));
       showSnackbar(phoneProblem(error), 'error');
+      setCode('');
     } finally {
       setWorking(false);
     }
@@ -146,12 +174,12 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
           <Button data-component="phoneVerificationBack" variant="ghost" className="me-auto" disabled={locked} onClick={() => { setConfirmation(null); setCode(''); }}>
             Change number
           </Button>
-          <Button data-component="phoneVerificationConfirm" loading={working} disabled={code.trim().length < 6 || busy || !guest} onClick={confirm}>
+          <Button data-component="phoneVerificationConfirm" loading={working} disabled={code.length < CODE_LENGTH || busy || !guest} onClick={() => confirm(code)}>
             Verify
           </Button>
         </>
       ) : (
-        <Button data-component="phoneVerificationSend" loading={working} disabled={!PHONE_PATTERN.test(phone.trim()) || busy} onClick={sendCode}>
+        <Button data-component="phoneVerificationSend" loading={working} disabled={!PHONE_PATTERN.test(phone) || busy} onClick={sendCode}>
           Text me a code
         </Button>
       )}
@@ -159,30 +187,56 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
       <div className="flex flex-col gap-4 p-4">
         {!answered && (confirmation ? (
           <Field>
-            <FieldLabel>The 6-digit code we texted to {phone.trim()}</FieldLabel>
-            <Input
+            <FieldLabel>Enter the {CODE_LENGTH}-digit code</FieldLabel>
+            <FieldDescription>We texted it to {phone}.</FieldDescription>
+            <OTPField
               data-component="phoneVerificationCode"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
+              length={CODE_LENGTH}
+              size="lg"
               value={code}
               disabled={locked}
-              onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))}
-            />
+              onValueChange={setCode}
+              onValueComplete={confirm}
+              className="my-1"
+            >
+              {Array.from({ length: CODE_LENGTH }, (_, index) => (
+                <OTPFieldInput key={index} aria-label={`Digit ${index + 1}`} />
+              ))}
+            </OTPField>
+            <Button
+              data-component="phoneVerificationResend"
+              variant="link"
+              size="sm"
+              className="h-auto self-start px-0"
+              disabled={locked || resendIn > 0}
+              onClick={sendCode}
+            >
+              {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+            </Button>
           </Field>
         ) : (
           <Field>
             <FieldLabel>Your mobile number</FieldLabel>
-            <Input
-              data-component="phoneVerificationPhone"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              value={phone}
-              disabled={locked}
-              onChange={(event) => setPhone(event.target.value)}
-            />
-            <FieldDescription>The store uses it only about your orders.</FieldDescription>
+            <FieldDescription>We’ll text you a {CODE_LENGTH}-digit code. The store uses your number only about your orders.</FieldDescription>
+            <InputGroup>
+              {!international && (
+                <InputGroupAddon>
+                  <InputGroupText data-component="phoneVerificationCountry">🇵🇭 {DEFAULT_COUNTRY_CODE}</InputGroupText>
+                </InputGroupAddon>
+              )}
+              <InputGroupInput
+                data-component="phoneVerificationPhone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel-national"
+                placeholder="917 123 4567"
+                aria-label="Mobile number"
+                value={typed}
+                disabled={locked}
+                onChange={(event) => setTyped(event.target.value)}
+              />
+            </InputGroup>
+            <FieldDescription>Another country? Type the whole number starting with +.</FieldDescription>
           </Field>
         ))}
         <div ref={captchaHost} />

@@ -11,6 +11,8 @@ interface ChatCardProps {
   dataComponent: string;
   icon: ReactNode;
   title: string;
+  // A short line under the title.
+  subtitle?: string;
   // Beside the title: a count, a status.
   meta?: ReactNode;
   children: ReactNode;
@@ -20,12 +22,15 @@ interface ChatCardProps {
 }
 
 // The frame of every card and form under an assistant's reply.
-export function ChatCard({ dataComponent, icon, title, meta, children, footer, className }: ChatCardProps) {
+export function ChatCard({ dataComponent, icon, title, subtitle, meta, children, footer, className }: ChatCardProps) {
   return (
     <Card data-component={dataComponent} className={cn('gap-0 overflow-hidden', className)}>
       <div className="flex items-center gap-2 border-b px-4 py-3">
         <span aria-hidden="true" className="text-muted-foreground [&_svg]:size-4">{icon}</span>
-        <h3 className="min-w-0 flex-1 truncate font-medium text-sm">{title}</h3>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <h3 className="truncate font-medium text-sm">{title}</h3>
+          {subtitle && <span className="truncate text-muted-foreground text-xs">{subtitle}</span>}
+        </div>
         {meta}
       </div>
       {children}

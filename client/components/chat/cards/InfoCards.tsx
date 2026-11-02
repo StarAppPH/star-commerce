@@ -1,10 +1,15 @@
 'use client';
 import Image from 'next/image';
-import { ExternalLinkIcon, ImageIcon, MapPinIcon, PackageSearchIcon, ScrollTextIcon, StoreIcon, TriangleAlertIcon } from 'lucide-react';
+import {
+  ClockIcon, ExternalLinkIcon, ImageIcon, MapIcon, MapPinIcon, PackageSearchIcon, PhoneIcon, ScrollTextIcon, StoreIcon,
+  TriangleAlertIcon, type LucideIcon,
+} from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChatCard, PhotoPrompts, ProductPhoto, countsStock } from './ChatCard';
+import { CopyButton } from './CopyButton';
+import { mapLink } from './OrderDelivery';
 import { type PolicyAnswers, type PolicyQuestion, missingDeliveryZones, offersDelivery, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
 import type { AuthorizedPaymentMethodRow } from '@/app/schemas/AuthorizedPaymentMethodRowSchema';
 import { PAYMENT_METHOD_LABELS, PAYMENT_PROVIDER_LABELS, POLICY_VALUE_LABELS, formatMoney, zoneRuleText } from './format';
@@ -180,29 +185,92 @@ export function PhotosCard({ component }: ComponentProps<'photos'>) {
 }
 
 // The admin's store.
+interface StoreDetailProps {
+  icon: LucideIcon;
+  label: string;
+  value: string | null;
+  dataComponent: string;
+  href?: string;
+}
+
+// One labelled line of the store card: "Not set yet" when the owner hasn't said.
+function StoreDetail({ icon: Icon, label, value, dataComponent, href }: StoreDetailProps) {
+  return (
+    <li data-component={dataComponent} className="flex gap-3">
+      <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="flex min-w-0 flex-col">
+        <span className="text-muted-foreground text-xs">{label}</span>
+        {value === null ? (
+          <span className="text-muted-foreground italic">Not set yet</span>
+        ) : href ? (
+          <a href={href} className="break-words underline-offset-2 hover:underline">{value}</a>
+        ) : (
+          <span className="break-words">{value}</span>
+        )}
+      </div>
+    </li>
+  );
+}
+
 export function StoreCard({ component }: ComponentProps<'store'>) {
-  const lines = [component.description, component.address, component.openingHours, component.contactNumber].filter(Boolean);
+  const shopPath = component.slug ? `/s/${component.slug}` : null;
   return (
     <ChatCard
       dataComponent="storeCard"
       icon={<StoreIcon />}
       title={component.name ?? 'Your store'}
+      subtitle={shopPath ?? undefined}
       meta={<Badge variant="outline">{component.currency}</Badge>}
-      footer={component.slug ? (
-        <Button data-component="storeCardOpen" variant="outline" size="sm" render={<a href={`/s/${component.slug}`} target="_blank" rel="noreferrer" />}>
-          <ExternalLinkIcon />
-          Open /s/{component.slug}
-        </Button>
+      footer={shopPath ? (
+        <>
+          <CopyButton
+            dataComponent="storeCardCopyLink"
+            variant="outline"
+            size="sm"
+            value={typeof window === 'undefined' ? shopPath : `${window.location.origin}${shopPath}`}
+            label="Copy the shop link"
+            text="Copy link"
+          />
+          <Button data-component="storeCardOpen" size="sm" render={<a href={shopPath} target="_blank" rel="noreferrer" />}>
+            <ExternalLinkIcon />
+            Open shop
+          </Button>
+        </>
       ) : undefined}
     >
-      <div className="flex flex-col gap-1 px-4 py-3 text-sm">
-        {lines.map((line) => <span key={line}>{line}</span>)}
-        <span className="flex items-center gap-1.5 text-muted-foreground text-xs">
-          <MapPinIcon className="size-3.5" />
-          {component.location
-            ? `Pinned at ${component.location.latitude.toFixed(5)}, ${component.location.longitude.toFixed(5)}`
-            : 'Not pinned on the map yet'}
-        </span>
+      <div className="flex flex-col gap-4 px-4 py-4 text-sm">
+        {component.description && <p data-component="storeCardDescription">{component.description}</p>}
+        <ul className="flex flex-col gap-3">
+          <StoreDetail dataComponent="storeCardAddress" icon={MapPinIcon} label="Address" value={component.address} />
+          <StoreDetail dataComponent="storeCardHours" icon={ClockIcon} label="Opening hours" value={component.openingHours} />
+          <StoreDetail
+            dataComponent="storeCardContact"
+            icon={PhoneIcon}
+            label="Contact number"
+            value={component.contactNumber}
+            href={component.contactNumber ? `tel:${component.contactNumber.replace(/[^\d+]/g, '')}` : undefined}
+          />
+          <li data-component="storeCardPin" className="flex gap-3">
+            <MapIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <div className="flex min-w-0 flex-col">
+              <span className="text-muted-foreground text-xs">Map pin</span>
+              {component.location ? (
+                <a
+                  data-component="storeCardMap"
+                  className="inline-flex items-center gap-1 underline-offset-2 hover:underline"
+                  href={mapLink(component.location.latitude, component.location.longitude)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View on map
+                  <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
+                </a>
+              ) : (
+                <span className="text-muted-foreground italic">Not pinned yet</span>
+              )}
+            </div>
+          </li>
+        </ul>
       </div>
     </ChatCard>
   );

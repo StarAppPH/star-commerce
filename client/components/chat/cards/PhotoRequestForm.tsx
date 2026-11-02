@@ -1,7 +1,7 @@
 'use client';
 import { useId, useState } from 'react';
 import Image from 'next/image';
-import { ImagePlusIcon, XIcon } from 'lucide-react';
+import { ImagePlusIcon, PlusIcon, SparklesIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { PHOTOS_PER_CALL, PHOTO_REFERENCES_MAX, PHOTO_UPLOAD_MAX_BYTES } from '@/lib/generated/serverConstants';
@@ -18,7 +18,6 @@ type ImageUrls = AnswerOf<'photoRequest'>['imageUrls'];
 function imageUrlsOf(urls: string[]): ImageUrls | null {
   return urls.length >= 1 && urls.length <= PHOTO_REFERENCES_MAX ? (urls as ImageUrls) : null;
 }
-
 
 interface Picked {
   file: File;
@@ -81,77 +80,124 @@ export function PhotoRequestForm({ component, answered, busy, onAnswer }: Compon
     }
   };
 
+  const fileInput = (
+    <input
+      id={inputId}
+      data-component="photoRequestFiles"
+      type="file"
+      accept={PHOTO_ACCEPT}
+      multiple
+      className="sr-only"
+      disabled={locked}
+      onChange={(event) => { add(event.target.files); event.target.value = ''; }}
+    />
+  );
+  const limits = `Up to ${PHOTO_REFERENCES_MAX} JPG, PNG or WebP photos, ${PHOTO_UPLOAD_MAX_BYTES / (1024 * 1024)} MB each`;
+
   return (
     <ChatCard
       dataComponent="photoRequestForm"
       icon={<ImagePlusIcon />}
       title="Photos of one item"
       footer={answered ? <SentNote text="Photos sent" /> : (
-        <Button data-component="photoRequestSend" loading={uploading} disabled={picked.length === 0 || busy} onClick={send}>
-          Make {PHOTOS_PER_CALL} photos
-        </Button>
+        <>
+          {picked.length === 0 && <span data-component="photoRequestHint" className="me-auto text-muted-foreground text-xs">Add at least 1 photo</span>}
+          <Button data-component="photoRequestSend" loading={uploading} disabled={picked.length === 0 || busy} onClick={send}>
+            <SparklesIcon />
+            Make {PHOTOS_PER_CALL} photos
+          </Button>
+        </>
       )}
     >
       {!answered && (
-        <div className="flex flex-col gap-4 p-4">
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-            {picked.map((photo, index) => (
-              <div key={photo.preview} className="relative aspect-square overflow-hidden rounded-lg bg-muted">
-                <Image
-                  src={photo.preview}
-                  alt={`Photo ${index + 1}`}
-                  fill
-                  sizes="120px"
-                  // A preview of a file not uploaded yet (a blob: URL in this
-                  // browser): no server can fetch it to optimize.
-                  // eslint-disable-next-line no-restricted-syntax
-                  unoptimized
-                  className="object-cover"
-                />
-                <Button
-                  data-component="photoRequestRemove"
-                  variant="secondary"
-                  size="icon-xs"
-                  aria-label={`Remove photo ${index + 1}`}
-                  className="absolute top-1 right-1"
-                  disabled={locked}
-                  onClick={() => remove(photo)}
-                >
-                  <XIcon />
-                </Button>
-              </div>
-            ))}
-            {picked.length < PHOTO_REFERENCES_MAX && (
+        <div className="flex flex-col gap-5 p-4">
+          <section data-component="photoRequestPhotos" className="flex flex-col gap-2">
+            <StepHeading step={1} title="Add photos of your item" meta={picked.length > 0 ? `${picked.length}/${PHOTO_REFERENCES_MAX}` : undefined} />
+            {picked.length === 0 ? (
               <label
                 htmlFor={inputId}
-                className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-muted-foreground text-xs hover:bg-accent/50 has-disabled:pointer-events-none has-disabled:opacity-64"
+                data-component="photoRequestDropZone"
+                className="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed bg-muted/40 px-4 py-8 text-center hover:bg-accent/50 has-disabled:pointer-events-none has-disabled:opacity-64"
               >
-                <ImagePlusIcon className="size-5" />
-                Add photos
-                <input
-                  id={inputId}
-                  data-component="photoRequestFiles"
-                  type="file"
-                  accept={PHOTO_ACCEPT}
-                  multiple
-                  className="sr-only"
-                  disabled={locked}
-                  onChange={(event) => { add(event.target.files); event.target.value = ''; }}
-                />
+                <span className="flex size-10 items-center justify-center rounded-full bg-background shadow-xs">
+                  <ImagePlusIcon className="size-5 text-muted-foreground" />
+                </span>
+                <span className="font-medium text-sm">Tap to add photos</span>
+                <span className="text-muted-foreground text-xs">{limits}. All of the same item.</span>
+                {fileInput}
               </label>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                  {picked.map((photo, index) => (
+                    <div key={photo.preview} className="relative aspect-square overflow-hidden rounded-lg bg-muted">
+                      <Image
+                        src={photo.preview}
+                        alt={`Photo ${index + 1}`}
+                        fill
+                        sizes="120px"
+                        // A preview of a file not uploaded yet (a blob: URL in this
+                        // browser): no server can fetch it to optimize.
+                        // eslint-disable-next-line no-restricted-syntax
+                        unoptimized
+                        className="object-cover"
+                      />
+                      <Button
+                        data-component="photoRequestRemove"
+                        variant="secondary"
+                        size="icon-xs"
+                        aria-label={`Remove photo ${index + 1}`}
+                        className="absolute top-1 right-1"
+                        disabled={locked}
+                        onClick={() => remove(photo)}
+                      >
+                        <XIcon />
+                      </Button>
+                    </div>
+                  ))}
+                  {picked.length < PHOTO_REFERENCES_MAX && (
+                    <label
+                      htmlFor={inputId}
+                      data-component="photoRequestAddMore"
+                      className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-muted-foreground text-xs hover:bg-accent/50 has-disabled:pointer-events-none has-disabled:opacity-64"
+                    >
+                      <PlusIcon className="size-5" />
+                      Add more
+                      {fileInput}
+                    </label>
+                  )}
+                </div>
+                <p className="text-muted-foreground text-xs">{limits}.</p>
+              </>
             )}
-          </div>
-          <p className="text-muted-foreground text-xs">Up to {PHOTO_REFERENCES_MAX} JPG, PNG or WebP photos of the same item, each under {PHOTO_UPLOAD_MAX_BYTES / (1024 * 1024)} MB.</p>
-          <PhotoPromptBox
-            dataComponent="photoRequestPrompt"
-            value={prompt}
-            defaultValue={component.defaultPrompt ?? ''}
-            disabled={locked}
-            onChange={setPrompt}
-            shots={component.shots}
-          />
+          </section>
+          <section data-component="photoRequestLook" className="flex flex-col gap-2">
+            <StepHeading step={2} title="Describe the look" />
+            <PhotoPromptBox
+              dataComponent="photoRequestPrompt"
+              value={prompt}
+              defaultValue={component.defaultPrompt ?? ''}
+              disabled={locked}
+              onChange={setPrompt}
+              shots={component.shots}
+              hideLabel
+            />
+          </section>
         </div>
       )}
     </ChatCard>
+  );
+}
+
+// A numbered step of the form, with an optional count on the right.
+function StepHeading({ step, title, meta }: { step: number; title: string; meta?: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary font-medium text-[0.6875rem] text-primary-foreground tabular-nums">
+        {step}
+      </span>
+      <h4 className="flex-1 font-medium text-sm">{title}</h4>
+      {meta && <span data-component="photoRequestCount" className="text-muted-foreground text-xs tabular-nums">{meta}</span>}
+    </div>
   );
 }

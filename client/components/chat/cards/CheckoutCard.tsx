@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  BanknoteIcon, BitcoinIcon, CheckIcon, CopyIcon, CreditCardIcon, LandmarkIcon, ReceiptTextIcon, WalletIcon,
+  BanknoteIcon, BitcoinIcon, CreditCardIcon, LandmarkIcon, ReceiptTextIcon, WalletIcon,
   type LucideIcon,
 } from 'lucide-react';
 import type { Method, PaymentOption } from '@/app/schemas/PaymentOptionSchema';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ChatCard, SentNote } from './ChatCard';
+import { CopyButton } from './CopyButton';
 import { OrderDelivery } from './OrderDelivery';
 import {
   PAYMENT_METHOD_LABELS, PAYMENT_PROVIDER_LABELS, formatMoney, itemsText, minutesLeft, orderRef, paymentText,
@@ -49,32 +50,6 @@ function payToLines(option: PaymentOption, pickup: boolean): PayToLine[] {
 function optionLabel(option: PaymentOption): string {
   if (option.provider === null) return paymentText(option.method, null);
   return `${PAYMENT_METHOD_LABELS[option.method] ?? option.method} online`;
-}
-
-// A store account number, copied with one tap: a tick shows it worked.
-function CopyNumber({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<number | undefined>(undefined);
-
-  useEffect(() => () => window.clearTimeout(timer.current), []);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error('Copying the account number failed:', error instanceof Error ? error.name : 'unknown');
-    }
-  };
-
-  return (
-    <Button data-component="checkoutCopyNumber" variant="ghost" size="xs" onClick={copy} aria-label={`Copy ${value}`}>
-      {copied ? <CheckIcon /> : <CopyIcon />}
-      {copied ? 'Copied' : 'Copy'}
-    </Button>
-  );
 }
 
 interface OptionGroupProps {
@@ -121,7 +96,7 @@ function OptionGroup({ title, note, entries, picked, busy, pickup }: OptionGroup
                         <span className={line.number === null ? undefined : 'text-muted-foreground text-xs'}>{line.text}</span>
                         {line.number !== null && <span className="font-medium tabular-nums">{line.number}</span>}
                       </span>
-                      {line.number !== null && <CopyNumber value={line.number} />}
+                      {line.number !== null && <CopyButton dataComponent="checkoutCopyNumber" value={line.number} label={`Copy ${line.number}`} />}
                     </li>
                   ))}
                   {option.method !== 'cash' && (
