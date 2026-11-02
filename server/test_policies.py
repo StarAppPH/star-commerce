@@ -1036,8 +1036,8 @@ def test_policyAnswerFields_areDeclaredOnceEverywhere():
         if typing.get_args(Policy.model_fields[field].annotation)[0] is str
     }
     assert set(TEXT_LIMITS) == textFields == {
-        'returnConditions', 'nonReturnableItems', 'deliveryAreas',
-        'additionalTerms'
+        'returnConditions', 'nonReturnableItems', 'deliveryMethod',
+        'deliveryAreas', 'additionalTerms'
     }
     assert all(isinstance(limit, int) and limit > 0
                for limit in TEXT_LIMITS.values())
