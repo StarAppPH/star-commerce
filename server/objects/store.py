@@ -372,7 +372,11 @@ class Store(MongoModel):
     Sign-up creates the admin's store empty: only its owner and currency.
     A store is *set up* once its slug is a string, which createUserStore
     sets together with the other details; until then every store reader
-    treats it as no store yet (StoreActions.SET_UP)."""
+    treats it as no store yet (StoreActions.SET_UP).
+
+    A store takes orders only once its owner opened it (isOpen, refused
+    while a required policy question is unanswered) and while every
+    required policy question stays answered (StoreActions.takesOrders)."""
     ownerUserId: str = Field(..., min_length=1,
                              description="The admin's Users _id")
     name: str | None = Field(None, min_length=1,
@@ -412,6 +416,10 @@ class Store(MongoModel):
         None, pattern=VOICE_ID_PATTERN,
         description="The ElevenLabs voice its assistant speaks with; null: "
         'the default voice')
+    isOpen: bool = Field(
+        False, description='Whether its owner opened it to orders '
+        '(setMyStoreOpen); a new store, and one stored before the switch, '
+        'is closed')
     createdAt: datetime.datetime = Field(..., description='When it was created')
 
     @field_validator('name', 'description', 'contactNumber', 'address',
@@ -483,12 +491,23 @@ def _isNone(value) -> bool:
     return value is None
 
 
+def _isFalse(value) -> bool:
+    return value is False
+
+
 class ShopStoreResponse(StoreResponse):
     """The store a shopper visits: a StoreResponse plus its brand colors,
-    which the shop is drawn in. A color is sent only once set (the route
-    leaves an unset one out), so a store with none reads exactly as a
-    StoreResponse. Each field restates Store's
-    (test_route_response_models.py's MIRRORS)."""
+    which the shop is drawn in, and takingOrders. A color is sent only
+    once set, takingOrders only while true (the route leaves them out
+    otherwise), so a store with none reads exactly as a StoreResponse.
+    Each color restates Store's (test_route_response_models.py's
+    MIRRORS)."""
+    takingOrders: bool = Field(
+        False, exclude_if=_isFalse,
+        description='Whether it takes orders now (StoreActions.takesOrders: '
+        'its owner opened it and no required policy question stops '
+        'orders); sent only while true, left out: customers can browse '
+        'only')
     primaryColor: str | None = Field(None, pattern=HEX_COLOR_PATTERN,
                                      exclude_if=_isNone,
                                      description='Main brand color, #RRGGBB')
@@ -499,7 +518,8 @@ class ShopStoreResponse(StoreResponse):
 
 class AdminStoreResponse(StoreResponse):
     """The admin's own store: a StoreResponse plus its photo theme and
-    voice. The photo style feeds the product photos and the voice the
+    voice, and whether it is open (isOpen, sent only while open). The photo
+    style feeds the product photos and the voice the
     spoken replies, and customers never get either; they get the brand
     colors (ShopStoreResponse). Each is sent only once set (a dict the
     route builds leaves it out, and exclude_if drops it from a dump), so a
@@ -510,7 +530,12 @@ class AdminStoreResponse(StoreResponse):
         'primaryColor': 'a brand color',
         'secondaryColor': 'a brand color',
         'voiceId': 'the voice saved (updateMyStoreTheme docstring)',
+        'isOpen': 'whether the store is open to orders (setMyStoreOpen)',
     }
+    isOpen: bool = Field(
+        False, exclude_if=_isFalse,
+        description='Whether its owner opened it to orders '
+        '(setMyStoreOpen); sent only while open, left out: closed')
     photoStyle: str | None = Field(
         None, min_length=1, max_length=PHOTO_STYLE_MAX_LENGTH,
         exclude_if=_isNone,
@@ -557,9 +582,25 @@ class AdminStoreScreenRow(ResponseModel):
 
 
 class MyStoreScreenResponse(ResponseModel):
-    """What the getUserStore route sends the admin workspace."""
+    """What the getUserStore route sends the admin workspace: the store's
+    row, and beside it whether the store is open (the sidebar's switch),
+    sent once the store is set up."""
     store: AdminStoreScreenRow | None = Field(
         ..., description="The admin's store; null until it is created")
+    isOpen: bool | None = Field(
+        None, exclude_if=_isNone,
+        description='Whether its owner opened it to orders '
+        '(setMyStoreOpen); left out until the store is set up')
+
+
+class StoreOpenResponse(ResponseModel):
+    """What setMyStoreOpen sends: whether the store is open to orders now.
+    Restates Store's field (MIRRORS)."""
+    AI_READS: ClassVar[dict[str, str]] = {
+        'isOpen': 'confirms the store was opened or closed',
+    }
+    isOpen: bool = Field(
+        ..., description='Whether its owner opened it to orders')
 
 
 class StoreThemeResponse(ResponseModel):

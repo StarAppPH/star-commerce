@@ -97,7 +97,8 @@ export function policyRows(
 }
 
 // The store's policy: every answer, each delivery zone's own policy, and how
-// many questions that apply the store has not answered yet.
+// many required questions the store has not answered yet (the server's
+// unansweredQuestions; worked out here only on a card saved before it).
 export function PolicyCard({ component }: ComponentProps<'policy'>) {
   const rows = policyRows(component).filter((row) => policyQuestionApplies(row.question, component));
   const open = unansweredPolicyQuestions(component);

@@ -107,5 +107,20 @@ PHOTO_NOTES_MAX_LENGTH = 300
 PHOTO_REFERENCES_MAX = 10
 PHOTO_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
 
+# The store policy's questions (objects/policy.py unansweredPolicyQuestions,
+# the admin's policy card and new-chat screen):
+#   POLICY_OPTIONAL_QUESTIONS: asked once at most and never required, so
+#     never counted as not answered (the store opens without them);
+#   POLICY_RETURN_QUESTIONS: apply only while the store accepts returns
+#     (acceptsReturns true); acceptsReturns false clears them;
+#   POLICY_ZONES_QUESTION: the one item a store that delivers but has no
+#     delivery zone yet counts as, beside the policy's own fields.
+POLICY_OPTIONAL_QUESTIONS = ('deliveryMethod', 'deliveryAreas',
+                             'additionalTerms')
+POLICY_RETURN_QUESTIONS = ('returnWindowDays', 'returnConditions',
+                           'nonReturnableItems', 'refundMethod',
+                           'returnShippingPaidBy')
+POLICY_ZONES_QUESTION = 'deliveryZones'
+
 # Everything above this line ships to every browser. No credentials, no API
 # keys, no bank details, no internal limits.

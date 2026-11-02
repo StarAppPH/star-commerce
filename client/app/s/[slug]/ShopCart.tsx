@@ -12,6 +12,8 @@ import { formatMoney } from '@/components/chat/cards/format';
 import { useChatShell } from '@/components/chat/ChatShell';
 import { useShopCart } from '@/lib/ShopCartContext';
 import { useSnackbar } from '@/lib/SnackbarContext';
+import { useShopWorkspace } from './ShopWorkspace';
+import { SHOP_NOT_TAKING_ORDERS } from './shopChatText';
 
 // What the chat is asked when the shopper checks out from the panel.
 const CHECKOUT_MESSAGE = 'Check out my cart';
@@ -32,7 +34,10 @@ export function ShopCart() {
   const { cart, count, busy, setQuantity, remove, clear } = useShopCart();
   const shell = useChatShell();
   const { showSnackbar } = useSnackbar();
+  const { session } = useShopWorkspace();
   const [open, setOpen] = useState(false);
+  // A store not open yet takes no order (the server refuses it too).
+  const takingOrders = session.store.takingOrders;
 
   const items = cart?.items ?? [];
   const blocked = items.some((item) => stockProblem(item) !== null);
@@ -145,7 +150,11 @@ export function ShopCart() {
             {blocked && (
               <p className="text-destructive-foreground text-xs">Lower the items marked above to what is left, or remove them, to check out.</p>
             )}
-            <p className="text-muted-foreground text-xs">Delivery, if you choose it, is added at checkout.</p>
+            {takingOrders ? (
+              <p className="text-muted-foreground text-xs">Delivery, if you choose it, is added at checkout.</p>
+            ) : (
+              <p data-component="shopCartNotTakingOrders" className="text-warning-foreground text-xs">{SHOP_NOT_TAKING_ORDERS}</p>
+            )}
             <div className="flex items-center gap-2">
               <Button
                 data-component="shopCartClear"
@@ -158,7 +167,7 @@ export function ShopCart() {
               <Button
                 data-component="shopCartCheckout"
                 className="flex-1"
-                disabled={busy || blocked}
+                disabled={busy || blocked || !takingOrders}
                 onClick={checkout}
               >
                 Check out

@@ -1,0 +1,16 @@
+{
+    "description": "What setMyStoreOpen sends: whether the store is open to orders now.\nRestates Store's field (MIRRORS).",
+    "properties": {
+        "isOpen": {
+            "description": "Whether its owner opened it to orders",
+            "title": "Isopen",
+            "type": "boolean"
+        }
+    },
+    "required": [
+        "isOpen"
+    ],
+    "title": "StoreOpenResponse",
+    "type": "object",
+    "additionalProperties": false
+}

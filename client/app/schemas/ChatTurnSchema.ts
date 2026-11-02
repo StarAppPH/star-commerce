@@ -825,7 +825,8 @@ export type Createdat = string;
  * How it is or was paid
  */
 export type Paymentmethod =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")
+  | null;
 /**
  * When it was paid
  */
@@ -937,7 +938,8 @@ export type Expiresat = string;
  * How it is or was paid
  */
 export type Paymentmethod1 =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")
+  | null;
 /**
  * When it was paid
  */
@@ -1020,7 +1022,8 @@ export type Checkpayees = string[] | null;
  * The ways the shopper could pay it, on a card saved before payment options
  */
 export type Paymentmethods =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[]
+  | null;
 /**
  * ISO 4217 code of every amount
  */
@@ -1485,7 +1488,8 @@ export type Checkpayees1 =
  * The ways a customer could pay, on a card saved before each method had its details
  */
 export type Acceptedpaymentmethods =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[]
+  | null;
 /**
  * Whether a customer can cancel a paid order
  */
@@ -1572,6 +1576,29 @@ export type Minimumorder = number | null;
  * The items total from which delivery into the zone is free, in the store's currency; null: never free
  */
 export type Freedeliveryfrom = number | null;
+/**
+ * The required questions not answered yet (unansweredPolicyQuestions); null on a card saved before they were sent
+ */
+export type Unansweredquestions =
+  | (
+      | "acceptsReturns"
+      | "returnWindowDays"
+      | "returnConditions"
+      | "nonReturnableItems"
+      | "refundMethod"
+      | "returnShippingPaidBy"
+      | "defectReportDays"
+      | "deliveryOptions"
+      | "deliveryMethod"
+      | "deliveryAreas"
+      | "handoverDays"
+      | "authorizedPaymentMethods"
+      | "paidOrderCancellation"
+      | "paidOrderCancellationHours"
+      | "additionalTerms"
+      | "deliveryZones"
+    )[]
+  | null;
 /**
  * The card
  */
@@ -2782,6 +2809,7 @@ export interface PolicyCard {
   paidOrderCancellationHours: Paidordercancellationhours;
   additionalTerms: Additionalterms;
   deliveryZones?: Deliveryzones;
+  unansweredQuestions?: Unansweredquestions;
 }
 /**
  * AuthorizedPaymentMethod as a route sends it (MIRRORS keeps it in

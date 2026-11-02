@@ -202,8 +202,12 @@ TEXT_LIMITS = {
 
 
 UPDATE_POLICY_DESCRIPTION = f"""Save answers of the admin's store policies.
-Ask the admin one section at a time, one question per message (the admin
-may skip any):
+Read getMyStorePolicy first. Required are the questions below that apply
+and are not optional (a null answer is unanswered); ask only those still
+unanswered, in the order below, one question per message, skipping every
+answered question and section; never re-confirm or walk through an answer
+already given unless the admin asks to change it. With nothing answered
+yet, go through the sections in this order (the admin may skip any):
 - payment: authorizedPaymentMethods, the ways a customer can pay, each an
   object with its `method` ({_oneOf(PaymentMethod)}) and what paying that
   way needs, asked as follow-up questions for each method the admin picks:
@@ -222,21 +226,30 @@ may skip any):
   paidOrderCancellationHours, how many hours after payment (and before
   handover) a customer can cancel;
 - delivery: deliveryOptions (a list, {_oneOf(DeliveryOption)}); with
-  delivery, the zones it delivers to, each with its own delivery policy (a
+  delivery, the zones it delivers to (required: deliveryZones empty is
+  unanswered), each with its own delivery policy (a
   name, a flat fee, the days a delivery takes, and optionally a minimum
   order and an order total from which delivery is free), drawn and set on
   a map (in the chat, showDeliveryZonesForm; never asked as text or saved
-  with this tool): a store that delivers takes no delivery order until it
+  with this tool): a store that delivers takes no order until it
   has a zone; then deliveryMethod, how the store delivers in the admin's
   own words (e.g. own rider, a courier such as Lalamove), and deliveryAreas,
   a name for the zones (e.g. Metro Manila), both optional (ask once, move on
-  when skipped); handoverDays, the days from payment until a pickup order
-  is ready (a delivery takes its zone's days);
+  when skipped); with pickup, handoverDays, the days from payment until a
+  pickup order is ready (a delivery takes its zone's days);
 - returns: acceptsReturns; if so, returnWindowDays, returnConditions,
   nonReturnableItems, refundMethod ({_oneOf(RefundMethod)}) and
   returnShippingPaidBy ({_oneOf(ReturnShippingPayer)}); defectReportDays, how
-  long a customer has to report a defective or wrong item;
-- then the rest: additionalTerms.
+  long a customer has to report a defective or wrong item (asked whether or
+  not returns are accepted: a defect is always the store's to fix);
+- then the rest: additionalTerms, optional: ask once at most ("any other
+  terms?"), never again once skipped.
+deliveryMethod, deliveryAreas and additionalTerms are never required;
+paidOrderCancellationHours only with withinHours; handoverDays only with
+pickup offered; the return questions after acceptsReturns only when it is
+true. Once nothing required is unanswered and the store is not open yet
+(getUserStore's isOpen is left out while closed), offer to open it
+(setMyStoreOpen): it takes no order until then.
 Use only what the admin said, never guess. Call it as soon as the admin's
 answer is clear ("cash only" is the payment methods): never read a clear
 answer back or ask for a yes; confirm only what you had to interpret. Send only the fields the admin answered: a field left
@@ -244,10 +257,13 @@ out keeps its answer. To take an answer back, list the field in `clear`
 (never with a value too). returnWindowDays and defectReportDays count from
 the handover (pickup or delivery); handoverDays counts from payment. Amounts
 are in the store's currency. Setting acceptsReturns to false drops the
-return window, conditions, refund method and who pays return shipping;
-leaving delivery out of deliveryOptions drops deliveryMethod and
-deliveryAreas; a
-paidOrderCancellation other than withinHours drops its hours. A customer
+return window, conditions, non-returnable items, refund method and who pays
+return shipping; leaving delivery out of deliveryOptions drops
+deliveryMethod and deliveryAreas; a
+paidOrderCancellation other than withinHours drops its hours. Turning
+returns on (or delivery, or withinHours) adds the questions it needs, and
+an open store takes no order until they are answered: ask them right away.
+A customer
 cancels a paid order themselves (refunded) when paidOrderCancellation allows
 it. The time a customer has to pay an order, and a customer cancelling an
 unpaid order, are set by the app, not by a policy: never ask about them.
@@ -293,7 +309,10 @@ POLICY_STORE_FIELDS = {'_id': 1, 'createdAt': 1, 'deliveryZones': 1}
 
 def _withZones(policy: dict, zones: list[dict] | None) -> dict:
     """`policy` (answers, as stored) with deliveryZones: the store's zones'
-    policies, without their shapes; none while it offers no delivery."""
+    policies, without their shapes; none while it offers no delivery. The
+    required questions not answered yet follow from these alone
+    (unansweredPolicyQuestions(answers, deliveryZones): the policy card's
+    unansweredQuestions)."""
     delivers = 'delivery' in (policy.get('deliveryOptions') or [])
     return {**policy, 'deliveryZones': [
         {rule: zone.get(rule) for rule in DELIVERY_ZONE_RULES}
@@ -425,7 +444,9 @@ class PolicyTools():
     def getMyStorePolicy(self, userId: str) -> dict:
         """Get the policies of the admin's store: its answers on returns,
         delivery, payment and the rest. A null answer is one the admin has
-        not given yet: use updateMyStorePolicy to set it."""
+        not given yet: use updateMyStorePolicy to set it (its description
+        says which are required). Once every required one is answered, the
+        store can open (setMyStoreOpen)."""
         return getMyStorePolicy(StorePolicyResponse, userId)
 
     @mcp_tool('customer',

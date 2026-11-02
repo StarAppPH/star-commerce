@@ -63,6 +63,10 @@ export type Latitude = number;
  */
 export type Longitude = number;
 /**
+ * Whether it takes orders now (StoreActions.takesOrders: its owner opened it and no required policy question stops orders); sent only while true, left out: customers can browse only
+ */
+export type Takingorders = boolean;
+/**
  * Main brand color, #RRGGBB
  */
 export type Primarycolor = string | null;
@@ -73,10 +77,11 @@ export type Secondarycolor = string | null;
 
 /**
  * The store a shopper visits: a StoreResponse plus its brand colors,
- * which the shop is drawn in. A color is sent only once set (the route
- * leaves an unset one out), so a store with none reads exactly as a
- * StoreResponse. Each field restates Store's
- * (test_route_response_models.py's MIRRORS).
+ * which the shop is drawn in, and takingOrders. A color is sent only
+ * once set, takingOrders only while true (the route leaves them out
+ * otherwise), so a store with none reads exactly as a StoreResponse.
+ * Each color restates Store's (test_route_response_models.py's
+ * MIRRORS).
  */
 export interface ShopStoreResponse {
   _id: Id;
@@ -91,6 +96,7 @@ export interface ShopStoreResponse {
    * Map location; null until the admin pins it
    */
   location: StoreLocationResponse | null;
+  takingOrders?: Takingorders;
   primaryColor?: Primarycolor;
   secondaryColor?: Secondarycolor;
 }

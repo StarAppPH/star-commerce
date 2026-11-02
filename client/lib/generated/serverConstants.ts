@@ -32,3 +32,19 @@ export const PHOTO_NOTES_MAX_LENGTH = 300 as const;
 export const PHOTO_REFERENCES_MAX = 10 as const;
 
 export const PHOTO_UPLOAD_MAX_BYTES = 10485760 as const;
+
+export const POLICY_OPTIONAL_QUESTIONS = [
+  "deliveryMethod",
+  "deliveryAreas",
+  "additionalTerms"
+] as const;
+
+export const POLICY_RETURN_QUESTIONS = [
+  "returnWindowDays",
+  "returnConditions",
+  "nonReturnableItems",
+  "refundMethod",
+  "returnShippingPaidBy"
+] as const;
+
+export const POLICY_ZONES_QUESTION = "deliveryZones" as const;

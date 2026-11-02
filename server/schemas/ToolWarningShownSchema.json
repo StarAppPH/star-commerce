@@ -37,6 +37,7 @@
                 "noPaymentMethods",
                 "noDeliveryZones",
                 "policyUnset",
+                "storeNotOpen",
                 "storeDetailMissing"
             ],
             "title": "Code",

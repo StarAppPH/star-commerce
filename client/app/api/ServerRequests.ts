@@ -30,6 +30,7 @@ import type { ProductPhotoOfferAnswer } from '../schemas/ProductPhotoOfferAnswer
 import type { ReturnDecisionAnswer } from '../schemas/ReturnDecisionAnswerSchema';
 import type { RoleListResponse } from '../schemas/RoleListResponseSchema';
 import type { SpokenThinkingResponse } from '../schemas/SpokenThinkingResponseSchema';
+import type { StoreOpenResponse } from '../schemas/StoreOpenResponseSchema';
 import type { StorePolicyResponse } from '../schemas/StorePolicyResponseSchema';
 import type { UserResponse } from '../schemas/UserResponseSchema';
 import type { WaitingOnYouResponse } from '../schemas/WaitingOnYouResponseSchema';
@@ -144,6 +145,29 @@ import type { WaitingOnYouResponse } from '../schemas/WaitingOnYouResponseSchema
             cache: 'no-store'
         });
         const data: ApiResponse<MyStoreScreenResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
+    async setMyStoreOpen(userId: string, open: boolean): Promise<ApiResponse<StoreOpenResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/setMyStoreOpen`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "open": open}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<StoreOpenResponse> & { msg?: string } = await res.json();
         if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
         
         if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
@@ -599,6 +623,7 @@ export interface RouteResponseModels {
     getRoles: RoleListResponse;
     getUserRoleTypes: NoContentResponse;
     getUserStore: MyStoreScreenResponse;
+    setMyStoreOpen: StoreOpenResponse;
     setMyDeliveryZones: DeliveryZonesResponse;
     resetMyStore: NoContentResponse;
     startGuestSession: CustomerSessionResponse;
@@ -626,6 +651,7 @@ export interface RouteRequestBodies {
     getRoles: { userId: string };
     getUserRoleTypes: { userId: string };
     getUserStore: { userId: string };
+    setMyStoreOpen: { userId: string; open: boolean };
     setMyDeliveryZones: { userId: string; zones: NewDeliveryZone[] };
     resetMyStore: { userId: string; confirmName: string };
     startGuestSession: { idToken: string; storeSlug: string };

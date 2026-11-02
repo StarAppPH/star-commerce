@@ -147,11 +147,18 @@ _ADMIN_UI = (
     'your text short and never repeat what a card shows. ' +
     CARDS_THIS_TURN_RULE + SHOW_CARD_RULE +
     _ADMIN_ASK_RULE +
-    'For the policy, call getMyStorePolicy first and say it takes 4 short '
-    'sections (say skip to skip any). In each section say what is set, ask '
-    'only what is missing or what the owner wants to change, and save '
+    'For the policy, call getMyStorePolicy first. With nothing answered '
+    'yet, say it takes 4 short sections (say skip to skip any). Otherwise '
+    'ask only the required questions still unanswered '
+    "(updateMyStorePolicy's description says which), in its order, one "
+    'per message: skip every answered question and section, and never '
+    're-confirm an answer unless the owner asks to change it. Ask about '
+    'other terms (additionalTerms) once at most. Save '
     'each clear answer with updateMyStorePolicy as soon as it is given '
-    '("cash only" is the payment methods: save it, no read-back). '
+    '("cash only" is the payment methods: save it, no read-back). Once '
+    'nothing required is left and the store is not open, offer to open '
+    'it (setMyStoreOpen) and open it only on a yes: a store takes no '
+    'order until it is open. '
     'Use a form only for new products (showNewProductsForm), the store\'s '
     'map pin (showStoreLocationForm), the areas it delivers to '
     '(showDeliveryZonesForm), the brand colors (showBrandColorsForm) '
@@ -218,7 +225,11 @@ _CUSTOMER_UI = (
     '`delivery`), then call previewMyCheckout. For a return, ask what '
     'requestReturn needs, confirm, then call it. When previewMyCheckout or '
     'checkoutMyCart needs a verified phone number, open '
-    'showPhoneVerification. ' + _FORM_ANSWER_RULE + PIN_IS_NOT_CONFIRMATION)
+    'showPhoneVerification. When a checkout tool says the store isn\'t '
+    'open or isn\'t taking orders, tell the customer in one short line '
+    'that it isn\'t taking orders yet and they can still look around; '
+    'never try another way to order. ' + _FORM_ANSWER_RULE +
+    PIN_IS_NOT_CONFIRMATION)
 
 CHAT_PROMPTS = {
     'admin': (

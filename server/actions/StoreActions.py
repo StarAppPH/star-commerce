@@ -39,14 +39,16 @@ from objects import (DEFAULT_STORE_CURRENCY, DELIVERY_ZONE_AMOUNT_MAX,
                      AddressSuggestionResponse, DeliveryZonesResponse,
                      MyStoreResponse, MyStoreScreenResponse,
                      NewDeliveryZone, NoContentResponse, Policy, Store,
-                     StoreCurrency, StoreLocation, StoreResponse,
-                     StoreThemeResponse, deliveryZoneProblem, hexColor,
+                     StoreCurrency, StoreLocation, StoreOpenResponse,
+                     StoreResponse, StoreThemeResponse,
+                     deliveryZoneProblem, hexColor, policyQuestionsText,
+                     unansweredPolicyQuestions,
                      zoneCorners, zonesOverlap, fieldModel,
                      projectedCopy,
                      projection_of)
 from route_config import route_config
 from actions.usageCounters import appDay, copyDailyQuota, usageKey
-from sharedConstants import STORE_RESET_ENDS_AT
+from sharedConstants import POLICY_ZONES_QUESTION, STORE_RESET_ENDS_AT
 from utils import parseIsoInstant
 
 STORES = 'Stores'
@@ -80,6 +82,13 @@ DELIVERY_ZONES_NOT_A_LIST = ('zones is a list of zones, each with its points '
 TOO_MANY_DELIVERY_ZONES = f'Draw at most {DELIVERY_ZONES_MAX} delivery zones'
 ZONES_OVERLAP = ('Zone {later} overlaps zone {earlier}: draw them so they '
                  'only share a border')
+# The open switch (setMyStoreOpen, OrderActions.checkoutTerms).
+STORE_NOT_OPEN = "This store isn't open yet: it isn't taking orders"
+STORE_NOT_READY = ("This store isn't taking orders right now: it is still "
+                   'finishing its policy')
+OPEN_NEEDS_POLICY = ('Answer these policy questions before opening your '
+                     'store: {missing}')
+OPEN_NOT_A_BOOL = 'open is true or false'
 # What createUserStore writes: the details the admin gives, and the slug
 # that sets the store up.
 STORE_DETAILS = ('name', 'slug', 'currency', 'description', 'contactNumber',
@@ -135,6 +144,42 @@ def setUpStore(storeId: str, projection: dict) -> dict:
     return store
 
 
+def storePolicyQuestions(storeId: str,
+                         deliveryZones: list[dict] | None) -> list[str]:
+    """The required policy questions the store `storeId` (with its stored
+    `deliveryZones`) has not answered yet (unansweredPolicyQuestions of its
+    Policies document; a store with none has answered nothing)."""
+    policy = db.read({'storeId': storeId}, POLICIES, findOne=True) or {}
+    return unansweredPolicyQuestions(policy, deliveryZones)
+
+
+def orderBlockingQuestions(storeId: str,
+                           deliveryZones: list[dict] | None) -> list[str]:
+    """The unanswered required questions that stop every order at an open
+    store (storePolicyQuestions): all of them but the delivery zones, which
+    stop only a delivery (OrderActions.bookableFulfillments: a store that
+    delivers with no zone yet still takes pickups). An answer changed after
+    opening (returns turned on, say) can add one, and orders stop until it
+    is answered, without closing the store."""
+    return [question for question in storePolicyQuestions(storeId,
+                                                          deliveryZones)
+            if question != POLICY_ZONES_QUESTION]
+
+
+def takesOrders(store: dict) -> bool:
+    """Whether the store (read with ORDER_STATE_FIELDS) takes orders now:
+    its owner opened it (isOpen; a store stored before the switch reads as
+    closed) and no answer stops them (orderBlockingQuestions). The shop's
+    takingOrders (ShopStoreResponse); createOrder refuses on the same two
+    checks (OrderActions._requireTakingOrders)."""
+    return store.get('isOpen') is True and not orderBlockingQuestions(
+        store['_id'], store.get('deliveryZones'))
+
+
+# What takesOrders reads of a store.
+ORDER_STATE_FIELDS = {'_id': 1, 'isOpen': 1, 'deliveryZones': 1}
+
+
 def _isOwnerCollision(error: DuplicateKeyError) -> bool:
     """Whether the write broke the unique ownerUserId index (a second
     store of the admin) rather than the slug one. The server names the
@@ -167,6 +212,7 @@ def createEmptyStore(ownerUserId: str, createdAt: datetime.datetime,
     store = Store(ownerUserId=ownerUserId,
                   currency=DEFAULT_STORE_CURRENCY,
                   location=None,
+                  isOpen=False,
                   createdAt=createdAt,
                   _version=0).model_dump(by_alias=True)
     created = db.create(store, STORES, session=session)
@@ -229,14 +275,30 @@ def myStoreResponse(model, userId: str) -> dict:
     """What getUserStore sends the admin `userId`, as `model` (a
     MyStoreResponse or a MyStoreScreenResponse): their store once set up,
     else null."""
+    # isOpen is read beside the row (the cut drops it from the workspace's
+    # row, which has no such field) and sent as the model says.
+    seen = {}
+
+    def keepOpen(stored: dict) -> dict:
+        # A store stored before the open switch is closed.
+        seen['isOpen'] = stored.get('isOpen') is True
+        return stored
+
     store = db.readResponse(fieldModel(model, 'store'),
-                            setUpOwnerQuery(userId), STORES)
-    if store is not None:
-        # A theme field or the voice is sent only once set
-        # (AdminStoreResponse).
-        store = {key: value for key, value in store.items()
-                 if not (key in STORE_OWNER_ONLY_FIELDS and value is None)}
-    return {'store': store}
+                            setUpOwnerQuery(userId), STORES,
+                            readWhole=('isOpen', ), prepare=keepOpen)
+    if store is None:
+        return {'store': None}
+    isOpen = seen['isOpen']
+    store.pop('isOpen', None)
+    # A theme field or the voice is sent only once set, and isOpen only
+    # while open (AdminStoreResponse).
+    store = {key: value for key, value in store.items()
+             if not (key in STORE_OWNER_ONLY_FIELDS and value is None)}
+    if model is MyStoreScreenResponse:
+        # The workspace's row is name, link and colors: isOpen goes beside.
+        return {'store': store, 'isOpen': isOpen}
+    return {'store': {**store, 'isOpen': True} if isOpen else store}
 
 
 def _confirmsReset(confirmName, store: dict) -> bool:
@@ -620,12 +682,15 @@ def createUserStore(model,
                       primaryColor=primaryColor,
                       secondaryColor=secondaryColor,
                       location=None,
+                      isOpen=False,
                       createdAt=createdAt,
                       _version=0).model_dump(by_alias=True)
         try:
             if existing is None:
                 saved = db.create(store, STORES)
             else:
+                # Only the details: the empty store is closed already
+                # (createEmptyStore), or reads as closed.
                 saved = db.findOneAndUpdate(
                     {'_id': existing['_id'],
                      'slug': {'$not': SET_UP['slug']}},
@@ -712,6 +777,33 @@ def setUserStoreLocation(model, userId: str, latitude: float,
     return projectedCopy(model, updated)
 
 
+def setMyStoreOpen(model, userId: str, open: bool) -> dict:
+    """Open the admin's store to orders, or close it. Opening is refused,
+    naming in plain words each required policy question still unanswered
+    (unansweredPolicyQuestions); closing always works. The store must be set
+    up (ownerStore)."""
+    requireAdmin(userId)
+    if not isinstance(open, bool):
+        raise ValueError(OPEN_NOT_A_BOOL)
+    store = ownerStore(userId, {'_id': 1, '_version': 1,
+                                'deliveryZones': 1})
+    if open:
+        missing = storePolicyQuestions(store['_id'],
+                                       store.get('deliveryZones'))
+        if missing:
+            raise ValueError(OPEN_NEEDS_POLICY.format(
+                missing=policyQuestionsText(missing)))
+    updated = db.findOneAndUpdate(
+        {'_id': store['_id'], '_version': store['_version']},
+        {'$set': {'isOpen': open}, '$inc': {'_version': 1}},
+        STORES,
+        upsert=False,
+        projection={'isOpen': 1})
+    if updated is None:
+        raise ValueError(STORE_CHANGED)
+    return projectedCopy(model, {'isOpen': updated['isOpen']})
+
+
 class StoreActions():
 
     @route_config(httpMethod='POST',
@@ -722,6 +814,18 @@ class StoreActions():
         """The admin's store for the admin workspace, or null before the
         admin has created one (the workspace then shows store setup)."""
         return getUserStore(MyStoreScreenResponse, userId)
+
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Store updated',
+                  responseModel=StoreOpenResponse)
+    def setMyStoreOpen(self, userId: str, open: bool) -> dict:
+        """Open the admin's store to orders (open true), or close it (open
+        false): the sidebar's switch. Opening is refused while a required
+        policy question is unanswered, naming each one; closing always
+        works. A closed store's shop still opens: customers browse, and
+        every order is refused."""
+        return setMyStoreOpen(StoreOpenResponse, userId, open)
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,
@@ -821,6 +925,22 @@ class StoreTools():
         has not created one yet: then collect the store's details from the
         admin and call createUserStore."""
         return getUserStore(MyStoreResponse, userId)
+
+    @mcp_tool('admin',
+              thinkingText=['Updating your store',
+                            'Changing whether your store is open',
+                            'Flipping the open sign'],
+              responseModel=StoreOpenResponse,
+              twinOf=StoreActions.setMyStoreOpen)
+    def setMyStoreOpen(self, userId: str, open: bool) -> dict:
+        """Open the admin's store to orders (open true) or close it (open
+        false). A store takes no order until its owner opens it. Offer to
+        open it once getMyStorePolicy's unansweredQuestions is empty, and
+        call it only when the owner says yes. Opening is refused while a
+        required policy question is unanswered: relay the refusal, which
+        names them, and ask the first one. Closing always works (ask why
+        only if unclear); customers can still browse a closed store."""
+        return setMyStoreOpen(StoreOpenResponse, userId, open)
 
     @mcp_tool('admin',
               thinkingText=["Saving your store's look",

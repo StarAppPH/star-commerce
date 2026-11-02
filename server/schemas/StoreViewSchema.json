@@ -318,6 +318,12 @@
             "description": "The ElevenLabs voice its assistant speaks with; null: the default voice",
             "title": "Voiceid"
         },
+        "isOpen": {
+            "default": false,
+            "description": "Whether its owner opened it to orders (setMyStoreOpen); a new store, and one stored before the switch, is closed",
+            "title": "Isopen",
+            "type": "boolean"
+        },
         "createdAt": {
             "description": "When it was created",
             "format": "date-time",

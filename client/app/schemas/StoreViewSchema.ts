@@ -151,6 +151,10 @@ export type Secondarycolor = string | null;
  */
 export type Voiceid = string | null;
 /**
+ * Whether its owner opened it to orders (setMyStoreOpen); a new store, and one stored before the switch, is closed
+ */
+export type Isopen = boolean;
+/**
  * When it was created
  */
 export type Createdat = string;
@@ -178,6 +182,7 @@ export interface StoreView {
   primaryColor?: Primarycolor;
   secondaryColor?: Secondarycolor;
   voiceId?: Voiceid;
+  isOpen?: Isopen;
   createdAt: Createdat;
 }
 /**

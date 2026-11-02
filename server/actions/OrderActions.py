@@ -20,6 +20,10 @@ FulfillmentActions) is one _moveOrder.
 The store's policy says how a customer can pay (authorizedPaymentMethods,
 objects/payment.py): createOrder answers its checkout options
 (paymentOptions), and refuses an order at a store that has not said yet.
+It also refuses one at a store its owner has not opened (Store.isOpen,
+StoreActions.setMyStoreOpen), and at an open store while a required policy
+question is unanswered (StoreActions.orderBlockingQuestions): an answer
+changed after opening can add one.
 
 The clock: every read of now is _now(), which reads this module's
 `datetime`, so a test freezes all of them (payOrder's included) by
@@ -52,8 +56,11 @@ from actions.ProductActions import (PRODUCT_LIST_DEFAULT_LIMIT, PRODUCTS,
                                     INVENTORY_TRACKED, _atPosition,
                                     _validLimit, storeCurrency,
                                     validBatch)
-from actions.StoreActions import (POLICIES, STORES, _validCoordinate,
-                                  _validText, requireOwnerStore)
+from actions.StoreActions import (ORDER_STATE_FIELDS, POLICIES,
+                                  STORE_NOT_OPEN, STORE_NOT_READY, STORES,
+                                  _validCoordinate, _validText,
+                                  orderBlockingQuestions, requireOwnerStore,
+                                  setUpStore)
 from AppConfig import Timezone
 from mcpTools import mcp_tool
 from mongoDb import db
@@ -854,9 +861,11 @@ def checkoutTerms(userId: str, storeId: str, items: list,
                   delivery: NewOrderDelivery | None) -> CheckoutTerms:
     """createOrder's checks before any price or stock is read, in its order:
     a customer with a verified phone, a set-up store, the items, a store
-    that said how customers pay, and the fulfillment (_validFulfillment).
-    Reads only, so CartActions.previewMyCheckout refuses on exactly what
-    createOrder would."""
+    that said how customers pay, a store its owner opened whose required
+    policy questions are answered (_requireTakingOrders), and the
+    fulfillment (_validFulfillment). Reads only, so
+    CartActions.previewMyCheckout refuses on exactly what createOrder
+    would."""
     customer = customerAtStore(userId, storeId)
     if not customer.get('phoneNumber'):
         raise PermissionError(PHONE_REQUIRED)
@@ -865,11 +874,24 @@ def checkoutTerms(userId: str, storeId: str, items: list,
     options = storePaymentOptions(storeId)
     if not options:
         raise ValueError(NO_PAYMENT_METHODS)
+    _requireTakingOrders(storeId)
     policy = storeDelivery(storeId)
     fulfillment, address, zone = _validFulfillment(fulfillment,
                                                    delivery, policy)
     return CheckoutTerms(customer, currency, wanted, options, policy,
                          fulfillment, address, zone)
+
+
+def _requireTakingOrders(storeId: str) -> None:
+    """Refuse an order at a store its owner has not opened (STORE_NOT_OPEN;
+    one stored before the switch reads as closed), or at an open store
+    while a required policy question stops orders (STORE_NOT_READY, never
+    naming the questions: they are the store's)."""
+    store = setUpStore(storeId, ORDER_STATE_FIELDS)
+    if store.get('isOpen') is not True:
+        raise ValueError(STORE_NOT_OPEN)
+    if orderBlockingQuestions(storeId, store.get('deliveryZones')):
+        raise ValueError(STORE_NOT_READY)
 
 
 def tooManyUnpaid(customerId: str, storeId: str) -> bool:

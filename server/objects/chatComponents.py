@@ -37,7 +37,8 @@ from objects.policy import (AcceptsReturns, AuthorizedPaymentMethodRows,
                             DeliveryOptions,
                             HandoverDays, NonReturnableItems,
                             PaidOrderCancellationAnswer,
-                            PaidOrderCancellationHours, RefundMethodAnswer,
+                            PaidOrderCancellationHours, PolicyQuestion,
+                            RefundMethodAnswer,
                             ReturnConditions, ReturnShippingPaidBy,
                             ReturnWindowDays)
 from objects.product import HAS_INVENTORY_DESCRIPTION, PRODUCT_BATCH_MAX, NewProduct
@@ -298,6 +299,12 @@ class PolicyCard(ResponseModel):
     deliveryZones: list[DeliveryZoneRule] | None = Field(
         None, max_length=DELIVERY_ZONES_MAX,
         description="The store's delivery zones and their policies")
+    # Null on a card saved before the server counted them (the client then
+    # counts them itself, lib/policyQuestions.ts).
+    unansweredQuestions: list[PolicyQuestion] | None = Field(
+        None, description='The required questions not answered yet '
+        '(unansweredPolicyQuestions); null on a card saved before they '
+        'were sent')
 
 
 class PhotosCard(ResponseModel):

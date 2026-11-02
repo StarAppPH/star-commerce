@@ -8,9 +8,10 @@ import { ownFileUrl, uploadChatFiles } from '@/components/chat/attachments';
 import { CONVERSATIONS_PAGE, useConversationList, type ConversationList } from '@/components/chat/useConversationList';
 import type { AdminStoreScreenRow } from '@/app/schemas/MyStoreScreenResponseSchema';
 
+// `isOpen` is the store's open switch (false before the store is set up).
 type StoreState =
   | { status: 'loading' }
-  | { status: 'ready'; store: AdminStoreScreenRow | null }
+  | { status: 'ready'; store: AdminStoreScreenRow | null; isOpen: boolean }
   | { status: 'error'; message: string };
 
 interface AdminWorkspaceValue extends ConversationList {
@@ -37,7 +38,7 @@ export function AdminWorkspaceProvider({ userId, children }: { userId: string; c
   const reloadStore = useCallback(async () => {
     const res = await adminRequest(() => server.getUserStore(userId));
     if (res.status === 200) {
-      setStoreState({ status: 'ready', store: res.data.store });
+      setStoreState({ status: 'ready', store: res.data.store, isOpen: res.data.isOpen === true });
     } else {
       // A store already shown stays: a failed re-read after a chat turn
       // never takes the admin's screen away.

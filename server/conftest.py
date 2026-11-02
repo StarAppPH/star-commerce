@@ -902,10 +902,37 @@ ALL_PAYMENT_METHODS = [
 ]
 
 
+# The answers openForOrders gives each required policy question the store
+# has not answered (unansweredPolicyQuestions), so a test's store can take
+# orders: pickup only, no returns, no paid order cancelled.
+OPEN_STORE_ANSWERS = {'paidOrderCancellation': 'notAllowed',
+                      'deliveryOptions': ['pickup'], 'handoverDays': 1,
+                      'acceptsReturns': False, 'defectReportDays': 7}
+
+
+def openForOrders(store: dict) -> dict:
+    """`store` (createTestStore's) taking orders: each required policy
+    answer it has not given set to OPEN_STORE_ANSWERS' (written straight to
+    its Policies document; a test's later updateMyStorePolicy changes
+    them), and its open switch on. The payment methods are takePayments'.
+    Returns `store`."""
+    policy = db.read({'storeId': store['_id']}, 'Policies', findOne=True)
+    unset = {field: answer for field, answer in OPEN_STORE_ANSWERS.items()
+             if policy.get(field) is None}
+    if unset:
+        db.db['Policies'].update_one({'storeId': store['_id']},
+                                     {'$set': unset, '$inc': {'_version': 1}})
+    db.db['Stores'].update_one({'_id': store['_id']},
+                               {'$set': {'isOpen': True},
+                                '$inc': {'_version': 1}})
+    return store
+
+
 def takePayments(store: dict, methods: list[dict] | None = None) -> dict:
     """`store` (createTestStore's) taking payment the ways `methods` says
     (ALL_PAYMENT_METHODS by default): its policy's authorizedPaymentMethods,
-    which createOrder needs. Returns `store`."""
+    which createOrder needs, and open to orders (openForOrders), which it
+    needs too. Returns `store`."""
     from actions.StoreActions import ensurePolicy
     stored = db.read({'_id': store['_id']}, 'Stores',
                      projection={'createdAt': 1}, findOne=True)
@@ -915,7 +942,7 @@ def takePayments(store: dict, methods: list[dict] | None = None) -> dict:
         {'$set': {'authorizedPaymentMethods':
                   ALL_PAYMENT_METHODS if methods is None else methods},
          '$inc': {'_version': 1}})
-    return store
+    return openForOrders(store)
 
 
 def storeWithProducts(adminId: str, name: str = 'Bakery A',

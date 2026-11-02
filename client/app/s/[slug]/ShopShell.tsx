@@ -2,7 +2,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { MenuIcon, PlusIcon, RotateCwIcon, SearchIcon, SquarePenIcon, StoreIcon, XIcon } from 'lucide-react';
+import { ClockIcon, MenuIcon, PlusIcon, RotateCwIcon, SearchIcon, SquarePenIcon, StoreIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,7 @@ import { groupConversationsByDay } from '@/lib/storeTime';
 import { cn } from '@/lib/utils';
 import { ShopCart } from './ShopCart';
 import { ShopWorkspaceProvider, useShopWorkspace } from './ShopWorkspace';
+import { SHOP_NOT_TAKING_ORDERS } from './shopChatText';
 
 // A shop's voice glow while its store has no brand colors.
 const SHOP_GLOW = '#EA580C';
@@ -104,6 +105,16 @@ function ShopFrame({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
         </header>
+        {!store.takingOrders && (
+          <p
+            data-component="shopNotTakingOrders"
+            role="status"
+            className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-lg bg-warning/8 px-3 py-2 text-center text-warning-foreground text-sm"
+          >
+            <ClockIcon aria-hidden="true" className="size-4 shrink-0" />
+            {SHOP_NOT_TAKING_ORDERS}
+          </p>
+        )}
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       </div>
     </ChatShellProvider>

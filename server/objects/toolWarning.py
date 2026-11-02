@@ -16,7 +16,8 @@ ToolWarningCode = Literal['noPhoto', 'outOfStock', 'lowStock', 'hidden',
                           'staleUnfulfilled', 'staleAwaitingPayment',
                           'refundMissing', 'unanswered', 'staleApproved',
                           'noPaymentMethods', 'noDeliveryZones',
-                          'policyUnset', 'storeDetailMissing']
+                          'policyUnset', 'storeNotOpen',
+                          'storeDetailMissing']
 
 
 class ToolWarningShown(MongoModel):
