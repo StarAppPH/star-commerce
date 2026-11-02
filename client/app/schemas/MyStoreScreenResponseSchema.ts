@@ -21,15 +21,22 @@ export type Primarycolor = string | null;
  * Second brand color, #RRGGBB
  */
 export type Secondarycolor = string | null;
+/**
+ * Whether its owner opened it to orders (setMyStoreOpen); left out until the store is set up
+ */
+export type Isopen = boolean | null;
 
 /**
- * What the getUserStore route sends the admin workspace.
+ * What the getUserStore route sends the admin workspace: the store's
+ * row, and beside it whether the store is open (the sidebar's switch),
+ * sent once the store is set up.
  */
 export interface MyStoreScreenResponse {
   /**
    * The admin's store; null until it is created
    */
   store: AdminStoreScreenRow | null;
+  isOpen?: Isopen;
 }
 /**
  * The admin's own store as the admin workspace shows it (the

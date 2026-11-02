@@ -243,7 +243,8 @@ export type Checkpayees =
  * The ways a customer could pay, on a card saved before each method had its details
  */
 export type Acceptedpaymentmethods =
-  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
+  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[]
+  | null;
 /**
  * Whether a customer can cancel a paid order
  */
@@ -330,6 +331,29 @@ export type Minimumorder = number | null;
  * The items total from which delivery into the zone is free, in the store's currency; null: never free
  */
 export type Freedeliveryfrom = number | null;
+/**
+ * The required questions not answered yet (unansweredPolicyQuestions); null on a card saved before they were sent
+ */
+export type Unansweredquestions =
+  | (
+      | "acceptsReturns"
+      | "returnWindowDays"
+      | "returnConditions"
+      | "nonReturnableItems"
+      | "refundMethod"
+      | "returnShippingPaidBy"
+      | "defectReportDays"
+      | "deliveryOptions"
+      | "deliveryMethod"
+      | "deliveryAreas"
+      | "handoverDays"
+      | "authorizedPaymentMethods"
+      | "paidOrderCancellation"
+      | "paidOrderCancellationHours"
+      | "additionalTerms"
+      | "deliveryZones"
+    )[]
+  | null;
 
 /**
  * The store's policy a tool read or saved: every answer, null while
@@ -355,6 +379,7 @@ export interface PolicyCard {
   paidOrderCancellationHours: Paidordercancellationhours;
   additionalTerms: Additionalterms;
   deliveryZones?: Deliveryzones;
+  unansweredQuestions?: Unansweredquestions;
 }
 /**
  * AuthorizedPaymentMethod as a route sends it (MIRRORS keeps it in

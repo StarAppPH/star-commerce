@@ -67,7 +67,7 @@
             "additionalProperties": false
         }
     },
-    "description": "What the getUserStore route sends the admin workspace.",
+    "description": "What the getUserStore route sends the admin workspace: the store's\nrow, and beside it whether the store is open (the sidebar's switch),\nsent once the store is set up.",
     "properties": {
         "store": {
             "anyOf": [
@@ -79,6 +79,19 @@
                 }
             ],
             "description": "The admin's store; null until it is created"
+        },
+        "isOpen": {
+            "anyOf": [
+                {
+                    "type": "boolean"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Whether its owner opened it to orders (setMyStoreOpen); left out until the store is set up",
+            "title": "Isopen"
         }
     },
     "required": [

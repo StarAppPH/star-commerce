@@ -27,7 +27,7 @@
             "additionalProperties": false
         }
     },
-    "description": "The store a shopper visits: a StoreResponse plus its brand colors,\nwhich the shop is drawn in. A color is sent only once set (the route\nleaves an unset one out), so a store with none reads exactly as a\nStoreResponse. Each field restates Store's\n(test_route_response_models.py's MIRRORS).",
+    "description": "The store a shopper visits: a StoreResponse plus its brand colors,\nwhich the shop is drawn in, and takingOrders. A color is sent only\nonce set, takingOrders only while true (the route leaves them out\notherwise), so a store with none reads exactly as a StoreResponse.\nEach color restates Store's (test_route_response_models.py's\nMIRRORS).",
     "properties": {
         "_id": {
             "description": "Stores _id",
@@ -155,6 +155,12 @@
                 }
             ],
             "description": "Map location; null until the admin pins it"
+        },
+        "takingOrders": {
+            "default": false,
+            "description": "Whether it takes orders now (StoreActions.takesOrders: its owner opened it and no required policy question stops orders); sent only while true, left out: customers can browse only",
+            "title": "Takingorders",
+            "type": "boolean"
         },
         "primaryColor": {
             "anyOf": [

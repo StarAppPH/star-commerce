@@ -187,6 +187,40 @@ def getUserStore():
 
 
 
+@app.route('/setMyStoreOpen', methods=['POST'])
+@jwt_required()
+def setMyStoreOpen():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    userId = data.get('userId')
+    open = data.get('open')
+    current_user = get_jwt_identity()
+    try:
+        if isinstance(userId, (dict, list)):
+            raise ValueError('Invalid userId')
+        if isinstance(open, (dict, list)):
+            raise ValueError('Invalid open')
+        if userId != current_user:
+            raise ValueError("Unauthorized access")
+        res = ApiRequests().setMyStoreOpen(userId, open)
+    except PermissionError as e:
+        failure = routeFailure(e, status=403)
+        logging.log(failure.level, {'function': 'setMyStoreOpen', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'open')), 'traceback': failure.traceback})
+        return failure.response()
+    except Exception as e:
+        failure = routeFailure(e, status=400)
+        logging.log(failure.level, {'function': 'setMyStoreOpen', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'open')), 'traceback': failure.traceback})
+        return failure.response()
+
+    logging.info({'function': 'setMyStoreOpen', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'open'))})
+
+    jwtToken = create_access_token(identity=current_user)
+    response = ApiResponse(message="Store updated", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
+    return jsonify(response.model_dump(exclude_unset=True)), response.status
+
+
+
 @app.route('/setMyDeliveryZones', methods=['POST'])
 @jwt_required()
 def setMyDeliveryZones():

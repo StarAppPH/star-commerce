@@ -45,7 +45,8 @@ from actions.StoreActions import STORES
 from chatForms import newFormId
 from mongoDb import db
 from objects import (CHAT_CARD_ROWS_MAX, CHAT_COMPONENTS_PER_TURN_MAX,
-                     POLICY_ANSWER_FIELDS, ChatComponent)
+                     POLICY_ANSWER_FIELDS, ChatComponent,
+                     unansweredPolicyQuestions)
 
 _COMPONENT = TypeAdapter(ChatComponent)
 
@@ -208,6 +209,11 @@ def _myReturn(result: dict, context: CardContext) -> dict:
 def _policy(result: dict, context: CardContext) -> dict:
     return {'kind': 'policy', 'currency': context.currency(),
             'deliveryZones': result.get('deliveryZones'),
+            # The one count the admin's card shows (the server's rules,
+            # never the client's): from the answers and zones the result
+            # carries.
+            'unansweredQuestions': unansweredPolicyQuestions(
+                result, result.get('deliveryZones')),
             **{field: result.get(field) for field in POLICY_ANSWER_FIELDS}}
 
 

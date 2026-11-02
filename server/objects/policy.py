@@ -13,7 +13,9 @@ from objects.base import MongoModel, StoredDocumentKeys, ResponseModel
 from objects.order import Fulfillment
 from objects.payment import (AuthorizedPaymentMethod,
                              AuthorizedPaymentMethodRow, PaymentMethod)
-from objects.store import DELIVERY_ZONES_MAX, DeliveryZoneRule
+from objects.store import DELIVERY_ZONES_MAX, DeliveryZoneRule, ruledZones
+from sharedConstants import (POLICY_OPTIONAL_QUESTIONS,
+                             POLICY_RETURN_QUESTIONS, POLICY_ZONES_QUESTION)
 
 
 # ──────────────────────────────────────────────
@@ -116,8 +118,7 @@ AdditionalTerms = Annotated[str | None, Field(
 # The answers that only apply with returns accepted, with delivery among
 # the deliveryOptions, and with paid orders
 # cancellable within hours (Policy.normalized clears them otherwise).
-POLICY_RETURN_ANSWERS = ('returnWindowDays', 'returnConditions',
-                         'refundMethod', 'returnShippingPaidBy')
+POLICY_RETURN_ANSWERS = POLICY_RETURN_QUESTIONS
 POLICY_DELIVERY_ANSWERS = ('deliveryMethod', 'deliveryAreas')
 POLICY_CANCELLATION_HOURS_ANSWERS = ('paidOrderCancellationHours', )
 
@@ -203,6 +204,96 @@ POLICY_ANSWER_FIELDS = tuple(
 if set(POLICY_ANSWER_FIELDS) != set(typing.get_args(PolicyField)):
     raise TypeError('PolicyField must name exactly the answer fields of '
                     'Policy')
+
+
+# A store's policy questions: its answers (POLICY_ANSWER_FIELDS) and, for
+# a store that delivers, its delivery zones (POLICY_ZONES_QUESTION, drawn on
+# the map, not saved with updateMyStorePolicy).
+PolicyQuestion = Literal[(*typing.get_args(PolicyField),
+                          POLICY_ZONES_QUESTION)]
+# The order the admin's chat asks them in: payment, delivery, returns.
+POLICY_QUESTION_ORDER = (
+    'authorizedPaymentMethods', 'paidOrderCancellation',
+    'paidOrderCancellationHours', 'deliveryOptions', POLICY_ZONES_QUESTION,
+    'deliveryMethod', 'deliveryAreas', 'handoverDays', 'acceptsReturns',
+    'returnWindowDays', 'returnConditions', 'nonReturnableItems',
+    'refundMethod', 'returnShippingPaidBy', 'defectReportDays',
+    'additionalTerms')
+# Each question in plain words, for the admin (setMyStoreOpen's refusal).
+POLICY_QUESTION_LABELS = {
+    'authorizedPaymentMethods': 'how customers pay',
+    'paidOrderCancellation': 'whether a customer can cancel a paid order',
+    'paidOrderCancellationHours': 'how many hours after payment a paid '
+    'order can be cancelled',
+    'deliveryOptions': 'pickup, delivery or both',
+    POLICY_ZONES_QUESTION: 'where you deliver (draw your delivery zones on '
+    'the map)',
+    'deliveryMethod': 'how you deliver',
+    'deliveryAreas': 'a name for your delivery areas',
+    'handoverDays': 'how many days until a pickup order is ready',
+    'acceptsReturns': 'whether you accept returns',
+    'returnWindowDays': 'how many days a customer has to return an item',
+    'returnConditions': 'what a returned item must be like',
+    'nonReturnableItems': 'which items can never be returned',
+    'refundMethod': 'how a return is refunded',
+    'returnShippingPaidBy': 'who pays the shipping of a return',
+    'defectReportDays': 'how many days a customer has to report a defective '
+    'or wrong item',
+    'additionalTerms': 'any other terms',
+}
+if (set(POLICY_QUESTION_ORDER) != set(typing.get_args(PolicyQuestion))
+        or set(POLICY_QUESTION_LABELS) != set(POLICY_QUESTION_ORDER)):
+    raise TypeError('POLICY_QUESTION_ORDER and POLICY_QUESTION_LABELS must '
+                    'name exactly the policy questions')
+
+
+def policyQuestionApplies(question: str, answers: dict) -> bool:
+    """Whether `question` applies to the store's `answers` (a policy, as
+    stored or sent; a missing answer is not said): the return questions
+    only while returns are accepted, the hours to cancel a paid order only
+    with withinHours, the days until a pickup is ready only while pickup is
+    offered (or deliveryOptions is not said yet: pickup is the default),
+    and the delivery answers and zones only while delivery is offered. The
+    client's policyQuestions.ts mirrors it for policy cards saved before
+    the server sent unansweredQuestions."""
+    options = answers.get('deliveryOptions')
+    if question in POLICY_RETURN_QUESTIONS:
+        return answers.get('acceptsReturns') is True
+    if question in POLICY_CANCELLATION_HOURS_ANSWERS:
+        return answers.get('paidOrderCancellation') == 'withinHours'
+    if question == 'handoverDays':
+        return options is None or 'pickup' in options
+    if question in (*POLICY_DELIVERY_ANSWERS, POLICY_ZONES_QUESTION):
+        return options is not None and 'delivery' in options
+    return True
+
+
+def unansweredPolicyQuestions(answers: dict,
+                              deliveryZones: list[dict] | None
+                              ) -> list[str]:
+    """The required policy questions the store has not answered yet, in
+    POLICY_QUESTION_ORDER: every question that applies
+    (policyQuestionApplies) and is not optional (POLICY_OPTIONAL_QUESTIONS)
+    whose answer is not said (None, missing, or an empty list), and
+    POLICY_ZONES_QUESTION for a store that delivers with no delivery zone
+    (ruledZones of `deliveryZones`, as stored). A store opens, and takes
+    orders, only while this is empty. Pure: no database read."""
+    unanswered = []
+    for question in POLICY_QUESTION_ORDER:
+        if (question in POLICY_OPTIONAL_QUESTIONS
+                or not policyQuestionApplies(question, answers)):
+            continue
+        if question == POLICY_ZONES_QUESTION:
+            if not ruledZones(deliveryZones):
+                unanswered.append(question)
+        elif answers.get(question) in (None, []):
+            unanswered.append(question)
+    return unanswered
+
+
+def policyQuestionsText(questions: list[str]) -> str:
+    """`questions` in plain words, joined for a sentence."""
+    return '; '.join(POLICY_QUESTION_LABELS[q] for q in questions)
 
 
 class PolicyView(StoredDocumentKeys, Policy):

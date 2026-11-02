@@ -145,6 +145,10 @@ export type Secondarycolor = string | null;
  */
 export type Voiceid = string | null;
 /**
+ * Whether its owner opened it to orders (setMyStoreOpen); a new store, and one stored before the switch, is closed
+ */
+export type Isopen = boolean;
+/**
  * When it was created
  */
 export type Createdat = string;
@@ -158,6 +162,10 @@ export type Createdat = string;
  * A store is *set up* once its slug is a string, which createUserStore
  * sets together with the other details; until then every store reader
  * treats it as no store yet (StoreActions.SET_UP).
+ *
+ * A store takes orders only once its owner opened it (isOpen, refused
+ * while a required policy question is unanswered) and while every
+ * required policy question stays answered (StoreActions.takesOrders).
  */
 export interface Store {
   _id?: Id;
@@ -179,6 +187,7 @@ export interface Store {
   primaryColor?: Primarycolor;
   secondaryColor?: Secondarycolor;
   voiceId?: Voiceid;
+  isOpen?: Isopen;
   createdAt: Createdat;
 }
 /**

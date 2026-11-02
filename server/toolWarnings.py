@@ -4,7 +4,8 @@ model beside a read tool's result.
 When the admin's chat runs one of the read tools of FINDERS, the tool
 message gets a `warnings` list next to the route's own keys: each warning
 names a gap (WARNINGS: a product with no photo, an order paid a week ago
-and not handed over, a policy answer not given), how many items have it in
+and not handed over, a policy answer not given, a store ready but not
+open), how many items have it in
 the whole store (`count`, not only the rows the tool listed) and the ids of
 those the model has not been told about lately (`ids`, at most
 WARNING_IDS_MAX). The route's response is never changed: an HTTP caller,
@@ -32,7 +33,7 @@ from typing import Callable
 from pydantic_core import to_json
 
 from mongoDb import db
-from objects import ToolWarningShown
+from objects import ToolWarningShown, unansweredPolicyQuestions
 
 TOOL_WARNINGS = 'ToolWarningsShown'
 # The toolset whose read tools carry warnings: the admin's chat.
@@ -125,6 +126,11 @@ WARNINGS = {
         'Policy answers not given yet (ids are the field names): customers '
         'who ask are told to ask the store. Offer to set them '
         '(updateMyStorePolicy).'),
+    'storeNotOpen': WarningRule(
+        SETUP_COOLDOWN,
+        'Every required policy question is answered but the store is not '
+        'open, so customers can browse and cannot order. Offer to open it '
+        '(setMyStoreOpen); open it only when the owner says yes.'),
     'storeDetailMissing': WarningRule(
         SETUP_COOLDOWN,
         'Store details not set yet (ids are the field names): the contact '
@@ -230,9 +236,26 @@ def _returnFindings(storeId: str, result: dict,
     })
 
 
+def _closedButReady(storeId: str) -> dict:
+    """storeNotOpen when the store is closed while no required policy
+    question is left (StoreActions.storePolicyQuestions): one store read
+    and one policy read. Item id isOpen, so getUserStore and
+    getMyStorePolicy share its cooldown."""
+    from actions.StoreActions import (ORDER_STATE_FIELDS, STORES,
+                                      storePolicyQuestions)
+    store = db.read({'_id': storeId}, STORES, projection=ORDER_STATE_FIELDS,
+                    findOne=True)
+    if store is None or store.get('isOpen') is True:
+        return {}
+    if storePolicyQuestions(storeId, store.get('deliveryZones')):
+        return {}
+    return {'storeNotOpen': _found(['isOpen'])}
+
+
 def _policyFindings(storeId: str, result: dict,
                     now: datetime.datetime) -> dict:
-    """From getMyStorePolicy's own result: no read."""
+    """From getMyStorePolicy's own result, and storeNotOpen once no
+    required question is left (_closedButReady reads the store)."""
     findings = {}
     if not result.get('authorizedPaymentMethods'):
         findings['noPaymentMethods'] = _found(['authorizedPaymentMethods'])
@@ -243,19 +266,26 @@ def _policyFindings(storeId: str, result: dict,
              if field in result and result[field] is None]
     if unset:
         findings['policyUnset'] = _found(unset)
+    if not unansweredPolicyQuestions(result, result.get('deliveryZones')):
+        findings.update(_closedButReady(storeId))
     return findings
 
 
 def _storeFindings(storeId: str, result: dict,
                    now: datetime.datetime) -> dict:
-    """From getUserStore's own result: no read. None for a store not set
-    up yet (no name): the setup chat asks for its details."""
+    """From getUserStore's own result, and storeNotOpen while it is closed
+    (_closedButReady reads the policy). None for a store not set up yet
+    (no name): the setup chat asks for its details."""
     store = result.get('store')
     if not isinstance(store, dict) or store.get('name') is None:
         return {}
     missing = [field for field in STORE_DETAILS_WARNED
                if store.get(field) is None]
-    return {'storeDetailMissing': _found(missing)} if missing else {}
+    findings = {'storeDetailMissing': _found(missing)} if missing else {}
+    # isOpen is sent only while open (AdminStoreResponse).
+    if store.get('isOpen') is not True:
+        findings.update(_closedButReady(storeId))
+    return findings
 
 
 # The read tools whose results carry warnings, each with what finds them

@@ -1,7 +1,7 @@
 {
     "$defs": {
         "AdminStoreResponse": {
-            "description": "The admin's own store: a StoreResponse plus its photo theme and\nvoice. The photo style feeds the product photos and the voice the\nspoken replies, and customers never get either; they get the brand\ncolors (ShopStoreResponse). Each is sent only once set (a dict the\nroute builds leaves it out, and exclude_if drops it from a dump), so a\nstore with none reads exactly as a StoreResponse. Each field restates\nStore's (test_route_response_models.py's MIRRORS).",
+            "description": "The admin's own store: a StoreResponse plus its photo theme and\nvoice, and whether it is open (isOpen, sent only while open). The photo\nstyle feeds the product photos and the voice the\nspoken replies, and customers never get either; they get the brand\ncolors (ShopStoreResponse). Each is sent only once set (a dict the\nroute builds leaves it out, and exclude_if drops it from a dump), so a\nstore with none reads exactly as a StoreResponse. Each field restates\nStore's (test_route_response_models.py's MIRRORS).",
             "properties": {
                 "_id": {
                     "description": "Stores _id",
@@ -129,6 +129,12 @@
                         }
                     ],
                     "description": "Map location; null until the admin pins it"
+                },
+                "isOpen": {
+                    "default": false,
+                    "description": "Whether its owner opened it to orders (setMyStoreOpen); sent only while open, left out: closed",
+                    "title": "Isopen",
+                    "type": "boolean"
                 },
                 "photoStyle": {
                     "anyOf": [

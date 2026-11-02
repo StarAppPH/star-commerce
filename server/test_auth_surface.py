@@ -71,6 +71,9 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     # The delivery areas map: requireAdmin, and only the store the caller
     # owns (ownerStore).
     'setMyDeliveryZones',
+    # The sidebar's open switch: requireAdmin, and only the store the caller
+    # owns (ownerStore).
+    'setMyStoreOpen',
     # Store reset: requireAdmin, and only the store the caller owns
     # (ownerQuery), until STORE_RESET_ENDS_AT.
     'resetMyStore',
@@ -120,6 +123,8 @@ TOOL_PERMISSION_CHECKS = {
     'createUserStore': 'requireAdmin',
     # The admin's own store's photo theme and voice.
     'updateMyStoreTheme': 'requireAdmin',
+    # Opening or closing the admin's own store (ownerStore).
+    'setMyStoreOpen': 'requireAdmin',
     # The map component pins the admin's store: only the store the caller
     # owns.
     'setUserStoreLocation': 'requireAdmin',

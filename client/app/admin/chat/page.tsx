@@ -50,18 +50,19 @@ export default function AdminChatHomePage() {
       </Empty>
     );
   }
-  return <AdminNewChat setup={storeState.store === null} />;
+  return <AdminNewChat setup={storeState.store === null} isOpen={storeState.isOpen} />;
 }
 
 // The new-chat screen. Before the store is set up, the assistant only sets
-// it up (it opens the store details form): the screen says so.
-function AdminNewChat({ setup }: { setup: boolean }) {
+// it up (it opens the store details form): the screen says so. `isOpen` is
+// the store's open switch.
+function AdminNewChat({ setup, isOpen }: { setup: boolean; isOpen: boolean }) {
   const { userData } = useAuth();
   const { transport, userId } = useAdminWorkspace();
   const { openVoice } = useChatShell();
   const threadHref = useCallback((id: string) => `/admin/chat/${id}`, []);
   const chat = useShellChat({ transport, conversationId: null, threadHref });
-  const waiting = useWaitingOnYou(userId, !setup);
+  const waiting = useWaitingOnYou(userId, !setup, isOpen);
 
   if (chat.turns.length > 0) {
     return (
@@ -155,15 +156,17 @@ function WaitingChip({ item, onAsk }: { item: WaitingItem; onAsk: (text: string)
       className="rounded-full"
       onClick={() => onAsk(item.prompt)}
     >
-      <span
-        className={
-          item.tone === 'info'
-            ? 'inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-md bg-info/8 px-1 font-semibold text-info-foreground text-xs'
-            : 'inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-md bg-warning/8 px-1 font-semibold text-warning-foreground text-xs'
-        }
-      >
-        {item.count}
-      </span>
+      {item.count !== null && (
+        <span
+          className={
+            item.tone === 'info'
+              ? 'inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-md bg-info/8 px-1 font-semibold text-info-foreground text-xs'
+              : 'inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-md bg-warning/8 px-1 font-semibold text-warning-foreground text-xs'
+          }
+        >
+          {item.count}
+        </span>
+      )}
       {item.label}
     </Button>
   );

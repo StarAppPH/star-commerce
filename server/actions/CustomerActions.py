@@ -23,7 +23,7 @@ import re
 from pymongo.errors import DuplicateKeyError
 
 from AuthHandler import verifyFirebaseIdToken
-from actions.StoreActions import SET_UP, STORE_NOT_FOUND
+from actions.StoreActions import SET_UP, STORE_NOT_FOUND, takesOrders
 from mongoDb import OutdatedDataError, db
 from objects import (FIREBASE_ID_TOKEN_MAX_LENGTH, PHONE_NUMBER_PATTERN,
                      Cart, Customer, CustomerSessionResponse,
@@ -176,16 +176,23 @@ class CustomerActions():
         # Only a set-up store has a slug, a string (StoreActions.SET_UP):
         # a null storeSlug would match every store not set up yet. The
         # query restates SET_UP so the partial slug index serves it.
+        # takingOrders comes from the store's open switch and its policy
+        # (StoreActions.takesOrders), so both are read beside what is sent.
         store = None
         if isinstance(storeSlug, str):
             store = db.readResponse(
                 ShopStoreResponse,
-                {'slug': {'$eq': storeSlug, **SET_UP['slug']}}, STORES)
+                {'slug': {'$eq': storeSlug, **SET_UP['slug']}}, STORES,
+                readWhole=('isOpen', 'deliveryZones'),
+                prepare=lambda stored: {**stored,
+                                        'takingOrders': takesOrders(stored)})
         if store is None:
             raise ValueError(STORE_NOT_FOUND)
-        # A brand color is sent only once set (ShopStoreResponse).
+        # A brand color is sent only once set, takingOrders only while true
+        # (ShopStoreResponse).
         store = {key: value for key, value in store.items()
-                 if not (key in SHOP_THEME_FIELDS and value is None)}
+                 if not (key in SHOP_THEME_FIELDS and value is None)
+                 and not (key == 'takingOrders' and value is not True)}
         customer = _customerOf(claims)
         return {
             '_id': customer['_id'],

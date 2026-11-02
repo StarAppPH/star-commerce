@@ -489,8 +489,9 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
     start = _policyDoc(storeId)
     assert _answers(start) == full
 
-    # No returns: the stale return answers are cleared silently, but the
-    # non-returnable items and the defect days stay.
+    # No returns: the stale return answers are cleared silently, the
+    # non-returnable items among them; the defect days stay (a defect is
+    # always the store's to fix).
     time.sleep(0.01)
     res = tools.updateMyStorePolicy(ADMIN, acceptsReturns=False)
     returnsOff = _policyDoc(storeId)
@@ -498,7 +499,7 @@ def test_updateMyStorePolicy_normalisesWhatNoLongerApplies(clean):
         **full, 'acceptsReturns': False,
         **dict.fromkeys(POLICY_RETURN_ANSWERS)
     }
-    assert want['nonReturnableItems'] == 'cakes'
+    assert want['nonReturnableItems'] is None
     assert want['defectReportDays'] == 3
     assert _answers(returnsOff) == want
     assert {f: res[f] for f in POLICY_ANSWER_FIELDS} == want

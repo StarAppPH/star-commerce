@@ -6,9 +6,10 @@ import { WAITING_COUNT_CAP } from '@/lib/generated/serverConstants';
 import { unansweredPolicyQuestions } from '@/lib/policyQuestions';
 
 export interface WaitingItem {
-  key: 'payments' | 'handover' | 'returns' | 'policies';
+  key: 'payments' | 'handover' | 'returns' | 'policies' | 'openStore';
   dataComponent: string;
-  count: string;
+  // How many; null for an item with no count (the store to open).
+  count: string | null;
   label: string;
   // What tapping it asks the assistant.
   prompt: string;
@@ -22,10 +23,11 @@ function shownCount(count: number): string {
 }
 
 // What needs the admin now, for the new-chat screen: payments made by hand to
-// confirm, paid orders to hand over, return requests to decide and policy
-// questions left open. A count that fails to load is left out; nothing loads
-// until `enabled` (a store not set up yet has none).
-export function useWaitingOnYou(userId: string, enabled: boolean): WaitingItem[] {
+// confirm, paid orders to hand over, return requests to decide, policy
+// questions left open, and a store ready to open that is still closed
+// (`isOpen`, the store's open switch). A count that fails to load is left
+// out; nothing loads until `enabled` (a store not set up yet has none).
+export function useWaitingOnYou(userId: string, enabled: boolean, isOpen: boolean): WaitingItem[] {
   const { server } = useServer();
   const { adminRequest } = useAuth();
   const [items, setItems] = useState<WaitingItem[]>([]);
@@ -84,12 +86,21 @@ export function useWaitingOnYou(userId: string, enabled: boolean): WaitingItem[]
             prompt: 'Let’s answer my store’s open policy questions.',
             tone: 'warning',
           });
+        } else if (!isOpen) {
+          next.push({
+            key: 'openStore',
+            dataComponent: 'adminHomeSuggestOpenStore',
+            count: null,
+            label: 'Your store isn’t open yet',
+            prompt: 'Open my store.',
+            tone: 'warning',
+          });
         }
       }
       setItems(next);
     })();
     return () => { cancelled = true; };
-  }, [adminRequest, server, userId, enabled]);
+  }, [adminRequest, server, userId, enabled, isOpen]);
 
   return items;
 }

@@ -102,7 +102,7 @@
             "additionalProperties": false
         }
     },
-    "description": "A Stores document. One per admin: ownerUserId (the admin's Users _id)\nis a unique index, and so is slug among the stores that have one\n(mongoDb.ensureIndexes).\n\nSign-up creates the admin's store empty: only its owner and currency.\nA store is *set up* once its slug is a string, which createUserStore\nsets together with the other details; until then every store reader\ntreats it as no store yet (StoreActions.SET_UP).",
+    "description": "A Stores document. One per admin: ownerUserId (the admin's Users _id)\nis a unique index, and so is slug among the stores that have one\n(mongoDb.ensureIndexes).\n\nSign-up creates the admin's store empty: only its owner and currency.\nA store is *set up* once its slug is a string, which createUserStore\nsets together with the other details; until then every store reader\ntreats it as no store yet (StoreActions.SET_UP).\n\nA store takes orders only once its owner opened it (isOpen, refused\nwhile a required policy question is unanswered) and while every\nrequired policy question stays answered (StoreActions.takesOrders).",
     "properties": {
         "_id": {
             "title": "Id",
@@ -323,6 +323,12 @@
             "default": null,
             "description": "The ElevenLabs voice its assistant speaks with; null: the default voice",
             "title": "Voiceid"
+        },
+        "isOpen": {
+            "default": false,
+            "description": "Whether its owner opened it to orders (setMyStoreOpen); a new store, and one stored before the switch, is closed",
+            "title": "Isopen",
+            "type": "boolean"
         },
         "createdAt": {
             "description": "When it was created",

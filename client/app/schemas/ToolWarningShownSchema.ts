@@ -27,6 +27,7 @@ export type Code =
   | "noPaymentMethods"
   | "noDeliveryZones"
   | "policyUnset"
+  | "storeNotOpen"
   | "storeDetailMissing";
 /**
  * What it is about: a Products, Orders or Returns _id, or a policy or store field name

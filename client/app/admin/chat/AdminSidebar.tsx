@@ -27,6 +27,7 @@ import { groupConversationsByDay } from '@/lib/storeTime';
 import { matchingConversations } from '@/components/chat/useConversationList';
 import { useAdminWorkspace } from './AdminWorkspace';
 import { ResetStoreDialog, storeResetAvailable } from './ResetStoreDialog';
+import { StoreOpenSwitch } from './StoreOpenSwitch';
 
 export function AdminSidebar() {
   const router = useRouter();
@@ -155,6 +156,7 @@ export function AdminSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="gap-1">
+        {store && storeState.status === 'ready' && <StoreOpenSwitch isOpen={storeState.isOpen} />}
         {store?.slug && (
           <SidebarMenu>
             <SidebarMenuItem>

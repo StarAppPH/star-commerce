@@ -23,6 +23,9 @@ export interface GuestStore {
   // The store's brand colors, #RRGGBB; null while unset.
   primaryColor: string | null;
   secondaryColor: string | null;
+  // Whether it takes orders now: false while its owner has not opened it
+  // (the shopper can still browse and chat).
+  takingOrders: boolean;
 }
 
 export interface GuestSession {
@@ -102,6 +105,8 @@ export function GuestSessionProvider({ storeSlug, children }: { storeSlug: strin
             openingHours: store.openingHours,
             primaryColor: store.primaryColor ?? null,
             secondaryColor: store.secondaryColor ?? null,
+            // Sent only while true.
+            takingOrders: store.takingOrders === true,
           },
         };
         sessionRef.current = session;

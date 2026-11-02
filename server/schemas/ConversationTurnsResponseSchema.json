@@ -3026,6 +3026,40 @@
                     "default": null,
                     "description": "The store's delivery zones and their policies",
                     "title": "Deliveryzones"
+                },
+                "unansweredQuestions": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "enum": [
+                                    "acceptsReturns",
+                                    "returnWindowDays",
+                                    "returnConditions",
+                                    "nonReturnableItems",
+                                    "refundMethod",
+                                    "returnShippingPaidBy",
+                                    "defectReportDays",
+                                    "deliveryOptions",
+                                    "deliveryMethod",
+                                    "deliveryAreas",
+                                    "handoverDays",
+                                    "authorizedPaymentMethods",
+                                    "paidOrderCancellation",
+                                    "paidOrderCancellationHours",
+                                    "additionalTerms",
+                                    "deliveryZones"
+                                ],
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The required questions not answered yet (unansweredPolicyQuestions); null on a card saved before they were sent",
+                    "title": "Unansweredquestions"
                 }
             },
             "required": [

@@ -63,6 +63,10 @@ export type Latitude = number;
  */
 export type Longitude = number;
 /**
+ * Whether its owner opened it to orders (setMyStoreOpen); sent only while open, left out: closed
+ */
+export type Isopen = boolean;
+/**
  * The look of the store's product photos
  */
 export type Photostyle = string | null;
@@ -87,7 +91,8 @@ export interface MyStoreResponse {
 }
 /**
  * The admin's own store: a StoreResponse plus its photo theme and
- * voice. The photo style feeds the product photos and the voice the
+ * voice, and whether it is open (isOpen, sent only while open). The photo
+ * style feeds the product photos and the voice the
  * spoken replies, and customers never get either; they get the brand
  * colors (ShopStoreResponse). Each is sent only once set (a dict the
  * route builds leaves it out, and exclude_if drops it from a dump), so a
@@ -107,6 +112,7 @@ export interface AdminStoreResponse {
    * Map location; null until the admin pins it
    */
   location: StoreLocationResponse | null;
+  isOpen?: Isopen;
   photoStyle?: Photostyle;
   primaryColor?: Primarycolor;
   secondaryColor?: Secondarycolor;
