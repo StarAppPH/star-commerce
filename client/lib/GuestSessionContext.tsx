@@ -41,6 +41,10 @@ interface GuestSessionContextType {
   // Runs one request as the shopper. A request refused for an expired token
   // (401) starts the session again and is sent once more.
   guestRequest: <T>(send: (session: GuestSession) => Promise<ApiResponse<T>>) => Promise<ApiResponse<T>>;
+  // Starts the session again as whoever guestAuth is signed in as now: after
+  // a returning customer signs in with their phone number, it is their
+  // earlier customer account.
+  restart: () => Promise<GuestSession | null>;
 }
 
 const GuestSessionContext = createContext<GuestSessionContextType | null>(null);
@@ -128,7 +132,7 @@ export function GuestSessionProvider({ storeSlug, children }: { storeSlug: strin
   }, [start, slot]);
 
   return (
-    <GuestSessionContext.Provider value={{ state, guestRequest }}>
+    <GuestSessionContext.Provider value={{ state, guestRequest, restart: start }}>
       {children}
     </GuestSessionContext.Provider>
   );

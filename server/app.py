@@ -294,25 +294,31 @@ def verifyCustomerPhone():
         data = {}
     userId = data.get('userId')
     idToken = data.get('idToken')
+    storeId = data.get('storeId')
+    guestIdToken = data.get('guestIdToken')
     current_user = get_jwt_identity()
     try:
         if isinstance(userId, (dict, list)):
             raise ValueError('Invalid userId')
         if isinstance(idToken, (dict, list)):
             raise ValueError('Invalid idToken')
+        if isinstance(storeId, (dict, list)):
+            raise ValueError('Invalid storeId')
+        if isinstance(guestIdToken, (dict, list)):
+            raise ValueError('Invalid guestIdToken')
         if userId != current_user:
             raise ValueError("Unauthorized access")
-        res = ApiRequests().verifyCustomerPhone(userId, idToken)
+        res = ApiRequests().verifyCustomerPhone(userId, idToken, storeId, guestIdToken)
     except PermissionError as e:
         failure = routeFailure(e, status=403)
-        logging.log(failure.level, {'function': 'verifyCustomerPhone', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'idToken')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'verifyCustomerPhone', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'idToken', 'storeId', 'guestIdToken')), 'traceback': failure.traceback})
         return failure.response()
     except Exception as e:
         failure = routeFailure(e, status=400)
-        logging.log(failure.level, {'function': 'verifyCustomerPhone', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'idToken')), 'traceback': failure.traceback})
+        logging.log(failure.level, {'function': 'verifyCustomerPhone', 'event': 'error', 'requestKeys': sorted(key for key in data if key in ('userId', 'idToken', 'storeId', 'guestIdToken')), 'traceback': failure.traceback})
         return failure.response()
 
-    logging.info({'function': 'verifyCustomerPhone', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'idToken'))})
+    logging.info({'function': 'verifyCustomerPhone', 'event': 'success', 'requestKeys': sorted(key for key in data if key in ('userId', 'idToken', 'storeId', 'guestIdToken'))})
 
     jwtToken = create_access_token(identity=current_user)
     response = ApiResponse(message="Phone number verified", status=200, current_user=current_user, data=res, jwtToken=jwtToken)
