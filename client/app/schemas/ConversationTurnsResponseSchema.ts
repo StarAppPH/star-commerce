@@ -263,8 +263,7 @@ export type Createdat = string;
  * How it is or was paid
  */
 export type Paymentmethod =
-  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")
-  | null;
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
 /**
  * When it was paid
  */
@@ -376,8 +375,7 @@ export type Expiresat = string;
  * How it is or was paid
  */
 export type Paymentmethod1 =
-  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")
-  | null;
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay") | null;
 /**
  * When it was paid
  */
@@ -460,8 +458,7 @@ export type Checkpayees = string[] | null;
  * The ways the shopper could pay it, on a card saved before payment options
  */
 export type Paymentmethods =
-  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[]
-  | null;
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
 /**
  * ISO 4217 code of every amount
  */
@@ -922,8 +919,7 @@ export type Checkpayees1 =
  * The ways a customer could pay, on a card saved before each method had its details
  */
 export type Acceptedpaymentmethods =
-  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[]
-  | null;
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
 /**
  * Whether a customer can cancel a paid order
  */
@@ -1539,6 +1535,35 @@ export type Zones =
       DeliveryZoneResponse
     ];
 /**
+ * The form
+ */
+export type Kind20 = "brandColorsForm";
+/**
+ * Answer it with this id
+ */
+export type Formid14 = string;
+/**
+ * The store's primary color the picker starts at; null until it has one
+ */
+export type Primarycolor = string | null;
+/**
+ * The store's secondary color the picker starts at; null until it has one
+ */
+export type Secondarycolor = string | null;
+/**
+ * Colors the model suggests for the store, shown as swatches to tap; empty: none
+ *
+ * @maxItems 6
+ */
+export type Suggestions =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string];
+/**
  * The cards and forms shown under the reply
  */
 export type Components = (
@@ -1562,6 +1587,7 @@ export type Components = (
   | PhotoRequestForm
   | DeliveryPinForm
   | DeliveryZonesForm
+  | BrandColorsForm
 )[];
 /**
  * The form this turn answered
@@ -2113,4 +2139,17 @@ export interface DeliveryZonesForm {
    */
   storeLocation: StoreLocationResponse | null;
   zones: Zones;
+}
+/**
+ * Asks the admin for the store's two brand colors: a color picker
+ * (a color square, a hue slider and a hex field) for each, with the
+ * colors the model suggests as swatches. Answered with
+ * BrandColorsPickedAnswer.
+ */
+export interface BrandColorsForm {
+  kind: Kind20;
+  formId: Formid14;
+  primaryColor: Primarycolor;
+  secondaryColor: Secondarycolor;
+  suggestions: Suggestions;
 }

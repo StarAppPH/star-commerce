@@ -129,6 +129,70 @@
             "type": "object",
             "additionalProperties": false
         },
+        "BrandColorsForm": {
+            "description": "Asks the admin for the store's two brand colors: a color picker\n(a color square, a hue slider and a hex field) for each, with the\ncolors the model suggests as swatches. Answered with\nBrandColorsPickedAnswer.",
+            "properties": {
+                "kind": {
+                    "const": "brandColorsForm",
+                    "description": "The form",
+                    "title": "Kind",
+                    "type": "string"
+                },
+                "formId": {
+                    "description": "Answer it with this id",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "title": "Formid",
+                    "type": "string"
+                },
+                "primaryColor": {
+                    "anyOf": [
+                        {
+                            "pattern": "^#[0-9A-Fa-f]{6}$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The store's primary color the picker starts at; null until it has one",
+                    "title": "Primarycolor"
+                },
+                "secondaryColor": {
+                    "anyOf": [
+                        {
+                            "pattern": "^#[0-9A-Fa-f]{6}$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The store's secondary color the picker starts at; null until it has one",
+                    "title": "Secondarycolor"
+                },
+                "suggestions": {
+                    "description": "Colors the model suggests for the store, shown as swatches to tap; empty: none",
+                    "items": {
+                        "pattern": "^#[0-9A-Fa-f]{6}$",
+                        "type": "string"
+                    },
+                    "maxItems": 6,
+                    "title": "Suggestions",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "kind",
+                "formId",
+                "primaryColor",
+                "secondaryColor",
+                "suggestions"
+            ],
+            "title": "BrandColorsForm",
+            "type": "object",
+            "additionalProperties": false
+        },
         "ChatAttachmentRow": {
             "description": "One file of a turn of getConversationTurns, which the client reads\nthrough the Storage SDK by its path (the owner's own folder). Each\nfield restates ChatAttachment's.",
             "properties": {
@@ -3328,6 +3392,7 @@
             "items": {
                 "discriminator": {
                     "mapping": {
+                        "brandColorsForm": "#/$defs/BrandColorsForm",
                         "checkout": "#/$defs/CheckoutCard",
                         "checkoutSummary": "#/$defs/CheckoutSummaryCard",
                         "deliveryPinForm": "#/$defs/DeliveryPinForm",
@@ -3411,6 +3476,9 @@
                     },
                     {
                         "$ref": "#/$defs/DeliveryZonesForm"
+                    },
+                    {
+                        "$ref": "#/$defs/BrandColorsForm"
                     }
                 ]
             },

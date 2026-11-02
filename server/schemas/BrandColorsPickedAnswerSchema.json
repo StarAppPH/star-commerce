@@ -1,0 +1,39 @@
+{
+    "description": "A BrandColorsForm's picks: the store's two brand colors, any hex\ncolors, never the same one twice.",
+    "properties": {
+        "kind": {
+            "const": "brandColorsPicked",
+            "description": "The answer",
+            "title": "Kind",
+            "type": "string"
+        },
+        "formId": {
+            "description": "Answer it with this id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Formid",
+            "type": "string"
+        },
+        "primaryColor": {
+            "description": "The primary color",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Primarycolor",
+            "type": "string"
+        },
+        "secondaryColor": {
+            "description": "The secondary color",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Secondarycolor",
+            "type": "string"
+        }
+    },
+    "required": [
+        "kind",
+        "formId",
+        "primaryColor",
+        "secondaryColor"
+    ],
+    "title": "BrandColorsPickedAnswer",
+    "type": "object",
+    "additionalProperties": false
+}

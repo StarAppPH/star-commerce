@@ -1,4 +1,5 @@
 'use client';
+import { BrandColorsForm } from './BrandColorsForm';
 import { CheckoutCard } from './CheckoutCard';
 import { CheckoutSummaryCard } from './CheckoutSummaryCard';
 import { MyOrdersCard, StoreOrdersCard } from './OrderCards';
@@ -71,6 +72,7 @@ export function ChatComponents({ components, place, answeredFormIds, busy, onAns
           case 'photoRequestForm': return <PhotoRequestForm key={key} component={component} {...shared} />;
           case 'deliveryPinForm': return <DeliveryPinForm key={key} component={component} {...shared} />;
           case 'deliveryZonesForm': return <DeliveryZonesForm key={key} component={component} {...shared} />;
+          case 'brandColorsForm': return <BrandColorsForm key={key} component={component} {...shared} />;
           default: return null;
         }
       })}

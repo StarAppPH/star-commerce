@@ -110,10 +110,11 @@ def formAnswerDetails(content: str) -> dict:
 
 def test_setupToolset_isTheStoreSetupOnly():
     names = [t['function']['name'] for t in chatTools.TOOLS['adminSetup']]
-    assert names == ['createUserStore', 'findColorsInPhoto', 'getUserStore']
+    assert names == ['createUserStore', 'findColorsInPhoto', 'getUserStore',
+                     'showBrandColorsForm']
     assert set(chatTools.TOOL_CALLS['adminSetup']) == set(
         chatForms.SETUP_ROUTE_TOOLS)
-    assert chatForms.formToolNames('adminSetup') == set()
+    assert chatForms.formToolNames('adminSetup') == {'showBrandColorsForm'}
     assert 'adminSetup' in chatModel.CHAT_PROMPTS
     assert 'decline in one short sentence' in chatModel.CHAT_PROMPTS[
         'adminSetup']
@@ -507,7 +508,7 @@ def test_aRetiredComponentKind_isLeftOutOfTheTurnsPage(wiped, model):
         'productPhotoChoice', 'store', 'locationForm', 'newProductsForm',
         'phoneVerificationForm', 'photoRequestForm', 'deliveryPinForm',
         'deliveryZonesForm', 'photoColors', 'checkoutSummary',
-        'productPhotoOffer'}
+        'productPhotoOffer', 'brandColorsForm'}
     # The retired form cannot be answered with a kind of today.
     fake = model()
     with pytest.raises(ValueError, match='^' + re.escape(
