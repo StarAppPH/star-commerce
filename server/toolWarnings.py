@@ -174,13 +174,16 @@ def _facetFindings(collection: str, storeId: str, base: dict,
 
 def _productFindings(storeId: str, result: dict,
                      now: datetime.datetime) -> dict:
-    from actions.ProductActions import PRODUCTS
+    from actions.ProductActions import INVENTORY_TRACKED, PRODUCTS
     byName = {'nameKey': 1}
     shown = {'isAvailable': True}
     return _facetFindings(PRODUCTS, storeId, {}, {
         'noPhoto': ({**shown, 'photoUrl': None}, byName),
-        'outOfStock': ({**shown, 'inventory': 0}, byName),
-        'lowStock': ({**shown,
+        # A product with hasInventory false is never out of or low on
+        # stock (its inventory stays 0).
+        'outOfStock': ({**shown, **INVENTORY_TRACKED, 'inventory': 0},
+                       byName),
+        'lowStock': ({**shown, **INVENTORY_TRACKED,
                       'inventory': {'$gt': 0, '$lte': LOW_STOCK_UNITS}},
                      byName),
         'hidden': ({'isAvailable': False}, byName),

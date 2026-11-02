@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Sheet, SheetClose, SheetPopup, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ProductPhoto, QuantityStepper } from '@/components/chat/cards/ChatCard';
+import { ProductPhoto, QuantityStepper, countsStock, stockMax } from '@/components/chat/cards/ChatCard';
 import { formatMoney } from '@/components/chat/cards/format';
 import { useChatShell } from '@/components/chat/ChatShell';
 import { useShopCart } from '@/lib/ShopCartContext';
@@ -16,8 +16,10 @@ import { useSnackbar } from '@/lib/SnackbarContext';
 // What the chat is asked when the shopper checks out from the panel.
 const CHECKOUT_MESSAGE = 'Check out my cart';
 
-// Why a row cannot be checked out as it is: the store has fewer left.
+// Why a row cannot be checked out as it is: the store has fewer left (never
+// for a product with no stock count: unlimited).
 function stockProblem(item: CartScreenItemRow): string | null {
+  if (!countsStock(item)) return null;
   if (item.inventory === 0) return 'Sold out';
   if (item.quantity > item.inventory) return `Only ${item.inventory} left`;
   return null;
@@ -110,7 +112,7 @@ export function ShopCart() {
                         label={item.name}
                         value={item.quantity}
                         // A row over the stock left can still come down.
-                        max={Math.max(item.inventory, item.quantity)}
+                        max={Math.max(stockMax(item), item.quantity)}
                         disabled={busy}
                         onChange={(value) => {
                           if (value !== item.quantity) void setQuantity(item.productId, value);

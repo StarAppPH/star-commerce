@@ -27,7 +27,9 @@ from actions.OrderActions import (ORDER_NOT_FOUND, ORDERS, _createdAtMatch,
                                   _statusMatch, customerAtStore,
                                   orderTotal, ownerStoreScope,
                                   validId, validItemCount, validOrderId)
-from actions.ProductActions import PRODUCTS, _atPosition, validBatch
+from actions.ProductActions import (INVENTORY_TRACKED, PRODUCTS,
+                                    _atPosition, hasInventory,
+                                    validBatch)
 from actions.StoreActions import POLICIES, _validText, requireOwnerStore
 from mcpTools import mcp_tool
 from mongoDb import db
@@ -226,7 +228,7 @@ def _restock(item: dict, storeId: str) -> dict:
     (_inventoryUnits), matched only while it fits (_fitsInStock)."""
     return {
         'filter': {'_id': item['productId'], 'storeId': storeId,
-                   **_fitsInStock(item['quantity'])},
+                   **INVENTORY_TRACKED, **_fitsInStock(item['quantity'])},
         'update': _inventoryUnits(item),
     }
 
@@ -244,9 +246,11 @@ def _stockLimitRefusal(orderId: str, productId: str,
     return _atPosition(position, ValueError(PAST_STOCK_LIMIT), ORDER_ITEM)
 
 
-def _restockable(approved: dict, storeId: str, session) -> set[str]:
+def _restockable(approved: dict, storeId: str,
+                 session) -> dict[str, bool]:
     """The productIds of the `approved` return's items whose product still
-    exists, refusing the receive (naming the item's position in the order)
+    exists, each with whether it has inventory (hasInventory false: no
+    stock to put the units back in, so nothing to write), refusing the receive (naming the item's position in the order)
     when one would pass PRODUCT_INVENTORY_MAX, its reserved units counted.
     Read before the flip, so a refused receive has flipped nothing and
     refunded nothing: the admin can receive it without restocking. On
@@ -258,20 +262,21 @@ def _restockable(approved: dict, storeId: str, session) -> set[str]:
         {'_id': {'$in': [item['productId'] for item in items]},
          'storeId': storeId},
         PRODUCTS,
-        projection={'inventory': 1, 'reservedInventory.quantity': 1},
+        projection={'inventory': 1, 'reservedInventory.quantity': 1,
+                    'hasInventory': 1},
         session=session)
     stock = {product['_id']: product['inventory'] + sum(
         held['quantity'] for held in product.get('reservedInventory') or [])
-        for product in products}
+        for product in products if hasInventory(product)}
     for item in items:
         if (item['productId'] in stock and stock[item['productId']]
                 + item['quantity'] > PRODUCT_INVENTORY_MAX):
             raise _stockLimitRefusal(approved['orderId'], item['productId'],
                                      session)
-    return set(stock)
+    return {product['_id']: hasInventory(product) for product in products}
 
 
-def _restockAll(received: dict, restockable: set[str], storeId: str,
+def _restockAll(received: dict, restockable: dict[str, bool], storeId: str,
                 session) -> dict:
     """Put the units of every item of the `received` return whose product
     is `restockable` back in its stock, inside receiveReturn's
@@ -281,8 +286,10 @@ def _restockAll(received: dict, restockable: set[str], storeId: str,
     no longer fits the stock limit (_fitsInStock), is skipped too, and the
     return is then recorded restocked false here: true means every item's
     units went back."""
+    # A product with hasInventory false has no stock to put units back
+    # in: its item counts as restocked, with no write.
     restocked = [item for item in received['items']
-                 if item['productId'] in restockable]
+                 if restockable.get(item['productId'])]
     result = db.bulkUpdate([_restock(item, storeId) for item in restocked],
                            PRODUCTS, session=session)
     if ((0 if result is None else result.matched_count) == len(restocked)
@@ -448,7 +455,7 @@ def receiveReturn(model, userId: str, returnId: str,
     projection = projection_of(model)
 
     def receive(session) -> dict | None:
-        restockable = set()
+        restockable = {}
         restocked = False
         if restock:
             approved = db.read(

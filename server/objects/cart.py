@@ -13,7 +13,8 @@ from objects.order import (DELIVERY_ADDRESS_MAX_LENGTH,
                            DELIVERY_NOTES_MAX_LENGTH, ORDER_ITEMS_MAX,
                            Fulfillment)
 from objects.policy import POLICY_DAYS_MAX
-from objects.product import (PRODUCT_INVENTORY_MAX, PRODUCT_NAME_MAX_LENGTH,
+from objects.product import (HAS_INVENTORY_DESCRIPTION,
+                             PRODUCT_INVENTORY_MAX, PRODUCT_NAME_MAX_LENGTH,
                              PRODUCT_PRICE_MAX)
 from objects.store import (DELIVERY_ZONE_DAYS_MAX,
                            DELIVERY_ZONE_NAME_MAX_LENGTH, LATITUDE_LIMIT,
@@ -69,6 +70,7 @@ class CartItemRow(ResponseModel):
         'quantity': 'how many the customer has in the cart',
         'inventory': 'tells the customer when fewer are left than they '
                      'want; 0 is sold out',
+        'hasInventory': 'false: unlimited, never sold out (ignore inventory)',
     }
     productId: str = Field(..., min_length=1, description='The Products _id')
     name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
@@ -81,6 +83,7 @@ class CartItemRow(ResponseModel):
     inventory: int = Field(..., ge=0, le=PRODUCT_INVENTORY_MAX,
                            description='Units free to sell now; 0 is sold '
                            'out')
+    hasInventory: bool = Field(..., description=HAS_INVENTORY_DESCRIPTION)
 
 
 class CartResponse(ResponseModel):

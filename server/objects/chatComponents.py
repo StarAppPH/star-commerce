@@ -40,7 +40,7 @@ from objects.policy import (AcceptsReturns, AuthorizedPaymentMethodRows,
                             PaidOrderCancellationHours, RefundMethodAnswer,
                             ReturnConditions, ReturnShippingPaidBy,
                             ReturnWindowDays)
-from objects.product import PRODUCT_BATCH_MAX, NewProduct
+from objects.product import HAS_INVENTORY_DESCRIPTION, PRODUCT_BATCH_MAX, NewProduct
 from objects.returns import (RETURN_REJECT_REASON_MAX_LENGTH,
                              ReturnItemRow, ReturnReason, ReturnStatus)
 from objects.store import (DELIVERY_ZONES_MAX, HEX_COLOR_PATTERN, DeliveryZoneResponse,
@@ -78,6 +78,8 @@ class ChatShopProductRow(ResponseModel):
     price: float = Field(..., ge=0, description="Price in the store's currency")
     inventory: int = Field(..., ge=0,
                            description='Units free to sell; 0 is sold out')
+    # Defaulted: a card or form stored before hasInventory has none.
+    hasInventory: bool = Field(True, description=HAS_INVENTORY_DESCRIPTION)
     photoUrl: str | None = Field(..., description='Its photo; null when '
                                  'it has none')
 
@@ -98,6 +100,8 @@ class ChatStoreProductRow(ResponseModel):
     name: str = Field(..., description='Product name')
     price: float = Field(..., ge=0, description="Price in the store's currency")
     inventory: int = Field(..., ge=0, description='Units free to sell')
+    # Defaulted: a card or form stored before hasInventory has none.
+    hasInventory: bool = Field(True, description=HAS_INVENTORY_DESCRIPTION)
     reservedQuantity: int = Field(...,
                                   ge=0,
                                   description='Units unpaid orders hold')
@@ -406,6 +410,8 @@ class ChatProductDraft(ResponseModel):
     name: str | None = Field(..., description='Product name')
     price: float | None = Field(..., description='Price')
     inventory: int | None = Field(..., description='Units in stock')
+    # Defaulted: a card or form stored before hasInventory has none.
+    hasInventory: bool = Field(True, description=HAS_INVENTORY_DESCRIPTION)
     description: str | None = Field(..., description='What it is')
 
 

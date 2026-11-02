@@ -40,6 +40,12 @@ AdminProductSort = typing.Literal['name', 'soldCount', 'inventory', 'price']
 ADMIN_PRODUCT_SORTS = typing.get_args(AdminProductSort)
 
 
+HAS_INVENTORY_DESCRIPTION = (
+    'Decides whether this item has inventory, so when a customer orders it '
+    'gets lessened. False: customers can order unlimited units (inventory '
+    'is then 0 and never moves)')
+
+
 def productNameKey(name: str) -> str:
     """The key that makes a product name unique in its store: lowercased,
     with every run of whitespace collapsed to one space."""
@@ -50,6 +56,10 @@ class ReservedInventory(AppModel):
     """Units of a product an order is holding (taken out of inventory)."""
     orderId: str = Field(..., min_length=1, description='The Orders _id')
     quantity: int = Field(..., ge=1, description='Units the order holds')
+    tracked: bool = Field(
+        True, description='Whether the units came out of inventory: false '
+        'for a product with hasInventory false, so a cancel puts nothing '
+        'back (missing in documents stored before: true)')
 
 
 class Product(MongoModel):
@@ -61,7 +71,11 @@ class Product(MongoModel):
     Every write to inventory or reservedInventory (an order reserving or
     releasing units included) must also $inc _version, or
     updateStoreProduct's _version lock misses it and the admin's save
-    overwrites it."""
+    overwrites it.
+
+    hasInventory false: customers order unlimited units; inventory stays 0
+    and no order moves it. Documents stored before hasInventory read as
+    true: every query matches {'hasInventory': {'$ne': False}}."""
     storeId: str = Field(..., min_length=1, description='The Stores _id')
     name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
                       description='Product name')
@@ -74,6 +88,7 @@ class Product(MongoModel):
                          description="Price in the store's currency")
     inventory: int = Field(..., ge=0, le=PRODUCT_INVENTORY_MAX,
                            description='Units free to sell; 0 is sold out')
+    hasInventory: bool = Field(True, description=HAS_INVENTORY_DESCRIPTION)
     reservedInventory: list[ReservedInventory] = Field(
         default_factory=list, description='Units orders are holding')
     soldCount: int = Field(0, ge=0, description='Units sold so far')
@@ -95,9 +110,12 @@ class NewProduct(AppModel):
     refusal names the product's position and never quotes the value."""
     name: str = Field(..., description='Product name')
     price: float = Field(..., description="Price in the store's currency")
-    inventory: int = Field(..., description='Units in stock, free to sell')
+    inventory: int | None = Field(
+        None, description='Units in stock, free to sell; required unless '
+        'hasInventory is false')
     description: str | None = Field(None, description='What the product is')
     isAvailable: bool = Field(True, description='Shown to customers')
+    hasInventory: bool = Field(True, description=HAS_INVENTORY_DESCRIPTION)
 
 
 class ProductRow(ResponseModel):
@@ -110,6 +128,7 @@ class ProductRow(ResponseModel):
         'description': 'the customer asks what a product is',
         'price': 'the customer asks the price',
         'inventory': 'tells the customer what is left; 0 is sold out',
+        'hasInventory': 'false: unlimited, never sold out (ignore inventory)',
     }
     id: str = Field(..., alias='_id', description='Products _id')
     name: str = Field(..., min_length=1, max_length=PRODUCT_NAME_MAX_LENGTH,
@@ -121,6 +140,7 @@ class ProductRow(ResponseModel):
                          description="Price in the store's currency")
     inventory: int = Field(..., ge=0, le=PRODUCT_INVENTORY_MAX,
                            description='Units free to sell; 0 is sold out')
+    hasInventory: bool = Field(..., description=HAS_INVENTORY_DESCRIPTION)
     photoUrl: str | None = Field(
         None, min_length=1,
         description='The photo the shop shows: the url of one of the '
@@ -159,6 +179,7 @@ class AdminProductRow(ResponseModel):
         'description': 'no admin card shows it: the admin asks what it says',
         'price': 'the admin asks and changes prices',
         'inventory': 'stock questions and updates',
+        'hasInventory': 'false: unlimited, no stock count (inventory is 0)',
         'reservedInventory': 'units orders hold (its quantities)',
         'isAvailable': 'hidden products',
         'soldCount': 'best sellers',
@@ -174,6 +195,7 @@ class AdminProductRow(ResponseModel):
                          description="Price in the store's currency")
     inventory: int = Field(..., ge=0, le=PRODUCT_INVENTORY_MAX,
                            description='Units free to sell; 0 is sold out')
+    hasInventory: bool = Field(..., description=HAS_INVENTORY_DESCRIPTION)
     reservedInventory: list[ReservedInventoryResponse] = Field(
         ..., description='Units orders are holding')
     isAvailable: bool = Field(..., description='Shown to customers')
@@ -199,6 +221,7 @@ class AdminProductListRow(ResponseModel):
         'description': 'no admin card shows it: the admin asks what it says',
         'price': 'the admin asks and changes prices',
         'inventory': 'low or out-of-stock questions',
+        'hasInventory': 'false: unlimited, no stock count (inventory is 0)',
         'reservedQuantity': 'updateStoreProduct subtracts it from a total on hand',
         'isAvailable': 'hidden products',
         'soldCount': 'best sellers (sortBy soldCount)',
@@ -214,6 +237,7 @@ class AdminProductListRow(ResponseModel):
                          description="Price in the store's currency")
     inventory: int = Field(..., ge=0, le=PRODUCT_INVENTORY_MAX,
                            description='Units free to sell; 0 is sold out')
+    hasInventory: bool = Field(..., description=HAS_INVENTORY_DESCRIPTION)
     reservedQuantity: int = Field(
         ..., ge=0, description='Units orders are holding, all orders summed')
     isAvailable: bool = Field(..., description='Shown to customers')

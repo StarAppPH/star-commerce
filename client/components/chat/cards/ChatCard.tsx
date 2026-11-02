@@ -53,6 +53,27 @@ interface QuantityStepperProps {
   dataComponent: string;
 }
 
+// The most units of one product an order or cart holds (the server's
+// PRODUCT_INVENTORY_MAX, objects/product.py).
+const QUANTITY_MAX = 1_000_000;
+
+interface Stock {
+  inventory: number;
+  // Missing on a card stored before hasInventory: counted stock.
+  hasInventory?: boolean;
+}
+
+// Whether orders lessen the product's stock (hasInventory false: unlimited).
+export function countsStock(product: Stock): boolean {
+  return product.hasInventory !== false;
+}
+
+// The most a shopper may pick of a product: its units left, or the order
+// limit for one with no stock count.
+export function stockMax(product: Stock): number {
+  return countsStock(product) ? product.inventory : QUANTITY_MAX;
+}
+
 // A small 0..max quantity picker.
 export function QuantityStepper({ value, max, onChange, disabled, label, dataComponent }: QuantityStepperProps) {
   return (

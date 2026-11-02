@@ -165,6 +165,7 @@ class ProductDraftArgs(_Args):
     name: str | None = None
     price: float | None = None
     inventory: int | None = None
+    hasInventory: bool | None = None
     description: str | None = None
     imageUrl: str | None = None
 
@@ -261,6 +262,9 @@ def _newProductsForm(userId: str, storeId: str,
             'inventory': (inventory if inventory is not None
                           and 0 <= inventory <= PRODUCT_INVENTORY_MAX
                           else None),
+            # Only false prefills an unlimited product: anything else is
+            # the default, counted stock.
+            'hasInventory': draft.hasInventory is not False,
             'description': _clip(draft.description,
                                  PRODUCT_DESCRIPTION_MAX_LENGTH),
         })
@@ -391,8 +395,11 @@ FORM_TOOLS: dict[str, FormTool] = {
         '(a photo, a screenshot, a price list, a PDF), one row per product '
         'they show. Take a name, price or description only where it is '
         'written or said; never guess a price or a stock count, and leave a '
-        'field empty when it is not there. Keep a unit a price is for (per '
-        'pack of 25, per box) in the name or description. Give a row '
+        'field empty when it is not there. Set a row hasInventory false only '
+        'when the owner says the item has no stock count (unlimited: a '
+        'service, made to order); the form has a checkbox for it. Keep a '
+        'unit a price is for (per pack of 25, per box) in the name or '
+        'description. Give a row '
         'imageUrl, the url of an attached image, only when that image is a '
         'photo of that one product alone, never a list or a screenshot of '
         'several. In your reply, say what you filled in from their files '
@@ -634,7 +641,9 @@ def _newProducts(answer, component, userId) -> tuple[str, dict]:
             photoStorage.ownImagePath(
                 userId, photoStorage.objectPathFromUrl(product.imageUrl,
                                                        label), label)
-    lines = [f'- {p.name}, {p.price:g} {currency}, {p.inventory} in stock'
+    lines = [f'- {p.name}, {p.price:g} {currency}, '
+             + (f'{p.inventory} in stock' if p.hasInventory
+                else 'no inventory (unlimited)')
              + (f': {p.description}' if p.description else '')
              + (' (with a photo)' if p.imageUrl is not None else '')
              for p in answer.products]

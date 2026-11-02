@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ShoppingBagIcon, ShoppingCartIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChatCard, ProductPhoto, QuantityStepper, SentNote } from './ChatCard';
+import { ChatCard, ProductPhoto, QuantityStepper, SentNote, countsStock, stockMax } from './ChatCard';
 import { formatMoney, nonEmpty } from './format';
 import { useOptionalShopCart } from '@/lib/ShopCartContext';
 import type { ComponentProps } from './types';
@@ -47,7 +47,8 @@ export function ShopProductsCard({ component, answered, busy }: ComponentProps<'
     >
       <ul className="divide-y">
         {component.products.map((product) => {
-          const soldOut = product.inventory === 0;
+          // A product with no stock count (hasInventory false) is never sold out.
+          const soldOut = countsStock(product) && product.inventory === 0;
           return (
             <li key={product._id} className="flex items-center gap-3 px-4 py-3">
               <ProductPhoto dataComponent="shopProductsPhoto" url={product.photoUrl} name={product.name} />
@@ -60,7 +61,7 @@ export function ShopProductsCard({ component, answered, busy }: ComponentProps<'
                   {formatMoney(product.price, component.currency)}
                   {soldOut ? (
                     <Badge variant="error" size="sm">Sold out</Badge>
-                  ) : product.inventory <= 5 ? (
+                  ) : countsStock(product) && product.inventory <= 5 ? (
                     <span className="text-muted-foreground text-xs">{product.inventory} left</span>
                   ) : null}
                 </span>
@@ -70,7 +71,7 @@ export function ShopProductsCard({ component, answered, busy }: ComponentProps<'
                   dataComponent="shopProductsQuantity"
                   label={product.name}
                   value={quantities[product._id] ?? 0}
-                  max={product.inventory}
+                  max={stockMax(product)}
                   disabled={working}
                   onChange={(value) => setQuantities((current) => ({ ...current, [product._id]: value }))}
                 />
