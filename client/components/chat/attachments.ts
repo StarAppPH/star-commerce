@@ -17,6 +17,10 @@ export type AttachmentType = ChatAttachmentRow['contentType'];
 export interface TurnFile {
   name: string;
   contentType: AttachmentType;
+  // Where a photo is shown from: its download URL when this page uploaded
+  // it, else its Storage path (users/<uid>/chat/...), read when shown.
+  url: string | null;
+  path: string | null;
 }
 
 // A file picked in the composer, not sent yet.
@@ -65,7 +69,25 @@ export async function uploadChatFiles(storage: FirebaseStorage, uid: string, fil
     const name = storedName(file);
     const done = await uploadBytes(ref(storage, `users/${uid}/chat/${folder}/${name}`), file, { contentType: file.type });
     const contentType: AttachmentType = isAttachmentType(file.type) ? file.type : 'image/jpeg';
-    return { url: await getDownloadURL(done.ref), file: { name, contentType } };
+    const url = await getDownloadURL(done.ref);
+    return { url, file: { name, contentType, url, path: done.ref.fullPath } };
   }));
   return { urls: uploaded.map((one) => one.url), files: uploaded.map((one) => one.file) };
+}
+
+// The download URLs already asked for, by storage and path: re-renders and
+// pages of history ask Storage once per file. A failed read is forgotten, so
+// the chat opened again tries it again.
+const fileUrls = new Map<string, Promise<string>>();
+
+// The download URL of the user's own file at `path`, read with the storage
+// the user signed in to (the rules let only the owner read it).
+export function ownFileUrl(storage: FirebaseStorage, path: string): Promise<string> {
+  const key = `${storage.app.name}:${path}`;
+  const known = fileUrls.get(key);
+  if (known) return known;
+  const asked = getDownloadURL(ref(storage, path));
+  fileUrls.set(key, asked);
+  asked.catch(() => { fileUrls.delete(key); });
+  return asked;
 }

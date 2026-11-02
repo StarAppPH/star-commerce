@@ -5,8 +5,8 @@ import { ImagePlusIcon, PackagePlusIcon, PlusIcon, Trash2Icon, XIcon } from 'luc
 import { useObjectUrls } from './useObjectUrls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { getDownloadURL, ref } from 'firebase/storage';
 import { auth, storage } from '@/lib/firebase';
+import { ownFileUrl } from '../attachments';
 import { useSnackbar } from '@/lib/SnackbarContext';
 import { ChatCard, SentNote } from './ChatCard';
 import { nonEmpty } from './format';
@@ -76,7 +76,7 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
     rowsRef.current.forEach((row) => {
       const photo = row.photo;
       if (photo?.kind !== 'attached' || photo.url !== null) return;
-      getDownloadURL(ref(storage, photo.path))
+      ownFileUrl(storage, photo.path)
         .then((url) => ({ kind: 'attached' as const, path: photo.path, url }))
         .catch(() => null)
         .then((resolved) => {
