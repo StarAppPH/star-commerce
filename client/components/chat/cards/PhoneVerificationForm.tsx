@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { FirebaseError } from 'firebase/app';
 import {
   PhoneAuthProvider, RecaptchaVerifier, linkWithPhoneNumber, signInWithCredential,
@@ -35,6 +35,18 @@ function e164(typed: string): string {
 function errorCode(error: unknown): string {
   if (error instanceof FirebaseError) return error.code;
   return error instanceof Error ? error.message : String(error);
+}
+
+// The number as the shopper reads it: "+63 917 123 4567" for a Philippine
+// mobile, else as sent.
+function readable(number: string): string {
+  const local = /^\+63(\d{3})(\d{3})(\d{4})$/.exec(number);
+  return local ? `+63 ${local[1]} ${local[2]} ${local[3]}` : number;
+}
+
+// "0:29": the seconds until a code may be sent again.
+function countdown(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 // What Firebase's refusals mean to a shopper.
@@ -75,6 +87,8 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
   const [typed, setTyped] = useState('');
   const [code, setCode] = useState('');
   const [resendIn, setResendIn] = useState(0);
+  // A wrong or expired code, shown under the boxes (turned red).
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
   const [working, setWorking] = useState(false);
   const captchaHost = useRef<HTMLDivElement>(null);
@@ -84,6 +98,16 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
   const international = typed.trim().startsWith('+');
 
   useEffect(() => () => dropCaptcha(captcha), []);
+
+  // The first digit box takes the focus when the code step opens, and again
+  // after a wrong code (the boxes were disabled while it was checked).
+  const codeId = useId();
+  useEffect(() => {
+    if (!confirmation || working) return;
+    // After the boxes mount: the field sets them up in its own effects.
+    const frame = window.requestAnimationFrame(() => document.getElementById(codeId)?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [confirmation, codeError, working, codeId]);
 
   // Counts down to when another code may be sent.
   useEffect(() => {
@@ -106,6 +130,7 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
       }
       setConfirmation(await linkWithPhoneNumber(user, phone, captcha.current.verifier));
       setCode('');
+      setCodeError(null);
       setResendIn(RESEND_AFTER_SECONDS);
     } catch (error) {
       console.error('Phone verification failed to send a code:', errorCode(error));
@@ -157,7 +182,12 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
       if (res.status === 200) onAnswer({ kind: 'phoneVerified', formId: component.formId });
     } catch (error) {
       console.error('Phone verification failed to confirm the code:', errorCode(error));
-      showSnackbar(phoneProblem(error), 'error');
+      const reason = error instanceof FirebaseError ? error.code : '';
+      if (reason === 'auth/invalid-verification-code' || reason === 'auth/code-expired') {
+        setCodeError(phoneProblem(error));
+      } else {
+        showSnackbar(phoneProblem(error), 'error');
+      }
       setCode('');
     } finally {
       setWorking(false);
@@ -171,9 +201,6 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
       title="Verify your phone number"
       footer={answered ? <SentNote text="Phone number verified" /> : confirmation ? (
         <>
-          <Button data-component="phoneVerificationBack" variant="ghost" className="me-auto" disabled={locked} onClick={() => { setConfirmation(null); setCode(''); }}>
-            Change number
-          </Button>
           <Button data-component="phoneVerificationConfirm" loading={working} disabled={code.length < CODE_LENGTH || busy || !guest} onClick={() => confirm(code)}>
             Verify
           </Button>
@@ -188,31 +215,54 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
         {!answered && (confirmation ? (
           <Field>
             <FieldLabel>Enter the {CODE_LENGTH}-digit code</FieldLabel>
-            <FieldDescription>We texted it to {phone}.</FieldDescription>
+            <FieldDescription>
+              We texted it to <span data-component="phoneVerificationNumber" className="font-medium text-foreground">{readable(phone)}</span>.{' '}
+              <button
+                type="button"
+                data-component="phoneVerificationBack"
+                className="underline underline-offset-2 hover:text-foreground disabled:pointer-events-none disabled:opacity-64"
+                disabled={locked}
+                onClick={() => { setConfirmation(null); setCode(''); setCodeError(null); }}
+              >
+                Wrong number?
+              </button>
+            </FieldDescription>
             <OTPField
+              id={codeId}
               data-component="phoneVerificationCode"
               length={CODE_LENGTH}
-              size="lg"
               value={code}
               disabled={locked}
-              onValueChange={setCode}
+              onValueChange={(value) => { setCode(value); if (value) setCodeError(null); }}
               onValueComplete={confirm}
-              className="my-1"
+              className="my-1 w-full"
             >
               {Array.from({ length: CODE_LENGTH }, (_, index) => (
-                <OTPFieldInput key={index} aria-label={`Digit ${index + 1}`} />
+                <OTPFieldInput
+                  key={index}
+                  aria-label={`Digit ${index + 1}`}
+                  aria-invalid={codeError !== null || undefined}
+                  className="h-12! w-auto! min-w-0 flex-1 text-xl! leading-12! sm:h-12! sm:text-xl! sm:leading-12!"
+                />
               ))}
             </OTPField>
-            <Button
-              data-component="phoneVerificationResend"
-              variant="link"
-              size="sm"
-              className="h-auto self-start px-0"
-              disabled={locked || resendIn > 0}
-              onClick={sendCode}
-            >
-              {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
-            </Button>
+            {codeError && <p data-component="phoneVerificationCodeError" role="alert" className="text-destructive-foreground text-xs">{codeError}</p>}
+            <p data-component="phoneVerificationResendLine" className="text-muted-foreground text-xs">
+              Didn’t get it?{' '}
+              {resendIn > 0 ? (
+                <span className="tabular-nums">Resend in {countdown(resendIn)}</span>
+              ) : (
+                <button
+                  type="button"
+                  data-component="phoneVerificationResend"
+                  className="font-medium text-foreground underline underline-offset-2 disabled:pointer-events-none disabled:opacity-64"
+                  disabled={locked}
+                  onClick={sendCode}
+                >
+                  Resend code
+                </button>
+              )}
+            </p>
           </Field>
         ) : (
           <Field>
@@ -239,8 +289,9 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
             <FieldDescription>Another country? Type the whole number starting with +.</FieldDescription>
           </Field>
         ))}
-        <div ref={captchaHost} />
       </div>
+      {/* Outside the spaced column: the invisible reCAPTCHA takes no room. */}
+      <div ref={captchaHost} />
     </ChatCard>
   );
 }
