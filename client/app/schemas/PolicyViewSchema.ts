@@ -50,6 +50,10 @@ export type Defectreportdays = number | null;
  */
 export type Deliveryoptions = ["pickup" | "delivery", ...("pickup" | "delivery")[]] | null;
 /**
+ * How the store delivers an order, as the admin said it, e.g. its own rider, a courier
+ */
+export type Deliverymethod = string | null;
+/**
  * Where the store delivers
  */
 export type Deliveryareas = string | null;
@@ -241,6 +245,7 @@ export interface PolicyView {
   returnShippingPaidBy?: Returnshippingpaidby;
   defectReportDays?: Defectreportdays;
   deliveryOptions?: Deliveryoptions;
+  deliveryMethod?: Deliverymethod;
   deliveryAreas?: Deliveryareas;
   handoverDays?: Handoverdays;
   authorizedPaymentMethods?: Authorizedpaymentmethods;

@@ -2859,6 +2859,21 @@
                     "description": "How a customer can get an order",
                     "title": "Deliveryoptions"
                 },
+                "deliveryMethod": {
+                    "anyOf": [
+                        {
+                            "maxLength": 300,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "How the store delivers an order, as the admin said it, e.g. its own rider, a courier",
+                    "title": "Deliverymethod"
+                },
                 "deliveryAreas": {
                     "anyOf": [
                         {

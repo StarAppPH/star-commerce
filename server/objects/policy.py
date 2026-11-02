@@ -43,8 +43,8 @@ RETIRED_POLICY_FIELDS = ('offersFreeDelivery', 'freeDeliveryMinimum',
 PolicyField = Literal['acceptsReturns', 'returnWindowDays', 'returnConditions',
                       'nonReturnableItems', 'refundMethod',
                       'returnShippingPaidBy', 'defectReportDays',
-                      'deliveryOptions', 'deliveryAreas', 'handoverDays',
-                      'authorizedPaymentMethods', 'paidOrderCancellation',
+                      'deliveryOptions', 'deliveryMethod', 'deliveryAreas',
+                      'handoverDays', 'authorizedPaymentMethods', 'paidOrderCancellation',
                       'paidOrderCancellationHours', 'additionalTerms']
 POLICY_TEXT_MAX_LENGTH = 300
 POLICY_TERMS_MAX_LENGTH = 1000
@@ -79,6 +79,10 @@ DefectReportDays = Annotated[int | None, Field(
 # Delivery
 DeliveryOptions = Annotated[list[DeliveryOption] | None, Field(
     min_length=1, description='How a customer can get an order')]
+DeliveryMethod = Annotated[str | None, Field(
+    min_length=1, max_length=POLICY_TEXT_MAX_LENGTH,
+    description='How the store delivers an order, as the admin said it, '
+    'e.g. its own rider, a courier')]
 DeliveryAreas = Annotated[str | None, Field(
     min_length=1, max_length=POLICY_TEXT_MAX_LENGTH,
     description='Where the store delivers')]
@@ -114,7 +118,7 @@ AdditionalTerms = Annotated[str | None, Field(
 # cancellable within hours (Policy.normalized clears them otherwise).
 POLICY_RETURN_ANSWERS = ('returnWindowDays', 'returnConditions',
                          'refundMethod', 'returnShippingPaidBy')
-POLICY_DELIVERY_ANSWERS = ('deliveryAreas', )
+POLICY_DELIVERY_ANSWERS = ('deliveryMethod', 'deliveryAreas')
 POLICY_CANCELLATION_HOURS_ANSWERS = ('paidOrderCancellationHours', )
 
 
@@ -137,6 +141,7 @@ class Policy(MongoModel):
     returnShippingPaidBy: ReturnShippingPaidBy = None
     defectReportDays: DefectReportDays = None
     deliveryOptions: DeliveryOptions = None
+    deliveryMethod: DeliveryMethod = None
     deliveryAreas: DeliveryAreas = None
     handoverDays: HandoverDays = None
     authorizedPaymentMethods: AuthorizedPaymentMethods = None
@@ -148,7 +153,8 @@ class Policy(MongoModel):
                                          description='When it last changed')
 
     @field_validator('returnConditions', 'nonReturnableItems',
-                     'deliveryAreas', 'additionalTerms', mode='before')
+                     'deliveryMethod', 'deliveryAreas', 'additionalTerms',
+                     mode='before')
     @classmethod
     def _strip_text(cls, v):
         return v.strip() if isinstance(v, str) else v
@@ -218,6 +224,7 @@ class StorePolicyResponse(ResponseModel):
         'returnShippingPaidBy': 'a policy answer the AI tells or warns about',
         'defectReportDays': 'a policy answer the AI tells or warns about',
         'deliveryOptions': 'a policy answer the AI tells or warns about',
+        'deliveryMethod': 'a policy answer the AI tells or warns about',
         'deliveryAreas': 'a policy answer the AI tells or warns about',
         'handoverDays': 'a policy answer the AI tells or warns about',
         'authorizedPaymentMethods': 'a policy answer the AI tells or warns about',
@@ -234,6 +241,7 @@ class StorePolicyResponse(ResponseModel):
     returnShippingPaidBy: ReturnShippingPaidBy = Field(...)
     defectReportDays: DefectReportDays = Field(...)
     deliveryOptions: DeliveryOptions = Field(...)
+    deliveryMethod: DeliveryMethod = Field(...)
     deliveryAreas: DeliveryAreas = Field(...)
     handoverDays: HandoverDays = Field(...)
     authorizedPaymentMethods: AuthorizedPaymentMethodRows = Field(...)

@@ -33,6 +33,7 @@ from objects.photo import (PHOTO_COLOR_FOCUS_MAX_LENGTH, PHOTO_COLORS_MAX,
                            PhotoChoiceRow, PhotoColorRow)
 from objects.policy import (AcceptsReturns, AuthorizedPaymentMethodRows,
                             AdditionalTerms, DefectReportDays, DeliveryAreas,
+                            DeliveryMethod,
                             DeliveryOptions,
                             HandoverDays, NonReturnableItems,
                             PaidOrderCancellationAnswer,
@@ -276,6 +277,8 @@ class PolicyCard(ResponseModel):
     returnShippingPaidBy: ReturnShippingPaidBy
     defectReportDays: DefectReportDays
     deliveryOptions: DeliveryOptions
+    # Null on a card saved before deliveryMethod.
+    deliveryMethod: DeliveryMethod = None
     deliveryAreas: DeliveryAreas
     handoverDays: HandoverDays
     # Null on a card saved before authorizedPaymentMethods.

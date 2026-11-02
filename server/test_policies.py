@@ -1036,8 +1036,8 @@ def test_policyAnswerFields_areDeclaredOnceEverywhere():
         if typing.get_args(Policy.model_fields[field].annotation)[0] is str
     }
     assert set(TEXT_LIMITS) == textFields == {
-        'returnConditions', 'nonReturnableItems', 'deliveryAreas',
-        'additionalTerms'
+        'returnConditions', 'nonReturnableItems', 'deliveryMethod',
+        'deliveryAreas', 'additionalTerms'
     }
     assert all(isinstance(limit, int) and limit > 0
                for limit in TEXT_LIMITS.values())
@@ -1286,3 +1286,51 @@ def test_getMyStorePolicyRoute_refusesAnAdminWithoutAStore(clean):
     createTestUser(ADMIN)
 
     assert _refusal(api.getMyStorePolicy, ADMIN) == NO_STORE_YET
+
+
+def test_deliveryMethod_isAFreeTextDeliveryAnswer(clean, firebase):
+    store = _setUpStore()
+    storeId = store['_id']
+    customerId = guestAt(firebase, store, GUEST)
+
+    # Saved stripped with delivery offered, and the customer reads it.
+    tools.updateMyStorePolicy(ADMIN, deliveryOptions=['pickup', 'delivery'],
+                              deliveryMethod='  Own rider; Lalamove farther  ')
+    assert _policyDoc(storeId)['deliveryMethod'] == (
+        'Own rider; Lalamove farther')
+    theirs = tools.getStorePolicy(customerId, storeId)
+    assertExactShape(StorePolicyResponse, theirs)
+    assert theirs['deliveryMethod'] == 'Own rider; Lalamove farther'
+    # Blank is unchanged; changed alone; cleared by name.
+    assert _refusal(tools.updateMyStorePolicy, ADMIN,
+                    deliveryMethod='   ') == NOTHING_SENT
+    tools.updateMyStorePolicy(ADMIN, deliveryMethod='LBC for provinces')
+    assert _policyDoc(storeId)['deliveryMethod'] == 'LBC for provinces'
+    tools.updateMyStorePolicy(ADMIN, clear=['deliveryMethod'])
+    assert _policyDoc(storeId)['deliveryMethod'] is None
+
+    # Too long or not text is refused.
+    tooLong = _refusal(tools.updateMyStorePolicy, ADMIN,
+                       deliveryMethod='x' * (POLICY_TEXT_MAX_LENGTH + 1))
+    assert 'deliveryMethod' in tooLong
+    assert str(POLICY_TEXT_MAX_LENGTH) in tooLong
+    assert _refusal(tools.updateMyStorePolicy, ADMIN,
+                    deliveryMethod=5) == 'deliveryMethod must be text'
+    tools.updateMyStorePolicy(ADMIN,
+                              deliveryMethod='y' * POLICY_TEXT_MAX_LENGTH)
+    assert len(_policyDoc(storeId)['deliveryMethod']) == (
+        POLICY_TEXT_MAX_LENGTH)
+    tools.updateMyStorePolicy(ADMIN, deliveryMethod='Own rider')
+    before = _policyDoc(storeId)
+
+    # Turning delivery off drops it; sending it with pickup only is refused.
+    assert _refusal(tools.updateMyStorePolicy, ADMIN,
+                    deliveryOptions=['pickup'],
+                    deliveryMethod='Own rider') == (
+        f"deliveryMethod {NOT_APPLICABLE['deliveryMethod']}: ask again")
+    _unchanged(storeId, before)
+    tools.updateMyStorePolicy(ADMIN, deliveryOptions=['pickup'])
+    assert _policyDoc(storeId)['deliveryMethod'] is None
+    assert _refusal(tools.updateMyStorePolicy, ADMIN,
+                    deliveryMethod='Own rider') == (
+        f"deliveryMethod {NOT_APPLICABLE['deliveryMethod']}: ask again")

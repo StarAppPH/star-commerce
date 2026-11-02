@@ -77,6 +77,7 @@ export function policyRows(
     { question: 'paidOrderCancellation', label: 'Cancelling a paid order', value: answers.paidOrderCancellation },
     { question: 'paidOrderCancellationHours', label: 'Hours after payment to cancel', value: answers.paidOrderCancellationHours },
     { question: 'deliveryOptions', label: 'Pickup or delivery', value: answers.deliveryOptions },
+    { question: 'deliveryMethod', label: 'How we deliver', value: answers.deliveryMethod ?? null },
     { question: 'deliveryAreas', label: 'Delivery areas', value: answers.deliveryAreas },
     { question: 'handoverDays', label: 'Days until ready for pickup', value: answers.handoverDays },
     { question: 'acceptsReturns', label: 'Accepts returns', value: answers.acceptsReturns },
