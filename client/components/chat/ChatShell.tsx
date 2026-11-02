@@ -4,10 +4,14 @@ import { VoiceMode } from '@/components/voice/VoiceMode';
 import { unlockVoiceAudio } from '@/components/voice/voiceAudio';
 import { primeSpeaking } from '@/components/voice/useSpeech';
 import type { ChatComponent } from './cards/types';
-import type { ChatTurnView, OnThinking, VoiceAnswer, VoiceInput } from './useChat';
+import type { ChatTurnView, OnThinking, OutsideSendResult, VoiceAnswer, VoiceInput } from './useChat';
 
 type Ask = (input: VoiceInput, onThinking?: OnThinking) => Promise<VoiceAnswer | null>;
-type Send = (text: string) => Promise<string | null>;
+type Send = (text: string) => OutsideSendResult;
+
+// What sendText came to: OutsideSendResult, or 'noChat' when no chat is on
+// screen.
+export type SendTextResult = OutsideSendResult | 'noChat';
 
 interface VoiceOptions {
   title: string;
@@ -35,8 +39,8 @@ interface ChatShellValue {
   unbindAsk: (ask: Ask) => void;
   openVoice: () => void;
   // The chat on screen sends a message asked for outside it (the shop's
-  // cart: "Check out my cart"); false when no chat is on screen.
-  sendText: (text: string) => boolean;
+  // cart: "Check out my cart"); see SendTextResult.
+  sendText: (text: string) => SendTextResult;
   bindSend: (send: Send) => void;
   unbindSend: (send: Send) => void;
 }
@@ -47,6 +51,11 @@ export function useChatShell(): ChatShellValue {
   const context = useContext(ChatShellContext);
   if (!context) throw new Error('useChatShell must be used within a ChatShellProvider');
   return context;
+}
+
+// For a card that can render outside the chat shell: null there.
+export function useOptionalChatShell(): ChatShellValue | null {
+  return useContext(ChatShellContext);
 }
 
 interface ChatShellProviderProps {
@@ -74,9 +83,7 @@ export function ChatShellProvider({ voice, onTurnSaved, children }: ChatShellPro
     bindAsk: (next) => { askRef.current = next; },
     unbindAsk: (bound) => { if (askRef.current === bound) askRef.current = null; },
     sendText: (text) => {
-      if (!sendRef.current) return false;
-      void sendRef.current(text);
-      return true;
+      return sendRef.current ? sendRef.current(text) : 'noChat';
     },
     bindSend: (next) => { sendRef.current = next; },
     unbindSend: (bound) => { if (sendRef.current === bound) sendRef.current = null; },

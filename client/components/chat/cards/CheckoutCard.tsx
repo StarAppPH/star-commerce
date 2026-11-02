@@ -1,7 +1,10 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { CreditCardIcon } from 'lucide-react';
-import type { PaymentOption } from '@/app/schemas/PaymentOptionSchema';
+import { useEffect, useRef, useState } from 'react';
+import {
+  BanknoteIcon, BitcoinIcon, CheckIcon, CopyIcon, CreditCardIcon, LandmarkIcon, ReceiptTextIcon, WalletIcon,
+  type LucideIcon,
+} from 'lucide-react';
+import type { Method, PaymentOption } from '@/app/schemas/PaymentOptionSchema';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -13,17 +16,125 @@ import {
 } from './format';
 import type { ComponentProps } from './types';
 
-// What paying by hand with `option` takes: the store's accounts, or where.
-function manualDetails(option: PaymentOption): string[] {
-  if (option.eWallets) return option.eWallets.map((account) => `${account.ewalletName}: ${account.accountNumber}`);
-  if (option.banks) return option.banks.map((account) => `${account.bankName}: ${account.accountNumber} (${account.accountName})`);
-  if (option.checkPayees) return option.checkPayees.map((payee) => `Pay to the order of ${payee}, at the handover`);
-  return ['Paid at the handover'];
+const METHOD_ICONS: Record<Method, LucideIcon> = {
+  cash: BanknoteIcon,
+  card: CreditCardIcon,
+  eWallet: WalletIcon,
+  bankTransfer: LandmarkIcon,
+  check: ReceiptTextIcon,
+  crypto: BitcoinIcon,
+};
+
+// One line of what paying by hand takes: what it is, and the account number
+// to pay to (copyable), if any.
+interface PayToLine {
+  text: string;
+  number: string | null;
+}
+
+// What paying by hand with `option` takes: the store's accounts, or when.
+function payToLines(option: PaymentOption, pickup: boolean): PayToLine[] {
+  if (option.eWallets) {
+    return option.eWallets.map((account) => ({ text: account.ewalletName, number: account.accountNumber }));
+  }
+  if (option.banks) {
+    return option.banks.map((account) => ({ text: `${account.bankName} · ${account.accountName}`, number: account.accountNumber }));
+  }
+  if (option.checkPayees) {
+    return option.checkPayees.map((payee) => ({ text: `Pay to the order of ${payee}, at the handover`, number: null }));
+  }
+  return [{ text: pickup ? 'Pay when you pick it up' : 'Pay when it’s delivered', number: null }];
 }
 
 function optionLabel(option: PaymentOption): string {
   if (option.provider === null) return paymentText(option.method, null);
   return `${PAYMENT_METHOD_LABELS[option.method] ?? option.method} online`;
+}
+
+// A store account number, copied with one tap: a tick shows it worked.
+function CopyNumber({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Copying the account number failed:', error instanceof Error ? error.name : 'unknown');
+    }
+  };
+
+  return (
+    <Button data-component="checkoutCopyNumber" variant="ghost" size="xs" onClick={copy} aria-label={`Copy ${value}`}>
+      {copied ? <CheckIcon /> : <CopyIcon />}
+      {copied ? 'Copied' : 'Copy'}
+    </Button>
+  );
+}
+
+interface OptionGroupProps {
+  title: string;
+  note: string;
+  entries: { option: PaymentOption; index: number }[];
+  picked: number;
+  busy: boolean;
+  pickup: boolean;
+}
+
+// One kind of payment (online now, or by hand to the store): a heading, then
+// its options in one list. The picked option paid by hand opens to show the
+// store's accounts.
+function OptionGroup({ title, note, entries, picked, busy, pickup }: OptionGroupProps) {
+  if (entries.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+        {title} <span className="font-normal normal-case tracking-normal">· {note}</span>
+      </p>
+      <div className="divide-y overflow-hidden rounded-lg border">
+        {entries.map(({ option, index }) => {
+          const Icon = METHOD_ICONS[option.method];
+          const open = index === picked && option.provider === null;
+          return (
+            <div key={`${option.method}-${option.provider ?? 'manual'}`} className={index === picked ? 'bg-accent/40' : undefined}>
+              <Label
+                data-component={`checkoutMethod${option.method[0].toUpperCase()}${option.method.slice(1)}${option.provider === null ? 'Manual' : 'Online'}`}
+                className="flex cursor-pointer items-center gap-3 px-3 py-3"
+              >
+                <RadioGroupItem value={String(index)} disabled={busy} />
+                <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="flex-1">{PAYMENT_METHOD_LABELS[option.method] ?? option.method}</span>
+                {option.provider !== null && (
+                  <span className="text-muted-foreground text-xs">{PAYMENT_PROVIDER_LABELS[option.provider] ?? option.provider}</span>
+                )}
+              </Label>
+              {open && (
+                <ul data-component="checkoutPayTo" className="flex flex-col gap-2 ps-17 pe-3 pb-3 text-sm">
+                  {payToLines(option, pickup).map((line) => (
+                    <li key={`${line.text}-${line.number ?? ''}`} className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 flex-col">
+                        <span className={line.number === null ? undefined : 'text-muted-foreground text-xs'}>{line.text}</span>
+                        {line.number !== null && <span className="font-medium tabular-nums">{line.number}</span>}
+                      </span>
+                      {line.number !== null && <CopyNumber value={line.number} />}
+                    </li>
+                  ))}
+                  {option.method !== 'cash' && (
+                    <li className="text-muted-foreground text-xs">Once you’ve paid, send a photo of the receipt from your order.</li>
+                  )}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // The order a shopper just placed: how long is left to choose how to pay, and
@@ -44,6 +155,8 @@ export function CheckoutCard({ component, answered, busy, onAnswer }: ComponentP
   const chosen: PaymentOption | undefined = options[picked] ?? options[0];
   // A card saved before payment options can no longer be answered.
   const legacyMethods = component.paymentMethods ?? [];
+  const entries = options.map((option, index) => ({ option, index }));
+  const pickup = order.fulfillment === 'pickup';
 
   return (
     <ChatCard
@@ -78,33 +191,25 @@ export function CheckoutCard({ component, answered, busy, onAnswer }: ComponentP
             aria-label="Payment method"
             value={String(picked)}
             onValueChange={(value) => setPicked(Number(value))}
-            className="gap-2"
+            className="gap-4"
           >
-            {options.map((option, index) => (
-              <Label
-                key={`${option.method}-${option.provider ?? 'manual'}`}
-                className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border px-3 py-2.5 has-data-checked:border-primary has-data-checked:bg-accent/50"
-              >
-                <span className="flex flex-col gap-0.5">
-                  {optionLabel(option)}
-                  <span className="text-muted-foreground text-xs">
-                    {option.provider === null
-                      ? 'The store confirms it once it arrives'
-                      : `Through ${PAYMENT_PROVIDER_LABELS[option.provider] ?? option.provider}`}
-                  </span>
-                </span>
-                <RadioGroupItem value={String(index)} disabled={busy} />
-              </Label>
-            ))}
+            <OptionGroup
+              title="Pay online now"
+              note="confirmed right away"
+              entries={entries.filter(({ option }) => option.provider !== null)}
+              picked={picked}
+              busy={busy}
+              pickup={pickup}
+            />
+            <OptionGroup
+              title="Pay the store"
+              note="the store confirms it once it arrives"
+              entries={entries.filter(({ option }) => option.provider === null)}
+              picked={picked}
+              busy={busy}
+              pickup={pickup}
+            />
           </RadioGroup>
-        )}
-        {!answered && chosen && chosen.provider === null && (
-          <ul data-component="checkoutPayTo" className="flex flex-col gap-1 rounded-lg bg-muted px-3 py-2.5 text-sm">
-            {manualDetails(chosen).map((line) => <li key={line}>{line}</li>)}
-            {chosen.method !== 'cash' && (
-              <li className="text-muted-foreground text-xs">Once you’ve paid, send a photo of the receipt from your order.</li>
-            )}
-          </ul>
         )}
         {!answered && !chosen && (
           <p className="text-muted-foreground text-sm">

@@ -86,6 +86,11 @@ export interface VoiceAnswer {
 // opened.
 export type VoiceInput = string | ChatFormAnswer;
 
+// What a message asked for outside the chat came to: sent (or queued behind
+// the turn being answered), or refused because the chat is new and its first
+// turn is still being answered (the move to its thread page would lose it).
+export type OutsideSendResult = 'sent' | 'busy';
+
 // How a chat reaches the server: the admin's routes or a shopper's.
 // `turnKey` names a turn being sent, so thinking and speakThinking can ask
 // what it is doing; `speak` asks for the reply's speech (voice mode).
@@ -230,38 +235,16 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     return next;
   }, []);
 
-  // Sends one turn (a message with the files `uploaded`, or a form's
-  // answer) and resolves to the saved reply (null when it failed: the turn
-  // then shows the error and a way to try again). While it waits, the turn
-  // shows what the assistant is doing, also passed to onThinking. `speak`
-  // asks for its speech.
-  const send = useCallback(async (
+  // Sends the turn `key` already on screen, once its turn in the queue has
+  // come; see send.
+  const sendNow = useCallback(async (
+    key: string,
     message: string | null,
     form: ChatFormAnswer | null,
-    onThinking?: OnThinking,
-    speak = false,
-    uploaded: UploadedFiles | null = null,
+    onThinking: OnThinking | undefined,
+    speak: boolean,
+    uploaded: UploadedFiles | null,
   ): Promise<ChatReplyResponse | null> => {
-    const key = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const pending: ChatTurnView = {
-      key,
-      seq: null,
-      userText: form ? answerLabel(form) : message ?? '',
-      files: uploaded?.files ?? [],
-      reply: null,
-      components: [],
-      answeredFormId: form?.formId ?? null,
-      createdAt: null,
-      status: 'sending',
-      error: null,
-      form,
-      uploaded,
-      thinkingText: null,
-    };
-    const withPending = [...turnsRef.current, pending];
-    turnsRef.current = withPending;
-    setTurns(withPending);
-
     const isNew = idRef.current === null;
     const turnKey = newTurnKey();
     const stopPolling = pollThinking(transport, turnKey, (text) => {
@@ -300,6 +283,49 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     return res.data;
   }, [transport, onStarted, onSaved, replaceTurn]);
 
+  // The turn being sent, if any: the next one waits for it, as the server
+  // answers one turn of a conversation at a time. Never rejects.
+  const queueRef = useRef<Promise<unknown>>(Promise.resolve());
+
+  // Sends one turn (a message with the files `uploaded`, or a form's
+  // answer) and resolves to the saved reply (null when it failed: the turn
+  // then shows the error and a way to try again). It shows at once, and is
+  // sent once every turn sent before it has its answer (a failed one too),
+  // so turns go one at a time, in order. While it waits for its own answer,
+  // the turn shows what the assistant is doing, also passed to onThinking.
+  // `speak` asks for its speech.
+  const send = useCallback(async (
+    message: string | null,
+    form: ChatFormAnswer | null,
+    onThinking?: OnThinking,
+    speak = false,
+    uploaded: UploadedFiles | null = null,
+  ): Promise<ChatReplyResponse | null> => {
+    const key = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const pending: ChatTurnView = {
+      key,
+      seq: null,
+      userText: form ? answerLabel(form) : message ?? '',
+      files: uploaded?.files ?? [],
+      reply: null,
+      components: [],
+      answeredFormId: form?.formId ?? null,
+      createdAt: null,
+      status: 'sending',
+      error: null,
+      form,
+      uploaded,
+      thinkingText: null,
+    };
+    const withPending = [...turnsRef.current, pending];
+    turnsRef.current = withPending;
+    setTurns(withPending);
+
+    const run = queueRef.current.then(() => sendNow(key, message, form, onThinking, speak, uploaded));
+    queueRef.current = run.catch(() => null);
+    return run;
+  }, [sendNow]);
+
   const ask = useCallback(async (text: string): Promise<string | null> => {
     const message = text.trim();
     if (!message) return null;
@@ -331,6 +357,14 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
 
   const answer = useCallback(async (form: ChatFormAnswer) => (await send(null, form))?.reply ?? null, [send]);
 
+  // A message asked for outside the chat (the shop's cart, a receipt sent):
+  // see OutsideSendResult.
+  const sendOutside = useCallback((text: string): OutsideSendResult => {
+    if (idRef.current === null && turnsRef.current.some((turn) => turn.status === 'sending')) return 'busy';
+    void ask(text);
+    return 'sent';
+  }, [ask]);
+
   const retry = useCallback(async (key: string) => {
     const failed = turnsRef.current.find((turn) => turn.key === key);
     if (!failed) return;
@@ -347,5 +381,5 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     return answered;
   }, [turns]);
 
-  return { turns, loading, loadError, hasEarlier, loadingEarlier, sending, answeredFormIds, ask, sendMessage, upload: transport.upload, talk, answer, retry, reload, loadEarlier };
+  return { turns, loading, loadError, hasEarlier, loadingEarlier, sending, answeredFormIds, ask, sendMessage, upload: transport.upload, talk, answer, sendOutside, retry, reload, loadEarlier };
 }

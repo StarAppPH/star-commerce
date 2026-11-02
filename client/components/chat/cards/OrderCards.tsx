@@ -107,7 +107,7 @@ export function StoreOrdersCard({ component, answered, busy, onAnswer }: Compone
 }
 
 // The shopper's own orders.
-export function MyOrdersCard({ component }: ComponentProps<'myOrders'>) {
+export function MyOrdersCard({ component, busy }: ComponentProps<'myOrders'>) {
   return (
     <ChatCard
       dataComponent="myOrdersCard"
@@ -115,37 +115,48 @@ export function MyOrdersCard({ component }: ComponentProps<'myOrders'>) {
       title={component.orders.length === 1 ? `Order ${orderRef(component.orders[0]._id)}` : `${component.orders.length} orders`}
     >
       <ul className="divide-y">
-        {component.orders.map((order) => (
-          <li key={order._id} className="flex flex-col gap-1 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs">{orderRef(order._id)}</span>
-              <StatusBadge status={order.status} />
-              <span className="ms-auto font-medium text-sm">{formatMoney(order.total, order.currency)}</span>
-            </div>
-            <span className="text-sm">{itemsText(order.items)}</span>
-            <OrderDelivery order={order} currency={order.currency} />
-            <span className="text-muted-foreground text-xs">
-              {[
-                `Placed ${formatWhen(order.createdAt)}`,
-                order.status === 'pending' ? `choose how to pay by ${formatWhen(order.expiresAt)}` : null,
-                order.status === 'awaitingPayment' && order.paymentMethod
-                  ? `paying by ${(PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod).toLowerCase()}: the store confirms it once it arrives`
-                  : null,
-                order.paidAt && order.paymentMethod
-                  ? `paid by ${PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}`
-                  : null,
-                order.completedAt ? `handed over ${formatWhen(order.completedAt)}` : null,
-                order.cancelReason ? CANCEL_REASON_LABELS[order.cancelReason] ?? order.cancelReason : null,
-                order.refundedAt ? `refunded ${formatWhen(order.refundedAt)}` : null,
-                order.paymentReceiptAt ? `receipt sent ${formatWhen(order.paymentReceiptAt)}` : null,
-              ].filter(Boolean).join(' · ')}
-            </span>
-            {order.status === 'awaitingPayment' && order.paymentMethod !== 'cash' && (
-              <SendReceiptButton orderId={order._id} sent={Boolean(order.paymentReceiptAt)} />
-            )}
-          </li>
-        ))}
+        {component.orders.map((order) => <MyOrderRow key={order._id} order={order} busy={busy} />)}
       </ul>
     </ChatCard>
+  );
+}
+
+type MyOrder = ComponentProps<'myOrders'>['component']['orders'][number];
+
+// One of the shopper's orders. A receipt sent from this row shows at once,
+// before the card's data is read again. No receipt goes while the chat is
+// answering.
+function MyOrderRow({ order, busy }: { order: MyOrder; busy: boolean }) {
+  const [receiptSentAt, setReceiptSentAt] = useState<string | null>(null);
+  const paymentReceiptAt = receiptSentAt ?? order.paymentReceiptAt;
+  return (
+    <li className="flex flex-col gap-1 px-4 py-3">
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-xs">{orderRef(order._id)}</span>
+        <StatusBadge status={order.status} />
+        <span className="ms-auto font-medium text-sm">{formatMoney(order.total, order.currency)}</span>
+      </div>
+      <span className="text-sm">{itemsText(order.items)}</span>
+      <OrderDelivery order={order} currency={order.currency} />
+      <span className="text-muted-foreground text-xs">
+        {[
+          `Placed ${formatWhen(order.createdAt)}`,
+          order.status === 'pending' ? `choose how to pay by ${formatWhen(order.expiresAt)}` : null,
+          order.status === 'awaitingPayment' && order.paymentMethod
+            ? `paying by ${(PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod).toLowerCase()}: the store confirms it once it arrives`
+            : null,
+          order.paidAt && order.paymentMethod
+            ? `paid by ${PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}`
+            : null,
+          order.completedAt ? `handed over ${formatWhen(order.completedAt)}` : null,
+          order.cancelReason ? CANCEL_REASON_LABELS[order.cancelReason] ?? order.cancelReason : null,
+          order.refundedAt ? `refunded ${formatWhen(order.refundedAt)}` : null,
+          paymentReceiptAt ? `receipt sent ${formatWhen(paymentReceiptAt)}` : null,
+        ].filter(Boolean).join(' · ')}
+      </span>
+      {order.status === 'awaitingPayment' && order.paymentMethod !== 'cash' && (
+        <SendReceiptButton orderId={order._id} sent={Boolean(paymentReceiptAt)} disabled={busy} onSent={setReceiptSentAt} />
+      )}
+    </li>
   );
 }

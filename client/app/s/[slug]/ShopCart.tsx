@@ -36,8 +36,9 @@ export function ShopCart() {
   const blocked = items.some((item) => stockProblem(item) !== null);
 
   const checkout = () => {
-    if (!shell.sendText(CHECKOUT_MESSAGE)) {
-      showSnackbar('Open a chat to check out.', 'error');
+    const sent = shell.sendText(CHECKOUT_MESSAGE);
+    if (sent !== 'sent') {
+      showSnackbar(sent === 'busy' ? 'Wait for the reply, then check out.' : 'Open a chat to check out.', 'error');
       return;
     }
     setOpen(false);
