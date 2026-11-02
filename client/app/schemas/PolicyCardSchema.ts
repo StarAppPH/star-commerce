@@ -63,6 +63,10 @@ export type Defectreportdays = number | null;
  */
 export type Deliveryoptions = ["pickup" | "delivery", ...("pickup" | "delivery")[]] | null;
 /**
+ * How the store delivers an order, as the admin said it, e.g. its own rider, a courier
+ */
+export type Deliverymethod = string | null;
+/**
  * Where the store delivers
  */
 export type Deliveryareas = string | null;
@@ -239,8 +243,7 @@ export type Checkpayees =
  * The ways a customer could pay, on a card saved before each method had its details
  */
 export type Acceptedpaymentmethods =
-  | ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[]
-  | null;
+  ("cash" | "card" | "eWallet" | "bankTransfer" | "check" | "crypto" | "gcash" | "maya" | "grabPay")[] | null;
 /**
  * Whether a customer can cancel a paid order
  */
@@ -343,6 +346,7 @@ export interface PolicyCard {
   returnShippingPaidBy: Returnshippingpaidby;
   defectReportDays: Defectreportdays;
   deliveryOptions: Deliveryoptions;
+  deliveryMethod?: Deliverymethod;
   deliveryAreas: Deliveryareas;
   handoverDays: Handoverdays;
   authorizedPaymentMethods?: Authorizedpaymentmethods;
