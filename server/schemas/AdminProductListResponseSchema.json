@@ -42,6 +42,11 @@
                     "title": "Inventory",
                     "type": "integer"
                 },
+                "hasInventory": {
+                    "description": "Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)",
+                    "title": "Hasinventory",
+                    "type": "boolean"
+                },
                 "reservedQuantity": {
                     "description": "Units orders are holding, all orders summed",
                     "minimum": 0,
@@ -85,6 +90,7 @@
                 "description",
                 "price",
                 "inventory",
+                "hasInventory",
                 "reservedQuantity",
                 "isAvailable",
                 "soldCount",

@@ -1060,3 +1060,13 @@ Where each account appears in the code:
 - The dead-letter dashboard's `<name>-run` account is the second entry of every sibling's `PUSH_SERVICE_ACCOUNTS` (`PUSH_SERVICE_ACCOUNTS[1]`, never `[0]`): its "Retry Prod" replays a dead letter with an ID token minted for exactly that endpoint, and the sibling accepts it as a push caller. The dashboard's own tuple holds its push account alone, so a replay token can never create a dead letter.
 
 `create-star-app doctor --cloud` reads these bindings and prints the exact command for any that is missing; it never applies a fix.
+
+## Products without inventory
+
+`Product.hasInventory` (default true) decides whether a product has inventory, so that a customer's order lessens it. With false, customers order unlimited units: `inventory` is stored as 0 and no admin count is needed (`_validProduct`). A product stored before the field existed has none and reads as true: every query matches `ProductActions.INVENTORY_TRACKED` (`{'hasInventory': {'$ne': False}}`), and the list pipelines send it through `HAS_INVENTORY_STAGE`.
+
+- Ordering (`OrderActions._reserveUnits`): a product with inventory gives its units out of it as before; one without holds them in `reservedInventory` with `tracked: false` and lessens nothing. `_moveOrder` writes each item twice, one write per kind of reservation, so a cancel or expiry puts back only units that came out of inventory, even after the admin turns the count on or off in between.
+- The cart's stock checks and the checkout preview skip a product without inventory; the out-of-stock and low-stock warnings and `inventoryAtMost` leave it out.
+- A received return with `restock=true` writes nothing for a product without inventory, and its item still counts as restocked.
+- `updateStoreProduct` turning `hasInventory` off sets `inventory` to 0; a count sent for a product without inventory is refused unless `hasInventory: true` comes with it.
+- Chat card rows and form drafts default `hasInventory` to true, so turns stored before it still validate; the client reads it as `hasInventory !== false` (`ChatCard.countsStock`). The new products form has a "Track stock" checkbox per row, ticked, with the stock prefilled to 1.

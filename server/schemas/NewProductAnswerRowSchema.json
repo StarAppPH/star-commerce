@@ -12,9 +12,17 @@
             "type": "number"
         },
         "inventory": {
-            "description": "Units in stock, free to sell",
-            "title": "Inventory",
-            "type": "integer"
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Units in stock, free to sell; required unless hasInventory is false",
+            "title": "Inventory"
         },
         "description": {
             "anyOf": [
@@ -35,6 +43,12 @@
             "title": "Isavailable",
             "type": "boolean"
         },
+        "hasInventory": {
+            "default": true,
+            "description": "Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)",
+            "title": "Hasinventory",
+            "type": "boolean"
+        },
         "imageUrl": {
             "anyOf": [
                 {
@@ -53,8 +67,7 @@
     },
     "required": [
         "name",
-        "price",
-        "inventory"
+        "price"
     ],
     "title": "NewProductAnswerRow",
     "type": "object",

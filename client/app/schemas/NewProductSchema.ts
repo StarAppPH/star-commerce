@@ -14,9 +14,9 @@ export type Name = string;
  */
 export type Price = number;
 /**
- * Units in stock, free to sell
+ * Units in stock, free to sell; required unless hasInventory is false
  */
-export type Inventory = number;
+export type Inventory = number | null;
 /**
  * What the product is
  */
@@ -25,6 +25,10 @@ export type Description = string | null;
  * Shown to customers
  */
 export type Isavailable = boolean;
+/**
+ * Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)
+ */
+export type Hasinventory = boolean;
 
 /**
  * One product of an addStoreProducts call, as the admin described it.
@@ -34,7 +38,8 @@ export type Isavailable = boolean;
 export interface NewProduct {
   name: Name;
   price: Price;
-  inventory: Inventory;
+  inventory?: Inventory;
   description?: Description;
   isAvailable?: Isavailable;
+  hasInventory?: Hasinventory;
 }

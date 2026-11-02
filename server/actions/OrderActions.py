@@ -49,7 +49,8 @@ from actions.adminQueries import (ADMIN_QUERY_MAX_TIME_MS, boundedDays,
                                   validChoice)
 from actions.CustomerActions import requireCustomer
 from actions.ProductActions import (PRODUCT_LIST_DEFAULT_LIMIT, PRODUCTS,
-                                    _atPosition, _validLimit, storeCurrency,
+                                    INVENTORY_TRACKED, _atPosition,
+                                    _validLimit, storeCurrency,
                                     validBatch)
 from actions.StoreActions import (POLICIES, STORES, _validCoordinate,
                                   _validText, requireOwnerStore)
@@ -387,6 +388,14 @@ def _sellUnits(item: dict) -> dict:
     return {'$inc': {'soldCount': item['quantity'], '_version': 1}}
 
 
+def _withoutInventory(update: dict) -> dict:
+    """`update` without its inventory $inc: the write of units that never
+    came out of inventory (a reservation tracked false)."""
+    increments = {key: value for key, value in update.get('$inc', {}).items()
+                  if key != 'inventory'}
+    return {**update, '$inc': increments}
+
+
 def cancelledBy(reason: CancelReason, now: datetime.datetime) -> dict:
     """The $set of an order cancelled at `now` for `reason`."""
     return {'status': 'cancelled', 'cancelledAt': now,
@@ -421,12 +430,22 @@ def _moveOrder(query: dict, changes: dict,
                         'items.quantity': 1})
         if moved is None:
             return None
-        db.bulkUpdate([{
-            'filter': {'_id': item['productId'],
-                       'reservedInventory.orderId': orderId},
-            'update': {**productUpdate(item),
-                       '$pull': {'reservedInventory': {'orderId': orderId}}},
-        } for item in moved['items']], PRODUCTS, session=session)
+        # Two writes per item, one of which matches: a reservation that
+        # took its units out of inventory (tracked, or missing in one
+        # stored before it), and one that did not (tracked false: a
+        # product with hasInventory false), whose write leaves inventory
+        # alone.
+        pull = {'$pull': {'reservedInventory': {'orderId': orderId}}}
+        db.bulkUpdate([write for item in moved['items'] for write in (
+            {'filter': {'_id': item['productId'],
+                        'reservedInventory': {'$elemMatch': {
+                            'orderId': orderId, 'tracked': {'$ne': False}}}},
+             'update': {**productUpdate(item), **pull}},
+            {'filter': {'_id': item['productId'],
+                        'reservedInventory': {'$elemMatch': {
+                            'orderId': orderId, 'tracked': False}}},
+             'update': {**_withoutInventory(productUpdate(item)), **pull}},
+        )], PRODUCTS, session=session)
         return moved
 
     return db.createTransaction(move)
@@ -635,6 +654,35 @@ def _checkZoneMinimum(wanted: list[tuple[str, int]], storeId: str,
                   for productId, quantity in wanted], zone, currency)
 
 
+def _reserveUnits(productId: str, storeId: str, orderId: str,
+                  quantity: int, session) -> dict | None:
+    """Hold `quantity` units of the product for the order (its name and
+    price), or None when it is not sold or has too few. Atomic per
+    product, with the _version bump the Product docstring asks of every
+    inventory write. A product with inventory gives the units out of it;
+    one with hasInventory false holds them without lessening anything
+    (unlimited), its reservation marked tracked false so a cancel puts
+    nothing back, even after the admin turns hasInventory on."""
+    sold = {'_id': productId, 'storeId': storeId, 'isAvailable': True}
+    product = db.findOneAndUpdate(
+        {**sold, **INVENTORY_TRACKED, 'inventory': {'$gte': quantity}},
+        {'$inc': {'inventory': -quantity, '_version': 1},
+         '$push': {'reservedInventory': {'orderId': orderId,
+                                         'quantity': quantity}}},
+        PRODUCTS, upsert=False, session=session,
+        projection={'name': 1, 'price': 1})
+    if product is not None:
+        return product
+    return db.findOneAndUpdate(
+        {**sold, 'hasInventory': False},
+        {'$inc': {'_version': 1},
+         '$push': {'reservedInventory': {'orderId': orderId,
+                                         'quantity': quantity,
+                                         'tracked': False}}},
+        PRODUCTS, upsert=False, session=session,
+        projection={'name': 1, 'price': 1})
+
+
 def _reserveAndCreate(wanted: list[tuple[str, int]], storeId: str,
                       customer: dict, currency: str, fulfillment: str,
                       delivery: dict | None, zone: dict | None) -> dict:
@@ -674,16 +722,8 @@ def _reserveAndCreate(wanted: list[tuple[str, int]], storeId: str,
             raise ValueError(TOO_MANY_UNPAID)
         items = []
         for position, (productId, quantity) in enumerate(wanted, start=1):
-            # Atomic per product, with the _version bump the Product
-            # docstring asks of every inventory write.
-            product = db.findOneAndUpdate(
-                {'_id': productId, 'storeId': storeId, 'isAvailable': True,
-                 'inventory': {'$gte': quantity}},
-                {'$inc': {'inventory': -quantity, '_version': 1},
-                 '$push': {'reservedInventory': {'orderId': orderId,
-                                                 'quantity': quantity}}},
-                PRODUCTS, upsert=False, session=session,
-                projection={'name': 1, 'price': 1})
+            product = _reserveUnits(productId, storeId, orderId, quantity,
+                                    session)
             if product is None:
                 raise _atPosition(position, ValueError(NOT_IN_STOCK), 'Item')
             items.append({'productId': productId, 'name': product['name'],

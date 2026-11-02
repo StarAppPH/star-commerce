@@ -12,6 +12,12 @@
             "minimum": 1,
             "title": "Quantity",
             "type": "integer"
+        },
+        "tracked": {
+            "default": true,
+            "description": "Whether the units came out of inventory: false for a product with hasInventory false, so a cancel puts nothing back (missing in documents stored before: true)",
+            "title": "Tracked",
+            "type": "boolean"
         }
     },
     "required": [

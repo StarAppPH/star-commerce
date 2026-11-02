@@ -790,7 +790,7 @@ def test_formTools_openTheirForms(wiped, firebase, model):
     assert photoForm['shots'] == PhotoActions.cardShots(stored)
     assert productsForm['products'][0] == {
         'name': 'Barako', 'price': 520, 'inventory': None,
-        'description': None}
+        'hasInventory': True, 'description': None}
     assert productsForm['products'][1]['price'] is None
     assert locationForm['location'] is None
     assert locationForm['address'] == store['address']

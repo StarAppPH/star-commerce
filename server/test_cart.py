@@ -122,9 +122,11 @@ def test_addToCart_showsEachProductAsItIsNow(clean, firebase):
     assertExactShape(CartScreenResponse, cart)
     assert cart['items'] == [
         {'productId': pandesal['_id'], 'name': 'Pandesal', 'price': 5,
-         'quantity': 3, 'inventory': 10, 'photoUrl': None},
+         'quantity': 3, 'inventory': 10, 'hasInventory': True,
+         'photoUrl': None},
         {'productId': cake['_id'], 'name': 'Ube Cake', 'price': 650,
-         'quantity': 1, 'inventory': 10, 'photoUrl': None},
+         'quantity': 1, 'inventory': 10, 'hasInventory': True,
+         'photoUrl': None},
     ]
     assert cart['subtotal'] == 665
     # The cart keeps ids and quantities only; stock is not held.

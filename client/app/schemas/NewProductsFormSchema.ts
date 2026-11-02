@@ -47,6 +47,10 @@ export type Price = number | null;
  */
 export type Inventory = number | null;
 /**
+ * Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)
+ */
+export type Hasinventory = boolean;
+/**
  * What it is
  */
 export type Description = string | null;
@@ -81,5 +85,6 @@ export interface ChatProductDraft {
   name: Name;
   price: Price;
   inventory: Inventory;
+  hasInventory?: Hasinventory;
   description: Description;
 }

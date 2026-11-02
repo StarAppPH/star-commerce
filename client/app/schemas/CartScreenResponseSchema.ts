@@ -47,6 +47,10 @@ export type Quantity = number;
  */
 export type Inventory = number;
 /**
+ * Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)
+ */
+export type Hasinventory = boolean;
+/**
  * The product's photo; null when it has none
  */
 export type Photourl = string | null;
@@ -78,5 +82,6 @@ export interface CartScreenItemRow {
   price: Price;
   quantity: Quantity;
   inventory: Inventory;
+  hasInventory: Hasinventory;
   photoUrl?: Photourl;
 }

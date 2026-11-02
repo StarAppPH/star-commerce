@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { ImagePlusIcon, PackagePlusIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { useObjectUrls } from './useObjectUrls';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { auth, storage } from '@/lib/firebase';
 import { ownFileUrl } from '../attachments';
@@ -17,6 +18,8 @@ import type { ComponentProps } from './types';
 const NAME_MAX = 80;
 const DESCRIPTION_MAX = 500;
 const ROWS_MAX = 50;
+// What a row's stock starts at when the assistant did not prefill one.
+const DEFAULT_INVENTORY = '1';
 
 // A photo the owner picks here, uploaded when the form is sent, or one they
 // attached in the chat that the assistant put on the row (its Storage path,
@@ -30,6 +33,8 @@ interface Row {
   name: string;
   price: string;
   inventory: string;
+  // Unticked: no stock count, customers order unlimited units.
+  hasInventory: boolean;
   description: string;
   // Its photo; the assistant then offers it and styled versions of it to
   // pick from.
@@ -42,7 +47,7 @@ function validRow(row: Row): boolean {
   const price = Number(row.price);
   const inventory = Number(row.inventory);
   return row.name.trim() !== '' && row.price.trim() !== '' && Number.isFinite(price) && price >= 0
-    && row.inventory.trim() !== '' && Number.isInteger(inventory) && inventory >= 0;
+    && (!row.hasInventory || (row.inventory.trim() !== '' && Number.isInteger(inventory) && inventory >= 0));
 }
 
 // New products, one row each, prefilled with what the owner told or sent the
@@ -56,7 +61,8 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
       key: index,
       name: draft?.name ?? '',
       price: draft?.price != null ? String(draft.price) : '',
-      inventory: draft?.inventory != null ? String(draft.inventory) : '',
+      inventory: draft?.inventory != null ? String(draft.inventory) : DEFAULT_INVENTORY,
+      hasInventory: draft?.hasInventory ?? true,
       description: draft?.description ?? '',
       photo: component.rowPhotos?.[index] ? { kind: 'attached', path: component.rowPhotos[index], url: null } : null,
     }));
@@ -107,6 +113,10 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
     }));
   };
 
+  const setHasInventory = (key: number, hasInventory: boolean) => {
+    setRows((current) => current.map((row) => (row.key === key ? { ...row, hasInventory } : row)));
+  };
+
   const removeRow = (key: number) => {
     setRows((current) => current.filter((row) => {
       if (row.key === key && row.photo?.kind === 'file') previews.release(row.photo.preview);
@@ -115,7 +125,7 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
   };
 
   const add = () => {
-    setRows((current) => [...current, { key: nextKey, name: '', price: '', inventory: '', description: '', photo: null }]);
+    setRows((current) => [...current, { key: nextKey, name: '', price: '', inventory: DEFAULT_INVENTORY, hasInventory: true, description: '', photo: null }]);
     setNextKey((key) => key + 1);
   };
 
@@ -134,7 +144,9 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
       const products = nonEmpty(rows.map((row, index) => ({
         name: row.name.trim(),
         price: Number(row.price),
-        inventory: Number(row.inventory),
+        // No stock count: the server stores 0 and never lessens it.
+        inventory: row.hasInventory ? Number(row.inventory) : null,
+        hasInventory: row.hasInventory,
         description: row.description.trim() === '' ? null : row.description.trim(),
         isAvailable: true,
         imageUrl: imageUrls[index],
@@ -196,15 +208,21 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
               disabled={locked}
               onChange={(event) => update(row.key, 'price', event.target.value)}
             />
-            <Input
-              data-component="newProductsInventory"
-              aria-label={`Product ${index + 1} units in stock`}
-              placeholder="In stock"
-              inputMode="numeric"
-              value={row.inventory}
-              disabled={locked}
-              onChange={(event) => update(row.key, 'inventory', event.target.value)}
-            />
+            {row.hasInventory ? (
+              <Input
+                data-component="newProductsInventory"
+                aria-label={`Product ${index + 1} units in stock`}
+                placeholder="In stock"
+                inputMode="numeric"
+                value={row.inventory}
+                disabled={locked}
+                onChange={(event) => update(row.key, 'inventory', event.target.value)}
+              />
+            ) : (
+              <span data-component="newProductsUnlimited" className="flex items-center px-3 text-muted-foreground text-sm">
+                Unlimited
+              </span>
+            )}
             <Button
               data-component="newProductsRemove"
               variant="ghost"
@@ -226,6 +244,15 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
               disabled={locked}
               onChange={(event) => update(row.key, 'description', event.target.value)}
             />
+            <label className="col-span-2 flex items-center gap-2 text-sm sm:col-span-3 sm:col-start-2">
+              <Checkbox
+                data-component="newProductsHasInventory"
+                checked={row.hasInventory}
+                disabled={locked}
+                onCheckedChange={(checked) => setHasInventory(row.key, checked === true)}
+              />
+              Track stock (orders lessen it; untick for unlimited)
+            </label>
           </fieldset>
         ))}
       </div>

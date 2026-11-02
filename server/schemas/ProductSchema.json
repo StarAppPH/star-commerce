@@ -14,6 +14,12 @@
                     "minimum": 1,
                     "title": "Quantity",
                     "type": "integer"
+                },
+                "tracked": {
+                    "default": true,
+                    "description": "Whether the units came out of inventory: false for a product with hasInventory false, so a cancel puts nothing back (missing in documents stored before: true)",
+                    "title": "Tracked",
+                    "type": "boolean"
                 }
             },
             "required": [
@@ -25,7 +31,7 @@
             "additionalProperties": false
         }
     },
-    "description": "A Products document, priced in its store's currency. Listed best\nsellers first: the (storeId, isAvailable, soldCount, name) index\n(mongoDb.ensureIndexes) serves that sort. (storeId, nameKey) is a\nunique index: one store never has two products of the same name.\n\nEvery write to inventory or reservedInventory (an order reserving or\nreleasing units included) must also $inc _version, or\nupdateStoreProduct's _version lock misses it and the admin's save\noverwrites it.",
+    "description": "A Products document, priced in its store's currency. Listed best\nsellers first: the (storeId, isAvailable, soldCount, name) index\n(mongoDb.ensureIndexes) serves that sort. (storeId, nameKey) is a\nunique index: one store never has two products of the same name.\n\nEvery write to inventory or reservedInventory (an order reserving or\nreleasing units included) must also $inc _version, or\nupdateStoreProduct's _version lock misses it and the admin's save\noverwrites it.\n\nhasInventory false: customers order unlimited units; inventory stays 0\nand no order moves it. Documents stored before hasInventory read as\ntrue: every query matches {'hasInventory': {'$ne': False}}.",
     "properties": {
         "_id": {
             "title": "Id",
@@ -89,6 +95,12 @@
             "minimum": 0,
             "title": "Inventory",
             "type": "integer"
+        },
+        "hasInventory": {
+            "default": true,
+            "description": "Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)",
+            "title": "Hasinventory",
+            "type": "boolean"
         },
         "reservedInventory": {
             "description": "Units orders are holding",

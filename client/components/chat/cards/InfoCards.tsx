@@ -4,7 +4,7 @@ import { ExternalLinkIcon, ImageIcon, MapPinIcon, PackageSearchIcon, ScrollTextI
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChatCard, PhotoPrompts, ProductPhoto } from './ChatCard';
+import { ChatCard, PhotoPrompts, ProductPhoto, countsStock } from './ChatCard';
 import { type PolicyAnswers, type PolicyQuestion, missingDeliveryZones, offersDelivery, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
 import type { AuthorizedPaymentMethodRow } from '@/app/schemas/AuthorizedPaymentMethodRowSchema';
 import { PAYMENT_METHOD_LABELS, PAYMENT_PROVIDER_LABELS, POLICY_VALUE_LABELS, formatMoney, zoneRuleText } from './format';
@@ -28,7 +28,7 @@ export function StoreProductsCard({ component }: ComponentProps<'storeProducts'>
                 {!product.isAvailable && <Badge variant="secondary" size="sm">Hidden</Badge>}
               </span>
               <span className="text-muted-foreground text-xs">
-                {product.inventory === 0 ? 'Sold out' : `${product.inventory} in stock`}
+                {!countsStock(product) ? 'Unlimited' : product.inventory === 0 ? 'Sold out' : `${product.inventory} in stock`}
                 {product.reservedQuantity > 0 && ` · ${product.reservedQuantity} held by unpaid orders`}
                 {` · ${product.soldCount} sold`}
               </span>

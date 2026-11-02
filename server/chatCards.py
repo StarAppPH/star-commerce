@@ -71,8 +71,9 @@ def _pick(row: dict, keys: tuple[str, ...]) -> dict:
 
 
 _SHOP_PRODUCT = ('_id', 'name', 'description', 'price', 'inventory',
-                 'photoUrl')
-_STORE_PRODUCT = ('_id', 'name', 'price', 'inventory', 'reservedQuantity',
+                 'hasInventory', 'photoUrl')
+_STORE_PRODUCT = ('_id', 'name', 'price', 'inventory', 'hasInventory',
+                  'reservedQuantity',
                   'isAvailable', 'soldCount', 'photoUrl')
 _ORDER_ITEM = ('name', 'price', 'quantity')
 _ORDER_DELIVERY = ('fulfillment', 'deliveryFee', 'deliveryDistanceKm',
@@ -100,13 +101,19 @@ def _withItems(row: dict, keys: tuple[str, ...]) -> dict:
             'items': [_pick(item, _ORDER_ITEM) for item in row['items']]}
 
 
+def _productRow(row: dict, keys: tuple[str, ...]) -> dict:
+    """A product card row: hasInventory true where the result has none."""
+    return {**_pick(row, keys),
+            'hasInventory': row.get('hasInventory') is not False}
+
+
 def _storeProductRow(row: dict) -> dict:
     """An admin's product row; a single product (AdminProductRow) lists
     its reservations, a list row (AdminProductListRow) their sum."""
     if 'reservedQuantity' not in row:
         row = {**row, 'reservedQuantity': sum(
             held['quantity'] for held in row.get('reservedInventory', []))}
-    return _pick(row, _STORE_PRODUCT)
+    return _productRow(row, _STORE_PRODUCT)
 
 
 def _withFormIf(card: dict, rowsKey: str, status: str) -> dict:
@@ -121,7 +128,7 @@ def _withFormIf(card: dict, rowsKey: str, status: str) -> dict:
 def _shopProducts(result: dict, context: CardContext) -> dict:
     return {'kind': 'shopProducts', 'formId': newFormId(),
             'currency': result['currency'],
-            'products': [_pick(p, _SHOP_PRODUCT)
+            'products': [_productRow(p, _SHOP_PRODUCT)
                          for p in result['products']]}
 
 

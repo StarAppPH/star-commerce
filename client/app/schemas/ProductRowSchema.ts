@@ -26,6 +26,10 @@ export type Price = number;
  */
 export type Inventory = number;
 /**
+ * Decides whether this item has inventory, so when a customer orders it gets lessened. False: customers can order unlimited units (inventory is then 0 and never moves)
+ */
+export type Hasinventory = boolean;
+/**
  * The photo the shop shows: the url of one of the store's GeneratedPhotos (setProductPhoto)
  */
 export type Photourl = string | null;
@@ -41,5 +45,6 @@ export interface ProductRow {
   description?: Description;
   price: Price;
   inventory: Inventory;
+  hasInventory: Hasinventory;
   photoUrl?: Photourl;
 }
