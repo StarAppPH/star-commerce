@@ -1,6 +1,5 @@
 'use client';
 import { useRef, useState } from 'react';
-import Image from 'next/image';
 import { ImageUpIcon, ReceiptTextIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/AuthContext';
