@@ -4,17 +4,28 @@ import Image from 'next/image';
 import { ImageUpIcon, ReceiptTextIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from '@/components/ui/dialog';
+import { useOptionalChatShell } from '@/components/chat/ChatShell';
 import { useAuth } from '@/lib/AuthContext';
 import { guestAuth, guestStorage } from '@/lib/guestFirebase';
 import { useOptionalGuestSession } from '@/lib/GuestSessionContext';
 import { useServer } from '@/lib/ServerContext';
 import { useSnackbar } from '@/lib/SnackbarContext';
+import { orderRef } from './format';
 import { PHOTO_ACCEPT, photoProblem, uploadOwnPhoto } from './photoUpload';
 
+interface SendReceiptButtonProps {
+  orderId: string;
+  sent: boolean;
+  // Called with the time the receipt was sent, once the server has it.
+  onSent: (sentAt: string) => void;
+}
+
 // The shopper sends a photo of the receipt of a payment made by hand: it goes
-// to their own folder, and the server keeps a copy only the store reads.
-export function SendReceiptButton({ orderId, sent }: { orderId: string; sent: boolean }) {
+// to their own folder, and the server keeps a copy only the store reads. The
+// chat on screen then tells the assistant, so it answers.
+export function SendReceiptButton({ orderId, sent, onSent }: SendReceiptButtonProps) {
   const guest = useOptionalGuestSession();
+  const shell = useOptionalChatShell();
   const { server } = useServer();
   const { showApiResponseSnackbar, showSnackbar } = useSnackbar();
   const input = useRef<HTMLInputElement>(null);
@@ -33,6 +44,10 @@ export function SendReceiptButton({ orderId, sent }: { orderId: string; sent: bo
       const url = await uploadOwnPhoto(guestStorage, user.uid, 'receipts', file);
       const res = await guest.guestRequest((session) => server.addPaymentReceipt(session.customerId, session.store.id, orderId, url));
       showApiResponseSnackbar(res);
+      if (res.status === 200) {
+        onSent(new Date().toISOString());
+        shell?.sendText(`I sent the receipt photo for order ${orderRef(orderId)}.`);
+      }
     } catch (error) {
       console.error(error);
       showSnackbar('We couldn’t upload the receipt. Try again.', 'error');

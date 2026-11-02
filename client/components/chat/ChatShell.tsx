@@ -49,6 +49,11 @@ export function useChatShell(): ChatShellValue {
   return context;
 }
 
+// For a card that can render outside the chat shell: null there.
+export function useOptionalChatShell(): ChatShellValue | null {
+  return useContext(ChatShellContext);
+}
+
 interface ChatShellProviderProps {
   voice: VoiceOptions;
   onTurnSaved: (components: ChatComponent[]) => void;
