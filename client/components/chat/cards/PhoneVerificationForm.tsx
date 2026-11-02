@@ -17,6 +17,12 @@ import { useSnackbar } from '@/lib/SnackbarContext';
 import { ChatCard, SentNote } from './ChatCard';
 import type { ComponentProps } from './types';
 
+// Firebase's refusal to link a number another account already has: its
+// linkWithPhoneNumber throws account-exists-with-different-credential (with
+// the proof PhoneAuthProvider.credentialFromError signs in with);
+// credential-already-in-use is the generic link refusal, caught too.
+const NUMBER_TAKEN_CODES = ['auth/account-exists-with-different-credential', 'auth/credential-already-in-use'];
+
 const PHONE_PATTERN = /^\+[1-9][0-9]{6,14}$/;
 const CODE_LENGTH = 6;
 const RESEND_AFTER_SECONDS = 30;
@@ -60,7 +66,7 @@ function phoneProblem(error: unknown): string {
   if (code === 'auth/invalid-verification-code') return 'That code is not the one we sent. Check it and try again.';
   if (code === 'auth/code-expired') return 'That code expired. Send a new one.';
   if (code === 'auth/too-many-requests') return 'Too many tries. Wait a little, then try again.';
-  if (code === 'auth/account-exists-with-different-credential') return 'That number is already used by another visitor.';
+  if (NUMBER_TAKEN_CODES.includes(code)) return 'That number is already used by another visitor.';
   return 'We couldn’t verify your number. Try again.';
 }
 
@@ -147,7 +153,7 @@ export function PhoneVerificationForm({ component, answered, busy, onAnswer }: C
   // verifyCustomerPhone then gives it this guest's chats here, and its cart
   // when it was used last; `guestIdToken` proves we were this guest.
   const signInAsReturningCustomer = async (error: unknown, newGuest: User): Promise<{ user: User; guestIdToken: string } | null> => {
-    if (!guest || !(error instanceof FirebaseError) || error.code !== 'auth/credential-already-in-use') throw error;
+    if (!guest || !(error instanceof FirebaseError) || !NUMBER_TAKEN_CODES.includes(error.code)) throw error;
     const phoneCredential = PhoneAuthProvider.credentialFromError(error);
     if (!phoneCredential) throw error;
     // Read before the switch, while this guest is still signed in.
