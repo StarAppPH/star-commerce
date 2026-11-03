@@ -104,7 +104,8 @@ def metaBytes(contentType: str, size: int) -> int:
 
 
 def _converted(data: bytes, contentType: str, label: str, limit: int,
-               secondsLeft: float) -> spreadsheetText.SheetText:
+               secondsLeft: float,
+               sheet: str | None = None) -> spreadsheetText.SheetText:
     """spreadsheetText in one of the process's slots, waited for and run
     within `secondsLeft` together (else SlotsBusy): what the wait took is
     not given to the conversion. The caller computes `secondsLeft` from its
@@ -113,13 +114,35 @@ def _converted(data: bytes, contentType: str, label: str, limit: int,
     if not slots.acquire(timeout=max(0.0, secondsLeft)):
         raise SlotsBusy()
     try:
-        return spreadsheetSandbox.convert(
-            data, contentType, label, limit,
-            max(0.0, started + secondsLeft - time.monotonic()))
+        seconds = max(0.0, started + secondsLeft - time.monotonic())
+        if sheet is None:  # an attachment: every sheet
+            return spreadsheetSandbox.convert(data, contentType, label,
+                                              limit, seconds)
+        return spreadsheetSandbox.convert(data, contentType, label, limit,
+                                          seconds, sheet=sheet)
     except spreadsheetText.OutOfTime:
         raise SlotsBusy() from None
     finally:
         slots.release()
+
+
+# The text a spreadsheet import reads at most (productImport.py): many
+# imports' rows (PRODUCT_IMPORT_ROWS_MAX each). The child's memory cap
+# (spreadsheetWorker.WORKER_MEMORY_HEADROOM_BYTES) holds it: the text is
+# held about twice (the writer, then the answer).
+IMPORT_TEXT_MAX_CHARS = 500_000
+
+
+def importText(data: bytes, contentType: str, label: str,
+               secondsLeft: float,
+               sheet: str | None = None) -> spreadsheetText.SheetText:
+    """A spreadsheet's text for an import (productImport.py), in a slot
+    and a child process as an attachment's (_converted): at most
+    IMPORT_TEXT_MAX_CHARS, only `sheet`'s rows when it names one (an
+    XLSX's other sheets give only their names), a refusal a ValueError
+    naming `label`, no slot or no time left SlotsBusy."""
+    return _converted(data, contentType, label, IMPORT_TEXT_MAX_CHARS,
+                      secondsLeft, sheet)
 
 
 def ownSheet(data: bytes, contentType: str, label: str,

@@ -76,13 +76,13 @@ def _failed(label: str, returncode, event: str = 'spreadsheetWorkerFailed'
 
 
 def convert(data: bytes, contentType: str, label: str, maxChars: int,
-            seconds: float) -> SheetText:
+            seconds: float, sheet: str | None = None) -> SheetText:
     """spreadsheetText.spreadsheetText(data, contentType, label, maxChars,
-    seconds) in a child process (see the module docstring)."""
+    seconds, sheet) in a child process (see the module docstring)."""
     if seconds <= 0:
         raise OutOfTime()
     header = json.dumps({'contentType': contentType, 'maxChars': maxChars,
-                         'seconds': seconds}).encode() + b'\n'
+                         'seconds': seconds, 'sheet': sheet}).encode() + b'\n'
     limit = outputMaxBytes(maxChars)
     try:
         child = subprocess.Popen(

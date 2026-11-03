@@ -66,3 +66,11 @@ export const CHAT_ATTACHMENT_EXTENSIONS = {
 export const CHAT_ATTACHMENTS_MAX = 4 as const;
 
 export const CHAT_ATTACHMENT_NAME_MAX_LENGTH = 120 as const;
+
+export const PRODUCT_NAME_MAX_LENGTH = 80 as const;
+
+export const PRODUCT_DESCRIPTION_MAX_LENGTH = 500 as const;
+
+export const PRODUCT_BATCH_MAX = 50 as const;
+
+export const PRODUCT_IMPORT_ROWS_MAX = 200 as const;

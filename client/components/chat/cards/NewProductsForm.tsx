@@ -1,10 +1,15 @@
 'use client';
 import { useEffect, useId, useRef, useState } from 'react';
 import Image from 'next/image';
-import { ImagePlusIcon, PackagePlusIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react';
+import {
+  ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, FileSpreadsheetIcon, ImagePlusIcon, PackagePlusIcon, PlusIcon, Trash2Icon,
+  TriangleAlertIcon, XIcon,
+} from 'lucide-react';
 import { useObjectUrls } from './useObjectUrls';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { auth, storage } from '@/lib/firebase';
 import { ownFileUrl } from '../attachments';
@@ -13,11 +18,13 @@ import { ChatCard, SentNote } from './ChatCard';
 import { nonEmpty } from './format';
 import { PHOTO_ACCEPT, photoProblem, uploadChatPhoto } from './photoUpload';
 import type { ComponentProps } from './types';
+import type { SpreadsheetImport } from '@/app/schemas/SpreadsheetImportSchema';
+import {
+  PRODUCT_BATCH_MAX, PRODUCT_DESCRIPTION_MAX_LENGTH, PRODUCT_IMPORT_ROWS_MAX, PRODUCT_NAME_MAX_LENGTH,
+} from '@/lib/generated/serverConstants';
 
-// The server's limits (objects/product.py).
-const NAME_MAX = 80;
-const DESCRIPTION_MAX = 500;
-const ROWS_MAX = 50;
+// The rows shown at once; the others are a page away, and all are sent.
+const PAGE_SIZE = 25;
 // What a row's stock starts at when the assistant did not prefill one.
 const DEFAULT_INVENTORY = '1';
 
@@ -43,12 +50,22 @@ interface Row {
 
 type TextField = 'name' | 'price' | 'inventory' | 'description';
 
-function validRow(row: Row): boolean {
+// The row's first field to fix, or null when it can be sent.
+function invalidField(row: Row): 'name' | 'price' | 'inventory' | null {
   const price = Number(row.price);
   const inventory = Number(row.inventory);
-  return row.name.trim() !== '' && row.price.trim() !== '' && Number.isFinite(price) && price >= 0
-    && (!row.hasInventory || (row.inventory.trim() !== '' && Number.isInteger(inventory) && inventory >= 0));
+  if (row.name.trim() === '') return 'name';
+  if (row.price.trim() === '' || !Number.isFinite(price) || price < 0) return 'price';
+  if (row.hasInventory && (row.inventory.trim() === '' || !Number.isInteger(inventory) || inventory < 0)) return 'inventory';
+  return null;
 }
+
+function validRow(row: Row): boolean {
+  return invalidField(row) === null;
+}
+
+// The aria-label each field of a row starts with, by its position.
+const FIELD_LABELS = { name: 'name', price: 'price in', inventory: 'units in stock' } as const;
 
 // New products, one row each, prefilled with what the owner told or sent the
 // assistant, each with an optional photo.
@@ -68,11 +85,26 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
     }));
   });
   const [nextKey, setNextKey] = useState(rows.length);
+  const [page, setPage] = useState(0);
+  const imported = component.spreadsheetImport ?? null;
+  // A plain form takes a batch; one from a spreadsheet more.
+  const rowsMax = imported ? PRODUCT_IMPORT_ROWS_MAX : PRODUCT_BATCH_MAX;
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  // A removed row may empty the last page: show the one before it.
+  const currentPage = Math.min(page, pageCount - 1);
+  const firstShown = currentPage * PAGE_SIZE;
+  const shown = rows.slice(firstShown, firstShown + PAGE_SIZE);
+  // The first row to fix, when it is on another page.
+  const firstInvalid = rows.findIndex((row) => !validRow(row));
+  const invalidElsewhere = firstInvalid >= 0 && Math.floor(firstInvalid / PAGE_SIZE) !== currentPage;
   const locked = answered || busy || uploading;
   const ready = rows.length > 0 && rows.every(validRow)
     && rows.every((row) => row.photo?.kind !== 'attached' || row.photo.url !== null);
   const previews = useObjectUrls();
   const rowsRef = useRef<Row[]>([]);
+  // The rows shown, focused and scrolled to on a page change (from the
+  // pager's handlers, so nothing moves on mount).
+  const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => { rowsRef.current = rows; }, [rows]);
 
   // Each attached photo's download URL; a row whose file is gone (or not
@@ -127,6 +159,29 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
   const add = () => {
     setRows((current) => [...current, { key: nextKey, name: '', price: '', inventory: DEFAULT_INVENTORY, hasInventory: true, description: '', photo: null }]);
     setNextKey((key) => key + 1);
+    // The new row is the last: show its page.
+    setPage(Math.floor(rows.length / PAGE_SIZE));
+  };
+
+  // Shows `target`, then moves focus to the rows (Previous/Next disable
+  // themselves at the ends) and brings the page's top into view.
+  const goToPage = (target: number, focus?: () => HTMLElement | null) => {
+    setPage(target);
+    requestAnimationFrame(() => {
+      const list = listRef.current;
+      if (!list) return;
+      list.scrollIntoView({ block: 'start' });
+      (focus?.() ?? list).focus({ preventScroll: true });
+    });
+  };
+
+  // Shows the first row to fix and focuses its first field to fix.
+  const goToInvalid = () => {
+    const row = rows[firstInvalid];
+    const field = row ? invalidField(row) : null;
+    goToPage(Math.floor(firstInvalid / PAGE_SIZE), () => (field === null ? null : listRef.current?.querySelector<HTMLElement>(
+      `[aria-label^="Product ${firstInvalid + 1} ${FIELD_LABELS[field]}"]`,
+    ) ?? null));
   };
 
   const send = async () => {
@@ -166,7 +221,7 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
       title="New products"
       footer={answered ? <SentNote /> : (
         <>
-          {rows.length < ROWS_MAX && (
+          {rows.length < rowsMax && (
             <Button data-component="newProductsAdd" variant="ghost" className="me-auto" disabled={locked} onClick={add}>
               <PlusIcon />
               Another product
@@ -178,85 +233,204 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
         </>
       )}
     >
-      <div className="flex flex-col divide-y">
-        {rows.map((row, index) => (
-          <fieldset key={row.key} className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-[auto_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-            <legend className="sr-only">Product {index + 1}</legend>
-            <RowPhoto
-              photo={row.photo}
-              index={index}
-              disabled={locked}
-              onPick={(file) => setPhoto(row.key, file)}
-              onRemove={() => setPhoto(row.key, null)}
-            />
-            <Input
-              data-component="newProductsName"
-              aria-label={`Product ${index + 1} name`}
-              className="col-span-2 sm:col-span-1"
-              placeholder="Name"
-              value={row.name}
-              maxLength={NAME_MAX}
-              disabled={locked}
-              onChange={(event) => update(row.key, 'name', event.target.value)}
-            />
-            <Input
-              data-component="newProductsPrice"
-              aria-label={`Product ${index + 1} price in ${component.currency}`}
-              placeholder={`Price (${component.currency})`}
-              inputMode="decimal"
-              value={row.price}
-              disabled={locked}
-              onChange={(event) => update(row.key, 'price', event.target.value)}
-            />
-            {row.hasInventory ? (
+      {imported && <ImportNote imported={imported} formRows={component.products.length} />}
+      <div
+        ref={listRef}
+        tabIndex={-1}
+        aria-label={`Products ${firstShown + 1}–${firstShown + shown.length}`}
+        className="flex scroll-mt-4 flex-col divide-y outline-none"
+      >
+        {shown.map((row, shownIndex) => {
+          const index = firstShown + shownIndex;
+          return (
+            <fieldset key={row.key} className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-[auto_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <legend className="sr-only">Product {index + 1}</legend>
+              <RowPhoto
+                photo={row.photo}
+                index={index}
+                disabled={locked}
+                onPick={(file) => setPhoto(row.key, file)}
+                onRemove={() => setPhoto(row.key, null)}
+              />
               <Input
-                data-component="newProductsInventory"
-                aria-label={`Product ${index + 1} units in stock`}
-                placeholder="In stock"
-                inputMode="numeric"
-                value={row.inventory}
+                data-component="newProductsName"
+                aria-label={`Product ${index + 1} name`}
+                className="col-span-2 sm:col-span-1"
+                placeholder="Name"
+                value={row.name}
+                maxLength={PRODUCT_NAME_MAX_LENGTH}
                 disabled={locked}
-                onChange={(event) => update(row.key, 'inventory', event.target.value)}
+                onChange={(event) => update(row.key, 'name', event.target.value)}
               />
-            ) : (
-              <span data-component="newProductsUnlimited" className="flex items-center px-3 text-muted-foreground text-sm">
-                Unlimited
-              </span>
-            )}
-            <Button
-              data-component="newProductsRemove"
-              variant="ghost"
-              size="icon"
-              aria-label={`Remove product ${index + 1}`}
-              className="hidden sm:inline-flex"
-              disabled={locked || rows.length === 1}
-              onClick={() => removeRow(row.key)}
-            >
-              <Trash2Icon />
-            </Button>
-            <Input
-              data-component="newProductsDescription"
-              aria-label={`Product ${index + 1} description`}
-              className="col-span-2 sm:col-span-3"
-              placeholder="Description (optional)"
-              value={row.description}
-              maxLength={DESCRIPTION_MAX}
-              disabled={locked}
-              onChange={(event) => update(row.key, 'description', event.target.value)}
-            />
-            <label className="col-span-2 flex items-center gap-2 text-sm sm:col-span-3 sm:col-start-2">
-              <Checkbox
-                data-component="newProductsHasInventory"
-                checked={row.hasInventory}
+              <Input
+                data-component="newProductsPrice"
+                aria-label={`Product ${index + 1} price in ${component.currency}`}
+                placeholder={`Price (${component.currency})`}
+                inputMode="decimal"
+                value={row.price}
                 disabled={locked}
-                onCheckedChange={(checked) => setHasInventory(row.key, checked === true)}
+                onChange={(event) => update(row.key, 'price', event.target.value)}
               />
-              Track stock (orders lessen it; untick for unlimited)
-            </label>
-          </fieldset>
-        ))}
+              {row.hasInventory ? (
+                <Input
+                  data-component="newProductsInventory"
+                  aria-label={`Product ${index + 1} units in stock`}
+                  placeholder="In stock"
+                  inputMode="numeric"
+                  value={row.inventory}
+                  disabled={locked}
+                  onChange={(event) => update(row.key, 'inventory', event.target.value)}
+                />
+              ) : (
+                <span data-component="newProductsUnlimited" className="flex items-center px-3 text-muted-foreground text-sm">
+                  Unlimited
+                </span>
+              )}
+              <Button
+                data-component="newProductsRemove"
+                variant="ghost"
+                size="icon"
+                aria-label={`Remove product ${index + 1}`}
+                className="hidden sm:inline-flex"
+                disabled={locked || rows.length === 1}
+                onClick={() => removeRow(row.key)}
+              >
+                <Trash2Icon />
+              </Button>
+              <Input
+                data-component="newProductsDescription"
+                aria-label={`Product ${index + 1} description`}
+                className="col-span-2 sm:col-span-3"
+                placeholder="Description (optional)"
+                value={row.description}
+                maxLength={PRODUCT_DESCRIPTION_MAX_LENGTH}
+                disabled={locked}
+                onChange={(event) => update(row.key, 'description', event.target.value)}
+              />
+              <label className="col-span-2 flex items-center gap-2 text-sm sm:col-span-3 sm:col-start-2">
+                <Checkbox
+                  data-component="newProductsHasInventory"
+                  checked={row.hasInventory}
+                  disabled={locked}
+                  onCheckedChange={(checked) => setHasInventory(row.key, checked === true)}
+                />
+                Track stock (orders lessen it; untick for unlimited)
+              </label>
+              <Button
+                data-component="newProductsRemoveMobile"
+                variant="ghost"
+                size="sm"
+                className="col-span-2 justify-self-end sm:hidden"
+                aria-label={`Remove product ${index + 1}`}
+                disabled={locked || rows.length === 1}
+                onClick={() => removeRow(row.key)}
+              >
+                <Trash2Icon />
+                Remove
+              </Button>
+            </fieldset>
+          );
+        })}
       </div>
+      {pageCount > 1 && (
+        <div data-component="newProductsFormPages" className="flex flex-col gap-2 border-t px-4 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <Button
+              data-component="newProductsFormPagePrevious"
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 0}
+              onClick={() => goToPage(currentPage - 1)}
+            >
+              <ChevronLeftIcon />
+              Previous
+            </Button>
+            <span className="text-muted-foreground text-sm" aria-live="polite">
+              Products {firstShown + 1}–{firstShown + shown.length} of {rows.length}
+            </span>
+            <Button
+              data-component="newProductsFormPageNext"
+              variant="outline"
+              size="sm"
+              disabled={currentPage >= pageCount - 1}
+              onClick={() => goToPage(currentPage + 1)}
+            >
+              Next
+              <ChevronRightIcon />
+            </Button>
+          </div>
+          {!answered && invalidElsewhere && (
+            <Button
+              data-component="newProductsFormFixRow"
+              variant="link"
+              size="sm"
+              className="self-center"
+              onClick={goToInvalid}
+            >
+              Product {firstInvalid + 1} needs a name, a price or its stock
+            </Button>
+          )}
+        </div>
+      )}
     </ChatCard>
+  );
+}
+
+// Where a spreadsheet form's rows came from: the file and sheet, which rows
+// (the sheet's own row numbers, header and blank rows counted, as in Excel),
+// the ones left out and why, and what is left to import. `formRows` is how
+// many products the form opened with; totalRows counts product rows.
+function ImportNote({ imported, formRows }: { imported: SpreadsheetImport; formRows: number }) {
+  const skipped = imported.skippedRows;
+  return (
+    <div data-component="newProductsFormImport" className="flex flex-col gap-2 border-b px-4 py-3 text-sm">
+      <div className="flex items-start gap-2">
+        <FileSpreadsheetIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate font-medium">
+            {imported.fileName}
+            {imported.sheet !== null && <span className="font-normal text-muted-foreground"> · {imported.sheet}</span>}
+          </span>
+          <span className="text-muted-foreground">
+            {`Rows ${imported.firstRow}–${imported.lastRow} of the sheet `}
+            {`(${formRows} on the form, ${imported.totalRows} product rows in all)`}
+          </span>
+          {imported.nextFirstRow !== null && (
+            <span className="text-muted-foreground">Rows {imported.nextFirstRow}+ can be imported next</span>
+          )}
+        </div>
+      </div>
+      {imported.notFullyRead && (
+        <Alert variant="warning">
+          <TriangleAlertIcon />
+          <AlertDescription>The file was too large to read fully, so some of its rows aren’t here.</AlertDescription>
+        </Alert>
+      )}
+      {skipped.length > 0 && (
+        <Collapsible data-component="newProductsFormImportSkipped">
+          <CollapsibleTrigger
+            data-component="newProductsFormImportSkippedToggle"
+            className="group -my-1 flex min-h-6 items-center gap-1.5 text-muted-foreground text-xs hover:text-foreground"
+          >
+            <ChevronDownIcon aria-hidden="true" className="size-3.5 transition-transform group-data-panel-open:rotate-180" />
+            {skipped.length === 1 ? '1 row skipped' : `${skipped.length} rows skipped`}
+          </CollapsibleTrigger>
+          <CollapsiblePanel>
+            <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto pt-2 text-xs">
+              {skipped.map((one) => (
+                <li key={one.row} className="flex gap-2">
+                  <span className="shrink-0 text-muted-foreground tabular-nums">Row {one.row}</span>
+                  <span className="min-w-0 break-words">
+                    {one.name !== null && <span className="font-medium">{one.name}: </span>}
+                    {one.reason}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CollapsiblePanel>
+        </Collapsible>
+      )}
+    </div>
   );
 }
 

@@ -23,9 +23,10 @@ conversation's storeId), never from the model or the answer.
 import json
 import re
 from dataclasses import dataclass
-from typing import Callable, get_args
+from typing import Callable, NamedTuple, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import (BaseModel, ConfigDict, Field, TypeAdapter,
+                      ValidationError, field_validator)
 
 from actions.CustomerActions import CUSTOMERS
 from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
@@ -33,18 +34,25 @@ from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
                                   bookableFulfillments, offeredFulfillments,
                                   storeDelivery)
 from actions.PhotoActions import (PROMPT_STORE_FIELDS, defaultPhotoPrompt,
+                                  setUploadedProductPhotos,
                                   cardShots)
+from actions.ProductActions import importStoreProducts
 from actions.StoreActions import STORES, ownerQuery
+import chatSpreadsheets
 import geocoding
 import photoStorage
+import productImport
 from mongoDb import db
 from objects import (BRAND_COLOR_SUGGESTIONS_MAX, HEX_COLOR_PATTERN,
                      CHAT_ATTACHMENT_EXTENSIONS, CHAT_MESSAGE_MAX_LENGTH,
                      PHOTOS_PER_CALL, PRODUCT_BATCH_MAX,
+                     PRODUCT_IMPORT_ROWS_MAX,
                      PRODUCT_DESCRIPTION_MAX_LENGTH, PRODUCT_INVENTORY_MAX,
                      PRODUCT_NAME_MAX_LENGTH, PRODUCT_PRICE_MAX,
                      ChatComponent, ChatFormAnswerTagged,
-                     DELIVERY_ZONE_RULES, deliveryZoneAt, ruledZones)
+                     DELIVERY_ZONE_RULES, UploadedProductPhotosResponse,
+                     deliveryZoneAt, ruledZones)
+from services.__request import ServiceUnavailable
 from utils import generateRandomString
 
 # ChatActions.CHAT_TURNS (ChatActions imports this module).
@@ -176,6 +184,41 @@ class ShowNewProductsFormArgs(_Args):
         None, max_length=PRODUCT_BATCH_MAX)
 
 
+class ShowNewProductsFromSpreadsheetArgs(_Args):
+    model_config = ConfigDict(title='showNewProductsFromSpreadsheetArguments')
+    fileName: str = Field(..., min_length=1,
+                          description="The attached spreadsheet's name, as "
+                          'its <attachment name="..."> says')
+    sheet: str | None = Field(None, description='The sheet to read (an '
+                              'XLSX); left out: the first with rows')
+    nameColumn: str = Field(..., min_length=1, description='The header of '
+                            'the column with the product names')
+    priceColumn: str = Field(..., min_length=1, description='The header of '
+                             'the column with the prices')
+    inventoryColumn: str | None = Field(
+        None, description='The header of the column with the units in '
+        'stock; left out when there is none (every row then has no stock '
+        'count, unlimited, until the owner ticks Track stock)')
+    descriptionColumn: str | None = Field(
+        None, description='The header of the column with a description; '
+        'left out when there is none')
+    firstRow: int | None = Field(
+        None, description='The row number (as the spreadsheet numbers its '
+        'rows) to start from; left out: the row under the headers')
+    lastRow: int | None = Field(
+        None, description='The row number to stop at; at most '
+        f'{PRODUCT_IMPORT_ROWS_MAX} product rows are read at once')
+
+    @field_validator('sheet', 'inventoryColumn', 'descriptionColumn',
+                     mode='before')
+    @classmethod
+    def _blankIsNone(cls, value):
+        """"" (or spaces) is a column or sheet left out."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+
 class ShowPhotoRequestFormArgs(_Args):
     model_config = ConfigDict(title='showPhotoRequestFormArguments')
 
@@ -202,6 +245,30 @@ class ShowBrandColorsFormArgs(_Args):
 class FormRefused(Exception):
     """A form tool that cannot open its form: its message goes to the model
     as the tool's error."""
+
+
+class FormContext(NamedTuple):
+    """What a form tool that reads the turn's files gets from the chat
+    route (FormTool.withContext): the conversation, this message's files
+    (ChatAttachment dicts: not stored yet), the turn's deadline
+    (time.monotonic()), and readSheet(label, path, sheet), which reads one
+    of the caller's own chat spreadsheets and converts it
+    (chatSpreadsheets.importText; only
+    `sheet`'s rows when one is named), its bytes held in the process's
+    bytes in flight only while it is read: (its SheetText, its content
+    type). A ValueError names `label` when it cannot be read, SlotsBusy or
+    a ServiceUnavailable says the process or Storage cannot read it now."""
+    conversationId: str
+    attachments: tuple
+    deadline: float
+    readSheet: Callable[[str, str, str | None], tuple]
+
+
+class FormOpened(NamedTuple):
+    """A form tool's form, with its whole tool message for the model
+    (`result`, in place of FORM_SHOWN alone)."""
+    form: dict
+    result: dict
 
 
 def _clip(value, limit: int):
@@ -360,12 +427,94 @@ def _brandColorsForm(userId: str, storeId: str,
     }
 
 
+# How many of the conversation's latest turns with files a spreadsheet
+# import looks through for the file it names.
+IMPORT_TURNS_SEARCHED = 50
+IMPORT_FILE_LABEL = 'The spreadsheet'
+IMPORT_FILE_NOT_FOUND = ('No spreadsheet named "{name}" was attached in this '
+                         'chat. Its spreadsheets: {names}')
+IMPORT_NO_SPREADSHEET = 'No spreadsheet was attached in this chat'
+IMPORT_BUSY = ('Spreadsheet reading is busy right now: ask the owner to try '
+               'again in a minute')
+IMPORT_SHOWN = (FORM_SHOWN + ' Its rows are read from the spreadsheet: tell '
+                'the owner how many rows are on it, which rows were left out '
+                'and why, and to check them and submit. Their submit saves '
+                'the products and puts on the photos they add itself: their '
+                'next message says how many were added; never call '
+                'addStoreProducts or setUploadedProductPhotos for them.')
+ONCE_PER_TURN = ('{name} runs once per message: tell the owner to check '
+                 'the form shown, then ask for the next rows in a new '
+                 'message')
+
+
+def _conversationSheets(context: FormContext) -> list[dict]:
+    """The spreadsheets of this message, then of the conversation's latest
+    IMPORT_TURNS_SEARCHED turns with files, newest first (ChatAttachment
+    dicts). The conversation is the caller's (the chat route holds its
+    lock); each file is read as the caller's own (FormContext.readFile)."""
+    turns = db.aggregate([
+        {'$match': {'conversationId': context.conversationId,
+                    'attachments.0': {'$exists': True}}},
+        {'$sort': {'seq': -1}},
+        {'$limit': IMPORT_TURNS_SEARCHED},
+        {'$project': {'_id': 0, 'attachments': 1}},
+    ], CHAT_TURNS)
+    attachments = [*reversed(context.attachments),
+                   *(attachment for turn in turns
+                     for attachment in reversed(turn['attachments']))]
+    return [attachment for attachment in attachments
+            if chatSpreadsheets.isSheet(attachment['contentType'])]
+
+
+def _newProductsFromSpreadsheet(userId: str, storeId: str,
+                                args: ShowNewProductsFromSpreadsheetArgs,
+                                context: FormContext) -> FormOpened:
+    store = _ownStore(userId, {'_id': 1, 'currency': 1})
+    sheets = _conversationSheets(context)
+    if not sheets:
+        raise FormRefused(IMPORT_NO_SPREADSHEET)
+    wanted = args.fileName.strip().casefold()
+    attachment = next((sheet for sheet in sheets
+                       if sheet['name'].casefold() == wanted), None)
+    if attachment is None:
+        names = list(dict.fromkeys(sheet['name'] for sheet in sheets))
+        raise FormRefused(IMPORT_FILE_NOT_FOUND.format(
+            name=args.fileName[:productImport.LISTED_LENGTH_MAX],
+            names=', '.join(f'"{name}"' for name in names)))
+    try:
+        sheet, contentType = context.readSheet(
+            IMPORT_FILE_LABEL, attachment['path'], args.sheet)
+        imported = productImport.importRows(
+            sheet.text, contentType, sheet.cutBy is not None,
+            attachment['name'], store['_id'],
+            productImport.Mapping(args.nameColumn, args.priceColumn,
+                                  args.inventoryColumn,
+                                  args.descriptionColumn),
+            args.sheet, args.firstRow, args.lastRow)
+    except (chatSpreadsheets.SlotsBusy, ServiceUnavailable):
+        raise FormRefused(IMPORT_BUSY) from None
+    except ValueError as error:
+        raise FormRefused(str(error)) from None
+    form = {'kind': 'newProductsForm', 'formId': newFormId(),
+            'currency': store['currency'], 'products': imported.drafts,
+            'rowPhotos': [], 'spreadsheetImport': imported.summary}
+    return FormOpened(form, productImport.aiResult(imported, IMPORT_SHOWN))
+
+
 @dataclass(frozen=True)
 class FormTool:
     toolsets: tuple[str, ...]
     description: str
     argsModel: type[BaseModel]
-    build: Callable[[str, str, BaseModel], dict]
+    # build(userId, storeId, args), with withContext a FormContext last:
+    # the form, or a FormOpened (the form and the model's tool message).
+    build: Callable[..., dict | FormOpened]
+    withContext: bool = False
+    # Refused (ONCE_PER_TURN) when the model calls it again in one turn.
+    oncePerTurn: bool = False
+    # What the chat shows while it runs (chatThinking.note): only a form
+    # tool that takes a while has any.
+    thinkingText: tuple[str, ...] = ()
 
     def schema(self, name: str) -> dict:
         return {
@@ -393,7 +542,9 @@ FORM_TOOLS: dict[str, FormTool] = {
         'optional photo, one row each. Prefill each row from what the owner '
         'gave in this conversation: their words and the files they attached '
         '(a photo, a screenshot, a price list, a PDF), one row per product '
-        'they show. Take a name, price or description only where it is '
+        'they show (a spreadsheet of more than a few products: '
+        'showNewProductsFromSpreadsheet instead, which reads its rows '
+        'itself). Take a name, price or description only where it is '
         'written or said; never guess a price or a stock count, and leave a '
         'field empty when it is not there. Set a row hasInventory false only '
         'when the owner says the item has no stock count (unlimited: a '
@@ -412,6 +563,33 @@ FORM_TOOLS: dict[str, FormTool] = {
         'better photos from them on the card. Make photos '
         '(makeProductPhotoChoices) only when they ask.',
         ShowNewProductsFormArgs, _newProductsForm),
+    'showNewProductsFromSpreadsheet': FormTool(
+        ('admin', ),
+        'Open the new products form under your reply with the rows of a '
+        'spreadsheet the owner attached (CSV or XLSX), read by the server: '
+        'use it whenever the owner wants products added from a spreadsheet '
+        'with more than a few products, instead of showNewProductsForm or '
+        'addStoreProducts, and never write its rows yourself. Give the '
+        "file's name and which column holds the names, the prices and, "
+        'when there are, the stock and a description, by their headers as '
+        'the spreadsheet shows them; ask the owner which column is which '
+        'only when the headers leave it unclear. An empty stock cell, or '
+        '"unlimited", is a product with no stock count; prices may carry a '
+        'currency or thousands separators. It reads at most '
+        f'{PRODUCT_IMPORT_ROWS_MAX} product rows at a time (firstRow, '
+        'lastRow: row numbers as the spreadsheet shows them), once per '
+        'message: when nextFirstRow is not null, tell the owner the rest '
+        'can be imported next, from that row. It returns how many rows are '
+        'on the form, the rows left out and why (no name, a bad price, a '
+        "name repeated in the file or already in the store), and the sheet's "
+        'headers and sheets. If it refuses (no such file, sheet or column, '
+        'no row to import), fix the call from what it says, or relay it to '
+        'the owner.',
+        ShowNewProductsFromSpreadsheetArgs, _newProductsFromSpreadsheet,
+        withContext=True, oncePerTurn=True,
+        thinkingText=('Reading your spreadsheet',
+                      'Lining up your products',
+                      'Checking each row')),
     'showPhotoRequestForm': FormTool(
         ('admin', ),
         "Open a form under your reply where the owner uploads 1 to 10 plain "
@@ -542,9 +720,12 @@ def formToolSchemas(toolset: str) -> list[dict]:
 
 
 def runFormTool(toolset: str, name: str, argumentsJson: str, userId: str,
-                storeId: str) -> tuple[str, dict | None]:
+                storeId: str, context: FormContext | None = None
+                ) -> tuple[str, dict | None]:
     """The tool message's content for the model's call of the form tool
-    `name`, and the form it opened (None when it refused)."""
+    `name`, and the form it opened (None when it refused). A tool that
+    reads the turn's files (FormTool.withContext) gets `context`, and
+    refuses without one."""
     tool = FORM_TOOLS.get(name)
     if tool is None or toolset not in tool.toolsets:
         return json.dumps({'error': f'Unknown tool {name}'}), None
@@ -562,10 +743,30 @@ def runFormTool(toolset: str, name: str, argumentsJson: str, userId: str,
         return json.dumps({'error': f'Invalid arguments for {name}: '
                            f'{_fieldsOf(error)}'}), None
     try:
-        form = _component(tool.build(userId, storeId, args))
+        if tool.withContext:
+            if context is None:
+                raise FormRefused(f'{name} works in the chat only')
+            built = tool.build(userId, storeId, args, context)
+        else:
+            built = tool.build(userId, storeId, args)
     except FormRefused as refusal:
         return json.dumps({'error': str(refusal)}), None
-    return json.dumps({'result': FORM_SHOWN}), form
+    if isinstance(built, FormOpened):
+        return (json.dumps(built.result, ensure_ascii=False),
+                _component(built.form))
+    return json.dumps({'result': FORM_SHOWN}), _component(built)
+
+
+def oncePerTurn(name: str) -> bool:
+    """Whether the form tool `name` runs at most once per turn."""
+    tool = FORM_TOOLS.get(name)
+    return tool is not None and tool.oncePerTurn
+
+
+def formThinkingTexts() -> dict[str, tuple[str, ...]]:
+    """The thinking texts of the form tools that have any, by name."""
+    return {name: tool.thinkingText for name, tool in FORM_TOOLS.items()
+            if tool.thinkingText}
 
 
 # ── Form answers ────────────────────────────
@@ -630,17 +831,81 @@ def _location(answer, component, userId) -> tuple[str, dict]:
             answer.model_dump(exclude={'formId'}))
 
 
-def _newProducts(answer, component, userId) -> tuple[str, dict]:
-    currency = component['currency']
-    # Each photo is the user's own upload, checked here (nothing read) so
-    # the model is never handed another URL; setUploadedProductPhotos
-    # checks it again.
+def _checkRowPhotos(answer, userId: str) -> None:
+    """Each row's photo is the user's own upload, checked here (nothing
+    read), so neither the model nor the server is handed another URL."""
     for i, product in enumerate(answer.products):
         if product.imageUrl is not None:
             label = f'The photo of product {i + 1}'
             photoStorage.ownImagePath(
                 userId, photoStorage.objectPathFromUrl(product.imageUrl,
                                                        label), label)
+
+
+def _putOnPhotos(userId: str, photos: list[dict]) -> tuple[int, int]:
+    """Put each imported product's photo on it ({productId, imageUrl}), as
+    setUploadedProductPhotos does (its checks, quota and copies), at most
+    PRODUCT_BATCH_MAX a call: (how many are on, how many are not)."""
+    on = notOn = 0
+    for start in range(0, len(photos), PRODUCT_BATCH_MAX):
+        chunk = photos[start:start + PRODUCT_BATCH_MAX]
+        try:
+            done = setUploadedProductPhotos(UploadedProductPhotosResponse,
+                                            userId, chunk)
+        except (ValueError, ServiceUnavailable):
+            notOn += len(chunk)
+            continue
+        on += len(done['products'])
+        notOn += len(done['notSaved'])
+    return on, notOn
+
+
+def _plural(count: int, word: str) -> str:
+    return f'{count} {word}{"" if count == 1 else "s"}'
+
+
+def _importedProducts(answer, component, userId) -> tuple[str, dict]:
+    """A spreadsheet form's submit (its spreadsheetImport): the products
+    are saved here, never by the model (which would write every row
+    again), skipping what cannot be added, and each row's photo is put on
+    its product (_putOnPhotos). The model reads only the counts and the
+    reasons (each row by its place on the form, formRow)."""
+    rows = [product.model_dump() for product in answer.products]
+    saved = importStoreProducts(userId, rows, component['formId'])
+    added, skipped = saved['added'], saved['skipped']
+    on, notOn = _putOnPhotos(userId, [
+        {'productId': row['_id'],
+         'imageUrl': rows[row['position'] - 1]['imageUrl']}
+        for row in added if rows[row['position'] - 1]['imageUrl'] is not None])
+    text = (f'Added {_plural(len(added), "product")} from '
+            f'{component["spreadsheetImport"]["fileName"]}')
+    if skipped:
+        text += f'; {len(skipped)} not added'
+    if on or notOn:
+        text += f'; {_plural(on, "photo")} put on'
+        if notOn:
+            text += f', {notOn} not'
+    return (text + '.', {
+        'kind': 'newProductsSaved',
+        'added': len(added),
+        'notAdded': len(skipped),
+        'notAddedRows': [{'formRow': row['position'], 'name': row['name'],
+                          'reason': row['reason']}
+                         for row in skipped[:productImport.AI_SKIPPED_MAX]],
+        'nextFirstRow': component['spreadsheetImport']['nextFirstRow'],
+        'photosOn': on,
+        'photosNotOn': notOn,
+    })
+
+
+def _newProducts(answer, component, userId) -> tuple[str, dict]:
+    _checkRowPhotos(answer, userId)
+    if component.get('spreadsheetImport') is not None:
+        return _importedProducts(answer, component, userId)
+    if len(answer.products) > PRODUCT_BATCH_MAX:
+        raise ValueError(FORM_ANSWER_INVALID.format(fields='products'))
+    currency = component['currency']
+    # setUploadedProductPhotos checks each photo again.
     lines = [f'- {p.name}, {p.price:g} {currency}, '
              + (f'{p.inventory} in stock' if p.hasInventory
                 else 'no inventory (unlimited)')
