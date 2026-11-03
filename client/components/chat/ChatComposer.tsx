@@ -1,13 +1,13 @@
 'use client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
-import { ArrowUpIcon, CameraIcon, FileTextIcon, MicIcon, PaperclipIcon, XIcon } from 'lucide-react';
+import { ArrowUpIcon, CameraIcon, FileSpreadsheetIcon, FileTextIcon, MicIcon, PaperclipIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from '@/components/ui/input-group';
 import { useSnackbar } from '@/lib/SnackbarContext';
 import { cn } from '@/lib/utils';
-import { ATTACHMENTS_MAX, attachmentProblem, isPdf, type PickedFile, type UploadedFiles } from './attachments';
+import { ATTACHMENT_ACCEPT, ATTACHMENTS_MAX, attachmentProblem, isPdf, isPhoto, type PickedFile, type UploadedFiles } from './attachments';
 import { PHOTO_ACCEPT } from './cards/photoUpload';
 import { MESSAGE_MAX_LENGTH } from './useChat';
 
@@ -28,8 +28,9 @@ interface ChatComposerProps {
 }
 
 // The message box. Enter sends; Shift+Enter starts a new line (admin). The
-// paperclip attaches photos or a PDF, the camera takes a photo (a phone's
-// camera; a computer opens the file picker), the mic opens voice mode.
+// paperclip attaches photos, a PDF or spreadsheets (CSV, Excel .xlsx), the
+// camera takes a photo (a phone's camera; a computer opens the file picker),
+// the mic opens voice mode.
 export function ChatComposer({
   onSend, onUpload, onVoice, disabled = false, placeholder, variant, autoFocus = false, hero = false, dataComponent, className,
 }: ChatComposerProps) {
@@ -62,7 +63,7 @@ export function ChatComposer({
         }
         pdfs += 1;
       }
-      accepted.push({ file, preview: isPdf(file) ? null : URL.createObjectURL(file) });
+      accepted.push({ file, preview: isPhoto(file) ? URL.createObjectURL(file) : null });
     }
     const room = ATTACHMENTS_MAX - picked.length;
     if (accepted.length > room) showSnackbar(`Attach up to ${ATTACHMENTS_MAX} files per message.`, 'error');
@@ -101,8 +102,8 @@ export function ChatComposer({
       <FilePickerButton
         dataComponent={`${dataComponent}Attach`}
         inputDataComponent={`${dataComponent}Files`}
-        label="Attach photos or a PDF"
-        accept="image/jpeg,image/png,image/webp,application/pdf"
+        label="Attach photos, a PDF or spreadsheets"
+        accept={ATTACHMENT_ACCEPT}
         multiple
         disabled={locked || full}
         variant={variant}
@@ -294,7 +295,8 @@ interface PickedFilesProps {
   onRemove: (one: PickedFile) => void;
 }
 
-// The files picked for the message: a photo's preview, a PDF's name.
+// The files picked for the message: a photo's preview, a PDF's or a
+// spreadsheet's name.
 function PickedFiles({ picked, disabled, dataComponent, onRemove }: PickedFilesProps) {
   return (
     <div data-component={`${dataComponent}Picked`} className="flex flex-wrap gap-2">
@@ -316,7 +318,9 @@ function PickedFiles({ picked, disabled, dataComponent, onRemove }: PickedFilesP
             </div>
           ) : (
             <div className="flex h-16 max-w-48 items-center gap-2 rounded-lg border bg-muted px-3 pr-8 text-sm">
-              <FileTextIcon className="size-5 shrink-0 text-muted-foreground" />
+              {isPdf(one.file)
+                ? <FileTextIcon className="size-5 shrink-0 text-muted-foreground" />
+                : <FileSpreadsheetIcon className="size-5 shrink-0 text-muted-foreground" />}
               <span className="truncate">{one.file.name}</span>
             </div>
           )}

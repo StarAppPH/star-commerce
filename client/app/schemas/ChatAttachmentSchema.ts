@@ -12,7 +12,13 @@ export type Path = string;
 /**
  * Its type
  */
-export type Contenttype = "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
+export type Contenttype =
+  | "image/jpeg"
+  | "image/png"
+  | "image/webp"
+  | "application/pdf"
+  | "text/csv"
+  | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 /**
  * Its file name, from the path's last segment, sanitised
  */

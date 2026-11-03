@@ -48,3 +48,21 @@ export const POLICY_RETURN_QUESTIONS = [
 ] as const;
 
 export const POLICY_ZONES_QUESTION = "deliveryZones" as const;
+
+export const CSV_CONTENT_TYPE = "text/csv" as const;
+
+export const XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const;
+
+export const CHAT_ATTACHMENT_EXTENSIONS = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".pdf": "application/pdf",
+  ".csv": "text/csv",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+} as const;
+
+export const CHAT_ATTACHMENTS_MAX = 4 as const;
+
+export const CHAT_ATTACHMENT_NAME_MAX_LENGTH = 120 as const;

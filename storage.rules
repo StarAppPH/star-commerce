@@ -8,7 +8,8 @@ rules_version = '2';
 // A signed-in user may read and delete only the files under users/<their
 // uid>/, and upload there only a JPEG, PNG or WebP under 10 MB (the apps
 // accept no other image type; HEIC/HEIF must be converted first), and under
-// users/<their uid>/chat/ (the chat's attachments) a PDF too. Rules that
+// users/<their uid>/chat/ (the chat's attachments) a PDF, a CSV (text/csv)
+// or an Excel workbook (.xlsx) too; an old .xls is refused. Rules that
 // match one path are OR'ed, so the chat block only widens its folder; each
 // matches() tests the whole content type. The server checks every file's
 // type and contents itself. Everything else is denied: no match below
@@ -40,7 +41,8 @@ service firebase.storage {
     match /users/{uid}/chat/{allPaths=**} {
       allow create, update: if request.auth != null && request.auth.uid == uid
                             && request.resource.size < 10 * 1024 * 1024
-                            && request.resource.contentType.matches('application/pdf');
+                            && request.resource.contentType.matches(
+                                 'application/pdf|text/csv|application/vnd[.]openxmlformats-officedocument[.]spreadsheetml[.]sheet');
     }
     match /stores/{storeId}/photos/{file} {
       allow get: if true;

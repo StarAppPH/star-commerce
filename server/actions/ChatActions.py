@@ -28,15 +28,19 @@ At most CHAT_TURNS_AT_ONCE turns run at once per process: a message past
 that is a 503 before any lock or quota is taken.
 
 Attachments: a message may carry up to CHAT_ATTACHMENTS_MAX files (JPEG,
-PNG, WebP or PDF) the user uploaded to Storage under users/<uid>/, sent as
+PNG, WebP, PDF, CSV or XLSX) the user uploaded to Storage under
+users/<uid>/, sent as
 their download URLs. Each URL is checked (our bucket, the caller's own folder,
 the type its name says) before the slot, the lock or any quota; the files
 are counted per day (per customer, per store, all stores: ChatUsage) and
 read through the Storage SDK (photoStorage.ownFiles, downloadFiles: never
 by URL, their contents checked) after the lock, and go to the model as
-base64 data URLs. A turn stores only each file's path, type, name and
-size. One request sends at most CHAT_ATTACHMENTS_MAX_TOTAL_BYTES of files
-(this message's first, refused past it).
+base64 data URLs; a spreadsheet, which Meta does not take as a file, as
+its text in a text part (chatSpreadsheets.py: its budget, its slots, its
+weight). A turn stores only each file's path, type, name and size. One
+request sends at most CHAT_ATTACHMENTS_MAX_TOTAL_BYTES of files (this
+message's first, refused past it; a spreadsheet weighs its text, at most
+CHAT_SPREADSHEET_TEXT_MAX_CHARS).
 
 A message carries at most one PDF (ONE_PDF_PER_MESSAGE), and its own
 files are not weighed further. A PDF of about 48 pages or more sent with
@@ -84,6 +88,7 @@ import unicodedata
 import chatCards
 import chatForms
 import chatModel
+import chatSpreadsheets
 import chatThinking
 import photoStorage
 import toolWarnings
@@ -101,7 +106,8 @@ from mongoDb import db
 from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_ATTACHMENT_MAX_BYTES,
                      CHAT_ATTACHMENT_NAME_MAX_LENGTH, CHAT_ATTACHMENT_TYPES,
                      CHAT_ATTACHMENTS_MAX, CHAT_ATTACHMENTS_MAX_TOTAL_BYTES,
-                     CHAT_MESSAGE_MAX_LENGTH, CHAT_TITLE_MAX_LENGTH,
+                     CHAT_MESSAGE_MAX_LENGTH,
+                     CHAT_TITLE_MAX_LENGTH,
                      CHAT_TOOL_CALL_ID_MAX_LENGTH, HISTORY_ATTACHMENT_TURNS,
                      ChatAttachment, ChatFormAnswer, ChatThinkingResponse,
                      ChatReplyResponse, ChatStep, ChatTokenUsage,
@@ -183,15 +189,20 @@ ATTACHMENTS_TWICE = 'attachments lists the same file twice'
 ONE_PDF_PER_MESSAGE = 'Attach at most one PDF per message'
 FORM_WITH_ATTACHMENTS = 'Send a form answer without attachments'
 ATTACHMENT_KIND = 'file'
-ATTACHMENT_TYPE = 'must be a JPG, PNG, WebP or PDF file'
+# The kinds of file a message may carry, as every refusal names them.
+_ATTACHMENT_KINDS = 'JPG, PNG, WebP, PDF, CSV or Excel (.xlsx)'
+ATTACHMENT_TYPE = f'must be a {_ATTACHMENT_KINDS} file'
+OLD_EXCEL_EXTENSION = '.xls'
+OLD_EXCEL = ('is an old Excel file (.xls): save it as .xlsx or .csv, then '
+             'attach it again')
 ATTACHMENTS_TOO_LARGE = (
     f'The attachments are over '
     f'{photoStorage.megabytes(CHAT_ATTACHMENTS_MAX_TOTAL_BYTES)} together: '
     'send fewer or smaller files')
-NOT_A_REAL_ATTACHMENT = "isn't a real JPEG, PNG, WebP or PDF file"
+NOT_A_REAL_ATTACHMENT = f"isn't a real {_ATTACHMENT_KINDS} file"
 UNREADABLE_ATTACHMENT = ("One of the attachments couldn't be read, or they "
                          'have too many pages together: send fewer or '
-                         'shorter JPEG, PNG, WebP or PDF files')
+                         f'shorter {_ATTACHMENT_KINDS} files')
 ATTACHMENT_CAP_REACHED = ("You've reached today's attachment limit: send "
                           'your message without files')
 STORE_ATTACHMENT_CAP_REACHED = ("This store's attachments are busy today: "
@@ -335,7 +346,8 @@ def _validAttachments(userId: str, urls) -> list[tuple[str, str]]:
     its download URLs (None or []: none): at most CHAT_ATTACHMENTS_MAX,
     each of our bucket (photoStorage.objectPathFromUrl) under the caller's
     own users/<uid>/ folder (ownImagePath: no HEIC/HEIF), named .jpg,
-    .jpeg, .png, .webp or .pdf, no file twice, at most one PDF
+    .jpeg, .png, .webp, .pdf, .csv or .xlsx (an old .xls is OLD_EXCEL), no
+    file twice, at most one PDF
     (ONE_PDF_PER_MESSAGE). Pure: reads nothing. A refusal
     names the URL's place (attachments[0]), never the URL."""
     if urls is None or urls == []:
@@ -345,6 +357,8 @@ def _validAttachments(userId: str, urls) -> list[tuple[str, str]]:
     files = photoStorage.ownPathsOfUrls(userId, urls, 'attachments',
                                         ATTACHMENTS_TWICE, ATTACHMENT_KIND)
     for label, path in files:
+        if photoStorage.fileExtension(path) == OLD_EXCEL_EXTENSION:
+            raise ValueError(f'{label} {OLD_EXCEL}')
         if photoStorage.fileExtension(path) not in CHAT_ATTACHMENT_EXTENSIONS:
             raise ValueError(f'{label} {ATTACHMENT_TYPE}')
     if sum(1 for _, path in files
@@ -373,7 +387,10 @@ def attachmentName(path: str) -> str:
 
 def _imageWeight(contentType: str) -> int:
     """How many of Meta's MAX_IMAGES_PER_REQUEST a file may take: a PDF
-    its first PDF_IMAGE_WEIGHT page images, an image one."""
+    its first PDF_IMAGE_WEIGHT page images, an image one, a spreadsheet
+    (sent as text) none."""
+    if chatSpreadsheets.isSheet(contentType):
+        return 0
     return (chatModel.PDF_IMAGE_WEIGHT if contentType == PDF_TYPE
             else chatModel.IMAGE_WEIGHT)
 
@@ -403,21 +420,25 @@ def _busy() -> ServiceUnavailable:
 
 def _newUserMessage(audience: str, userId: str, userText: str,
                     files: list[tuple[str, str]], inFlight: _BytesInFlight,
-                    deadline: float) -> tuple[dict, list[dict]]:
+                    deadline: float,
+                    sheets: chatSpreadsheets.SheetBudget
+                    ) -> tuple[dict, list[dict]]:
     """This message as Meta takes it (its text, a note per file, a part per
     file), and its files as the ChatAttachments a turn stores. Their
     metadata is checked first (gone, of another type, over 10 MB: a
     ValueError naming its place), then their sizes together
     (ATTACHMENTS_TOO_LARGE) and the process's bytes (inFlight: else a 503),
-    then they are downloaded and their contents checked. The bytes are
-    dropped once the parts are built. A Storage failure is a 503."""
+    then they are downloaded and their contents checked, a spreadsheet
+    turned into its text (`sheets`; it weighs that text in the 20 MB:
+    chatSpreadsheets.metaBytes). The bytes are dropped once the parts are
+    built. A Storage failure, or no spreadsheet slot in time, is a 503."""
     if not files:
         return _userMessage(userText, [], []), []
     owned = _ownFiles(userId, files, deadline)
-    total = sum(file.size for file in owned)
-    if total > CHAT_ATTACHMENTS_MAX_TOTAL_BYTES:
+    if sum(chatSpreadsheets.metaBytes(file.contentType, file.size)
+           for file in owned) > CHAT_ATTACHMENTS_MAX_TOTAL_BYTES:
         raise ValueError(ATTACHMENTS_TOO_LARGE)
-    if not inFlight.reserve(total):
+    if not inFlight.reserve(sum(file.size for file in owned)):
         raise _busy()
     notes, parts, attachments = [], [], []
     for i, (file, data) in enumerate(zip(owned, _downloadFiles(owned,
@@ -426,16 +447,27 @@ def _newUserMessage(audience: str, userId: str, userText: str,
                                     contentType=file.contentType,
                                     name=attachmentName(file.path),
                                     size=len(data)).model_dump()
+        if chatSpreadsheets.isSheet(file.contentType):
+            try:
+                data = chatSpreadsheets.ownSheet(
+                    data, file.contentType, file.label, sheets,
+                    deadline - time.monotonic())
+            except chatSpreadsheets.SlotsBusy:
+                raise _busy() from None
         notes.append(_attachmentNote(audience, i, attachment))
-        parts.append(_filePart(attachment, data, file.label))
+        parts.append(_filePart(attachment, data, file.label, i))
         attachments.append(attachment)
     return _userMessage(userText, notes, parts), attachments
 
 
-def _filePart(attachment: dict, data: bytes, label: str) -> dict:
+def _filePart(attachment: dict, data: bytes, label: str,
+              position: int) -> dict:
     """A file as the content part Meta takes: an image as an image_url (a
     WebP turned into a PNG or JPEG: photoStorage.modelImage, a refusal
-    naming `label`), a PDF as a file, both base64 data URLs."""
+    naming `label`), a PDF as a file, both base64 data URLs; a spreadsheet,
+    already its text (chatSpreadsheets.Sheet), as a text part."""
+    if isinstance(data, chatSpreadsheets.Sheet):
+        return chatSpreadsheets.sheetPart(attachment, position, data.text)
     data, contentType = photoStorage.modelImage(
         data, attachment['contentType'], label)
     dataUrl = (f'data:{contentType};base64,'
@@ -450,9 +482,12 @@ def _filePart(attachment: dict, data: bytes, label: str) -> dict:
 def _described(audience: str, attachment: dict) -> str:
     """A file as a note names it: its kind and name, and for an admin an
     image's URL (no token), which generateProductPhotos takes."""
-    isPdf = attachment['contentType'] == PDF_TYPE
-    described = f'{"PDF" if isPdf else "image"} {attachment["name"]}'
-    if audience == 'admin' and not isPdf:
+    contentType = attachment['contentType']
+    kind = ('PDF' if contentType == PDF_TYPE
+            else chatSpreadsheets.SHEET_KIND
+            if chatSpreadsheets.isSheet(contentType) else 'image')
+    described = f'{kind} {attachment["name"]}'
+    if audience == 'admin' and kind == 'image':
         described += f', url: {photoStorage.publicPathUrl(attachment["path"])}'
     return described
 
@@ -597,14 +632,15 @@ def _historyFiles(turns: list[dict], seq: int, budget: int,
     """Which files of `turns` (newest first) are sent again, as (turn
     index, file index), newest first: those of the turns after seq -
     HISTORY_ATTACHMENT_TURNS, until the next would take their stored sizes
-    past `budget` bytes or their image weight (_imageWeight) past
-    `weight`."""
+    (a spreadsheet's at most its text: chatSpreadsheets.metaBytes) past
+    `budget` bytes or their image weight (_imageWeight) past `weight`."""
     chosen, total, weighed = [], 0, 0
     for t, turn in enumerate(turns):
         if turn['seq'] < seq - HISTORY_ATTACHMENT_TURNS:
             break
         for f, attachment in enumerate(turn.get('attachments') or []):
-            total += attachment['size']
+            total += chatSpreadsheets.metaBytes(attachment['contentType'],
+                                                attachment['size'])
             weighed += _imageWeight(attachment['contentType'])
             if total > budget or weighed > weight:
                 return chosen
@@ -631,19 +667,22 @@ def _historyUserMessage(audience: str, turn: dict, t: int, status: dict,
             notes.append(_attachmentNote(audience, f, attachment))
             if withParts:
                 parts.append(_filePart(attachment, value,
-                                       f'attachments[{f}]'))
+                                       f'attachments[{f}]', f))
     return _userMessage(turn.get('userContent') or turn['userText'],
                         notes, parts)
 
 
 def _readHistoryFiles(userId: str, turns: list[dict],
                       keys: list[tuple[int, int]], budget: int, weight: int,
-                      inFlight: _BytesInFlight, deadline: float) -> dict:
+                      inFlight: _BytesInFlight, deadline: float,
+                      sheets: chatSpreadsheets.SheetBudget) -> dict:
     """The status of each history file of `keys` (newest first): its
-    bytes, GONE (deleted since) or REFUSED (of another type, too large, past
-    `budget` or `weight` by its actual size, past the process's bytes, or
-    contents not its type's). One metadata read, then one download, of
-    them all."""
+    bytes (a spreadsheet's text, or None past `sheets`:
+    chatSpreadsheets.historySheet),
+    GONE (deleted since) or REFUSED (of another type, too large, past
+    `budget` or `weight` by its actual size, past the process's bytes,
+    contents not its type's, or a spreadsheet that cannot be read). One
+    metadata read, then one download, of them all."""
     owned = _ownFiles(userId, [
         (f'attachments[{f}]', turns[t]['attachments'][f]['path'])
         for t, f in keys], deadline, skipUnreadable=True)
@@ -652,30 +691,38 @@ def _readHistoryFiles(userId: str, turns: list[dict],
         if isinstance(file, str):
             status[key] = file
             continue
-        total += file.size
+        metaSize = chatSpreadsheets.metaBytes(file.contentType, file.size)
+        total += metaSize
         weighed += _imageWeight(file.contentType)
         if (total > budget or weighed > weight
                 or not inFlight.reserve(file.size)):
-            total -= file.size
+            total -= metaSize
             weighed -= _imageWeight(file.contentType)
             status[key] = photoStorage.REFUSED
             continue
         toRead.append((key, file))
     read = _downloadFiles([file for _, file in toRead], deadline,
                           skipUnreadable=True)
-    for (key, _), value in zip(toRead, read):
+    for (key, file), value in zip(toRead, read):
+        if (isinstance(value, bytes)
+                and chatSpreadsheets.isSheet(file.contentType)):
+            value = chatSpreadsheets.historySheet(
+                value, file.contentType, file.label, sheets,
+                deadline - time.monotonic(), photoStorage.REFUSED)
         status[key] = value
     return status
 
 
 def _history(conversationId: str, seq: int, audience: str, userId: str,
              deadline: float, budget: int, weight: int,
-             inFlight: _BytesInFlight) -> dict:
+             inFlight: _BytesInFlight,
+             sheets: chatSpreadsheets.SheetBudget) -> dict:
     """The last HISTORY_TURNS turns before the turn `seq`, oldest first, as
     messages: the last HISTORY_TOOL_STEP_TURNS with their steps (an older
     turn's steps are not even read), then as many older ones as keep the
     whole under HISTORY_MAX_CHARS (text only: a file's bytes are never
-    counted). The files of the last HISTORY_ATTACHMENT_TURNS are read again
+    counted, nor a spreadsheet's text: `sheets` bounds that). The files of
+    the last HISTORY_ATTACHMENT_TURNS are read again
     and sent as parts, within `budget` bytes and `weight` images
     (_historyFiles, _readHistoryFiles, before `deadline`); a file gone
     since, or that could not be sent again, is a note. Returns the
@@ -710,12 +757,12 @@ def _history(conversationId: str, seq: int, audience: str, userId: str,
         kept.append(t)
     status = _readHistoryFiles(userId, turns,
                                [key for key in chosen if key[0] in kept],
-                               budget, weight, inFlight, deadline)
+                               budget, weight, inFlight, deadline, sheets)
     gone = sum(1 for value in status.values() if value == photoStorage.GONE)
     skipped = sum(1 for value in status.values()
                   if value == photoStorage.REFUSED)
     resent = {key for key, value in status.items()
-              if isinstance(value, bytes)}
+              if isinstance(value, (bytes, chatSpreadsheets.Sheet))}
     notesOnly = {key: value for key, value in status.items()
                  if key not in resent}
 
@@ -1040,6 +1087,7 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
     deadline = started + TURN_DEADLINE_SECONDS
     quotaKeys, attachmentKeys, sent = (), (), []
     inFlight = _BytesInFlight()
+    sheets = chatSpreadsheets.SheetBudget()
     try:
         progress = {'sent': False, 'answered': False}
         try:
@@ -1054,18 +1102,20 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
             userMessage, sent = _newUserMessage(
                 audience, userId,
                 userTurn['userContent'] or userTurn['userText'], files,
-                inFlight, deadline)
+                inFlight, deadline, sheets)
             if newConversation is None:
                 # What this message leaves, never below 0 (a PDF with
                 # images may weigh past the 50 alone).
                 history = _history(
                     conversationId, seq, audience, userId, deadline,
                     max(0, CHAT_ATTACHMENTS_MAX_TOTAL_BYTES -
-                        sum(attachment['size'] for attachment in sent)),
+                        sum(chatSpreadsheets.metaBytes(
+                            attachment['contentType'], attachment['size'])
+                            for attachment in sent)),
                     max(0, chatModel.MAX_IMAGES_PER_REQUEST -
                         sum(_imageWeight(attachment['contentType'])
                             for attachment in sent)),
-                    inFlight)
+                    inFlight, sheets)
             ownRefusal = _unreadableAttachment if sent else None
 
             def run(historyMessages: list[dict], refusal,

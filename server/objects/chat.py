@@ -5,8 +5,11 @@ receives (see objects/__init__.py)."""
 import datetime
 
 from pydantic import Field, model_validator
-from sharedConstants import PHOTO_UPLOAD_MAX_BYTES
-from typing import Literal
+from sharedConstants import (CHAT_ATTACHMENT_EXTENSIONS,
+                             CHAT_ATTACHMENT_NAME_MAX_LENGTH,
+                             CHAT_ATTACHMENTS_MAX, CSV_CONTENT_TYPE,
+                             PHOTO_UPLOAD_MAX_BYTES, XLSX_CONTENT_TYPE)
+from typing import Literal, get_args
 
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
                           ResponseModel)
@@ -31,27 +34,37 @@ CHAT_TOOL_CALL_ID_MAX_LENGTH = 128
 CHAT_TOOL_NAME_MAX_LENGTH = 64
 CHAT_TOOL_ARGUMENTS_MAX_LENGTH = 16000
 # Attachments: the files a user sends with a message (uploaded to Storage
-# under users/<uid>/ first), read from Storage and given to the model.
-ChatAttachmentType = Literal['image/jpeg', 'image/png', 'image/webp',
-                             'application/pdf']
-CHAT_ATTACHMENT_TYPES = ('image/jpeg', 'image/png', 'image/webp',
-                         'application/pdf')
-# The type each file name extension stands for: a file whose Storage type
+# under users/<uid>/ first), read from Storage and given to the model:
+# images and a PDF as files, a CSV or Excel (XLSX) spreadsheet as its text
+# (spreadsheetText.py; Muse takes no spreadsheet file).
+# The type each file name extension stands for (CHAT_ATTACHMENT_EXTENSIONS,
+# sharedConstants.py, which the client reads too): a file whose Storage type
 # is another is refused.
-CHAT_ATTACHMENT_EXTENSIONS = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-                              '.png': 'image/png', '.webp': 'image/webp',
-                              '.pdf': 'application/pdf'}
-CHAT_ATTACHMENTS_MAX = 4
+ChatAttachmentType = Literal['image/jpeg', 'image/png', 'image/webp',
+                             'application/pdf', CSV_CONTENT_TYPE,
+                             XLSX_CONTENT_TYPE]
+CHAT_ATTACHMENT_TYPES = get_args(ChatAttachmentType)
+if set(CHAT_ATTACHMENT_TYPES) != set(CHAT_ATTACHMENT_EXTENSIONS.values()):
+    raise RuntimeError('ChatAttachmentType must list exactly the types of '
+                       'CHAT_ATTACHMENT_EXTENSIONS')
 # Each file at most (storage.rules allows no larger upload), and one
 # request's files together: this message's, then the history's.
 CHAT_ATTACHMENT_MAX_BYTES = PHOTO_UPLOAD_MAX_BYTES
 CHAT_ATTACHMENTS_MAX_TOTAL_BYTES = 20 * 1024 * 1024
-CHAT_ATTACHMENT_NAME_MAX_LENGTH = 120
 # The files of the last HISTORY_ATTACHMENT_TURNS turns are sent to the
 # model again, newest first, within what this message leaves of
 # CHAT_ATTACHMENTS_MAX_TOTAL_BYTES (one budget per request); the others are
 # a note in their turn's text.
 HISTORY_ATTACHMENT_TURNS = 3
+# A spreadsheet's text is at most CHAT_SPREADSHEET_TEXT_MAX_CHARS (a CUT
+# line says so past it), and the spreadsheets of one request together at
+# most CHAT_SPREADSHEETS_TEXT_MAX_TOTAL_CHARS: this message's first, then
+# the history's (one past what is left is a note). Neither counts against
+# HISTORY_MAX_CHARS, which bounds the turns' own text. In the 20 MB above a
+# spreadsheet weighs what it sends Meta (its text, at most
+# CHAT_SPREADSHEET_TEXT_MAX_CHARS), not its file.
+CHAT_SPREADSHEET_TEXT_MAX_CHARS = 100_000
+CHAT_SPREADSHEETS_TEXT_MAX_TOTAL_CHARS = 200_000
 # What the model reads for a form answer: its summary and its details
 # (chatForms.answerTurn), bounded by the answer models' own limits.
 CHAT_USER_CONTENT_MAX_LENGTH = 64000

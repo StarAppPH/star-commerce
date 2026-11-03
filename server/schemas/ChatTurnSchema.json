@@ -300,7 +300,9 @@
                         "image/jpeg",
                         "image/png",
                         "image/webp",
-                        "application/pdf"
+                        "application/pdf",
+                        "text/csv",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     ],
                     "title": "Contenttype",
                     "type": "string"

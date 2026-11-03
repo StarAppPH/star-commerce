@@ -122,5 +122,25 @@ POLICY_RETURN_QUESTIONS = ('returnWindowDays', 'returnConditions',
                            'returnShippingPaidBy')
 POLICY_ZONES_QUESTION = 'deliveryZones'
 
+# Chat attachments: the files a message may carry (sendStoreChatMessage /
+# sendAdminChatMessage, ChatActions), as the composer offers and the server
+# checks them:
+#   CSV_CONTENT_TYPE, XLSX_CONTENT_TYPE: a spreadsheet's Storage content
+#     type, which the client sets from the extension on upload (a browser
+#     may report a CSV as application/vnd.ms-excel, which is refused);
+#   CHAT_ATTACHMENT_EXTENSIONS: each file name extension (lower case) and
+#     the one content type a file of it must have;
+#   CHAT_ATTACHMENTS_MAX: the files one message carries at most;
+#   CHAT_ATTACHMENT_NAME_MAX_LENGTH: a stored file name's length at most.
+CSV_CONTENT_TYPE = 'text/csv'
+XLSX_CONTENT_TYPE = ('application/vnd.openxmlformats-officedocument.'
+                     'spreadsheetml.sheet')
+CHAT_ATTACHMENT_EXTENSIONS = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+    '.webp': 'image/webp', '.pdf': 'application/pdf',
+    '.csv': CSV_CONTENT_TYPE, '.xlsx': XLSX_CONTENT_TYPE}
+CHAT_ATTACHMENTS_MAX = 4
+CHAT_ATTACHMENT_NAME_MAX_LENGTH = 120
+
 # Everything above this line ships to every browser. No credentials, no API
 # keys, no bank details, no internal limits.

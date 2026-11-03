@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { FileTextIcon, ImageIcon, RotateCwIcon } from 'lucide-react';
+import { FileSpreadsheetIcon, FileTextIcon, ImageIcon, RotateCwIcon } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,7 +12,7 @@ import { AssistantText } from './AssistantText';
 import { ChatComponents } from './cards/ChatComponents';
 import { PhotoDialog } from './PhotoDialog';
 import type { ChatFormAnswer } from './cards/types';
-import type { TurnFile } from './attachments';
+import { isPdfType, isPhotoType, isSpreadsheetType, type TurnFile } from './attachments';
 import type { ChatTurnView } from './useChat';
 
 interface ChatMessagesProps {
@@ -125,14 +125,15 @@ export function ChatMessages({
   );
 }
 
-// The files a turn's message carried: a photo as itself, a PDF by name.
+// The files a turn's message carried: a photo as itself, a PDF or a
+// spreadsheet by name.
 function TurnFiles({ files, fileUrl }: { files: TurnFile[]; fileUrl: (path: string) => Promise<string> }) {
   // One photo shows large; several share the row smaller.
-  const photos = files.filter((file) => file.contentType !== 'application/pdf').length;
+  const photos = files.filter((file) => isPhotoType(file.contentType)).length;
   return (
     <div data-component="chatTurnFiles" className="flex max-w-[85%] flex-wrap justify-end gap-2 self-end">
       {files.map((file, index) => (
-        file.contentType === 'application/pdf'
+        !isPhotoType(file.contentType)
           ? <FileChip key={`${file.name}-${index}`} file={file} />
           : (
             <TurnPhoto
@@ -148,7 +149,9 @@ function TurnFiles({ files, fileUrl }: { files: TurnFile[]; fileUrl: (path: stri
 }
 
 function FileChip({ file }: { file: TurnFile }) {
-  const Icon = file.contentType === 'application/pdf' ? FileTextIcon : ImageIcon;
+  const Icon = isPdfType(file.contentType)
+    ? FileTextIcon
+    : isSpreadsheetType(file.contentType) ? FileSpreadsheetIcon : ImageIcon;
   return (
     <div data-component="chatTurnFileChip" className="flex max-w-56 items-center gap-2 rounded-xl border bg-card px-3 py-2 text-sm">
       <Icon className="size-4 shrink-0 text-muted-foreground" />

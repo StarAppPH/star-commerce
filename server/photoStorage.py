@@ -20,7 +20,7 @@ bucket. Every other environment ignores both.
   caller that budgets between them.
   readOwnImages() is it for photos: JPEGs, PNGs or WebPs of at most
   MAX_IMAGE_BYTES each (and PHOTO_REFERENCES_MAX_TOTAL_BYTES together);
-  the chat's attachments add PDFs. modelImage() turns a WebP into a PNG
+  the chat's attachments add PDFs, CSVs and XLSXs. modelImage() turns a WebP into a PNG
   or JPEG before its bytes go to Meta, which does not say it takes WebP.
 - publicPathUrl(): the canonical download URL of a path, without a token
   (objectPathFromUrl reads it back).
@@ -59,7 +59,8 @@ from urllib.parse import quote, unquote, urlsplit
 
 from AppConfig import Environment
 from services.__request import ServiceUnavailable
-from sharedConstants import PHOTO_UPLOAD_MAX_BYTES
+from sharedConstants import (CSV_CONTENT_TYPE, PHOTO_UPLOAD_MAX_BYTES,
+                             XLSX_CONTENT_TYPE)
 
 BUCKET_VARIABLE = 'FIREBASE_STORAGE_BUCKET'
 EMULATOR_VARIABLES = ('STORAGE_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST')
@@ -86,7 +87,12 @@ HEIC_EXTENSIONS = ('.heic', '.heif')
 SIGNATURES = {'image/jpeg': b'\xff\xd8\xff',
               'image/png': b'\x89PNG\r\n\x1a\n',
               'application/pdf': b'%PDF-',
-              WEBP_CONTENT_TYPE: b'RIFF'}
+              WEBP_CONTENT_TYPE: b'RIFF',
+              # An XLSX is a zip; spreadsheetText checks the rest.
+              XLSX_CONTENT_TYPE: b'PK\x03\x04'}
+# A CSV has no signature: spreadsheetText checks it is text, and refuses it
+# in its own words (save it again as CSV UTF-8).
+TEXT_CONTENT_TYPES = (CSV_CONTENT_TYPE,)
 WEBP_SIGNATURE = b'WEBP'  # bytes 8 to 12, after RIFF and the size
 HEIC_BRANDS = (b'heic', b'heix', b'hevc', b'heim', b'heis', b'mif1', b'msf1')
 NOT_A_REAL_PHOTO = "isn't a real JPG, PNG or WebP photo"
@@ -355,6 +361,8 @@ def _checkContents(data: bytes, contentType: str, label: str,
     (after the label)."""
     if _isHeicData(data):
         raise ValueError(f'{label} is a HEIC or HEIF photo. {CONVERT_PHOTO}')
+    if contentType in TEXT_CONTENT_TYPES:
+        return
     if not data.startswith(SIGNATURES[contentType]) or (
             contentType == WEBP_CONTENT_TYPE
             and data[8:12] != WEBP_SIGNATURE):
