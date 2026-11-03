@@ -1760,3 +1760,60 @@ def test_endToEnd_warningsAndSetupReadTheFullResult_historyTheAiCopy(
     assert '+639171234567' not in sent
     assert json.loads(full)['_id'] not in json.dumps(
         fake.requests[0]['messages'])
+
+
+# ---- A full product list offers the next page ----
+
+def _pagedCard(tool: str, arguments: str, rows: int) -> dict:
+    """The card of one `tool` call with `arguments` that listed `rows`
+    products."""
+    if tool == 'listStoreProducts':
+        row = {'name': 'A', 'description': None, 'price': 1, 'inventory': 2}
+    else:
+        row = {'name': 'A', 'description': None, 'price': 1, 'inventory': 2,
+               'reservedQuantity': 0, 'isAvailable': True, 'soldCount': 0}
+    result = {'currency': 'PHP', 'products': [
+        {**row, '_id': f'p{number}'} for number in range(rows)]}
+    steps = [{'role': 'assistant', 'toolCalls': [
+        {'id': 'c1', 'name': tool, 'arguments': arguments}]},
+        {'role': 'tool', 'toolCallId': 'c1', 'content': json.dumps(result)}]
+    [card] = chatCards.build(steps, {}, chatCards.CardContext('store-1'))
+    return card
+
+
+@pytest.mark.parametrize('tool', ['listMyStoreProducts', 'listStoreProducts'])
+def test_aFullProductList_offersTheNextPage(tool):
+    from actions.ProductActions import PRODUCT_LIST_DEFAULT_LIMIT
+    default = PRODUCT_LIST_DEFAULT_LIMIT
+
+    assert _pagedCard(tool, '{}', default)['nextSkip'] == default
+    assert _pagedCard(tool, '{"limit": null, "skip": null}',
+                      default)['nextSkip'] == default
+    assert _pagedCard(tool, '{"limit": 3}', 3)['nextSkip'] == 3
+    assert _pagedCard(tool, '{"limit": 3, "skip": 6}', 3)['nextSkip'] == 9
+    # Fewer than the limit: the list is all there is.
+    assert 'nextSkip' not in _pagedCard(tool, '{}', default - 1)
+    assert 'nextSkip' not in _pagedCard(tool, '{"limit": 3, "skip": 6}', 2)
+    # Arguments it cannot read add no next page, and the card still shows.
+    for arguments in ('not json', '[1]', '{"limit": "3"}',
+                      '{"limit": true}', '{"limit": 3, "skip": 2.5}',
+                      '{"limit": 0}'):
+        card = _pagedCard(tool, arguments, 3)
+        assert 'nextSkip' not in card and len(card['products']) == 3
+    # Past the most products a store holds there is no next page.
+    assert 'nextSkip' not in _pagedCard(
+        tool, '{"limit": 3, "skip": 1998}', 3)
+
+
+def test_aProductCardOfAnotherTool_hasNoNextPage():
+    adminProduct = {'_id': 'p1', 'name': 'A', 'description': None,
+                    'price': 1, 'inventory': 2, 'reservedQuantity': 0,
+                    'isAvailable': True, 'soldCount': 0}
+    steps = [{'role': 'assistant', 'toolCalls': [
+        {'id': 'c1', 'name': 'addStoreProducts', 'arguments': '{"limit": 1}'}]},
+        {'role': 'tool', 'toolCallId': 'c1', 'content': json.dumps(
+            {'currency': 'PHP', 'products': [adminProduct]})}]
+
+    [card] = chatCards.build(steps, {}, chatCards.CardContext('store-1'))
+
+    assert 'nextSkip' not in card

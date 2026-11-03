@@ -132,7 +132,7 @@ def test_aToolsArguments_leaveOutTheInjectedParams():
         return tool.input_schema
 
     properties = asyncio.run(schema())['properties']
-    assert set(properties) == {'search', 'limit'}
+    assert set(properties) == {'search', 'limit', 'skip'}
 
 
 def test_anAdminToolsArguments_leaveOutTheInjectedParams():
@@ -635,7 +635,7 @@ def test_theAdminProductToolsArguments_leaveOutTheInjectedParams():
     listing = byName['listMyStoreProducts'].input_schema
     assert set(listing['properties']) == {'search', 'limit', 'sortBy',
                                           'isAvailable', 'inventoryAtMost',
-                                          'hasPhoto'}
+                                          'hasPhoto', 'skip'}
     assert not listing.get('required')
 
 

@@ -68,6 +68,10 @@ export type Photourl = string | null;
  * @maxItems 50
  */
 export type Products = ChatShopProductRow[];
+/**
+ * The skip that lists the next products: the list came back full, so there may be more (its Show more button); left out otherwise
+ */
+export type Nextskip = number | null;
 
 /**
  * The products a shopper asked about. Answered with OrderItemsAnswer:
@@ -78,6 +82,7 @@ export interface ShopProductsCard {
   formId: Formid;
   currency: Currency;
   products: Products;
+  nextSkip?: Nextskip;
 }
 /**
  * A product on a shop card.

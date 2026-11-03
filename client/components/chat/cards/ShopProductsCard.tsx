@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ShoppingBagIcon, ShoppingCartIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChatCard, ProductPhoto, QuantityStepper, SentNote, countsStock, stockMax } from './ChatCard';
+import { ChatCard, MoreProducts, ProductPhoto, QuantityStepper, SentNote, countsStock, productListTitle, stockMax } from './ChatCard';
 import { formatMoney, nonEmpty } from './format';
 import { useOptionalShopCart } from '@/lib/ShopCartContext';
 import { useOptionalChatShell } from '@/components/chat/ChatShell';
@@ -43,7 +43,7 @@ export function ShopProductsCard({ component, answered, busy }: ComponentProps<'
     <ChatCard
       dataComponent="shopProductsCard"
       icon={<ShoppingBagIcon />}
-      title={component.products.length === 1 ? '1 product' : `${component.products.length} products`}
+      title={productListTitle(component.products.length, component.nextSkip)}
       footer={answered ? <SentNote text="Ordered in the chat" /> : shopCart ? (
         <>
           {count > 0 && (
@@ -93,6 +93,7 @@ export function ShopProductsCard({ component, answered, busy }: ComponentProps<'
           );
         })}
       </ul>
+      <MoreProducts dataComponent="shopProductsShowMore" nextSkip={component.nextSkip} busy={working} />
     </ChatCard>
   );
 }

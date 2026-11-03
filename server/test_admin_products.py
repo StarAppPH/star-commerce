@@ -790,6 +790,58 @@ def test_listMyStoreProducts_searchAndLimit(clean):
             names(limit=limit)
 
 
+SKIP = 'skip is a whole number from 0 to 2000'
+
+
+def test_listMyStoreProducts_skip_listsTheNextPage_inTheSortsOrder(clean):
+    store = createTestStore(ADMIN)
+    for number in range(5):
+        addProduct(store['_id'], f'Item {number}', 10 + number,
+                   soldCount=number)
+    addProduct(store['_id'], 'Hidden', 1, isAvailable=False)
+
+    def names(**kwargs):
+        return [p['name'] for p in
+                tools.listMyStoreProducts(ADMIN, **kwargs)['products']]
+
+    pages = [names(limit=2, skip=skip) for skip in (0, 2, 4, 6)]
+    assert pages == [['Hidden', 'Item 0'], ['Item 1', 'Item 2'],
+                     ['Item 3', 'Item 4'], []]
+    assert names(limit=2, skip=1, sortBy='price') == ['Item 3', 'Item 2']
+    assert names(limit=2, skip=2, sortBy='soldCount') == ['Item 2', 'Item 1']
+    assert names(isAvailable=True, limit=3, skip=3) == ['Item 3', 'Item 4']
+    assert names(search='item', limit=1, skip=4) == ['Item 4']
+    assert names(skip=None) == names(skip=0) == names()
+
+
+def test_listMyStoreProducts_refusesABadSkip_neverQuotingIt(clean):
+    createTestStore(ADMIN)
+
+    for skip in (-1, 2001, True, 2.5, '1', {'$gt': 0}):
+        with pytest.raises(ValueError, match=exactly(SKIP)):
+            tools.listMyStoreProducts(ADMIN, skip=skip)
+    # The limit is checked first.
+    with pytest.raises(ValueError, match=exactly(LIMIT)):
+        tools.listMyStoreProducts(ADMIN, limit=0, skip=-1)
+
+
+def test_listMyStoreProducts_aLaterPage_isServedByTheSortsIndex(
+        clean, sentPipelines):
+    db.ensureIndexes()
+    store = createTestStore(ADMIN)
+    for number in range(30):
+        addProduct(store['_id'], f'Item {number:02d}', number)
+
+    listed = tools.listMyStoreProducts(ADMIN, limit=10, skip=20)
+
+    assert [p['name'] for p in listed['products']] == [
+        f'Item {number}' for number in range(20, 30)]
+    [(collection, pipeline, _)] = sentPipelines
+    assert {'$skip': 20} in pipeline
+    stages, indexes = planStages(collection, pipeline)
+    assert 'SORT' not in stages and 'COLLSCAN' not in stages
+
+
 def _sortedNames(**kwargs) -> list:
     return [p['name'] for p in
             tools.listMyStoreProducts(ADMIN, **kwargs)['products']]

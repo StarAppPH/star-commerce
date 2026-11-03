@@ -664,6 +664,10 @@ export type Photourl = string | null;
  */
 export type Products = ChatShopProductRow[];
 /**
+ * The skip that lists the next products: the list came back full, so there may be more (its Show more button); left out otherwise
+ */
+export type Nextskip = number | null;
+/**
  * The card
  */
 export type Kind1 = "storeProducts";
@@ -730,6 +734,10 @@ export type Photourl1 = string | null;
  * @maxItems 50
  */
 export type Products1 = ChatStoreProductRow[];
+/**
+ * The skip that lists the next products: the list came back full, so there may be more (its Show more button); left out otherwise
+ */
+export type Nextskip1 = number | null;
 /**
  * The card
  */
@@ -2597,6 +2605,7 @@ export interface ShopProductsCard {
   formId: Formid;
   currency: Currency;
   products: Products;
+  nextSkip?: Nextskip;
 }
 /**
  * A product on a shop card.
@@ -2617,6 +2626,7 @@ export interface StoreProductsCard {
   kind: Kind1;
   currency: Currency1;
   products: Products1;
+  nextSkip?: Nextskip1;
 }
 /**
  * A product on the admin's product card.

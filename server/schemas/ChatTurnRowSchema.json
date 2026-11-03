@@ -3130,6 +3130,21 @@
                     "maxItems": 50,
                     "title": "Products",
                     "type": "array"
+                },
+                "nextSkip": {
+                    "anyOf": [
+                        {
+                            "maximum": 2000,
+                            "minimum": 1,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The skip that lists the next products: the list came back full, so there may be more (its Show more button); left out otherwise",
+                    "title": "Nextskip"
                 }
             },
             "required": [
@@ -3496,6 +3511,21 @@
                     "maxItems": 50,
                     "title": "Products",
                     "type": "array"
+                },
+                "nextSkip": {
+                    "anyOf": [
+                        {
+                            "maximum": 2000,
+                            "minimum": 1,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The skip that lists the next products: the list came back full, so there may be more (its Show more button); left out otherwise",
+                    "title": "Nextskip"
                 }
             },
             "required": [
