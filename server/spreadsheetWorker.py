@@ -63,6 +63,12 @@ def _reason(error: spreadsheetText.Refused) -> str:
     return 'unreadable'
 
 
+def _sheet(header: dict) -> str | None:
+    """The one sheet whose rows are read, when the header names one."""
+    sheet = header.get('sheet')
+    return sheet if isinstance(sheet, str) else None
+
+
 def main() -> None:
     _limitSelf()
     stdin = sys.stdin.buffer
@@ -71,7 +77,7 @@ def main() -> None:
     try:
         sheet = spreadsheetText.spreadsheetText(
             data, header['contentType'], '', int(header['maxChars']),
-            seconds=float(header['seconds']))
+            seconds=float(header['seconds']), sheet=_sheet(header))
         answer = {'text': sheet.text, 'cutBy': sheet.cutBy}
     except spreadsheetText.Refused as error:
         answer = {'refused': _reason(error)}

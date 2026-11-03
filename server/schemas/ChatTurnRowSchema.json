@@ -2080,11 +2080,11 @@
                     "type": "string"
                 },
                 "products": {
-                    "description": "Prefilled rows",
+                    "description": "Prefilled rows: at most 50, or 200 from a spreadsheet",
                     "items": {
                         "$ref": "#/$defs/ChatProductDraft"
                     },
-                    "maxItems": 50,
+                    "maxItems": 200,
                     "title": "Products",
                     "type": "array"
                 },
@@ -2100,9 +2100,21 @@
                             }
                         ]
                     },
-                    "maxItems": 50,
+                    "maxItems": 200,
                     "title": "Rowphotos",
                     "type": "array"
+                },
+                "spreadsheetImport": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/SpreadsheetImport"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Where the rows came from, when a spreadsheet: its submit then saves the products itself; left out otherwise"
                 }
             },
             "required": [
@@ -3127,6 +3139,118 @@
                 "products"
             ],
             "title": "ShopProductsCard",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "SpreadsheetImport": {
+            "description": "Where a new products form's rows came from: a spreadsheet the admin\nattached (showNewProductsFromSpreadsheet). Its submit saves the\nproducts itself (chatForms._newProducts).",
+            "properties": {
+                "fileName": {
+                    "description": "The spreadsheet's name",
+                    "title": "Filename",
+                    "type": "string"
+                },
+                "sheet": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The sheet read (an XLSX); null for a CSV",
+                    "title": "Sheet"
+                },
+                "firstRow": {
+                    "description": "The row number the range starts at (as the spreadsheet numbers its rows: the headers and empty rows counted)",
+                    "title": "Firstrow",
+                    "type": "integer"
+                },
+                "lastRow": {
+                    "description": "The row number of the last product row read",
+                    "title": "Lastrow",
+                    "type": "integer"
+                },
+                "totalRows": {
+                    "description": "How many product rows (rows with a value under the headers) the sheet has, as far as it could be read",
+                    "title": "Totalrows",
+                    "type": "integer"
+                },
+                "nextFirstRow": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "The row number the next import starts at, when the sheet has product rows past lastRow; null otherwise",
+                    "title": "Nextfirstrow"
+                },
+                "notFullyRead": {
+                    "description": "The file is longer than what can be read at once: rows past totalRows cannot be imported from it",
+                    "title": "Notfullyread",
+                    "type": "boolean"
+                },
+                "skippedRows": {
+                    "description": "The rows of the range left off the form",
+                    "items": {
+                        "$ref": "#/$defs/SpreadsheetImportSkippedRow"
+                    },
+                    "maxItems": 200,
+                    "title": "Skippedrows",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "fileName",
+                "sheet",
+                "firstRow",
+                "lastRow",
+                "totalRows",
+                "nextFirstRow",
+                "notFullyRead",
+                "skippedRows"
+            ],
+            "title": "SpreadsheetImport",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "SpreadsheetImportSkippedRow": {
+            "description": "A row of the sheet an import left off the form, and why.",
+            "properties": {
+                "row": {
+                    "description": "The row's number, as the spreadsheet numbers its rows",
+                    "title": "Row",
+                    "type": "integer"
+                },
+                "name": {
+                    "anyOf": [
+                        {
+                            "maxLength": 80,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Its name (cut to a name's length); null without one",
+                    "title": "Name"
+                },
+                "reason": {
+                    "description": "Why it was left out",
+                    "title": "Reason",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "row",
+                "name",
+                "reason"
+            ],
+            "title": "SpreadsheetImportSkippedRow",
             "type": "object",
             "additionalProperties": false
         },

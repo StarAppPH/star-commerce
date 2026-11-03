@@ -8,6 +8,7 @@ AI sends.
 
 import datetime
 import re
+from typing import NamedTuple
 
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
@@ -171,6 +172,15 @@ def _validProduct(name: str | None = None,
     return fields
 
 
+def _validNewProduct(item: dict) -> dict:
+    """A new product's fields (a dict of NewProduct's), checked as
+    _validProduct checks them: the one check of both add paths."""
+    return _validProduct(item.get('name'), item.get('description'),
+                         item.get('price'), item.get('inventory'),
+                         item.get('isAvailable'), item.get('hasInventory'),
+                         isNew=True)
+
+
 def _newProductDocument(storeId: str, fields: dict,
                         createdAt: datetime.datetime) -> dict:
     """The Products document of a product _validProduct checked."""
@@ -188,14 +198,39 @@ def _adminStore(userId: str) -> dict:
     return requireOwnerStore(userId, {'_id': 1, 'currency': 1})
 
 
+def _storeRoom(storeId: str) -> int:
+    """How many more products the store holds (PRODUCTS_PER_STORE_MAX)."""
+    return max(0, PRODUCTS_PER_STORE_MAX - db.read(
+        {'storeId': storeId}, PRODUCTS, countOnly=True))
+
+
 def _refuseOverCap(storeId: str, adding: int) -> None:
     """Refuse when adding `adding` products would take the store over
     PRODUCTS_PER_STORE_MAX. Racing adds can overshoot it by at most one
     batch per concurrent request, which is accepted: no counter on Stores."""
-    count = db.read({'storeId': storeId}, PRODUCTS, countOnly=True)
-    if count + adding > PRODUCTS_PER_STORE_MAX:
+    if adding > _storeRoom(storeId):
         raise ValueError(
             f'A store has at most {PRODUCTS_PER_STORE_MAX} products')
+
+
+def _takenNames(storeId: str, nameKeys, exceptProductId: str | None = None
+                ) -> dict[str, dict]:
+    """The store's products of these names, by nameKey ({_id,
+    importFormId})."""
+    if not nameKeys:
+        return {}
+    query = {'storeId': storeId, 'nameKey': {'$in': sorted(set(nameKeys))}}
+    if exceptProductId is not None:
+        query['_id'] = {'$ne': exceptProductId}
+    return {document['nameKey']: document for document in db.read(
+        query, PRODUCTS,
+        projection={'_id': 1, 'nameKey': 1, 'importFormId': 1})}
+
+
+def takenNameKeys(storeId: str, nameKeys,
+                  exceptProductId: str | None = None) -> set[str]:
+    """Which of `nameKeys` the store's products already have."""
+    return set(_takenNames(storeId, nameKeys, exceptProductId))
 
 
 def _refuseTakenNames(storeId: str, nameKeys: list,
@@ -203,12 +238,14 @@ def _refuseTakenNames(storeId: str, nameKeys: list,
     """Refuse when the store already has a product of one of these names.
     Gives the usual case a refusal before any write; the unique (storeId,
     nameKey) index still decides a race."""
-    query = {'storeId': storeId, 'nameKey': {'$in': nameKeys}}
-    if exceptProductId is not None:
-        query['_id'] = {'$ne': exceptProductId}
-    if db.read(query, PRODUCTS, projection={'_id': 1},
-               findOne=True) is not None:
+    if takenNameKeys(storeId, nameKeys, exceptProductId):
         raise ValueError(NAME_TAKEN)
+
+
+def _hasDuplicateKey(error: BulkWriteError) -> bool:
+    """Whether a bulk write failed on a unique index (a name taken)."""
+    return any(writeError.get('code') == DUPLICATE_KEY_CODE
+               for writeError in error.details.get('writeErrors', []))
 
 
 def _batchItem(item, position: int, model=NewProduct,
@@ -300,15 +337,8 @@ def addStoreProducts(model, userId: str,
             or not 1 <= len(products) <= PRODUCT_BATCH_MAX):
         raise ValueError(
             f'Send 1 to {PRODUCT_BATCH_MAX} products at a time')
-    validated = validBatch(
-        products, NewProduct, 'Product',
-        lambda item, _: _validProduct(item.get('name'),
-                                      item.get('description'),
-                                      item.get('price'),
-                                      item.get('inventory'),
-                                      item.get('isAvailable'),
-                                      item.get('hasInventory'),
-                                      isNew=True))
+    validated = validBatch(products, NewProduct, 'Product',
+                           lambda item, _: _validNewProduct(item))
     createdAt = datetime.datetime.now(tz=datetime.timezone.utc)
     documents = [
         _newProductDocument(store['_id'], fields, createdAt)
@@ -331,8 +361,7 @@ def addStoreProducts(model, userId: str,
         db.createTransaction(lambda session: db.createMany(
             documents, PRODUCTS, session=session))
     except BulkWriteError as error:
-        if any(writeError.get('code') == DUPLICATE_KEY_CODE
-               for writeError in error.details.get('writeErrors', [])):
+        if _hasDuplicateKey(error):
             raise ValueError(NAME_TAKEN) from None
         raise
     return {
@@ -343,6 +372,156 @@ def addStoreProducts(model, userId: str,
                 **d, 'reservedQuantity': 0
             }) for d in documents
         ],
+    }
+
+
+# Why a new product of a list is left out (importStoreProducts, and a
+# spreadsheet import's preview, productImport.py): each says what to fix.
+IMPORT_DUPLICATE = 'Another row has the same name'
+IMPORT_NAME_TAKEN = 'The store already has a product with this name'
+IMPORT_STORE_FULL = (f'The store is full: it holds at most '
+                     f'{PRODUCTS_PER_STORE_MAX} products')
+
+
+class NameSplit(NamedTuple):
+    """splitNewNames' answer: the rows to add, the rows left out
+    ({position, reason}) and the rows this import form already added
+    ({position: their product's _id})."""
+    kept: list
+    skipped: list
+    addedBefore: dict
+
+
+def splitNewNames(storeId: str, rows: list, formId: str | None = None
+                  ) -> NameSplit:
+    """Rows of new products (dicts with a `position` and a `nameKey`), in
+    order: a row repeating an earlier row's name is left out
+    (IMPORT_DUPLICATE, naming that row), and so is one whose name the store
+    already has (IMPORT_NAME_TAKEN), unless that product was added by the
+    same import form (`formId`, its importFormId): then it is addedBefore."""
+    kept, skipped, addedBefore, seen = [], [], {}, {}
+    for row in rows:
+        if row['nameKey'] in seen:
+            skipped.append({'position': row['position'],
+                            'reason': f'{IMPORT_DUPLICATE} '
+                                      f'(row {seen[row["nameKey"]]})'})
+        else:
+            seen[row['nameKey']] = row['position']
+            kept.append(row)
+    taken = _takenNames(storeId, list(seen))
+    unique = []
+    for row in kept:
+        product = taken.get(row['nameKey'])
+        if product is None:
+            unique.append(row)
+        elif formId is not None and product.get('importFormId') == formId:
+            addedBefore[row['position']] = product['_id']
+        else:
+            skipped.append({'position': row['position'],
+                            'reason': IMPORT_NAME_TAKEN})
+    skipped.sort(key=lambda row: row['position'])
+    return NameSplit(unique, skipped, addedBefore)
+
+
+def _sameFormProduct(storeId: str, nameKey: str, formId: str) -> str | None:
+    """The _id of the store's product of this name when the import form
+    `formId` added it."""
+    product = db.read({'storeId': storeId, 'nameKey': nameKey,
+                       'importFormId': formId}, PRODUCTS,
+                      projection={'_id': 1}, findOne=True)
+    return None if product is None else product['_id']
+
+
+def _insertBatch(storeId: str, batch: list, formId: str
+                 ) -> tuple[list, list]:
+    """Insert one batch of rows ({position, document}) in a transaction:
+    (the rows stored, the rows left out). A batch that loses a race on a
+    name rolled back (in the cloud; a standalone mongod keeps the rows
+    before the failing one): each row not stored is then added on its
+    own, a name taken by then left out (or added, when this form took
+    it)."""
+    try:
+        db.createTransaction(lambda session: db.createMany(
+            [row['document'] for row in batch], PRODUCTS, session=session))
+        return batch, []
+    except BulkWriteError as error:
+        if not _hasDuplicateKey(error):
+            raise
+    kept = {found['_id'] for found in db.read(
+        {'_id': {'$in': [row['document']['_id'] for row in batch]}},
+        PRODUCTS, projection={'_id': 1})}
+    stored, skipped = [], []
+    for row in batch:
+        if row['document']['_id'] in kept:
+            stored.append(row)
+            continue
+        try:
+            db.create(row['document'], PRODUCTS)
+            stored.append(row)
+        except DuplicateKeyError:
+            before = _sameFormProduct(storeId, row['nameKey'], formId)
+            if before is not None:
+                stored.append({**row, 'document': {
+                    **row['document'], '_id': before}})
+            else:
+                skipped.append({'position': row['position'],
+                                'reason': IMPORT_NAME_TAKEN})
+    return stored, skipped
+
+
+def importStoreProducts(userId: str, products: list[dict],
+                        formId: str) -> dict:
+    """Add the admin's products one by one where addStoreProducts adds all
+    or none: what a spreadsheet import's form sent (chatForms._newProducts,
+    the server saving them itself so the model never echoes the rows).
+    Each row (a dict of NewProduct's fields) is checked as
+    addStoreProducts checks one; a row that fails, repeats an earlier
+    row's name or has a name the store already has (splitNewNames) is
+    left out with its reason, and so is one past PRODUCTS_PER_STORE_MAX
+    (the room counted again before each batch, so imports racing each
+    other pass it by at most one batch). The others are added
+    PRODUCT_BATCH_MAX at a time (_insertBatch), each stamped with the form
+    (`formId`, Product.importFormId): a second submit of the same form (its
+    first turn failed after saving) counts the rows it already added as
+    added. Returns {'added': [{'position', '_id', 'name'}], 'skipped':
+    [{'position', 'name', 'reason'}]}, positions from 1."""
+    store = _adminStore(userId)
+    createdAt = datetime.datetime.now(tz=datetime.timezone.utc)
+    names, skipped, rows = {}, [], []
+    for position, item in enumerate(products, start=1):
+        name = item.get('name')
+        names[position] = (name.strip()[:PRODUCT_NAME_MAX_LENGTH] or None
+                           if isinstance(name, str) else None)
+        try:
+            fields = _validNewProduct(item)
+        except ValueError as error:
+            skipped.append({'position': position, 'reason': str(error)})
+            continue
+        document = _newProductDocument(
+            store['_id'], {**fields, 'importFormId': formId}, createdAt)
+        rows.append({'position': position, 'nameKey': document['nameKey'],
+                     'document': document})
+    split = splitNewNames(store['_id'], rows, formId)
+    skipped += split.skipped
+    added = [{'position': position, '_id': productId}
+             for position, productId in split.addedBefore.items()]
+    for start in range(0, len(split.kept), PRODUCT_BATCH_MAX):
+        batch = split.kept[start:start + PRODUCT_BATCH_MAX]
+        room = _storeRoom(store['_id'])
+        skipped += [{'position': row['position'],
+                     'reason': IMPORT_STORE_FULL} for row in batch[room:]]
+        if not batch[:room]:
+            continue
+        stored, lost = _insertBatch(store['_id'], batch[:room], formId)
+        skipped += lost
+        added += [{'position': row['position'], '_id': row['document']['_id']}
+                  for row in stored]
+    added.sort(key=lambda row: row['position'])
+    skipped.sort(key=lambda row: row['position'])
+    return {
+        'added': [{**row, 'name': names[row['position']]} for row in added],
+        'skipped': [{**row, 'name': names[row['position']]}
+                    for row in skipped],
     }
 
 

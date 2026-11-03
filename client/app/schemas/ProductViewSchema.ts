@@ -73,6 +73,10 @@ export type Createdat = string;
  * The photo the shop shows: the url of one of the store's GeneratedPhotos (setProductPhoto)
  */
 export type Photourl = string | null;
+/**
+ * The formId of the spreadsheet import form that added it (ProductActions.importStoreProducts); left out otherwise
+ */
+export type Importformid = string | null;
 
 /**
  * A Products document as stored.
@@ -92,6 +96,7 @@ export interface ProductView {
   isAvailable?: Isavailable;
   createdAt: Createdat;
   photoUrl?: Photourl;
+  importFormId?: Importformid;
 }
 /**
  * Units of a product an order is holding (taken out of inventory).

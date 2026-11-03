@@ -169,7 +169,7 @@ def test_everyHandlerParsesItsGeneratedMessage(fleet, handler):
     assert not unlisted, (f'Push handlers the committed map does not list, so this gate never checks them: '
                           f'{", ".join(unlisted)}. Run `cd server && python pubSubMap.py --write` and commit the map.')
     if handler == '(none)':
-        pytest.skip('this repo has no push handler in its committed map')
+        return  # no push handler: the check above (the map lists every handler) is the whole test
     problems = pubSubModels.handlerProblems(section, handler)
     assert not problems, '\n'.join(problems)
 
