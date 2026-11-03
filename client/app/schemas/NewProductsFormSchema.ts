@@ -55,17 +55,63 @@ export type Hasinventory = boolean;
  */
 export type Description = string | null;
 /**
- * Prefilled rows
+ * Prefilled rows: at most 50, or 200 from a spreadsheet
  *
- * @maxItems 50
+ * @maxItems 200
  */
 export type Products = ChatProductDraft[];
 /**
  * Each prefilled row's photo (by position): the Storage path of an image the owner attached; null without one
  *
- * @maxItems 50
+ * @maxItems 200
  */
 export type Rowphotos = (string | null)[];
+/**
+ * The spreadsheet's name
+ */
+export type Filename = string;
+/**
+ * The sheet read (an XLSX); null for a CSV
+ */
+export type Sheet = string | null;
+/**
+ * The row number the range starts at (as the spreadsheet numbers its rows: the headers and empty rows counted)
+ */
+export type Firstrow = number;
+/**
+ * The row number of the last product row read
+ */
+export type Lastrow = number;
+/**
+ * How many product rows (rows with a value under the headers) the sheet has, as far as it could be read
+ */
+export type Totalrows = number;
+/**
+ * The row number the next import starts at, when the sheet has product rows past lastRow; null otherwise
+ */
+export type Nextfirstrow = number | null;
+/**
+ * The file is longer than what can be read at once: rows past totalRows cannot be imported from it
+ */
+export type Notfullyread = boolean;
+/**
+ * The row's number, as the spreadsheet numbers its rows
+ */
+export type Row = number;
+/**
+ * Its name (cut to a name's length); null without one
+ */
+export type Name1 = string | null;
+/**
+ * Why it was left out
+ */
+export type Reason = string;
+/**
+ * The rows of the range left off the form
+ *
+ * @maxItems 200
+ */
+export type Skippedrows = SpreadsheetImportSkippedRow[];
 
 /**
  * Asks the admin for new products. Answered with NewProductsAnswer.
@@ -76,6 +122,10 @@ export interface NewProductsForm {
   currency: Currency;
   products: Products;
   rowPhotos?: Rowphotos;
+  /**
+   * Where the rows came from, when a spreadsheet: its submit then saves the products itself; left out otherwise
+   */
+  spreadsheetImport?: SpreadsheetImport | null;
 }
 /**
  * A product the admin mentioned, prefilled on the new products
@@ -87,4 +137,27 @@ export interface ChatProductDraft {
   inventory: Inventory;
   hasInventory?: Hasinventory;
   description: Description;
+}
+/**
+ * Where a new products form's rows came from: a spreadsheet the admin
+ * attached (showNewProductsFromSpreadsheet). Its submit saves the
+ * products itself (chatForms._newProducts).
+ */
+export interface SpreadsheetImport {
+  fileName: Filename;
+  sheet: Sheet;
+  firstRow: Firstrow;
+  lastRow: Lastrow;
+  totalRows: Totalrows;
+  nextFirstRow: Nextfirstrow;
+  notFullyRead: Notfullyread;
+  skippedRows: Skippedrows;
+}
+/**
+ * A row of the sheet an import left off the form, and why.
+ */
+export interface SpreadsheetImportSkippedRow {
+  row: Row;
+  name: Name1;
+  reason: Reason;
 }

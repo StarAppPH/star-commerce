@@ -11,14 +11,18 @@ from pydantic import Field
 from objects.base import (MongoModel, AppModel, StoredDocumentKeys,
                           ResponseModel)
 from objects.store import DELIVERY_ZONE_AMOUNT_MAX, StoreCurrency
+from sharedConstants import (PRODUCT_BATCH_MAX,  # noqa: F401 (re-exported)
+                             PRODUCT_DESCRIPTION_MAX_LENGTH,
+                             PRODUCT_IMPORT_ROWS_MAX, PRODUCT_NAME_MAX_LENGTH)
 
 
 # ──────────────────────────────────────────────
 # Products (each belongs to one store)
 # ──────────────────────────────────────────────
 
-PRODUCT_NAME_MAX_LENGTH = 80
-PRODUCT_DESCRIPTION_MAX_LENGTH = 500
+# PRODUCT_NAME_MAX_LENGTH, PRODUCT_DESCRIPTION_MAX_LENGTH, PRODUCT_BATCH_MAX
+# and PRODUCT_IMPORT_ROWS_MAX are in sharedConstants.py (the client checks
+# them too).
 # Caps on what an admin can type: they keep a stray huge number from
 # overflowing MongoDB's int64 (or a price's float precision).
 PRODUCT_INVENTORY_MAX = 1_000_000
@@ -27,8 +31,6 @@ PRODUCT_PRICE_MAX = 10_000_000
 # cannot import this module).
 if DELIVERY_ZONE_AMOUNT_MAX != PRODUCT_PRICE_MAX:
     raise TypeError('DELIVERY_ZONE_AMOUNT_MAX must equal PRODUCT_PRICE_MAX')
-# The most products one addStoreProducts call adds.
-PRODUCT_BATCH_MAX = 50
 # The most products one store holds.
 PRODUCTS_PER_STORE_MAX = 2000
 # How listMyStoreProducts orders an admin's products: by name, best sellers
@@ -103,6 +105,12 @@ class Product(MongoModel):
         None, min_length=1,
         description='The photo the shop shows: the url of one of the '
         "store's GeneratedPhotos (setProductPhoto)")
+    # Stored only on a product a spreadsheet import's form added: never
+    # sent (no response model has it).
+    importFormId: str | None = Field(
+        None, min_length=1, exclude_if=lambda value: value is None,
+        description='The formId of the spreadsheet import form that added '
+        'it (ProductActions.importStoreProducts); left out otherwise')
 
 
 class ProductView(StoredDocumentKeys, Product):

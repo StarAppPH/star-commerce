@@ -41,7 +41,9 @@ from objects.policy import (AcceptsReturns, AuthorizedPaymentMethodRows,
                             RefundMethodAnswer,
                             ReturnConditions, ReturnShippingPaidBy,
                             ReturnWindowDays)
-from objects.product import HAS_INVENTORY_DESCRIPTION, PRODUCT_BATCH_MAX, NewProduct
+from objects.product import (HAS_INVENTORY_DESCRIPTION, PRODUCT_BATCH_MAX,
+                             PRODUCT_IMPORT_ROWS_MAX, PRODUCT_NAME_MAX_LENGTH,
+                             NewProduct)
 from objects.returns import (RETURN_REJECT_REASON_MAX_LENGTH,
                              ReturnItemRow, ReturnReason, ReturnStatus)
 from objects.store import (DELIVERY_ZONES_MAX, HEX_COLOR_PATTERN, DeliveryZoneResponse,
@@ -422,21 +424,65 @@ class ChatProductDraft(ResponseModel):
     description: str | None = Field(..., description='What it is')
 
 
+class SpreadsheetImportSkippedRow(ResponseModel):
+    """A row of the sheet an import left off the form, and why."""
+    row: int = Field(..., description="The row's number, as the "
+                     'spreadsheet numbers its rows')
+    name: str | None = Field(..., max_length=PRODUCT_NAME_MAX_LENGTH,
+                             description='Its name (cut to a name\'s '
+                             'length); null without one')
+    reason: str = Field(..., description='Why it was left out')
+
+
+class SpreadsheetImport(ResponseModel):
+    """Where a new products form's rows came from: a spreadsheet the admin
+    attached (showNewProductsFromSpreadsheet). Its submit saves the
+    products itself (chatForms._newProducts)."""
+    fileName: str = Field(..., description="The spreadsheet's name")
+    sheet: str | None = Field(..., description='The sheet read (an XLSX); '
+                              'null for a CSV')
+    firstRow: int = Field(..., description='The row number the range '
+                          'starts at (as the spreadsheet numbers its rows: '
+                          'the headers and empty rows counted)')
+    lastRow: int = Field(..., description='The row number of the last '
+                         'product row read')
+    totalRows: int = Field(..., description="How many product rows (rows "
+                           'with a value under the headers) the sheet has, '
+                           'as far as it could be read')
+    nextFirstRow: int | None = Field(
+        ..., description='The row number the next import starts at, when '
+        'the sheet has product rows past lastRow; null otherwise')
+    notFullyRead: bool = Field(
+        ..., description='The file is longer than what can be read at '
+        'once: rows past totalRows cannot be imported from it')
+    skippedRows: list[SpreadsheetImportSkippedRow] = Field(
+        ..., max_length=PRODUCT_IMPORT_ROWS_MAX,
+        description='The rows of the range left off the form')
+
+
 class NewProductsForm(ResponseModel):
     """Asks the admin for new products. Answered with NewProductsAnswer."""
     kind: Literal['newProductsForm'] = Field(..., description='The form')
     formId: FormId
     currency: StoreCurrency = Field(..., description='Prices are in it')
     products: list[ChatProductDraft] = Field(
-        ..., max_length=PRODUCT_BATCH_MAX, description='Prefilled rows')
+        ..., max_length=PRODUCT_IMPORT_ROWS_MAX,
+        description=f'Prefilled rows: at most {PRODUCT_BATCH_MAX}, or '
+        f'{PRODUCT_IMPORT_ROWS_MAX} from a spreadsheet')
     # Beside the rows, not on them: a form saved before photos were
     # prefilled, or before they were named rowPhotos, has none. Not named
     # photos: the photo cards' photos are objects, and one path both a
     # value and a parent breaks the turns' projection.
     rowPhotos: list[str | None] = Field(
-        default_factory=list, max_length=PRODUCT_BATCH_MAX,
+        default_factory=list, max_length=PRODUCT_IMPORT_ROWS_MAX,
         description="Each prefilled row's photo (by position): the Storage "
                     "path of an image the owner attached; null without one")
+    # Sent only on a form from a spreadsheet: a form without it reads as
+    # before it existed.
+    spreadsheetImport: SpreadsheetImport | None = Field(
+        None, exclude_if=lambda value: value is None,
+        description='Where the rows came from, when a spreadsheet: its '
+        "submit then saves the products itself; left out otherwise")
 
 
 class PhoneVerificationForm(ResponseModel):
@@ -560,9 +606,10 @@ class NewProductsAnswer(AppModel):
     """A NewProductsForm, filled in."""
     kind: Literal['newProducts'] = Field(..., description='The answer')
     formId: FormId
-    products: list[NewProductAnswerRow] = Field(..., min_length=1,
-                                       max_length=PRODUCT_BATCH_MAX,
-                                       description='The products to add')
+    products: list[NewProductAnswerRow] = Field(
+        ..., min_length=1, max_length=PRODUCT_IMPORT_ROWS_MAX,
+        description=f'The products to add: at most {PRODUCT_BATCH_MAX}, or '
+        f'{PRODUCT_IMPORT_ROWS_MAX} on a form from a spreadsheet')
 
 
 class PhoneVerifiedAnswer(AppModel):

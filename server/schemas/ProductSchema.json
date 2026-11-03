@@ -142,6 +142,20 @@
             "default": null,
             "description": "The photo the shop shows: the url of one of the store's GeneratedPhotos (setProductPhoto)",
             "title": "Photourl"
+        },
+        "importFormId": {
+            "anyOf": [
+                {
+                    "minLength": 1,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The formId of the spreadsheet import form that added it (ProductActions.importStoreProducts); left out otherwise",
+            "title": "Importformid"
         }
     },
     "required": [

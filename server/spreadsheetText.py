@@ -887,7 +887,16 @@ def _sheetRows(zipped: _Zip, path: str, book: _Book,
             yield gap, values
 
 
-def _xlsxText(data: bytes, label: str, writer: _Writer) -> _Cut | None:
+def sheetKey(name: str) -> str:
+    """A sheet's name as one is looked up: case and spaces ignored."""
+    return ' '.join(str(name).split()).casefold()
+
+
+def _xlsxText(data: bytes, label: str, writer: _Writer,
+              only: str | None = None) -> _Cut | None:
+    """An XLSX's sheets as text. With `only` (a sheet name, sheetKey), only
+    that sheet's rows are read: every sheet's name line is still written,
+    no other sheet's rows are scanned, and no sheet count cuts it."""
     zipped = _Zip(data, label)
     try:
         try:
@@ -902,12 +911,13 @@ def _xlsxText(data: bytes, label: str, writer: _Writer) -> _Cut | None:
         name = None
         try:
             for shown, (title, path) in enumerate(sheets):
-                if shown == SPREADSHEET_SHEETS_MAX:
+                if shown == SPREADSHEET_SHEETS_MAX and only is None:
                     raise _Cut('sheets')
                 name = _cleanName(title)
                 writer.rows = 0
                 writer.line(('\n' if shown else '') + f'Sheet: {name}')
-                writer.rows_(_sheetRows(zipped, path, book, writer))
+                if only is None or sheetKey(name) == sheetKey(only):
+                    writer.rows_(_sheetRows(zipped, path, book, writer))
         except _Cut as cut:
             cut.line = _cutLine(cut, writer.rows, name, len(sheets))
             return cut
@@ -923,17 +933,18 @@ def _xlsxText(data: bytes, label: str, writer: _Writer) -> _Cut | None:
 
 
 def spreadsheetText(data: bytes, contentType: str, label: str,
-                    maxChars: int, seconds: float | None = None
-                    ) -> SheetText:
+                    maxChars: int, seconds: float | None = None,
+                    sheet: str | None = None) -> SheetText:
     """The CSV (text/csv) or XLSX file `data` as text of at most `maxChars`
     characters (its rows) plus, when cut, a CUT_PREFIX line, within
     SPREADSHEET_SECONDS_MAX of CPU. A file that cannot be read is a Refused
-    naming `label`; `seconds` (wall time) past, OutOfTime."""
+    naming `label`; `seconds` (wall time) past, OutOfTime. `sheet` names the
+    one XLSX sheet whose rows are read (_xlsxText); a CSV ignores it."""
     writer = _Writer(max(0, maxChars), _Clock(seconds))
     if contentType == CSV_CONTENT_TYPE:
         cut = _csvText(data, label, writer)
     elif contentType == XLSX_CONTENT_TYPE:
-        cut = _xlsxText(data, label, writer)
+        cut = _xlsxText(data, label, writer, sheet)
     else:
         raise Refused(f'{label} {UNREADABLE}')
     text = writer.out.getvalue()

@@ -142,5 +142,19 @@ CHAT_ATTACHMENT_EXTENSIONS = {
 CHAT_ATTACHMENTS_MAX = 4
 CHAT_ATTACHMENT_NAME_MAX_LENGTH = 120
 
+# Products, as the new products form and the server both check them:
+#   PRODUCT_NAME_MAX_LENGTH, PRODUCT_DESCRIPTION_MAX_LENGTH: a product's
+#     name and description, in characters, at most;
+#   PRODUCT_BATCH_MAX: the most products one addStoreProducts call (and a
+#     plain new products form) adds;
+#   PRODUCT_IMPORT_ROWS_MAX: the most rows one spreadsheet import puts on
+#     the new products form (showNewProductsFromSpreadsheet); a longer
+#     sheet is imported a range at a time, and the form's submit saves
+#     them PRODUCT_BATCH_MAX at a time.
+PRODUCT_NAME_MAX_LENGTH = 80
+PRODUCT_DESCRIPTION_MAX_LENGTH = 500
+PRODUCT_BATCH_MAX = 50
+PRODUCT_IMPORT_ROWS_MAX = 200
+
 # Everything above this line ships to every browser. No credentials, no API
 # keys, no bank details, no internal limits.

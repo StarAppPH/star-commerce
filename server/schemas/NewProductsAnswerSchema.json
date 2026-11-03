@@ -92,11 +92,11 @@
             "type": "string"
         },
         "products": {
-            "description": "The products to add",
+            "description": "The products to add: at most 50, or 200 on a form from a spreadsheet",
             "items": {
                 "$ref": "#/$defs/NewProductAnswerRow"
             },
-            "maxItems": 50,
+            "maxItems": 200,
             "minItems": 1,
             "title": "Products",
             "type": "array"

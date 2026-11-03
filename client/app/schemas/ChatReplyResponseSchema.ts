@@ -1306,17 +1306,63 @@ export type Hasinventory2 = boolean;
  */
 export type Description2 = string | null;
 /**
- * Prefilled rows
+ * Prefilled rows: at most 50, or 200 from a spreadsheet
  *
- * @maxItems 50
+ * @maxItems 200
  */
 export type Products3 = ChatProductDraft[];
 /**
  * Each prefilled row's photo (by position): the Storage path of an image the owner attached; null without one
  *
- * @maxItems 50
+ * @maxItems 200
  */
 export type Rowphotos = (string | null)[];
+/**
+ * The spreadsheet's name
+ */
+export type Filename = string;
+/**
+ * The sheet read (an XLSX); null for a CSV
+ */
+export type Sheet = string | null;
+/**
+ * The row number the range starts at (as the spreadsheet numbers its rows: the headers and empty rows counted)
+ */
+export type Firstrow = number;
+/**
+ * The row number of the last product row read
+ */
+export type Lastrow = number;
+/**
+ * How many product rows (rows with a value under the headers) the sheet has, as far as it could be read
+ */
+export type Totalrows = number;
+/**
+ * The row number the next import starts at, when the sheet has product rows past lastRow; null otherwise
+ */
+export type Nextfirstrow = number | null;
+/**
+ * The file is longer than what can be read at once: rows past totalRows cannot be imported from it
+ */
+export type Notfullyread = boolean;
+/**
+ * The row's number, as the spreadsheet numbers its rows
+ */
+export type Row = number;
+/**
+ * Its name (cut to a name's length); null without one
+ */
+export type Name8 = string | null;
+/**
+ * Why it was left out
+ */
+export type Reason2 = string;
+/**
+ * The rows of the range left off the form
+ *
+ * @maxItems 200
+ */
+export type Skippedrows = SpreadsheetImportSkippedRow[];
 /**
  * The form
  */
@@ -1439,7 +1485,7 @@ export type Deliveryzones1 =
 /**
  * What the zone is called, e.g. Makati
  */
-export type Name8 = string;
+export type Name9 = string;
 /**
  * What a delivery into the zone costs, in the store's currency; 0: free
  */
@@ -2085,6 +2131,10 @@ export interface NewProductsForm {
   currency: Currency9;
   products: Products3;
   rowPhotos?: Rowphotos;
+  /**
+   * Where the rows came from, when a spreadsheet: its submit then saves the products itself; left out otherwise
+   */
+  spreadsheetImport?: SpreadsheetImport | null;
 }
 /**
  * A product the admin mentioned, prefilled on the new products
@@ -2096,6 +2146,29 @@ export interface ChatProductDraft {
   inventory: Inventory2;
   hasInventory?: Hasinventory2;
   description: Description2;
+}
+/**
+ * Where a new products form's rows came from: a spreadsheet the admin
+ * attached (showNewProductsFromSpreadsheet). Its submit saves the
+ * products itself (chatForms._newProducts).
+ */
+export interface SpreadsheetImport {
+  fileName: Filename;
+  sheet: Sheet;
+  firstRow: Firstrow;
+  lastRow: Lastrow;
+  totalRows: Totalrows;
+  nextFirstRow: Nextfirstrow;
+  notFullyRead: Notfullyread;
+  skippedRows: Skippedrows;
+}
+/**
+ * A row of the sheet an import left off the form, and why.
+ */
+export interface SpreadsheetImportSkippedRow {
+  row: Row;
+  name: Name8;
+  reason: Reason2;
 }
 /**
  * Asks the shopper to verify their phone number (Firebase sends the
@@ -2136,7 +2209,7 @@ export interface DeliveryPinForm {
  * A zone as a route sends it: its policy and its shape.
  */
 export interface DeliveryZoneResponse {
-  name: Name8;
+  name: Name9;
   deliveryFee: Deliveryfee4;
   deliveryDays: Deliverydays1;
   minimumOrder: Minimumorder1;

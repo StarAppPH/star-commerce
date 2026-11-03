@@ -56,9 +56,11 @@ def _now() -> datetime.datetime:
 
 
 def thinkingTexts() -> dict[str, tuple[str, ...]]:
-    """Each tool's thinking texts, by tool name."""
+    """Each tool's thinking texts, by tool name: the tools' and the form
+    tools' that have any (chatForms.FormTool.thinkingText)."""
+    from chatForms import formThinkingTexts
     from chatTools import THINKING_TEXTS
-    return THINKING_TEXTS
+    return {**THINKING_TEXTS, **formThinkingTexts()}
 
 
 def allTexts() -> set[str]:
@@ -82,7 +84,7 @@ def note(userId: str, storeId: str, turnKey: str | None,
          toolName) -> None:
     """Save one of `toolName`'s thinking texts, at random, as what the turn
     `turnKey` of `userId` is doing. Nothing for no turnKey or a tool with
-    none (a form tool, a name the model made up)."""
+    none (most form tools, a name the model made up)."""
     texts = thinkingTexts().get(toolName) if isinstance(toolName,
                                                         str) else None
     if turnKey is None or not texts:

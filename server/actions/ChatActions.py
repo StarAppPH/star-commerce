@@ -319,11 +319,13 @@ class _BytesInFlight:
         self.held += size
         return True
 
-    def release(self) -> None:
+    def release(self, size: int | None = None) -> None:
+        """Give back `size` of the bytes held, or all of them."""
         global _bytesInFlight
+        size = self.held if size is None else min(size, self.held)
         with _bytesInFlightLock:
-            _bytesInFlight -= self.held
-        self.held = 0
+            _bytesInFlight -= size
+        self.held -= size
 
 
 # ── Attachments ─────────────────────────────
@@ -411,6 +413,27 @@ def _downloadFiles(files: list, deadline: float,
     return photoStorage.downloadFiles(
         files, CHAT_ATTACHMENT_MAX_BYTES, deadline,
         notReal=NOT_A_REAL_ATTACHMENT, skipUnreadable=skipUnreadable)
+
+
+def _readOwnSheet(userId: str, label: str, path: str, sheet: str | None,
+                  inFlight: _BytesInFlight, deadline: float) -> tuple:
+    """One of the caller's own chat spreadsheets, read again and converted
+    for an import (chatForms.FormContext.readSheet): its metadata and
+    contents checked as an attachment's, its bytes held within the
+    process's bytes in flight (`inFlight`, the turn's: else a 503) only
+    until it is converted. (Its SheetText, its content type.)"""
+    [file] = _ownFiles(userId, [(label, path)], deadline)
+    if not chatSpreadsheets.isSheet(file.contentType):
+        raise ValueError(f'{label} {ATTACHMENT_TYPE}')
+    if not inFlight.reserve(file.size):
+        raise _busy()
+    try:
+        [data] = _downloadFiles([file], deadline)
+        return chatSpreadsheets.importText(
+            data, file.contentType, label, deadline - time.monotonic(),
+            sheet), file.contentType
+    finally:
+        inFlight.release(file.size)
 
 
 def _busy() -> ServiceUnavailable:
@@ -836,7 +859,8 @@ def _runModel(toolset: str, userId: str, storeId: str,
               messages: list[dict], progress: dict,
               deadline: float | None = None,
               refusal=None, refusalLevel: int = logging.ERROR,
-              turnKey: str | None = None) -> dict:
+              turnKey: str | None = None,
+              formContext: chatForms.FormContext | None = None) -> dict:
     """Call the model with the tools of `toolset` (chatTools.TOOLS) until
     it replies in text, running its tool calls in between (at most
     MAX_TOOL_CALLS_PER_MESSAGE; past it, one last call without tools): a
@@ -858,7 +882,8 @@ def _runModel(toolset: str, userId: str, storeId: str,
     A setup turn whose createUserStore succeeded goes on with the admin's
     tools (chatForms.setsUpTheStore). A reply that points to a map or a
     card the turn did not show is sent back once with a note
-    (chatForms.nothingShownNudge)."""
+    (chatForms.nothingShownNudge). A form tool that reads the turn's
+    files gets `formContext` (chatForms.FormContext)."""
     from chatTools import TOOLS
     if deadline is None:
         deadline = time.monotonic() + TURN_DEADLINE_SECONDS
@@ -889,12 +914,20 @@ def _runModel(toolset: str, userId: str, storeId: str,
                 elif call['id'] in refusals:
                     toolNames.append(chatModel.UNKNOWN_TOOL)
                     content = chatModel.toolError(refusals[call['id']])
+                elif (call['name'] in formTools
+                      and chatForms.oncePerTurn(call['name'])
+                      and call['name'] in toolNames):
+                    toolNames.append(call['name'])
+                    content = chatModel.toolError(
+                        chatForms.ONCE_PER_TURN.format(name=call['name']))
                 elif call['name'] in formTools:
                     toolNames.append(call['name'])
                     chatModel.remainingSeconds(deadline)
+                    chatThinking.note(userId, storeId, turnKey,
+                                      call['name'])
                     content, form = chatForms.runFormTool(
                         toolset, call['name'], call['arguments'], userId,
-                        storeId)
+                        storeId, formContext)
                     if form is not None:
                         forms[call['id']] = form
                 else:
@@ -1126,7 +1159,12 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
                       'content': chatModel.CHAT_PROMPTS[toolset]},
                      *historyMessages, userMessage],
                     progress, deadline=deadline, refusal=refusal,
-                    refusalLevel=refusalLevel, turnKey=turnKey)
+                    refusalLevel=refusalLevel, turnKey=turnKey,
+                    formContext=chatForms.FormContext(
+                        conversationId, tuple(sent), deadline,
+                        lambda label, path, sheet: _readOwnSheet(
+                            userId, label, path, sheet, inFlight,
+                            deadline)))
             if history['withoutFiles'] is None:
                 answer = run(history['messages'], ownRefusal)
             else:

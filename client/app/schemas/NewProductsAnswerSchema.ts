@@ -14,10 +14,10 @@ export type Kind = "newProducts";
  */
 export type Formid = string;
 /**
- * The products to add
+ * The products to add: at most 50, or 200 on a form from a spreadsheet
  *
  * @minItems 1
- * @maxItems 50
+ * @maxItems 200
  */
 export type Products = [NewProductAnswerRow, ...NewProductAnswerRow[]];
 /**
