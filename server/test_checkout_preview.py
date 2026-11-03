@@ -344,6 +344,65 @@ def test_anotherAnswerKind_doesNotFitTheSummary(clean, firebase, model):
              'paymentMethod': 'cash', 'paymentProvider': None})
 
 
+# Prod (2026-11-03): Muse sent `delivery` as a JSON-encoded string.
+CEBU = {'address': '9WG8+6JP Maryville Subdivision, Orchids St, Cebu City, '
+        '6000 Cebu, Philippines', 'latitude': 10.375516034135416,
+        'longitude': 123.91673160773435}
+CEBU_ZONE = {**HOME_ZONE, 'name': 'Cebu City',
+             'points': [{'latitude': 10.36, 'longitude': 123.90},
+                        {'latitude': 10.36, 'longitude': 123.93},
+                        {'latitude': 10.39, 'longitude': 123.93},
+                        {'latitude': 10.39, 'longitude': 123.90}]}
+
+
+def _toolMessages(fake) -> dict[str, dict]:
+    """The tool results the model was sent back, by call id."""
+    return {m['tool_call_id']: json.loads(m['content'])
+            for m in fake.requests[1]['messages'] if m['role'] == 'tool'}
+
+
+def test_aDeliverySentAsAJsonString_isPreviewedAsADelivery(clean, firebase,
+                                                           model):
+    store, customerId, products = shop(firebase, zones=[CEBU_ZONE],
+                                       **DELIVERS)
+    _fill(customerId, store, (products['Pandesal'], 4))
+    argumentsJson = json.dumps({'delivery': json.dumps(CEBU),
+                                'fulfillment': 'delivery'})
+    assert argumentsJson.startswith('{"delivery": "{\\"address\\": ')
+    fake = model(calls(('c1', 'previewMyCheckout', argumentsJson)),
+                 reply('Your total is below.'))
+
+    res = api.sendStoreChatMessage(customerId, store['_id'], 'No notes')
+
+    preview = _toolMessages(fake)['c1']
+    assert 'error' not in preview
+    assert (preview['fulfillment'], preview['deliveryZone'],
+            preview['deliveryFee']) == ('delivery', 'Cebu City', HOME_FEE)
+    [card] = res['components']
+    assert (card['kind'], card['fulfillment'], card['deliveryZone'],
+            card['deliveryAddress']) == ('checkoutSummary', 'delivery',
+                                         'Cebu City', CEBU['address'])
+
+
+@pytest.mark.parametrize('delivery', [
+    'SECRET {not json', json.dumps([HOME]), json.dumps('SECRET-STRING')])
+def test_aDeliveryStringThatIsNoObject_isRefusedWithTheReason(
+        clean, firebase, model, delivery):
+    store, customerId, products = shop(firebase, **DELIVERS)
+    _fill(customerId, store, (products['Pandesal'], 4))
+    fake = model(calls(('c1', 'previewMyCheckout', json.dumps(
+        {'fulfillment': 'delivery', 'delivery': delivery}))),
+        reply('Sorry.'))
+
+    res = api.sendStoreChatMessage(customerId, store['_id'], 'Check out')
+
+    assert _toolMessages(fake)['c1'] == {
+        'error': 'Invalid arguments for previewMyCheckout: delivery '
+                 '(expected an object)'}
+    assert res['components'] == []
+    assert 'SECRET' not in json.dumps(fake.requests[1]['messages'][-1])
+
+
 def test_theSummaryCard_isAlwaysShown_andItsToolTakesNoShowCard():
     assert 'previewMyCheckout' in chatCards.CARDS
     assert 'previewMyCheckout' not in chatCards.SHOW_CARD_TOOLS

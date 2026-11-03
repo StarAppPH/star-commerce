@@ -43,7 +43,7 @@ from objects.policy import (AcceptsReturns, AuthorizedPaymentMethodRows,
                             ReturnWindowDays)
 from objects.product import (HAS_INVENTORY_DESCRIPTION, PRODUCT_BATCH_MAX,
                              PRODUCT_IMPORT_ROWS_MAX, PRODUCT_NAME_MAX_LENGTH,
-                             NewProduct)
+                             PRODUCTS_PER_STORE_MAX, NewProduct)
 from objects.returns import (RETURN_REJECT_REASON_MAX_LENGTH,
                              ReturnItemRow, ReturnReason, ReturnStatus)
 from objects.store import (DELIVERY_ZONES_MAX, HEX_COLOR_PATTERN, DeliveryZoneResponse,
@@ -96,6 +96,15 @@ class ShopProductsCard(ResponseModel):
     products: list[ChatShopProductRow] = Field(
         ..., max_length=CHAT_CARD_ROWS_MAX, description='The products')
 
+    # Sent only on a full page of a product list (chatCards.withNextPage):
+    # a card without it reads as before it existed.
+    nextSkip: int | None = Field(
+        None, ge=1, le=PRODUCTS_PER_STORE_MAX,
+        exclude_if=lambda value: value is None,
+        description='The skip that lists the next products: the list came '
+        'back full, so there may be more (its Show more button); left out '
+        'otherwise')
+
 
 class ChatStoreProductRow(ResponseModel):
     """A product on the admin's product card."""
@@ -120,6 +129,15 @@ class StoreProductsCard(ResponseModel):
     currency: StoreCurrency = Field(..., description='Every price is in it')
     products: list[ChatStoreProductRow] = Field(
         ..., max_length=CHAT_CARD_ROWS_MAX, description='The products')
+
+    # Sent only on a full page of a product list (chatCards.withNextPage):
+    # a card without it reads as before it existed.
+    nextSkip: int | None = Field(
+        None, ge=1, le=PRODUCTS_PER_STORE_MAX,
+        exclude_if=lambda value: value is None,
+        description='The skip that lists the next products: the list came '
+        'back full, so there may be more (its Show more button); left out '
+        'otherwise')
 
 
 class ChatStoreOrderRow(OrderDeliveryRow):

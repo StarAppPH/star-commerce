@@ -41,11 +41,13 @@ from typing import Callable
 
 from pydantic import TypeAdapter, ValidationError
 
+from actions.ProductActions import PRODUCT_LIST_DEFAULT_LIMIT
 from actions.StoreActions import STORES
 from chatForms import newFormId
 from mongoDb import db
 from objects import (CHAT_CARD_ROWS_MAX, CHAT_COMPONENTS_PER_TURN_MAX,
-                     POLICY_ANSWER_FIELDS, ChatComponent,
+                     POLICY_ANSWER_FIELDS, PRODUCTS_PER_STORE_MAX,
+                     ChatComponent,
                      unansweredPolicyQuestions)
 
 _COMPONENT = TypeAdapter(ChatComponent)
@@ -402,6 +404,40 @@ def _withOfferedPhotos(cards: list[dict], offer: dict) -> None:
             else row for row in card['products']]}
 
 
+# The list tools whose card offers the next page, each with its default
+# limit (the generated handler and the chat pass a missing one as None).
+_PAGED = {'listStoreProducts': PRODUCT_LIST_DEFAULT_LIMIT,
+          'listMyStoreProducts': PRODUCT_LIST_DEFAULT_LIMIT}
+
+
+def withNextPage(card: dict, call: dict) -> dict:
+    """`card` with nextSkip when its list tool's call came back full (as
+    many rows as its limit), so there may be more: the skip of the next
+    page. A call whose arguments are no JSON object, or whose limit or
+    skip is no whole number, adds none."""
+    default = _PAGED.get(call.get('name'))
+    if default is None:
+        return card
+    try:
+        arguments = json.loads(call.get('arguments') or '{}')
+    except (TypeError, ValueError):
+        return card
+    if not isinstance(arguments, dict):
+        return card
+    limit = arguments.get('limit')
+    skip = arguments.get('skip')
+    limit = default if limit is None else limit
+    skip = 0 if skip is None else skip
+    if not all(isinstance(n, int) and not isinstance(n, bool)
+               for n in (limit, skip)):
+        return card
+    nextSkip = skip + limit
+    if limit < 1 or len(card['products']) < limit or (
+            nextSkip > PRODUCTS_PER_STORE_MAX):
+        return card
+    return {**card, 'nextSkip': nextSkip}
+
+
 def _validCard(card: dict, tool: str) -> dict | None:
     """`card` as it is sent and stored; None (logged) when the tool's
     result did not fit it."""
@@ -433,7 +469,8 @@ def build(steps: list[dict], forms: dict[str, dict],
     cardResults = cardResults or {}
     calls = [call for step in steps if step['role'] == 'assistant'
              for call in step.get('toolCalls') or []]
-    names = {call['id']: call['name'] for call in calls}
+    byId = {call['id']: call for call in calls}
+    names = {callId: call['name'] for callId, call in byId.items()}
     hidden = {call['id'] for call in calls if _hidesCard(call)}
     components: list[dict] = []
     for step in steps:
@@ -462,6 +499,7 @@ def build(steps: list[dict], forms: dict[str, dict],
             continue
         if card is None:
             continue
+        card = withNextPage(card, byId[callId])
         card = _validCard(card, name)
         if card is None:
             continue

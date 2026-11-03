@@ -163,7 +163,9 @@ NOT_OFFERED = {
 }
 NO_DELIVERY_ZONES_YET = ("The store hasn't set where it delivers yet: choose "
                          'pickup, or ask the store')
-DELIVERY_REQUIRED = 'A delivery needs the address and the map pin'
+DELIVERY_REQUIRED = ('A delivery needs the address and the map pin: the '
+                     "confirmed address, the pin's latitude and longitude, "
+                     'and any rider notes')
 OUTSIDE_DELIVERY_ZONES = ("The store doesn't deliver to that pin: pin a spot "
                           'inside its delivery zones, or choose pickup')
 BELOW_ZONE_MINIMUM = ('Delivery to {zone} needs items worth at least '

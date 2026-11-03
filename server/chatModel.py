@@ -40,13 +40,13 @@ import threading
 import time
 from typing import Callable, TypeVar
 
-from pydantic import ValidationError
 from pydantic_core import to_json
 
 from mcpCreator import TOOL_NAME_PATTERN
 from objects import (CHAT_TOOL_ARGUMENTS_MAX_LENGTH,
                      CHAT_TOOL_CALL_ID_MAX_LENGTH, CHAT_TOOL_NAME_MAX_LENGTH)
 from services.__request import ServiceUnavailable
+from toolArguments import ArgumentsRefused, validated
 
 CHAT_MODEL = 'muse-spark-1.3'
 CHAT_BASE_URL = 'https://api.meta.ai/v1'
@@ -193,6 +193,14 @@ PIN_IS_NOT_CONFIRMATION = (
     'The delivery pin is not a confirmation: ask for the address and rider '
     'notes before previewMyCheckout; its suggestedAddress is a guess from '
     'the map, never the address until the customer confirms it. ')
+# A refused delivery checkout is fixed or asked about, never made a pickup.
+DELIVERY_REFUSAL_STAYS_DELIVERY = (
+    'When previewMyCheckout or checkoutMyCart refuses a delivery because '
+    'its details are missing, call it again with the full delivery (the '
+    "confirmed address, the pin's latitude and longitude, any notes); for "
+    'any other refusal, relay it and ask the customer (offering pickup as '
+    'a choice is fine). Never switch to pickup, or leave fulfillment out '
+    'to get it, unless the customer chose pickup. ')
 _CUSTOMER_UI = (
     'The app shows what your tools return as cards under your reply '
     '(products, the checkout summary, the order to pay, orders, returns, '
@@ -237,7 +245,7 @@ _CUSTOMER_UI = (
     'open or isn\'t taking orders, tell the customer in one short line '
     'that it isn\'t taking orders yet and they can still look around; '
     'never try another way to order. ' + _FORM_ANSWER_RULE +
-    PIN_IS_NOT_CONFIRMATION)
+    PIN_IS_NOT_CONFIRMATION + DELIVERY_REFUSAL_STAYS_DELIVERY)
 
 CHAT_PROMPTS = {
     'admin': (
@@ -512,17 +520,6 @@ def toolCallProblem(callId, name, arguments) -> str | None:
     return None
 
 
-def _fieldsOf(error: ValidationError) -> str:
-    """The fields a ValidationError refused (items.0.quantity), never the
-    values."""
-    fields = []
-    for detail in error.errors(include_input=False):
-        field = '.'.join(str(part) for part in detail['loc']) or 'arguments'
-        if field not in fields:
-            fields.append(field)
-    return ', '.join(fields)
-
-
 def _toolContent(toolset: str, name, argumentsJson, userId: str,
                  storeId: str) -> str:
     from chatTools import TOOL_CALLS
@@ -533,15 +530,9 @@ def _toolContent(toolset: str, name, argumentsJson, userId: str,
                          else UNKNOWN_TOOL_REFUSAL)
     argsModel, call = calls[name]
     try:
-        arguments = json.loads(argumentsJson or '{}')
-    except (TypeError, ValueError):
-        return toolError(f'The arguments of {name} are not valid JSON')
-    if not isinstance(arguments, dict):
-        return toolError(f'The arguments of {name} must be a JSON object')
-    try:
-        args = argsModel.model_validate(arguments)
-    except ValidationError as error:
-        return toolError(f'Invalid arguments for {name}: {_fieldsOf(error)}')
+        args = validated(argsModel, name, argumentsJson)
+    except ArgumentsRefused as refusal:
+        return toolError(str(refusal))
     try:
         result = call(userId, storeId, args)
     except ToolError as error:
