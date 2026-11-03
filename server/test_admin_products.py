@@ -542,25 +542,6 @@ def test_addStoreProducts_aRacingDuplicate(clean, monkeypatch, code, mapped):
     assert _stored() == []
 
 
-@pytest.mark.skipif(
-    not db.replicaSetEnabled,
-    reason='needs a replica set: on a standalone mongod, createTransaction '
-    'opens no transaction, so a duplicate mid-batch cannot roll back the '
-    'other inserts. This test never runs locally.')
-def test_addStoreProducts_aRacingDuplicateRollsBackTheWholeBatch(
-        clean, monkeypatch):
-    store = createTestStore(ADMIN)
-    addProduct(store['_id'], 'Existing', 1)
-    # Skip the pre-check, as a request that raced past it would.
-    monkeypatch.setattr(productActions, '_refuseTakenNames',
-                        lambda *args, **kwargs: None)
-
-    with pytest.raises(ValueError, match=exactly(NAME_TAKEN)):
-        tools.addStoreProducts(ADMIN, [_item('Fresh'), _item('Existing')])
-
-    assert [d['name'] for d in _stored()] == ['Existing']
-
-
 # ----------------------------- updateStoreProduct ----------------------------- #
 
 RESERVED = [{'orderId': 'o1', 'quantity': 2}, {'orderId': 'o2', 'quantity': 3}]

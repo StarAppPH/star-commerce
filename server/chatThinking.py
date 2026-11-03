@@ -35,7 +35,8 @@ import time
 
 import voiceModel
 from mongoDb import db
-from objects import TURN_KEY_PATTERN, ChatThinking, ThinkingSpeech
+from objects import (TURN_KEY_PATTERN, ChatThinking, ThinkingSpeech,
+                     turnKeyId)
 
 THINKING = 'ChatThinking'
 THINKING_SPEECH = 'ThinkingSpeech'
@@ -69,13 +70,9 @@ def validTurnKey(turnKey) -> str | None:
     """`turnKey` checked: None (or "") is a turn nobody asks about."""
     if turnKey is None or turnKey == '':
         return None
-    if not isinstance(turnKey, str) or not _TURN_KEY.match(turnKey):
+    if not isinstance(turnKey, str) or not _TURN_KEY.fullmatch(turnKey):
         raise ValueError(TURN_KEY_INVALID)
     return turnKey
-
-
-def _key(userId: str, turnKey: str) -> str:
-    return f'{userId}:{turnKey}'
 
 
 def note(userId: str, storeId: str, turnKey: str | None,
@@ -87,7 +84,7 @@ def note(userId: str, storeId: str, turnKey: str | None,
                                                         str) else None
     if turnKey is None or not texts:
         return
-    key = _key(userId, turnKey)
+    key = turnKeyId(userId, turnKey)
     thinking = ChatThinking(_id=key,
                             userId=userId,
                             storeId=storeId,
@@ -108,7 +105,7 @@ def clear(userId: str, turnKey: str | None) -> None:
     if turnKey is None:
         return
     try:
-        db.delete({'_id': _key(userId, turnKey)}, THINKING)
+        db.delete({'_id': turnKeyId(userId, turnKey)}, THINKING)
     except Exception as error:
         logging.warning({'event': 'chatThinkingNotCleared',
                          'errorClass': type(error).__name__})
@@ -120,7 +117,8 @@ def current(userId: str, turnKey) -> dict | None:
     turnKey = validTurnKey(turnKey)
     if turnKey is None:
         return None
-    thinking = db.read({'_id': _key(userId, turnKey), 'userId': userId},
+    thinking = db.read({'_id': turnKeyId(userId, turnKey),
+                        'userId': userId},
                        THINKING,
                        projection={'storeId': 1, 'thinkingText': 1},
                        findOne=True)

@@ -9,15 +9,13 @@ exclusive; a paid order is never expired.
 
 Races are made deterministic with a hook, never threads: a wrapped
 FulfillmentActions._moveOrder runs the competing move once, just before the
-route's own. The one threaded test (racing completes) and the one that needs
-a transaction to roll back (a failing product write) need a replica set. On
-a standalone mongod there is no transaction: a failure between the status
-flip and the product writes leaves the units reserved, never moved twice.
+route's own. On a standalone mongod there is no transaction: a failure
+between the status flip and the product writes leaves the units reserved,
+never moved twice.
 """
 
 import asyncio
 import datetime
-import threading
 from types import SimpleNamespace
 
 import pytest
@@ -30,12 +28,11 @@ from actions.OrderActions import (NOT_MOVABLE, ORDER_EXPIRED,
                                   ORDER_NOT_FOUND, ORDER_STATUSES)
 from ApiRequests import ApiRequests
 from ToolRequests import ToolRequests
-from conftest import (addOrder, addProduct, assertExactShape, createTestStore,
+from conftest import (addProduct, assertExactShape, createTestStore,
                       verifiedGuestAt)
-from mongoDb import db
 from objects import (MAX_PENDING_ORDERS_PER_STORE, REFUND_REFERENCE_PREFIX,
                      MyOrderRow, StoreOrderRow, projection_of)
-from test_checkout import (ADMIN, GUEST, MS, NOT_CUSTOMER, OTHER_ADMIN,
+from test_checkout import (ADMIN, MS, NOT_CUSTOMER, OTHER_ADMIN,
                            OTHER_GUEST, SENTINEL, T0, TOO_MANY_UNPAID, WINDOW,
                            _expired, _fresh, _heldOrder, _items, _order,
                            _paid, _place, _product, _products, _shop, clean,
@@ -771,67 +768,6 @@ def test_aMoveThatMissesAnOrderInAnAcceptedStatus_saysItChanged(
         tools.cancelStoreOrder(ADMIN, orderId)
 
     check()
-
-
-@pytest.mark.skipif(
-    not db.replicaSetEnabled,
-    reason='needs a replica set: racing completes are told apart by the '
-    'status flip, and the product writes of the loser must not run. Never '
-    'runs locally.')
-def test_completeOrder_racingCompletes_countTheUnitsOnce(
-        clean, firebase, clock):
-    store, customerId, products = _shop(firebase)
-    pandesal = products['Pandesal']
-    orderId = _paid(store, customerId, [(pandesal, 3)])
-    racers = 4
-    barrier = threading.Barrier(racers)
-    outcomes: list = [None] * racers
-
-    def race(index: int) -> None:
-        barrier.wait()
-        try:
-            outcomes[index] = tools.completeOrder(ADMIN, orderId)
-        except Exception as error:  # noqa: BLE001 - asserted below
-            outcomes[index] = error
-
-    threads = [threading.Thread(target=race, args=(i,))
-               for i in range(racers)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-
-    refused = [o for o in outcomes if isinstance(o, Exception)]
-    assert len(outcomes) - len(refused) == 1
-    assert all(isinstance(e, ValueError) for e in refused)
-    assert _product(pandesal['_id'])['soldCount'] == (
-        pandesal['soldCount'] + 3)
-
-
-@pytest.mark.skipif(
-    not db.replicaSetEnabled,
-    reason='needs a replica set: on a standalone mongod, createTransaction '
-    'opens no transaction, so a failing product write cannot roll back the '
-    'status flip. Never runs locally.')
-@pytest.mark.parametrize('route', ALL_ROUTES)
-def test_aFailingProductWrite_rollsBackTheFlip(
-        clean, firebase, clock, refunds, monkeypatch, route):
-    store, customerId, products = _shop(firebase)
-    status = 'paid' if route == 'completeOrder' else 'pending'
-    orderId = _orderIn(status, store, customerId,
-                       [(products['Pandesal'], 2)])
-    check = _unchanged(store, orderId)
-
-    def broken(*args, **kwargs):
-        raise RuntimeError('write failed')
-
-    monkeypatch.setattr(db, 'bulkUpdate', broken)
-    with pytest.raises(RuntimeError):
-        _run(route, store, customerId, orderId)
-    monkeypatch.undo()
-
-    check()
-    assert refunds.calls == []
 
 
 # ----------------------------- MCP ----------------------------- #

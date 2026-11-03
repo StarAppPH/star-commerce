@@ -28,7 +28,7 @@ __all__ = ['clock', 'frozenNow', 'model', 'offline']
 COLLECTIONS = [
     'Users', 'Bootstrap', 'Stores', 'Policies', 'Customers', 'Products',
     'Orders', 'Conversations', 'ChatTurns', 'ChatUsage', 'VoiceUsage',
-    'ChatThinking', 'ThinkingSpeech'
+    'ChatThinking', 'ThinkingSpeech', 'ChatTurnKeys'
 ]
 TURN_KEY = 'turn-key-0123456789abcdef'
 MP3 = b'ID3-fake-thinking-mp3'

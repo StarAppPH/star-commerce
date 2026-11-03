@@ -218,7 +218,8 @@ class FoundProductRow(ResponseModel):
 
 class FoundProductsResponse(ResponseModel):
     """What findProductsInPhoto sends: the products found, in the photo's
-    order, and those named but not located."""
+    order, and those named but not located (or whose cut-out could not be
+    saved)."""
     AI_READS: ClassVar[dict[str, str]] = {
         'products': 'the products found',
         'notFound': 'told to the admin',
@@ -228,7 +229,8 @@ class FoundProductsResponse(ResponseModel):
         description='The products found, left to right')
     notFound: list[str] = Field(
         ..., max_length=PHOTO_FIND_ITEMS_MAX,
-        description='The names of products seen but not located')
+        description='The names of products seen but not located, or '
+        'whose cut-out could not be saved')
 
 
 class PhotoColorRow(ResponseModel):

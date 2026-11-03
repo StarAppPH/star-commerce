@@ -1,0 +1,44 @@
+{
+    "description": "What getChatTurnStatus sends: where the caller's turn is.",
+    "properties": {
+        "status": {
+            "anyOf": [
+                {
+                    "enum": [
+                        "running",
+                        "saved"
+                    ],
+                    "type": "string"
+                },
+                {
+                    "enum": [
+                        "failed",
+                        "unknown"
+                    ],
+                    "type": "string"
+                }
+            ],
+            "description": "running; saved (its reply is in the conversation); failed (it ran past its time: send it again); unknown (never seen, ended without saving, or too long ago: send it again)",
+            "title": "Status"
+        },
+        "conversationId": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The conversation it was saved in, once saved",
+            "title": "Conversationid"
+        }
+    },
+    "required": [
+        "status",
+        "conversationId"
+    ],
+    "title": "ChatTurnStatusResponse",
+    "type": "object",
+    "additionalProperties": false
+}

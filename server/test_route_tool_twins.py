@@ -365,10 +365,10 @@ def test_theTwinsAreTheDeclaredOnes():
 
 
 def test_theRealCounts_arePinned():
-    """46 tools serve the AI, 25 routes the people (ApiRequests): a tool or
+    """46 tools serve the AI, 26 routes the people (ApiRequests): a tool or
     route added or removed is a decision, not an accident."""
     assert len(tools()) == 46
-    assert len(routes()) == 25
+    assert len(routes()) == 26
 
 
 @pytest.mark.parametrize('tool', _twins(), ids=lambda tool: tool.__name__)

@@ -5,6 +5,7 @@ import type { BrandColorsPickedAnswer } from '../schemas/BrandColorsPickedAnswer
 import type { CartScreenResponse } from '../schemas/CartScreenResponseSchema';
 import type { ChatReplyResponse } from '../schemas/ChatReplyResponseSchema';
 import type { ChatThinkingResponse } from '../schemas/ChatThinkingResponseSchema';
+import type { ChatTurnStatusResponse } from '../schemas/ChatTurnStatusResponseSchema';
 import type { ConversationListResponse } from '../schemas/ConversationListResponseSchema';
 import type { ConversationTurnsResponse } from '../schemas/ConversationTurnsResponseSchema';
 import type { CustomerSessionResponse } from '../schemas/CustomerSessionResponseSchema';
@@ -547,6 +548,29 @@ import type { WaitingOnYouResponse } from '../schemas/WaitingOnYouResponseSchema
         }
     }
 
+    async getChatTurnStatus(userId: string, turnKey: string): Promise<ApiResponse<ChatTurnStatusResponse>> {
+        try {
+        const res = await fetch(`${this.apiUrl}/getChatTurnStatus`, {
+            method: 'POST',
+            headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`
+            },
+            body: JSON.stringify({"userId": userId, "turnKey": turnKey}),
+            cache: 'no-store'
+        });
+        const data: ApiResponse<ChatTurnStatusResponse> & { msg?: string } = await res.json();
+        if (res.status >= 500) { return { message: data.message, status: 0, data: null }; }
+        
+        if (data.msg) { localStorage.removeItem("access_token"); localStorage.removeItem("user_data"); window.dispatchEvent(new Event("jwt-expired")); return { message: data.msg, status: 401, data: null }; }
+        if (data.jwtToken) { localStorage.setItem("access_token", data.jwtToken); }
+        return data;
+        } catch (error) {
+            console.error("Error:", error);
+            return { message: "Failed to fetch data", status: 0, data: null };
+        }
+    }
+
     async listMyConversations(userId: string, storeId: string | null, before: string | null, limit: number): Promise<ApiResponse<ConversationListResponse>> {
         try {
         const res = await fetch(`${this.apiUrl}/listMyConversations`, {
@@ -640,6 +664,7 @@ export interface RouteResponseModels {
     sendAdminChatMessage: ChatReplyResponse;
     sendStoreChatMessage: ChatReplyResponse;
     getChatThinking: ChatThinkingResponse;
+    getChatTurnStatus: ChatTurnStatusResponse;
     listMyConversations: ConversationListResponse;
     getConversationTurns: ConversationTurnsResponse;
     speakChatThinking: SpokenThinkingResponse;
@@ -668,6 +693,7 @@ export interface RouteRequestBodies {
     sendAdminChatMessage: { userId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | ProductPhotoOfferAnswer | BrandColorsAnswer | BrandColorsPickedAnswer | PlaceOrderAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
     sendStoreChatMessage: { userId: string; storeId: string; message: string | null; conversationId: string | null; form: LocationAnswer | NewProductsAnswer | PhoneVerifiedAnswer | PhotoRequestAnswer | OrderItemsAnswer | PaymentAnswer | HandoverAnswer | ReturnDecisionAnswer | DeliveryPinAnswer | DeliveryZonesAnswer | ProductPhotoAnswer | ProductPhotoOfferAnswer | BrandColorsAnswer | BrandColorsPickedAnswer | PlaceOrderAnswer | null; attachments: string[] | null; turnKey: string | null; speak: boolean | null };
     getChatThinking: { userId: string; turnKey: string };
+    getChatTurnStatus: { userId: string; turnKey: string };
     listMyConversations: { userId: string; storeId: string | null; before: string | null; limit: number };
     getConversationTurns: { userId: string; conversationId: string; beforeSeq: number | null; limit: number };
     speakChatThinking: { userId: string; turnKey: string };

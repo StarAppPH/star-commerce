@@ -46,6 +46,7 @@ credentials: without a loopback emulator, every call is a 503. A Storage failure
 ("Photo storage is unavailable right now"), logged by class only.
 """
 
+import contextlib
 import io
 import logging
 import os
@@ -54,7 +55,7 @@ import secrets
 import threading
 import time
 import unicodedata
-from typing import NamedTuple
+from typing import Iterator, NamedTuple
 from urllib.parse import quote, unquote, urlsplit
 
 from AppConfig import Environment
@@ -123,14 +124,19 @@ MODEL_IMAGE_MAX_PIXELS = 50_000_000
 MODEL_IMAGE_TOO_LARGE = 'is too large: send a smaller photo'
 # The most pixels the server decodes of one photo (about 64 MB as RGBA, a
 # convert's copy doubling it): with 2 photo slots and 2 copy slots, more
-# could exhaust the service's 512 MiB. A JPEG is decoded at a reduced
+# could exhaust the service's 512 MiB. Every full decode goes through
+# draftForDecode, productFinder.uprightImage's (products and colors found
+# in a photo) too. A JPEG is decoded at a reduced
 # scale (Pillow's draft) when that brings it under (a 12 or 48 megapixel
 # phone photo works); a PNG or WebP is decoded at full size, so its own
-# size must be under (_draftedForDecode).
+# size must be under (draftForDecode).
 DECODE_MAX_PIXELS = 16_000_000
 DECODE_TOO_LARGE = 'is too large (over 16 megapixels). Use a smaller photo.'
 # The JPEG reductions Pillow's draft decodes at.
 DRAFT_SCALES = (1, 2, 4, 8)
+# The formats Pillow's draft reduces: a JPEG, and an MPO (a JPEG with more
+# pictures after the first: an Android Ultra HDR photo, read as its first).
+DRAFT_FORMATS = ('JPEG', 'MPO')
 # The EXIF orientation tag, and its value for a photo stored upright.
 EXIF_ORIENTATION = 0x0112
 UPRIGHT = 1
@@ -521,17 +527,18 @@ def readOwnImages(uid: str, photos: list[tuple[str, str]],
                         totalTooLarge=REFERENCES_TOO_LARGE)
 
 
-def _draftedForDecode(opened, label: str,
-                      maxSide: int | None = None) -> None:
+def draftForDecode(opened, label: str,
+                   maxSide: int | None = None) -> None:
     """Make the opened, not yet loaded, image `opened` safe to decode:
-    a JPEG is set (Pillow's draft) to decode at the least reduction that
+    a JPEG (or an MPO, DRAFT_FORMATS) is set (Pillow's draft) to decode at
+    the least reduction that
     brings it under DECODE_MAX_PIXELS, or, with `maxSide`, at the greatest
     that keeps its longest side at least `maxSide` (its own, if shorter: the
     caller scales it down after), whichever reduces more; then its size as it will be decoded must
     be at most DECODE_MAX_PIXELS (a PNG or WebP's own size), else
     DECODE_TOO_LARGE (after the label). Nothing is decoded here."""
     width, height = opened.size
-    if opened.format == 'JPEG':
+    if opened.format in DRAFT_FORMATS:
         scale = next((s for s in DRAFT_SCALES
                       if (width // s) * (height // s) <= DECODE_MAX_PIXELS),
                      DRAFT_SCALES[-1])
@@ -546,6 +553,51 @@ def _draftedForDecode(opened, label: str,
             opened.draft('RGB', (width // scale, height // scale))
     if opened.width * opened.height > DECODE_MAX_PIXELS:
         raise ValueError(f'{label} {DECODE_TOO_LARGE}')
+
+
+@contextlib.contextmanager
+def decodablePhoto(data: bytes, label: str, notReal: str | None = None,
+                   maxSide: int | None = None) -> Iterator:
+    """The photo `data`, opened and made safe to decode in the block:
+    refused over MODEL_IMAGE_MAX_PIXELS by its header (never decoded:
+    MODEL_IMAGE_TOO_LARGE, as Pillow's decompression bomb guard), then held
+    under DECODE_MAX_PIXELS (draftForDecode, with `maxSide`). An image
+    Pillow cannot read, here or while the block decodes it, is `notReal`
+    (default NOT_A_REAL_PHOTO; each message after the label). On an error
+    it is closed; on success the block's image stays usable after it (read
+    from memory, it holds no file)."""
+    from PIL import Image
+    opened = None
+    try:
+        opened = Image.open(io.BytesIO(data))
+        if opened.width * opened.height > MODEL_IMAGE_MAX_PIXELS:
+            raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}')
+        draftForDecode(opened, label, maxSide)
+        yield opened
+    except BaseException as error:
+        if opened is not None:
+            opened.close()
+        if isinstance(error, (Image.DecompressionBombError,
+                              Image.DecompressionBombWarning)):
+            raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}') from None
+        if isinstance(error, (OSError, SyntaxError)):
+            raise ValueError(notReal or f'{label} {NOT_A_REAL_PHOTO}') from None
+        raise
+
+
+def shrunk(image, side: int, resample=None, reducingGap: float | None = 2.0):
+    """`image` scaled down to at most `side` pixels on its long side (as
+    Image.thumbnail, BICUBIC by default), made straight from it: never a
+    full copy first. One that fits is `image` itself."""
+    from PIL import Image
+    width, height = image.size
+    if max(width, height) <= side:
+        return image
+    scale = side / max(width, height)
+    return image.resize(
+        (max(1, round(width * scale)), max(1, round(height * scale))),
+        Image.Resampling.BICUBIC if resample is None else resample,
+        reducing_gap=reducingGap)
 
 
 def modelImage(data: bytes, contentType: str,
@@ -564,7 +616,7 @@ def modelImage(data: bytes, contentType: str,
                 raise ValueError(f'{label} {NOT_A_REAL_PHOTO}')
             if opened.width * opened.height > MODEL_IMAGE_MAX_PIXELS:
                 raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}')
-            _draftedForDecode(opened, label)
+            draftForDecode(opened, label)
             hasAlpha = opened.mode in ('RGBA', 'LA') or (
                 'transparency' in opened.info)
             image = opened.convert('RGBA' if hasAlpha else 'RGB')
@@ -594,7 +646,7 @@ def modelReference(data: bytes, contentType: str,
     larger, re-encoded in its type (a PNG kept a PNG, its transparency too;
     else a JPEG at MODEL_IMAGE_JPEG_QUALITY). One within the side and
     stored upright is returned as is, never decoded. What is decoded is
-    held under DECODE_MAX_PIXELS (_draftedForDecode: a JPEG at a reduced
+    held under DECODE_MAX_PIXELS (draftForDecode: a JPEG at a reduced
     scale), else DECODE_TOO_LARGE. Errors as modelImage's."""
     data, contentType = modelImage(data, contentType, label)
     from PIL import Image, ImageOps
@@ -607,7 +659,7 @@ def modelReference(data: bytes, contentType: str,
             # pixels), so the orientation is read only within the cap. The
             # side is the stored one, read before the draft shrinks it.
             longest = max(opened.size)
-            _draftedForDecode(opened, label, MODEL_REFERENCE_MAX_SIDE)
+            draftForDecode(opened, label, MODEL_REFERENCE_MAX_SIDE)
             upright = opened.getexif().get(EXIF_ORIENTATION,
                                            UPRIGHT) == UPRIGHT
             if longest <= MODEL_REFERENCE_MAX_SIDE and upright:
@@ -643,7 +695,7 @@ def storeOriginal(data: bytes, contentType: str,
     camera, its text chunks: only the color profile is kept), and a PNG's
     or WebP's transparency kept. One that cannot be read is
     NOT_A_REAL_PHOTO, one over MODEL_IMAGE_MAX_PIXELS MODEL_IMAGE_TOO_LARGE
-    (after the label). Decoded under DECODE_MAX_PIXELS (_draftedForDecode:
+    (after the label). Decoded under DECODE_MAX_PIXELS (draftForDecode:
     a larger JPEG kept at a reduced scale, a larger PNG or WebP refused,
     DECODE_TOO_LARGE)."""
     from PIL import Image, ImageOps
@@ -654,7 +706,7 @@ def storeOriginal(data: bytes, contentType: str,
             iccProfile = opened.info.get('icc_profile')
             hasAlpha = opened.mode in ('RGBA', 'LA', 'PA') or (
                 'transparency' in opened.info)
-            _draftedForDecode(opened, label)
+            draftForDecode(opened, label)
             image = ImageOps.exif_transpose(opened)
             if contentType == 'image/jpeg' or not hasAlpha:
                 image = image.convert('RGB')
@@ -793,7 +845,7 @@ def receiptImage(data: bytes, label: str) -> bytes:
     transparency on white, scaled to at most RECEIPT_MAX_SIDE a side. One
     that cannot be read is NOT_A_REAL_PHOTO, one over
     MODEL_IMAGE_MAX_PIXELS MODEL_IMAGE_TOO_LARGE (after the label).
-    Decoded under DECODE_MAX_PIXELS (_draftedForDecode: a JPEG at a
+    Decoded under DECODE_MAX_PIXELS (draftForDecode: a JPEG at a
     reduced scale still RECEIPT_MAX_SIDE a side, a larger PNG or WebP
     refused, DECODE_TOO_LARGE)."""
     from PIL import Image, ImageOps
@@ -801,7 +853,7 @@ def receiptImage(data: bytes, label: str) -> bytes:
         with Image.open(io.BytesIO(data)) as opened:
             if opened.width * opened.height > MODEL_IMAGE_MAX_PIXELS:
                 raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}')
-            _draftedForDecode(opened, label, RECEIPT_MAX_SIDE)
+            draftForDecode(opened, label, RECEIPT_MAX_SIDE)
             image = ImageOps.exif_transpose(opened)
             image = image.convert('RGBA')
     except (Image.DecompressionBombError, Image.DecompressionBombWarning):

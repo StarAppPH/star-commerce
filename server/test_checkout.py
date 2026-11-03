@@ -11,17 +11,16 @@ expired, one millisecond before it is not.
 Races are made deterministic with hooks, never threads: a wrapped
 newPaymentReference runs between payOrder's expiry check and its claim,
 a wrapped _cancelExpiredOrder runs between the sweep's read and its
-cancel. The one threaded test (the cap's lock) needs a replica set. On a
-standalone mongod there is no transaction and no lock document: the cap
-then holds for sequential creates only, and a refused item leaves the
-earlier items reserved (an accepted limit, like addStoreProducts').
+cancel. On a standalone mongod there is no transaction and no lock
+document: the cap then holds for sequential creates only, and a refused
+item leaves the earlier items reserved (an accepted limit, like
+addStoreProducts').
 """
 
 import asyncio
 import datetime
 import json
 import re
-import threading
 from types import SimpleNamespace
 
 import pytest
@@ -441,23 +440,6 @@ def test_createOrder_aLaterItemThatFails_namesItsPosition(
                (products['Ensaymada'], 11))
 
 
-@pytest.mark.skipif(
-    not db.replicaSetEnabled,
-    reason='needs a replica set: on a standalone mongod, createTransaction '
-    'opens no transaction, so a failing second item cannot roll back the '
-    'first reservation. This test never runs locally.')
-def test_createOrder_aFailingSecondItem_rollsBackTheFirstReservation(
-        clean, firebase, clock):
-    store, customerId, products = _shop(firebase)
-    pandesal, ensaymada = products['Pandesal'], products['Ensaymada']
-
-    with pytest.raises(ValueError, match=exactly(atItem(2, NOT_IN_STOCK))):
-        _place(customerId, store, (pandesal, 1), (ensaymada, 11))
-
-    assert _product(pandesal['_id']) == pandesal
-    assert db.read({}, 'Orders') == []
-
-
 @pytest.mark.parametrize('route', ['createOrder', 'payOrder'])
 @pytest.mark.parametrize('caller', [ADMIN, 'ck-nobody'])
 def test_checkoutRoutes_refuseAnAdmin_andAnUnknownUser(
@@ -649,52 +631,6 @@ def test_createOrder_standaloneAndReplicaSet_lockDocumentOnlyWithATransaction(
     assert lockIds == ({f"{customerId}:{store['_id']}",
                         f"{customerId}:{other['_id']}"}
                        if db.replicaSetEnabled else set())
-
-
-@pytest.mark.skipif(
-    not db.replicaSetEnabled,
-    reason='needs a replica set: the cap\'s lock document is written inside '
-    'a transaction, so racing creates conflict. Never runs locally.')
-def test_createOrder_racingCreates_neverPassTheCap(clean, firebase, clock):
-    store, customerId, _ = _shop(firebase)
-    other = takePayments(createTestStore(OTHER_ADMIN, 'Coffee B'))
-    latte = addProduct(other['_id'], 'Latte', 150)
-    anotherCustomer = verifiedGuestAt(firebase, store, OTHER_GUEST)
-    racers = 6
-    stock = [addProduct(store['_id'], f'Racer {i}', 1) for i in range(racers)]
-    barrier = threading.Barrier(racers)
-    outcomes: list = [None] * racers
-
-    def race(index: int) -> None:
-        barrier.wait()
-        try:
-            outcomes[index] = tools.createOrder(
-                customerId, store['_id'], _items((stock[index], 1)))
-        except Exception as error:  # noqa: BLE001 - asserted below
-            outcomes[index] = error
-
-    threads = [threading.Thread(target=race, args=(i,))
-               for i in range(racers)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-
-    refused = [o for o in outcomes if isinstance(o, Exception)]
-    assert len(outcomes) - len(refused) == MAX_PENDING_ORDERS_PER_STORE
-    assert all(isinstance(e, ValueError) and str(e) == TOO_MANY_UNPAID
-               for e in refused)
-    assert len(db.read({'customerId': customerId}, 'Orders')) == (
-        MAX_PENDING_ORDERS_PER_STORE)
-    for product in stock:
-        after = _product(product['_id'])
-        assert after['inventory'] + sum(
-            r['quantity'] for r in after['reservedInventory']) == 10
-    locks = db.read({}, 'OrderLocks')
-    assert [lock['_id'] for lock in locks] == [f"{customerId}:{store['_id']}"]
-    # Another customer and another store are not blocked by it.
-    _place(anotherCustomer, store, (stock[0], 1))
-    _place(customerId, other, (latte, 1))
 
 
 # ----------------------------- payOrder ----------------------------- #

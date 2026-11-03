@@ -4,6 +4,7 @@ import type { ApiResponse } from '@/app/api/ApiResponse';
 import type { ChatReplyResponse } from '@/app/schemas/ChatReplyResponseSchema';
 import type { ChatSpeech } from '@/app/schemas/ChatSpeechSchema';
 import type { ChatThinkingResponse } from '@/app/schemas/ChatThinkingResponseSchema';
+import type { ChatTurnStatusResponse } from '@/app/schemas/ChatTurnStatusResponseSchema';
 import type { SpokenThinkingResponse } from '@/app/schemas/SpokenThinkingResponseSchema';
 import type { ConversationTurnsResponse } from '@/app/schemas/ConversationTurnsResponseSchema';
 import type { ChatComponent, ChatFormAnswer } from './cards/types';
@@ -16,6 +17,11 @@ export const TURNS_PAGE = 20;
 export const MESSAGE_MAX_LENGTH = 2000;
 // How often a turn being answered asks what the assistant is doing.
 const THINKING_POLL_MS = 1000;
+// How often a turn whose reply was lost asks if the server is still answering
+// it, and when it stops asking (the server treats a turn running past 110 s as
+// failed).
+const TURN_STATUS_POLL_MS = 2000;
+const TURN_STATUS_GIVE_UP_MS = 120000;
 
 export type ChatTurnStatus = 'sending' | 'done' | 'failed';
 
@@ -39,6 +45,9 @@ export interface ChatTurnView {
   // What the assistant is doing while it answers (the running tool's
   // thinking text); null before its first tool.
   thinkingText: string | null;
+  // The key this turn was sent with (a failed one is sent again with it, so
+  // the server can tell it is the same turn); null for a loaded turn.
+  turnKey: string | null;
 }
 
 // The photo choice cards whose photo was put on the product by a later
@@ -103,6 +112,7 @@ export interface ChatTransport {
   fileUrl: (path: string) => Promise<string>;
   loadTurns: (conversationId: string, beforeSeq: number | null, limit: number) => Promise<ApiResponse<ConversationTurnsResponse>>;
   thinking: (turnKey: string) => Promise<ApiResponse<ChatThinkingResponse>>;
+  getTurnStatus: (turnKey: string) => Promise<ApiResponse<ChatTurnStatusResponse>>;
   speakThinking: (turnKey: string) => Promise<ApiResponse<SpokenThinkingResponse>>;
 }
 
@@ -134,6 +144,45 @@ function pollThinking(transport: ChatTransport, turnKey: string, onText: (text: 
     window.clearTimeout(timer);
   };
 }
+
+// Where a turn whose reply never came back ended up.
+type TurnOutcome =
+  | { kind: 'saved'; conversationId: string }
+  // `ended`: the server said it failed, or it was seen running first.
+  | { kind: 'failed'; ended: boolean }
+  | { kind: 'unreachable'; message: string };
+
+// Asks every TURN_STATUS_POLL_MS where the turn `turnKey` is, while the server
+// is still answering it, until it is saved or failed, `alive` turns false or
+// TURN_STATUS_GIVE_UP_MS pass.
+async function awaitTurnOutcome(transport: ChatTransport, turnKey: string, alive: () => boolean): Promise<TurnOutcome> {
+  const deadline = Date.now() + TURN_STATUS_GIVE_UP_MS;
+  const giveUp: TurnOutcome = { kind: 'unreachable', message: 'No reply after two minutes. Try again to check for it: your message won’t be sent twice.' };
+  let sawRunning = false;
+  for (;;) {
+    if (!alive()) return { kind: 'unreachable', message: '' };
+    const res = await transport.getTurnStatus(turnKey);
+    if (!alive()) return { kind: 'unreachable', message: '' };
+    if (res.status === 200) {
+      const { status, conversationId } = res.data;
+      if (status === 'saved') {
+        return conversationId ? { kind: 'saved', conversationId } : { kind: 'unreachable', message: 'The reply could not be found. Open the conversation to see it.' };
+      }
+      if (status !== 'running') return { kind: 'failed', ended: status === 'failed' || sawRunning };
+      sawRunning = true;
+    } else if (res.status !== 0 || !sawRunning) {
+      return { kind: 'unreachable', message: res.message };
+    }
+    // Once the turn was seen running, a dropped poll (status 0) is transient:
+    // keep asking until the deadline.
+    if (Date.now() >= deadline) return giveUp;
+    await new Promise<void>((resolve) => { window.setTimeout(resolve, TURN_STATUS_POLL_MS); });
+  }
+}
+
+// What a send came to: the saved reply, or one found saved after its response
+// was lost (no speech: voice mode speaks it with the browser's voice).
+export type SentReply = Pick<ChatReplyResponse, 'reply' | 'components' | 'speech'>;
 
 interface UseChatOptions {
   transport: ChatTransport;
@@ -172,14 +221,24 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
   const idRef = useRef<string | null>(conversationId);
   const turnsRef = useRef<ChatTurnView[]>(turns);
   useEffect(() => { turnsRef.current = turns; }, [turns]);
+  // False once the chat is gone: waiting for a lost reply stops.
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; };
+  }, []);
 
-  const loadPage = useCallback(async (beforeSeq: number | null) => {
+  // Loads a page of the conversation; with `adoptKey` (the local turn whose
+  // reply was found saved) the page's last turn replaces that turn, the
+  // other local turns stay around it and the earlier turns already loaded
+  // stay. Resolves to the page, or null when it could not load.
+  const loadPage = useCallback(async (beforeSeq: number | null, adoptKey: string | null = null): Promise<ChatTurnView[] | null> => {
     const id = idRef.current;
-    if (!id) return;
+    if (!id) return null;
     const res = await transport.loadTurns(id, beforeSeq, TURNS_PAGE);
     if (res.status !== 200) {
       setLoadError(res.message);
-      return;
+      return null;
     }
     setLoadError(null);
     const page: ChatTurnView[] = res.data.turns
@@ -197,10 +256,26 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
         form: null,
         uploaded: null,
         thinkingText: null,
+        turnKey: null,
       }))
       .reverse();
-    setHasEarlier(res.data.turns.length === TURNS_PAGE);
-    setTurns((current) => (beforeSeq === null ? page : [...page, ...current]));
+    const current = turnsRef.current;
+    let next: ChatTurnView[];
+    if (adoptKey !== null) {
+      const firstSeq = page[0]?.seq ?? 0;
+      const earlier = current.filter((turn) => turn.seq !== null && turn.seq < firstSeq);
+      if (earlier.length === 0) setHasEarlier(res.data.turns.length === TURNS_PAGE);
+      const at = current.findIndex((turn) => turn.key === adoptKey);
+      const before = current.slice(0, at < 0 ? current.length : at).filter((turn) => turn.seq === null);
+      const after = at < 0 ? [] : current.slice(at + 1).filter((turn) => turn.seq === null);
+      next = [...earlier, ...page.slice(0, -1), ...before, ...page.slice(-1), ...after];
+    } else {
+      setHasEarlier(res.data.turns.length === TURNS_PAGE);
+      next = beforeSeq === null ? page : [...page, ...current];
+    }
+    turnsRef.current = next;
+    setTurns(next);
+    return page;
   }, [transport]);
 
   useEffect(() => {
@@ -246,9 +321,10 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     onThinking: OnThinking | undefined,
     speak: boolean,
     uploaded: UploadedFiles | null,
-  ): Promise<ChatReplyResponse | null> => {
+    turnKey: string,
+    resume: boolean,
+  ): Promise<SentReply | null> => {
     const isNew = idRef.current === null;
-    const turnKey = newTurnKey();
     const stopPolling = pollThinking(transport, turnKey, (text) => {
       replaceTurn(key, (turn) => (turn.status === 'sending' ? { ...turn, thinkingText: text } : turn));
       onThinking?.(text, async () => {
@@ -256,16 +332,51 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
         return spoken.status === 200 ? spoken.data.audio : null;
       });
     });
+    const fail = (error: string) => {
+      replaceTurn(key, (turn) => ({ ...turn, status: 'failed', answeredFormId: null, error, thinkingText: null }));
+      return null;
+    };
+    // The reply was lost on the way: it is on the server (saved). Shows it
+    // as if it had arrived; null when the conversation could not be loaded.
+    const adoptSaved = async (conversationId: string): Promise<SentReply | null> => {
+      idRef.current = conversationId;
+      const page = await loadPage(null, key);
+      const last = page?.[page.length - 1];
+      if (!last) return null;
+      onSaved?.(last);
+      if (isNew) onStarted?.(conversationId, turnsRef.current);
+      return { reply: last.reply ?? '', components: last.components, speech: null };
+    };
+    const savedNotLoaded = 'The reply was saved but could not be loaded. Open the conversation to see it.';
+    // A saved turn is shown as if it had arrived: its reply, or the failed
+    // turn; null when the outcome is not 'saved'.
+    const settle = async (outcome: TurnOutcome): Promise<{ reply: SentReply | null } | null> => (
+      outcome.kind === 'saved' ? { reply: (await adoptSaved(outcome.conversationId)) ?? fail(savedNotLoaded) } : null
+    );
     let res: ApiResponse<ChatReplyResponse>;
     try {
+      // Try again always costs one status round trip first.
+      if (resume) {
+        const outcome = await awaitTurnOutcome(transport, turnKey, () => aliveRef.current);
+        const settled = await settle(outcome);
+        if (settled) return settled.reply;
+        if (outcome.kind === 'unreachable') return fail(outcome.message || 'Failed to fetch data');
+      }
       res = await transport.send(message, idRef.current, form, uploaded?.urls ?? null, turnKey, speak);
+      if (res.status !== 200) {
+        // Any failed send may have reached the server: ask where the turn is.
+        const outcome = await awaitTurnOutcome(transport, turnKey, () => aliveRef.current);
+        const settled = await settle(outcome);
+        if (settled) return settled.reply;
+        if (outcome.kind === 'unreachable' && outcome.message) return fail(outcome.message);
+        // The turn ended without a reply (it may have been refused as still
+        // being answered): ours to explain. A turn never seen is the send's.
+        if (outcome.kind === 'failed' && outcome.ended) return fail('Couldn’t get your reply. Try again.');
+      }
     } finally {
       stopPolling();
     }
-    if (res.status !== 200) {
-      replaceTurn(key, (turn) => ({ ...turn, status: 'failed', answeredFormId: null, error: res.message, thinkingText: null }));
-      return null;
-    }
+    if (res.status !== 200) return fail(res.message);
     idRef.current = res.data.conversationId;
     const done = replaceTurn(key, (turn) => ({
       ...turn,
@@ -283,7 +394,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     if (saved) onSaved?.(saved);
     if (isNew) onStarted?.(res.data.conversationId, done);
     return res.data;
-  }, [transport, onStarted, onSaved, replaceTurn]);
+  }, [transport, onStarted, onSaved, replaceTurn, loadPage]);
 
   // The turn being sent, if any: the next one waits for it, as the server
   // answers one turn of a conversation at a time. Never rejects.
@@ -302,8 +413,10 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     onThinking?: OnThinking,
     speak = false,
     uploaded: UploadedFiles | null = null,
-  ): Promise<ChatReplyResponse | null> => {
+    resumeKey: string | null = null,
+  ): Promise<SentReply | null> => {
     const key = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const turnKey = resumeKey ?? newTurnKey();
     const pending: ChatTurnView = {
       key,
       seq: null,
@@ -318,12 +431,13 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
       form,
       uploaded,
       thinkingText: null,
+      turnKey,
     };
     const withPending = [...turnsRef.current, pending];
     turnsRef.current = withPending;
     setTurns(withPending);
 
-    const run = queueRef.current.then(() => sendNow(key, message, form, onThinking, speak, uploaded));
+    const run = queueRef.current.then(() => sendNow(key, message, form, onThinking, speak, uploaded, turnKey, resumeKey !== null));
     queueRef.current = run.catch(() => null);
     return run;
   }, [sendNow]);
@@ -346,7 +460,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
   // A spoken message, or a form answered in voice mode: its reply, how to
   // stream it spoken, and its components.
   const talk = useCallback(async (input: VoiceInput, onThinking?: OnThinking): Promise<VoiceAnswer | null> => {
-    let saved: ChatReplyResponse | null;
+    let saved: SentReply | null;
     if (typeof input === 'string') {
       const message = input.trim();
       if (!message) return null;
@@ -373,7 +487,7 @@ export function useChat({ transport, conversationId, initialTurns, onStarted, on
     const rest = turnsRef.current.filter((turn) => turn.key !== key);
     turnsRef.current = rest;
     setTurns(rest);
-    await send(failed.form ? null : failed.userText || null, failed.form, undefined, false, failed.uploaded);
+    await send(failed.form ? null : failed.userText || null, failed.form, undefined, false, failed.uploaded, failed.turnKey);
   }, [send]);
 
   const sending = turns.some((turn) => turn.status === 'sending');

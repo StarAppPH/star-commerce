@@ -68,6 +68,7 @@ export function AdminWorkspaceProvider({ userId, children }: { userId: string; c
     fileUrl: (path) => ownFileUrl(storage, path),
     loadTurns: (conversationId, beforeSeq, limit) => adminRequest(() => server.getConversationTurns(userId, conversationId, beforeSeq, limit)),
     thinking: (turnKey) => adminRequest(() => server.getChatThinking(userId, turnKey)),
+    getTurnStatus: (turnKey) => adminRequest(() => server.getChatTurnStatus(userId, turnKey)),
     speakThinking: (turnKey) => adminRequest(() => server.speakChatThinking(userId, turnKey)),
   }), [adminRequest, server, userId]);
 

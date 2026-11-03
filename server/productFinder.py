@@ -16,7 +16,12 @@ findProducts() takes one photo of several products side by side:
 Both models get a copy no longer than FIND_MODEL_SIDE pixels on its long
 side (a phone photo is several MB); the boxes are scaled back to the
 photo. The photo is turned upright first (its EXIF orientation), so the
-crops are too. The photo, the names and the phrases are never logged.
+crops are too. It is decoded under photoStorage.DECODE_MAX_PIXELS, as
+every photo the server decodes (photoStorage.draftForDecode): a larger
+JPEG at a reduced scale, which the crops are then cut from; a larger PNG
+or WebP is refused. The naming call's attempts wait at most
+FIND_LIST_ATTEMPT_SECONDS each, so a hung one leaves time for its retry
+and for SAM. The photo, the names and the phrases are never logged.
 """
 
 import base64
@@ -31,6 +36,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 import chatModel
+import photoStorage
 import samModel
 from objects import PHOTO_FIND_ITEMS_MAX, PRODUCT_NAME_MAX_LENGTH
 from services.__request import ServiceUnavailable
@@ -45,10 +51,16 @@ FIND_CROP_JPEG_QUALITY = 90
 FIND_CROP_MARGIN = 0.08
 # Two boxes overlapping this much (intersection over union) are one product.
 FIND_SAME_BOX_IOU = 0.7
-# A photo of more pixels is refused (Pillow's decompression bomb guard).
-FIND_MAX_PIXELS = 50_000_000
+# Each attempt of the naming call (Muse Spark) waits at most this: a hung
+# one is retried with time left for SAM (chatModel.complete's retry).
+FIND_LIST_ATTEMPT_SECONDS = 25
+PHOTO_LABEL = 'The photo'
 NOT_A_PHOTO = "The photo couldn't be read: send a JPG, PNG or WebP photo"
-PHOTO_TOO_LARGE = 'The photo is too large: send one under 50 megapixels'
+# A PNG or WebP over photoStorage.DECODE_MAX_PIXELS.
+PHOTO_TOO_LARGE = f'{PHOTO_LABEL} {photoStorage.DECODE_TOO_LARGE}'
+# A photo over photoStorage.MODEL_IMAGE_MAX_PIXELS by its header, or one
+# Pillow's decompression bomb guard stops: never decoded.
+PHOTO_OVER_MAX = f'{PHOTO_LABEL} {photoStorage.MODEL_IMAGE_TOO_LARGE}'
 
 LIST_PROMPT = (
     'You list the products for sale in a photo a shop owner took of their '
@@ -90,17 +102,20 @@ class Finding:
 
 def uprightImage(data: bytes, mode: str = 'RGB'):
     """The photo, upright (its EXIF orientation) and in `mode` (RGB, or
-    RGBA to keep a logo's transparent pixels: colorFinder)."""
-    from PIL import Image, ImageOps
-    try:
-        with Image.open(io.BytesIO(data)) as opened:
-            if opened.width * opened.height > FIND_MAX_PIXELS:
-                raise ValueError(PHOTO_TOO_LARGE)
-            image = ImageOps.exif_transpose(opened).convert(mode)
-    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
-        raise ValueError(PHOTO_TOO_LARGE) from None
-    except (OSError, SyntaxError):
-        raise ValueError(NOT_A_PHOTO) from None
+    RGBA to keep a logo's transparent pixels: colorFinder), decoded as
+    photoStorage.decodablePhoto lets it: over MODEL_IMAGE_MAX_PIXELS by its
+    header refused (PHOTO_OVER_MAX), then under DECODE_MAX_PIXELS (a larger
+    JPEG or MPO at a reduced scale, a larger PNG or WebP refused,
+    PHOTO_TOO_LARGE). One full image is held at a time but while it is
+    turned or converted: turned in place, converted only when not already
+    in `mode`."""
+    from PIL import ImageOps
+    with photoStorage.decodablePhoto(data, PHOTO_LABEL,
+                                     notReal=NOT_A_PHOTO) as image:
+        image.load()
+        ImageOps.exif_transpose(image, in_place=True)
+        if image.mode != mode:
+            image = image.convert(mode)
     return image
 
 
@@ -113,9 +128,8 @@ def _jpeg(image, quality: int) -> bytes:
 def modelCopy(image) -> str:
     """The photo (RGB) as the models get it: a JPEG data URL, its long side
     at most FIND_MODEL_SIDE pixels."""
-    copy = image.copy()
-    copy.thumbnail((FIND_MODEL_SIDE, FIND_MODEL_SIDE))
-    data = _jpeg(copy, FIND_MODEL_JPEG_QUALITY)
+    data = _jpeg(photoStorage.shrunk(image, FIND_MODEL_SIDE),
+                 FIND_MODEL_JPEG_QUALITY)
     return f'data:image/jpeg;base64,{base64.b64encode(data).decode()}'
 
 
@@ -150,7 +164,7 @@ def _listProducts(dataUrl: str, deadline: float) -> list[tuple[str, str]]:
         [{'role': 'developer', 'content': LIST_PROMPT},
          {'role': 'user', 'content': [
              {'type': 'image_url', 'image_url': {'url': dataUrl}}]}],
-        None, deadline)
+        None, deadline, attemptSeconds=FIND_LIST_ATTEMPT_SECONDS)
     return parseListing(response.choices[0].message.content)
 
 

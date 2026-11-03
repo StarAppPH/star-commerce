@@ -246,6 +246,8 @@ class mongoDb():
         # What a chat turn is doing (chatThinking.py), deleted when the turn
         # ends, else soon after.
         self.db['ChatThinking'].create_index('expireAt', expireAfterSeconds=0)
+        # Each chat turn's turnKey claim (chatTurnKeys.py), deleted a day on.
+        self.db['ChatTurnKeys'].create_index('expireAt', expireAfterSeconds=0)
         # The spoken thinking texts, looked up by text when one is removed
         # (chatThinking.syncThinkingSpeech).
         self.db['ThinkingSpeech'].create_index('text')

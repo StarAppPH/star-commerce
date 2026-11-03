@@ -46,6 +46,7 @@ export function ShopWorkspaceProvider({ session, children }: { session: GuestSes
       current.customerId, conversationId, beforeSeq, limit,
     )),
     thinking: (turnKey) => guestRequest((current) => server.getChatThinking(current.customerId, turnKey)),
+    getTurnStatus: (turnKey) => guestRequest((current) => server.getChatTurnStatus(current.customerId, turnKey)),
     speakThinking: (turnKey) => guestRequest((current) => server.speakChatThinking(current.customerId, turnKey)),
   }), [guestRequest, server]);
 

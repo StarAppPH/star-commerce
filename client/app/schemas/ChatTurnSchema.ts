@@ -2475,6 +2475,10 @@ export type Cachedtokens = number;
  */
 export type Model = string;
 /**
+ * The client's turnKey it was sent with (chatTurnKeys.py); null when sent without one, or stored before
+ */
+export type Turnkey = string | null;
+/**
  * When it was saved
  */
 export type Createdat4 = string;
@@ -2506,6 +2510,7 @@ export interface ChatTurn {
    */
   usage: ChatTokenUsage;
   model: Model;
+  turnKey?: Turnkey;
   createdAt: Createdat4;
 }
 /**

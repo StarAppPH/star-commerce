@@ -175,6 +175,9 @@ class ChatTurn(MongoModel):
     toolCallCount: int = Field(..., ge=0, description='Tool calls it ran')
     usage: ChatTokenUsage = Field(..., description='The tokens it used')
     model: str = Field(..., description='The model that answered')
+    turnKey: str | None = Field(
+        None, description="The client's turnKey it was sent with "
+        '(chatTurnKeys.py); null when sent without one, or stored before')
     createdAt: datetime.datetime = Field(..., description='When it was saved')
 
     @model_validator(mode='after')

@@ -1,0 +1,76 @@
+{
+    "description": "A ChatTurnKeys document: the claim of one chat turn's turnKey, so a\nmessage sent again with it (a phone that lost the reply and retried)\nruns no second turn (chatTurnKeys.py). Its _id is turnKeyId(userId,\nturnKey), so a caller only ever reads their own; deleted when the turn\nends unsaved, and by a TTL index on expireAt.",
+    "properties": {
+        "_id": {
+            "title": "Id",
+            "type": "string"
+        },
+        "_version": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Version"
+        },
+        "userId": {
+            "description": "The Users or Customers _id",
+            "title": "Userid",
+            "type": "string"
+        },
+        "claimId": {
+            "description": "The claiming turn's own random id: only it marks the claim saved or releases it",
+            "minLength": 1,
+            "title": "Claimid",
+            "type": "string"
+        },
+        "status": {
+            "description": "running until the turn is saved (saved); a turn that ends unsaved deletes it",
+            "enum": [
+                "running",
+                "saved"
+            ],
+            "title": "Status",
+            "type": "string"
+        },
+        "conversationId": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The conversation it was saved in; null before",
+            "title": "Conversationid"
+        },
+        "runningUntil": {
+            "description": "Past it, a turn still running is failed (its process stopped): as long as a conversation lock",
+            "format": "date-time",
+            "title": "Runninguntil",
+            "type": "string"
+        },
+        "expireAt": {
+            "description": "When it is deleted",
+            "format": "date-time",
+            "title": "Expireat",
+            "type": "string"
+        }
+    },
+    "required": [
+        "userId",
+        "claimId",
+        "status",
+        "runningUntil",
+        "expireAt"
+    ],
+    "title": "ChatTurnKey",
+    "type": "object",
+    "additionalProperties": false
+}

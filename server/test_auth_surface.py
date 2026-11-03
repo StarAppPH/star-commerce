@@ -103,6 +103,9 @@ JWT_ROUTES_WITHOUT_ROLE_ACCESS = {
     # reads "<userId>:<turnKey>" with that userId).
     'getChatThinking',
     'speakChatThinking',
+    # A lost reply's turn: only the caller's own claim (chatTurnKeys.status
+    # reads "<userId>:<turnKey>" with that userId).
+    'getChatTurnStatus',
     # The cart: the caller's own cart at the store (customerAtStore; its _id
     # is "<userId>:<storeId>").
     'getMyCart',

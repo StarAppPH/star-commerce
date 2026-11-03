@@ -96,7 +96,7 @@ export type Name = string;
  */
 export type Imageurl = string;
 /**
- * The names of products seen but not located
+ * The names of products seen but not located, or whose cut-out could not be saved
  *
  * @maxItems 12
  */
@@ -117,7 +117,8 @@ export type Notfound =
 
 /**
  * What findProductsInPhoto sends: the products found, in the photo's
- * order, and those named but not located.
+ * order, and those named but not located (or whose cut-out could not be
+ * saved).
  */
 export interface FoundProductsResponse {
   products: Products;

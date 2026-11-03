@@ -73,6 +73,12 @@ given back. Tool calls it already ran stay
 done (an order placed, say): the user can ask again, and the order routes
 guard their own state.
 
+One turn per turnKey (chatTurnKeys.py): a message sent again with the
+turnKey of a turn running or saved (a phone that lost the reply) is
+refused before the slot, and getChatTurnStatus tells the client whether to
+wait, open the conversation or send it again. A tool with its own deadline
+leaves the turn time to save and to reply (turnDeadline.py).
+
 The clock: every read of now is _now(), which reads this module's
 `datetime`, so a test freezes it by replacing ChatActions.datetime.
 """
@@ -90,8 +96,10 @@ import chatForms
 import chatModel
 import chatSpreadsheets
 import chatThinking
+import chatTurnKeys
 import photoStorage
 import toolWarnings
+import turnDeadline
 from actions.OrderActions import customerAtStore
 from actions.ProductActions import _validLimit
 from actions.callSlots import slot
@@ -110,6 +118,7 @@ from objects import (CHAT_ATTACHMENT_EXTENSIONS, CHAT_ATTACHMENT_MAX_BYTES,
                      CHAT_TITLE_MAX_LENGTH,
                      CHAT_TOOL_CALL_ID_MAX_LENGTH, HISTORY_ATTACHMENT_TURNS,
                      ChatAttachment, ChatFormAnswer, ChatThinkingResponse,
+                     ChatTurnStatusResponse,
                      ChatReplyResponse, ChatStep, ChatTokenUsage,
                      ChatToolCall, ChatTurn, ChatTurnRow, Conversation,
                      ConversationListResponse, ConversationRow,
@@ -903,9 +912,14 @@ def _runModel(toolset: str, userId: str, storeId: str,
                     chatModel.remainingSeconds(deadline)
                     chatThinking.note(userId, storeId, turnKey,
                                       call['name'])
-                    full, ai = chatModel.toolResult(
-                        toolset, call['name'], call['arguments'], userId,
-                        storeId)
+                    # A tool with its own deadline leaves the turn time
+                    # to reply (turnDeadline); one out of time is a tool
+                    # error the model answers.
+                    with turnDeadline.runningTool(
+                            deadline - time.monotonic()):
+                        full, ai = chatModel.toolResult(
+                            toolset, call['name'], call['arguments'],
+                            userId, storeId)
                     # The model and the stored step get the AI copy, with
                     # the warnings found in the full result; the cards
                     # get the full result, held for this turn only.
@@ -950,14 +964,19 @@ def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
               storeId: str, seq: int, userTurn: dict, answer: dict,
               components: list[dict],
               busyUntil: datetime.datetime | None,
-              attachments: list[dict] = ()) -> None:
+              attachments: list[dict] = (),
+              turnKey: str | None = None,
+              claimId: str | None = None) -> None:
     """Store the turn and move its conversation on, in one transaction (on
     a replica set). `conversation` is the new conversation to insert, or
     None for an existing one (its lock, `busyUntil`, is cleared). The
     conversation is written first: without a transaction (a local mongod),
     a lost lock then stores no turn, and a turn is never stored without its
     conversation. `attachments` are the message's files (ChatAttachment
-    dicts: never their bytes)."""
+    dicts: never their bytes). The turn's turnKey claim (its `claimId`)
+    is marked saved in the same transaction, after the conversation and
+    before the turn (chatTurnKeys.markSaved): a claim taken over stores no
+    turn."""
     now = _now()
     turn = ChatTurn(conversationId=conversationId,
                     userId=userId,
@@ -975,6 +994,7 @@ def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
                     toolCallCount=len(answer['toolNames']),
                     usage=answer['usage'],
                     model=chatModel.CHAT_MODEL,
+                    turnKey=turnKey,
                     createdAt=now,
                     _version=0).model_dump(by_alias=True)
 
@@ -995,6 +1015,8 @@ def _saveTurn(conversation: dict | None, conversationId: str, userId: str,
                 # The lock outlives the deadline, so this needs a turn that
                 # overran it: no turn is stored.
                 raise RuntimeError('The conversation lock ran out mid-turn')
+        chatTurnKeys.markSaved(userId, turnKey, claimId, conversationId,
+                               session)
         db.create(turn, CHAT_TURNS, session=session)
 
     db.createTransaction(save)
@@ -1007,16 +1029,23 @@ def _chatTurn(audience: str, toolset: str, userId: str, storeId: str,
     files of the download URLs `attachments`, checked first:
     _validAttachments) and the assistant's reply, with the tools of
     `toolset`, saved as a turn of the conversation `conversationId` (None:
-    a new one). `turnKey` names the turn to getChatThinking.
-    Refused (503) while CHAT_TURNS_AT_ONCE turns run."""
-    chatThinking.validTurnKey(turnKey)
+    a new one). `turnKey` names the turn to getChatThinking and
+    getChatTurnStatus, and is claimed first (chatTurnKeys.claim: refused
+    while that turn runs or once it is saved; released when this ends
+    unsaved). Refused (503) while CHAT_TURNS_AT_ONCE turns run."""
+    turnKey = chatThinking.validTurnKey(turnKey)
     files = _validAttachments(userId, attachments)
     if files and form is not None:
         raise ValueError(FORM_WITH_ATTACHMENTS)
-    with slot(_turnSlots, chatModel.unavailable):
-        return _slottedTurn(audience, toolset, userId, storeId, message,
-                            conversationId, form, attachments=files,
-                            turnKey=turnKey)
+    claimId = chatTurnKeys.claim(userId, turnKey, CONVERSATION_LOCK_SECONDS)
+    try:
+        with slot(_turnSlots, chatModel.unavailable):
+            return _slottedTurn(audience, toolset, userId, storeId, message,
+                                conversationId, form, attachments=files,
+                                turnKey=turnKey, claimId=claimId)
+    finally:
+        # Never raises: the turn's own error is the one that counts.
+        chatTurnKeys.release(userId, turnKey, claimId)
 
 
 def _userTurn(message, formAnswer, conversationId: str | None,
@@ -1044,11 +1073,12 @@ def _newTitle(userText: str, files: list[tuple[str, str]]) -> str:
 
 def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
                  message, conversationId, form, attachments=(),
-                 turnKey=None) -> dict:
+                 turnKey=None, claimId=None) -> dict:
     """The turn of _chatTurn, in its slot. `attachments` are the
     message's files, checked (_validAttachments: their labels and paths;
     _chatTurn refuses them with a form answer). What the turn `turnKey` is
-    doing is cleared when it ends."""
+    doing is cleared when it ends; its claim (`claimId`) is marked saved
+    with it."""
     turnKey = chatThinking.validTurnKey(turnKey)
     files = list(attachments)
     formAnswer = chatForms.validAnswer(form)
@@ -1158,7 +1188,8 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
                                      chatCards.CardContext(storeId),
                                      answer['cardResults'])
         _saveTurn(newConversation, conversationId, userId, storeId, seq,
-                  userTurn, answer, components, busyUntil, sent)
+                  userTurn, answer, components, busyUntil, sent, turnKey,
+                  claimId)
         busyUntil = None  # cleared by the save
         toolWarnings.markShown(storeId, answer['warningsTold'])
     finally:
@@ -1332,6 +1363,20 @@ class ChatActions():
         thinking = chatThinking.current(userId, turnKey)
         return {'thinkingText': None if thinking is None
                 else thinking['thinkingText']}
+
+    @route_config(httpMethod='POST',
+                  jwtRequired=True,
+                  successMessage='Turn status fetched',
+                  responseModel=ChatTurnStatusResponse)
+    def getChatTurnStatus(self, userId: str, turnKey: str) -> dict:
+        """Where the caller's own chat turn `turnKey` is, for a client
+        that lost its reply: running (wait), saved (its reply is in
+        conversationId), failed (it ran past its time) or unknown (never
+        seen, ended unsaved, or a day old): send it again, same turnKey."""
+        turnKey = chatThinking.validTurnKey(turnKey)
+        if turnKey is None:
+            raise ValueError(chatThinking.TURN_KEY_INVALID)
+        return chatTurnKeys.status(userId, turnKey)
 
     @route_config(httpMethod='POST',
                   jwtRequired=True,

@@ -8,6 +8,7 @@ answers SAM with a box per phrase."""
 
 import io
 import json
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -242,3 +243,173 @@ def test_parseListing_keepsEachNameOnce_andCutsItsLimits():
     assert len(listed) == 2
     assert len(listed[1][0]) == 80
     assert len(listed[1][1]) == productFinder.FIND_PHRASE_MAX_LENGTH
+
+
+def test_aJpegOverTheDecodeCap_isDecodedReduced_andCutOutWhereSamFoundIt(
+        fakes, monkeypatch):
+    # The 400 x 200 photo over the cap: decoded at half scale (draft).
+    monkeypatch.setattr(photoStorage, 'DECODE_MAX_PIXELS', 30_000)
+
+    res = tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+
+    _, red = savedImage(fakes.bucket, res['products'][0]['imageUrl'])
+    # SAM's box (in its 400 x 200 copy's pixels) scaled to the 200 x 100
+    # photo: half the full-size cut-out, the product still in its middle.
+    assert red.size == (58, 70)
+    assert red.getpixel((29, 35)) == pytest.approx((255, 0, 0), abs=12)
+
+
+def test_aPngOverTheDecodeCap_isRefused_beforeAnyCall(fakes, monkeypatch):
+    monkeypatch.setattr(photoStorage, 'DECODE_MAX_PIXELS', 30_000)
+    png = io.BytesIO()
+    Image.open(io.BytesIO(groupPhoto())).save(png, 'PNG')
+    fakes.bucket.objects[GROUP] = {'data': png.getvalue(),
+                                   'contentType': 'image/png',
+                                   'metadata': None}
+
+    with pytest.raises(ValueError, match=re.escape(
+            productFinder.PHOTO_TOO_LARGE)):
+        tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+
+    assert productFinder.PHOTO_TOO_LARGE == (
+        'The photo is too large (over 16 megapixels). Use a smaller photo.')
+    assert fakes.meta.chatCalls == [] and findCounts() == [0, 0]
+
+
+def test_aSecondFindAtOnce_isA503_beforeTheQuota(fakes):
+    assert PhotoActions.PRODUCT_FINDS_AT_ONCE == 1
+    PhotoActions._findSlots.acquire()
+    try:
+        with pytest.raises(ServiceUnavailable):
+            tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+    finally:
+        PhotoActions._findSlots.release()
+
+    assert fakes.meta.chatCalls == [] and findCounts() == []
+    # Free again, it finds.
+    assert len(tools.findProductsInPhoto(
+        ADMIN, downloadUrl(GROUP))['products']) == 2
+
+
+def test_theNamingCall_waitsAtMostItsOwnAttempt(fakes):
+    tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+
+    [listing] = fakes.meta.chatCalls
+    assert listing['timeout'] == productFinder.FIND_LIST_ATTEMPT_SECONDS == 25
+    # The default attempt of every other chat call is unchanged.
+    assert chatModel.CLIENT_TIMEOUT_SECONDS > productFinder.FIND_LIST_ATTEMPT_SECONDS
+
+
+def test_aSaveFailingMidway_keepsTheCutOutsSaved_andTheFind(fakes,
+                                                            monkeypatch):
+    realSave = photoStorage.saveFoundPhoto
+    saves = []
+
+    def failSecond(*args):
+        saves.append(args)
+        if len(saves) == 2:
+            raise photoStorage.unavailable()
+        return realSave(*args)
+
+    monkeypatch.setattr(photoStorage, 'saveFoundPhoto', failSecond)
+
+    res = tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+
+    assert [p['name'] for p in res['products']] == ['Red Mug']
+    savedImage(fakes.bucket, res['products'][0]['imageUrl'])
+    assert res['notFound'] == ['Blue Bowl']
+    assert findCounts() == [1, 1]
+
+
+def test_aFirstSaveFailing_isRaised_andGivesTheFindBack(fakes, monkeypatch):
+    def fail(*args):
+        raise photoStorage.unavailable()
+
+    monkeypatch.setattr(photoStorage, 'saveFoundPhoto', fail)
+
+    with pytest.raises(ServiceUnavailable):
+        tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+
+    assert findCounts() == [0, 0]
+
+
+def test_anMpoPhoto_isDecodedReduced_likeAJpeg(fakes, monkeypatch):
+    # An Android Ultra HDR photo is an MPO: a JPEG with a second picture.
+    first = Image.open(io.BytesIO(groupPhoto()))
+    mpo = io.BytesIO()
+    first.save(mpo, 'MPO', save_all=True,
+               append_images=[Image.new('RGB', (WIDTH, HEIGHT), 'gray')])
+    assert Image.open(io.BytesIO(mpo.getvalue())).format == 'MPO'
+    fakes.bucket.objects[GROUP] = {'data': mpo.getvalue(),
+                                   'contentType': 'image/jpeg',
+                                   'metadata': None}
+    monkeypatch.setattr(photoStorage, 'DECODE_MAX_PIXELS', 30_000)
+
+    res = tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+
+    _, red = savedImage(fakes.bucket, res['products'][0]['imageUrl'])
+    assert red.size == (58, 70)
+    with photoStorage.decodablePhoto(mpo.getvalue(), 'The photo') as opened:
+        assert opened.size == (WIDTH // 2, HEIGHT // 2)
+
+
+def test_aPhotoOverTheHeaderCap_isRefused_neverDecoded(fakes, monkeypatch):
+    monkeypatch.setattr(photoStorage, 'MODEL_IMAGE_MAX_PIXELS', 50_000)
+
+    with pytest.raises(ValueError, match=re.escape(
+            productFinder.PHOTO_OVER_MAX)):
+        tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+
+    assert fakes.meta.chatCalls == [] and findCounts() == [0, 0]
+
+
+def bigJpeg(width: int = 5000, height: int = 4000) -> bytes:
+    image = Image.new('RGB', (width, height), (30, 90, 160))
+    image.paste('red', (100, 100, 900, 900))
+    out = io.BytesIO()
+    image.save(out, 'JPEG', quality=60)
+    return out.getvalue()
+
+
+def test_uprightImage_ofALargeJpeg_isDecodedAtAReducedScale(monkeypatch):
+    from PIL import JpegImagePlugin
+    drafts = []
+    realDraft = JpegImagePlugin.JpegImageFile.draft
+
+    def spy(self, mode, size):
+        drafts.append((mode, size))
+        return realDraft(self, mode, size)
+
+    monkeypatch.setattr(JpegImagePlugin.JpegImageFile, 'draft', spy)
+    data = bigJpeg()
+    assert 5000 * 4000 > photoStorage.DECODE_MAX_PIXELS
+
+    for mode in ('RGB', 'RGBA'):
+        image = productFinder.uprightImage(data, mode)
+
+        assert image.mode == mode
+        assert image.width * image.height <= photoStorage.DECODE_MAX_PIXELS
+        # The least reduction that fits: half scale, never full size.
+        assert image.size == (2500, 2000)
+    # The decode was reduced by Pillow's draft, not by a full decode first.
+    assert drafts and all(size[0] < 5000 for _, size in drafts)
+
+
+def test_aFindThatFailsMidway_releasesItsSlot_soTheNextFindRuns(
+        fakes, monkeypatch):
+    realSave = photoStorage.saveFoundPhoto
+
+    def fail(*args):
+        raise photoStorage.unavailable()
+
+    monkeypatch.setattr(photoStorage, 'saveFoundPhoto', fail)
+    with pytest.raises(ServiceUnavailable):
+        tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+    monkeypatch.setattr(photoStorage, 'saveFoundPhoto', realSave)
+
+    res = tools.findProductsInPhoto(ADMIN, downloadUrl(GROUP))
+
+    assert [p['name'] for p in res['products']] == ['Red Mug', 'Blue Bowl']
+    # Not held by the failed one: the slot can be taken and given back.
+    assert PhotoActions._findSlots.acquire(blocking=False)
+    PhotoActions._findSlots.release()

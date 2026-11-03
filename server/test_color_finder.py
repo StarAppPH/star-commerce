@@ -7,7 +7,9 @@ chatModel.client(): its responses.create answers SAM with a box per
 phrase. test_chat's clock (autouse) is chatModel's time, so a deadline is
 read from it."""
 
+import base64
 import io
+import re
 import json
 from types import SimpleNamespace
 
@@ -19,6 +21,7 @@ import chatForms
 import chatModel
 import colorFinder
 import photoStorage
+import productFinder
 import samModel
 from actions import PhotoActions
 from ApiRequests import ApiRequests
@@ -353,3 +356,41 @@ def test_theSetupChat_canReadColors():
     assert 'findColorsInPhoto' in chatForms.SETUP_ROUTE_TOOLS
     assert 'findColorsInPhoto' in chatModel.CHAT_PROMPTS['adminSetup']
     assert 'findColorsInPhoto' in chatModel.CHAT_PROMPTS['admin']
+
+
+def test_aFocusOnALargeJpeg_isFoundOnTheReducedPhoto_andReadWhereSamFoundIt(
+        fakes, monkeypatch):
+    # The 400 x 200 JPEG over the cap is decoded at half scale (200 x 100)
+    # and SAM's copy is cut to 100 pixels: the box (in the 400 x 200 frame
+    # SAM names) is mapped back onto the reduced photo.
+    monkeypatch.setattr(photoStorage, 'DECODE_MAX_PIXELS', 30_000)
+    monkeypatch.setattr(productFinder, 'FIND_MODEL_SIDE', 100)
+    fakes.bucket.objects[LOGO] = {'data': photo('JPEG'),
+                                  'contentType': 'image/jpeg',
+                                  'metadata': None}
+    createTestStore(ADMIN)
+
+    res = tools.findColorsInPhoto(ADMIN, downloadUrl(LOGO),
+                                  'green square logo')
+
+    [call] = fakes.meta.samCalls
+    sent = call['input'][0]['content'][1]['image_url']
+    sentImage = Image.open(io.BytesIO(base64.b64decode(sent.split(',', 1)[1])))
+    assert max(sentImage.size) <= 100
+    assert res['focusFound'] is True
+    greenest = Image.new('RGB', (1, 1), res['colors'][0]['hex']).getpixel((0, 0))
+    assert greenest == pytest.approx((0x1F, 0x7A, 0x4D), abs=12)
+
+
+def test_findColorsInPhoto_aPngOverTheDecodeCap_isRefused_beforeAnyCall(
+        fakes, monkeypatch):
+    createTestStore(ADMIN)
+    monkeypatch.setattr(photoStorage, 'DECODE_MAX_PIXELS', 30_000)
+
+    with pytest.raises(ValueError, match=re.escape(
+            productFinder.PHOTO_TOO_LARGE)):
+        tools.findColorsInPhoto(ADMIN, downloadUrl(LOGO),
+                                'green square logo')
+
+    assert fakes.meta.samCalls == []
+    assert colorFindCounts() in ([], [0, 0])

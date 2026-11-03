@@ -25,7 +25,7 @@
             "additionalProperties": false
         }
     },
-    "description": "What findProductsInPhoto sends: the products found, in the photo's\norder, and those named but not located.",
+    "description": "What findProductsInPhoto sends: the products found, in the photo's\norder, and those named but not located (or whose cut-out could not be\nsaved).",
     "properties": {
         "products": {
             "description": "The products found, left to right",
@@ -37,7 +37,7 @@
             "type": "array"
         },
         "notFound": {
-            "description": "The names of products seen but not located",
+            "description": "The names of products seen but not located, or whose cut-out could not be saved",
             "items": {
                 "type": "string"
             },

@@ -332,8 +332,11 @@ from objects.voice import (VOICE_NAME_MAX_LENGTH,
                            VOICE_PAGE_TOKEN_MAX_LENGTH, VoiceUsage,
                            VoiceRow,
                            VoiceListResponse)
-from objects.thinking import (TURN_KEY_PATTERN, ChatThinking, ThinkingSpeech,
-                              ChatThinkingResponse, SpokenThinkingResponse)
+from objects.thinking import (TURN_KEY_PATTERN, turnKeyId, ChatThinking,
+                              ThinkingSpeech,
+                              ChatThinkingResponse, SpokenThinkingResponse,
+                              TurnKeyStatus, TurnStatus, ChatTurnKey,
+                              ChatTurnStatusResponse)
 from objects.toolWarning import ToolWarningCode, ToolWarningShown
 from objects.report import (StoreReportKind, STORE_REPORT_KINDS,
                             STORE_REPORT_DEFAULT_LIMIT,

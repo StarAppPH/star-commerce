@@ -18,13 +18,16 @@ focus: a short phrase naming the part to read ("green square logo").
    and the PHOTO_COLORS_MAX biggest are returned, biggest first.
 
 No model reads the colors: the chat model cannot see exact pixel values,
-and Pillow can. The photo and the focus are never logged.
+and Pillow can. The photo is decoded as productFinder.uprightImage does
+(under photoStorage.DECODE_MAX_PIXELS, a larger JPEG at a reduced scale).
+The photo and the focus are never logged.
 """
 
 import math
 from collections import Counter
 from dataclasses import dataclass
 
+import photoStorage
 import productFinder
 from objects import PHOTO_COLORS_MAX
 
@@ -64,9 +67,8 @@ def isNeutral(rgb: tuple[int, int, int]) -> bool:
 def _opaquePixels(image) -> list[tuple[int, int, int]]:
     """The RGB of each opaque pixel of `image` (RGBA), shrunk first."""
     from PIL import Image
-    copy = image.copy()
-    copy.thumbnail((COLOR_SAMPLE_SIDE, COLOR_SAMPLE_SIDE),
-                   resample=Image.Resampling.NEAREST, reducing_gap=None)
+    copy = photoStorage.shrunk(image, COLOR_SAMPLE_SIDE,
+                               Image.Resampling.NEAREST, None)
     return [(r, g, b) for r, g, b, a in copy.get_flattened_data()
             if a >= COLOR_MIN_ALPHA]
 
@@ -125,8 +127,10 @@ def readColors(data: bytes, focus: str | None,
     image = productFinder.uprightImage(data, 'RGBA')
     if focus is None:
         return ColorReading(mainColors(image), None)
+    # Shrunk before it is flattened: no second full-size image.
     box = productFinder.biggestMatch(
-        productFinder.modelCopy(_flattened(image)), focus, deadline)
+        productFinder.modelCopy(_flattened(photoStorage.shrunk(
+            image, productFinder.FIND_MODEL_SIDE))), focus, deadline)
     if box is None:
         return ColorReading(mainColors(image), False)
     # No margin: the colors around the part are not its own.

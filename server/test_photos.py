@@ -1973,3 +1973,40 @@ def test_readOwnImages_aHeicByContent_asksToConvert(fakes, brand):
     assert str(error.value).startswith('imageUrls[0]')
     assert photoStorage.CONVERT_PHOTO in str(error.value)
     assert MINE not in str(error.value)
+
+
+# ------------------------------ shrunk ------------------------------ #
+
+
+def test_shrunk_aPhotoWithinTheSide_isReturnedItself():
+    from PIL import Image
+    image = Image.new('RGB', (300, 200))
+
+    assert photoStorage.shrunk(image, 300) is image
+    assert photoStorage.shrunk(image, 1000) is image
+
+
+def test_shrunk_scalesTheLongSide_keepingTheProportions():
+    from PIL import Image
+    wide = photoStorage.shrunk(Image.new('RGB', (400, 200)), 100)
+    tall = photoStorage.shrunk(Image.new('RGB', (200, 400)), 100)
+    sliver = photoStorage.shrunk(Image.new('RGB', (10000, 3)), 100)
+
+    assert wide.size == (100, 50)
+    assert tall.size == (50, 100)
+    assert sliver.size == (100, 1)
+
+
+def test_shrunk_nearestWithNoReducingGap_keepsOnlyTheSourceColors():
+    from PIL import Image
+    checker = Image.new('RGB', (64, 64))
+    for x in range(64):
+        for y in range(64):
+            checker.putpixel((x, y), (255, 0, 0) if (x // 8 + y // 8) % 2
+                             else (0, 0, 255))
+
+    small = photoStorage.shrunk(checker, 16, Image.Resampling.NEAREST, None)
+
+    assert small.size == (16, 16)
+    assert {color for _, color in small.getcolors()} == {(255, 0, 0),
+                                                         (0, 0, 255)}

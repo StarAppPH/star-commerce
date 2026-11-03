@@ -4546,6 +4546,19 @@
             "title": "Model",
             "type": "string"
         },
+        "turnKey": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The client's turnKey it was sent with (chatTurnKeys.py); null when sent without one, or stored before",
+            "title": "Turnkey"
+        },
         "createdAt": {
             "description": "When it was saved",
             "format": "date-time",

@@ -73,7 +73,12 @@ cut-out's URL, which the new products form then takes as that row's photo
 (and setUploadedProductPhotos its original). Each store looks through at
 most STORE_DAILY_FIND_CAP group photos a day, and all stores together at
 most PRODUCT_FIND_DAILY_CAP_ALL (PhotoUsage counters, given back when the
-find fails).
+find fails). A process looks through PRODUCT_FINDS_AT_ONCE photo at a time
+(a 503 past it, before the quota).
+
+Every photo tool's deadline (PHOTO_DEADLINE_SECONDS) and its saves'
+(SAVE_SECONDS) are cut, inside a chat turn, to what the turn leaves
+(turnDeadline.py), so the turn's model can still reply after it.
 
 Every photo the model made keeps its full prompt (GeneratedPhoto.prompt:
 the base, its style and shot lines, the notes), and
@@ -109,6 +114,7 @@ import imageModel
 import photoStorage
 import productFinder
 import samModel
+import turnDeadline
 from actions.callSlots import slot
 from actions.ProductActions import (PRODUCT_NOT_FOUND, PRODUCTS,
                                     adminProductRow, validBatch)
@@ -196,10 +202,19 @@ _copySlots = threading.BoundedSemaphore(COPY_CALLS_AT_ONCE)
 # for the rest of the app.
 PHOTO_CALLS_AT_ONCE = 2
 _photoSlots = threading.BoundedSemaphore(PHOTO_CALLS_AT_ONCE)
+# The group photos one process looks through at once (findProductsInPhoto,
+# inside a photo slot too): each holds its decoded photo (up to
+# photoStorage.DECODE_MAX_PIXELS) for its whole naming and SAM calls, and
+# two at once once took the service past its 512 MiB. A find past it is a
+# 503 the admin can retry, before any quota is taken.
+PRODUCT_FINDS_AT_ONCE = 1
+_findSlots = threading.BoundedSemaphore(PRODUCT_FINDS_AT_ONCE)
 # The call's reads and model call end by this deadline, and the saves get
-# SAVE_SECONDS after the model answered. Cloud Run's request timeout is
-# what caps a request (gunicorn's gthread --timeout only watches the
-# worker), and it is above both together.
+# SAVE_SECONDS after the model answered; inside a chat turn both are cut to
+# the turn's time (turnDeadline.toolDeadline / saveDeadline), so its model
+# can still reply. Cloud Run's request timeout is what caps a request
+# (gunicorn's gthread --timeout only watches the worker), and it is above
+# both together.
 PHOTO_DEADLINE_SECONDS = 90
 SAVE_SECONDS = 20
 # The least time the model call may start with: less, and it is skipped.
@@ -599,7 +614,7 @@ def _saveImages(userId: str, store: dict, paths: list[str],
     its own prompt) right after, within SAVE_SECONDS. Returns the
     response's rows. When one fails, the saved ones are returned (the
     failure logged, class only); with none saved, it is raised."""
-    deadline = time.monotonic() + SAVE_SECONDS
+    deadline = turnDeadline.saveDeadline(SAVE_SECONDS)
     saved = []
     try:
         for image, prompt in images:
@@ -658,7 +673,7 @@ def generateProductPhotos(model,
                           prompt: str | None = None,
                           productName: str | None = None,
                           notes: str | None = None) -> dict:
-    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+    deadline = turnDeadline.toolDeadline(PHOTO_DEADLINE_SECONDS)
     store = requireOwnerStore(userId, PROMPT_STORE_FIELDS)
     paths = _validImageUrls(userId, imageUrls)
     productName = _validText(productName, PRODUCT_NAME_LABEL,
@@ -746,7 +761,7 @@ def _copyOriginal(userId: str, store: dict, productId: str, path: str,
 def setUploadedProductPhotos(model,
                              userId: str,
                              products: list[UploadedProductPhoto]) -> dict:
-    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+    deadline = turnDeadline.toolDeadline(PHOTO_DEADLINE_SECONDS)
     store = requireOwnerStore(userId, PROMPT_STORE_FIELDS)
     if (not isinstance(products, list)
             or not 1 <= len(products) <= PRODUCT_BATCH_MAX):
@@ -863,7 +878,7 @@ def makeProductPhotoChoices(model,
                             productId: str,
                             prompt: str | None = None,
                             notes: str | None = None) -> dict:
-    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+    deadline = turnDeadline.toolDeadline(PHOTO_DEADLINE_SECONDS)
     store = requireOwnerStore(userId, PROMPT_STORE_FIELDS)
     product = None
     if isinstance(productId, str) and productId:
@@ -901,10 +916,38 @@ def makeProductPhotoChoices(model,
         'photos': photos, 'notGenerated': notGenerated})
 
 
+def _saveFound(userId: str, found: list, keys: list[str]
+               ) -> tuple[list[dict], list[str]]:
+    """Save each cut-out of `found` (productFinder.FoundProduct) to the
+    admin's found folder within SAVE_SECONDS (turnDeadline.saveDeadline),
+    one after another. Returns the rows of those saved and the names of
+    those not: a save failing keeps the cut-outs saved before it (returned,
+    so none is left unused; the failure logged, class only) and stops; with
+    none saved, the find's quota (`keys`) is given back and it is raised."""
+    saveBy = turnDeadline.saveDeadline(SAVE_SECONDS)
+    products = []
+    for position, product in enumerate(found):
+        try:
+            saved = photoStorage.saveFoundPhoto(
+                userId, generateRandomString(), product.photo, saveBy)
+        except Exception as error:
+            if not products:
+                giveBackQuotas(PHOTO_USAGE, keys)
+                raise
+            logging.warning({'event': 'foundPhotoSaveFailed',
+                             'errorClass': type(error).__name__,
+                             'saved': len(products),
+                             'found': len(found)})
+            return products, [left.name for left in found[position:]]
+        products.append({'name': product.name,
+                         'imageUrl': photoStorage.publicPathUrl(saved)})
+    return products, []
+
+
 def findProductsInPhoto(model,
                         userId: str,
                         imageUrl: str) -> dict:
-    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+    deadline = turnDeadline.toolDeadline(PHOTO_DEADLINE_SECONDS)
     store = requireOwnerStore(userId, {'_id': 1})
     if not isinstance(imageUrl, str) or not imageUrl.strip():
         raise ValueError(IMAGE_URL_MISSING)
@@ -912,7 +955,9 @@ def findProductsInPhoto(model,
         userId, photoStorage.objectPathFromUrl(imageUrl, 'imageUrl'),
         'imageUrl')
     started = time.monotonic()
-    with slot(_photoSlots, samModel.unavailable):
+    # The find slot first: a busy one takes no photo slot and no quota.
+    with (slot(_findSlots, samModel.unavailable),
+          slot(_photoSlots, samModel.unavailable)):
         keys = _takeFindQuota(store['_id'])
         try:
             [(data, _)] = photoStorage.readOwnImages(
@@ -922,31 +967,25 @@ def findProductsInPhoto(model,
             # A find that failed is not counted.
             giveBackQuotas(PHOTO_USAGE, keys)
             raise
-        saveBy = time.monotonic() + SAVE_SECONDS
-        products = []
-        for product in finding.found:
-            saved = photoStorage.saveFoundPhoto(
-                userId, generateRandomString(), product.photo, saveBy)
-            products.append({'name': product.name,
-                             'imageUrl': photoStorage.publicPathUrl(
-                                 saved)})
+        products, notSaved = _saveFound(userId, finding.found, keys)
     # Never the URL, the path or the names.
     logging.info({
         'event': 'productsInPhoto',
         'storeId': store['_id'],
         'found': len(products),
         'notFound': len(finding.notFound),
+        'notSaved': len(notSaved),
         'durationMs': round((time.monotonic() - started) * 1000),
     })
     return projectedCopy(model, {'products': products,
-                                 'notFound': finding.notFound})
+                                 'notFound': finding.notFound + notSaved})
 
 
 def findColorsInPhoto(model,
                       userId: str,
                       imageUrl: str,
                       focus: str | None = None) -> dict:
-    deadline = time.monotonic() + PHOTO_DEADLINE_SECONDS
+    deadline = turnDeadline.toolDeadline(PHOTO_DEADLINE_SECONDS)
     # A store not set up yet reads colors too (its brand colors come
     # from createUserStore).
     store = requireAnyOwnerStore(userId, {'_id': 1})

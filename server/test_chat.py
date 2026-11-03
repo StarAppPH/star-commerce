@@ -2092,7 +2092,8 @@ def test_theChatListLimits_areTheirOwn_andTheProductLimitIsUnchanged(
 
 # ----------------------------- M. indexes ----------------------------- #
 
-CHAT_COLLECTIONS = ['Conversations', 'ChatTurns', 'ChatUsage']
+CHAT_COLLECTIONS = ['Conversations', 'ChatTurns', 'ChatUsage',
+                    'ChatTurnKeys']
 
 
 @pytest.fixture
@@ -2126,6 +2127,8 @@ def test_ensureIndexes_buildsTheThreeChatIndexes_andRunsTwiceAsANoOp(
     assert turns['unique'] is True
     usageIndex = indexOn('ChatUsage', [('expireAt', 1)])
     assert usageIndex['expireAfterSeconds'] == 0
+    turnKeysIndex = indexOn('ChatTurnKeys', [('expireAt', 1)])
+    assert turnKeysIndex['expireAfterSeconds'] == 0
     snapshot = {
         name: db.db[name].index_information() for name in CHAT_COLLECTIONS
     }
