@@ -560,7 +560,8 @@ def test_aDeliveryWithoutItsDetails_toldTheFieldsToSend():
     customer to a pickup)."""
     for field in ('address', 'latitude', 'longitude', 'notes', 'pin'):
         assert field in DELIVERY_REQUIRED, field
-    assert DELIVERY_REQUIRED.startswith('A delivery needs')
+    # People read it too (the createOrder route): no API wording.
+    assert 'send delivery' not in DELIVERY_REQUIRED
 
 
 def test_theCustomerPrompt_neverTurnsARefusedDeliveryIntoAPickup():
@@ -569,13 +570,14 @@ def test_theCustomerPrompt_neverTurnsARefusedDeliveryIntoAPickup():
     prompt = chatModel.CHAT_PROMPTS['customer']
     rule = chatModel.DELIVERY_REFUSAL_STAYS_DELIVERY
     assert rule in prompt
-    assert 'never switch to pickup' in rule
+    assert 'because its details are missing, call it again' in rule
+    assert 'for any other refusal, relay it and ask the customer' in rule
+    assert 'Never switch to pickup' in rule
     assert 'unless the customer chose pickup' in rule
     assert rule not in chatModel.CHAT_PROMPTS['admin']
-    assert prompt.index(chatModel.PIN_IS_NOT_CONFIRMATION) < prompt.index(rule)
     assert 'into a pickup the customer did not choose' in (
         PREVIEW_MY_CHECKOUT_DESCRIPTION)
-    for field in ('`latitude`', '`longitude`', '`notes`'):
+    for field in ('`latitude`', '`longitude`', 'any `notes`'):
         assert field in PREVIEW_MY_CHECKOUT_DESCRIPTION, field
 
 

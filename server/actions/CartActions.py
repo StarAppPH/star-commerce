@@ -397,7 +397,7 @@ days until it arrives (readyInDays; for a pickup, until it is ready) and the
 delivery details as given. It writes nothing and holds no stock. Takes
 exactly checkoutMyCart's `fulfillment` and `delivery`: a delivery needs
 `delivery` filled (the address the customer confirmed, `latitude` and
-`longitude` from their pin answer, and `notes`). Call it once the
+`longitude` from their pin answer, and any `notes`). Call it once the
 customer is ready to order: for a pickup after the items are confirmed, for
 a delivery after the address and the rider notes; in the store's chat a
 summary card shows it with a Place order button, so never ask "confirm

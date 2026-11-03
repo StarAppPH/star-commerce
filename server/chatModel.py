@@ -195,11 +195,12 @@ PIN_IS_NOT_CONFIRMATION = (
     'the map, never the address until the customer confirms it. ')
 # A refused delivery checkout is fixed or asked about, never made a pickup.
 DELIVERY_REFUSAL_STAYS_DELIVERY = (
-    'When previewMyCheckout or checkoutMyCart refuses a delivery, call it '
-    "again with the full delivery (the confirmed address, the pin's "
-    'latitude and longitude, the notes) or relay the refusal and ask the '
-    'customer; never switch to pickup, or leave fulfillment out to get it, '
-    'unless the customer chose pickup. ')
+    'When previewMyCheckout or checkoutMyCart refuses a delivery because '
+    'its details are missing, call it again with the full delivery (the '
+    "confirmed address, the pin's latitude and longitude, any notes); for "
+    'any other refusal, relay it and ask the customer (offering pickup as '
+    'a choice is fine). Never switch to pickup, or leave fulfillment out '
+    'to get it, unless the customer chose pickup. ')
 _CUSTOMER_UI = (
     'The app shows what your tools return as cards under your reply '
     '(products, the checkout summary, the order to pay, orders, returns, '
