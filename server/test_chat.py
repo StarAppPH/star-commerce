@@ -498,7 +498,7 @@ def test_argsModels_dropTheIdsAndNeverQuoteAValue():
         'storeId': 'y',
         'search': 'bread'
     })
-    assert args.model_dump() == {'search': 'bread', 'limit': 10}
+    assert args.model_dump() == {'search': 'bread', 'limit': 10, 'skip': 0}
     with pytest.raises(ValidationError) as error:
         chatTools.ListStoreProductsArgs.model_validate(
             {'limit': 'SENTINEL-VALUE'})
