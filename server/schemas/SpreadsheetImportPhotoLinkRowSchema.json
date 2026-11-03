@@ -1,0 +1,36 @@
+{
+    "description": "A row whose photo link gave no photo, and why.",
+    "properties": {
+        "row": {
+            "description": "The row's number, as the spreadsheet numbers its rows",
+            "title": "Row",
+            "type": "integer"
+        },
+        "name": {
+            "anyOf": [
+                {
+                    "maxLength": 80,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Its product's name; null without one",
+            "title": "Name"
+        },
+        "reason": {
+            "description": "Why its link gave no photo",
+            "title": "Reason",
+            "type": "string"
+        }
+    },
+    "required": [
+        "row",
+        "name",
+        "reason"
+    ],
+    "title": "SpreadsheetImportPhotoLinkRow",
+    "type": "object",
+    "additionalProperties": false
+}

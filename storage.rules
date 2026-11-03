@@ -12,7 +12,10 @@ rules_version = '2';
 // or an Excel workbook (.xlsx) too; an old .xls is refused. Rules that
 // match one path are OR'ed, so the chat block only widens its folder; each
 // matches() tests the whole content type. The server checks every file's
-// type and contents itself. Everything else is denied: no match below
+// type and contents itself. The server also writes into users/<uid>/ (its
+// admin credentials bypass these rules): found/ (products cut out of a group
+// photo) and imported/ (photos read from a spreadsheet's links), for the
+// owner to read like their own uploads. Everything else is denied: no match below
 // allows it. The product photos the server makes
 // (server/photoStorage.py) are under stores/<storeId>/photos/: anyone may
 // get one by its path (customers see them) but nobody may list the folder

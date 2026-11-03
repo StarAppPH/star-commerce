@@ -3199,6 +3199,18 @@
                     "maxItems": 200,
                     "title": "Skippedrows",
                     "type": "array"
+                },
+                "photoLinks": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/SpreadsheetImportPhotoLinks"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "What came of the photo column's links; left out without one"
                 }
             },
             "required": [
@@ -3212,6 +3224,68 @@
                 "skippedRows"
             ],
             "title": "SpreadsheetImport",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "SpreadsheetImportPhotoLinkRow": {
+            "description": "A row whose photo link gave no photo, and why.",
+            "properties": {
+                "row": {
+                    "description": "The row's number, as the spreadsheet numbers its rows",
+                    "title": "Row",
+                    "type": "integer"
+                },
+                "name": {
+                    "anyOf": [
+                        {
+                            "maxLength": 80,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Its product's name; null without one",
+                    "title": "Name"
+                },
+                "reason": {
+                    "description": "Why its link gave no photo",
+                    "title": "Reason",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "row",
+                "name",
+                "reason"
+            ],
+            "title": "SpreadsheetImportPhotoLinkRow",
+            "type": "object",
+            "additionalProperties": false
+        },
+        "SpreadsheetImportPhotoLinks": {
+            "description": "What came of an import's photo links (its photo column): each link\nread by the server when the form opened.",
+            "properties": {
+                "fetched": {
+                    "description": "How many rows got their photo from their link",
+                    "title": "Fetched",
+                    "type": "integer"
+                },
+                "notFetched": {
+                    "description": "The rows with a link that gave no photo",
+                    "items": {
+                        "$ref": "#/$defs/SpreadsheetImportPhotoLinkRow"
+                    },
+                    "maxItems": 200,
+                    "title": "Notfetched",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "fetched",
+                "notFetched"
+            ],
+            "title": "SpreadsheetImportPhotoLinks",
             "type": "object",
             "additionalProperties": false
         },

@@ -934,9 +934,12 @@ def _runModel(toolset: str, userId: str, storeId: str,
                     chatModel.remainingSeconds(deadline)
                     chatThinking.note(userId, storeId, turnKey,
                                       call['name'])
-                    content, form = chatForms.runFormTool(
-                        toolset, call['name'], call['arguments'], userId,
-                        storeId, formContext)
+                    # Within the turn's time, as a tool (turnDeadline).
+                    with turnDeadline.runningTool(
+                            deadline - time.monotonic()):
+                        content, form = chatForms.runFormTool(
+                            toolset, call['name'], call['arguments'],
+                            userId, storeId, formContext)
                     if form is not None:
                         forms[call['id']] = form
                 else:
@@ -1194,7 +1197,8 @@ def _slottedTurn(audience: str, toolset: str, userId: str, storeId: str,
                         conversationId, tuple(sent), deadline,
                         lambda label, path, sheet: _readOwnSheet(
                             userId, label, path, sheet, inFlight,
-                            deadline)))
+                            deadline),
+                        inFlight.reserve, inFlight.release))
             if history['withoutFiles'] is None:
                 answer = run(history['messages'], ownRefusal)
             else:

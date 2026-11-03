@@ -20,6 +20,7 @@ Who and where come only from the chat route (its JWT userId, the
 conversation's storeId), never from the model or the answer.
 """
 
+import contextlib
 import json
 import re
 from dataclasses import dataclass
@@ -36,12 +37,14 @@ from actions.OrderActions import (NO_DELIVERY_ZONES_YET, NOT_OFFERED,
 from actions.PhotoActions import (PROMPT_STORE_FIELDS, defaultPhotoPrompt,
                                   setUploadedProductPhotos,
                                   cardShots)
+from actions import PhotoLinkActions
 from actions.ProductActions import importStoreProducts
 from actions.StoreActions import STORES, ownerQuery
 import chatSpreadsheets
 import geocoding
 import photoStorage
 import productImport
+import turnDeadline
 from mongoDb import db
 from objects import (BRAND_COLOR_SUGGESTIONS_MAX, HEX_COLOR_PATTERN,
                      CHAT_ATTACHMENT_EXTENSIONS, CHAT_MESSAGE_MAX_LENGTH,
@@ -207,10 +210,16 @@ class ShowNewProductsFromSpreadsheetArgs(_Args):
         'rows) to start from; left out: the row under the headers')
     lastRow: int | None = Field(
         None, description='The row number to stop at; at most '
-        f'{PRODUCT_IMPORT_ROWS_MAX} product rows are read at once')
+        f'{PRODUCT_IMPORT_ROWS_MAX} product rows are read at once '
+        f'({productImport.PRODUCT_IMPORT_PHOTO_ROWS_MAX} with a photo '
+        'column)')
+    photoColumn: str | None = Field(
+        None, description="The header of the column with each product's "
+        'photo link (https), whose photo the server reads; left out when '
+        'there is none')
 
     @field_validator('sheet', 'inventoryColumn', 'descriptionColumn',
-                     mode='before')
+                     'photoColumn', mode='before')
     @classmethod
     def _blankIsNone(cls, value):
         """"" (or spaces) is a column or sheet left out."""
@@ -257,11 +266,16 @@ class FormContext(NamedTuple):
     `sheet`'s rows when one is named), its bytes held in the process's
     bytes in flight only while it is read: (its SheetText, its content
     type). A ValueError names `label` when it cannot be read, SlotsBusy or
-    a ServiceUnavailable says the process or Storage cannot read it now."""
+    a ServiceUnavailable says the process or Storage cannot read it now.
+    reserveBytes(size) / releaseBytes(size) hold and give back the
+    process's attachment bytes in flight, on the turn's thread (the photo
+    links' downloads)."""
     conversationId: str
     attachments: tuple
     deadline: float
     readSheet: Callable[[str, str, str | None], tuple]
+    reserveBytes: Callable[[int], bool] | None = None
+    releaseBytes: Callable[[int], None] | None = None
 
 
 class FormOpened(NamedTuple):
@@ -438,7 +452,9 @@ IMPORT_BUSY = ('Spreadsheet reading is busy right now: ask the owner to try '
                'again in a minute')
 IMPORT_SHOWN = (FORM_SHOWN + ' Its rows are read from the spreadsheet: tell '
                 'the owner how many rows are on it, which rows were left out '
-                'and why, and to check them and submit. Their submit saves '
+                'and why, how many photos came from the photo links and why '
+                'the others did not (when there is a photo column), and to '
+                'check them and submit. Their submit saves '
                 'the products and puts on the photos they add itself: their '
                 'next message says how many were added; never call '
                 'addStoreProducts or setUploadedProductPhotos for them.')
@@ -469,6 +485,39 @@ def _conversationSheets(context: FormContext) -> list[dict]:
 def _newProductsFromSpreadsheet(userId: str, storeId: str,
                                 args: ShowNewProductsFromSpreadsheetArgs,
                                 context: FormContext) -> FormOpened:
+    """The import's form (_importForm). With a photo column, the process's
+    one link reader is held first (PhotoLinkActions.linkSlot): taken, the
+    import is IMPORT_BUSY before anything is read."""
+    if args.photoColumn is None:
+        return _importForm(userId, args, context)
+    with contextlib.ExitStack() as held:
+        try:
+            held.enter_context(PhotoLinkActions.linkSlot())
+        except ServiceUnavailable:
+            raise FormRefused(IMPORT_BUSY) from None
+        return _importForm(userId, args, context)
+
+
+def _linkedPhotos(userId: str, storeId: str,
+                  imported: productImport.Imported,
+                  context: FormContext) -> tuple[list, dict]:
+    """Each row's photo read from its link (PhotoLinkActions) and the
+    form's spreadsheetImport.photoLinks, within the chat turn's time
+    (turnDeadline: on the turn's own thread, which runs the form tool in
+    runningTool)."""
+    workBy = turnDeadline.toolDeadline(PhotoLinkActions.LINKS_SECONDS)
+    saveBy = turnDeadline.saveDeadline(PhotoLinkActions.LINKS_SECONDS
+                                       + PhotoLinkActions.LINK_SAVE_SECONDS)
+    photos = PhotoLinkActions.importLinkedPhotos(
+        userId, storeId, imported.photoLinks, workBy, saveBy,
+        context.reserveBytes or (lambda size: False),
+        context.releaseBytes or (lambda size: None))
+    return photos.paths, {'fetched': photos.fetched,
+                          'notFetched': photos.notFetched}
+
+
+def _importForm(userId: str, args: ShowNewProductsFromSpreadsheetArgs,
+                context: FormContext) -> FormOpened:
     store = _ownStore(userId, {'_id': 1, 'currency': 1})
     sheets = _conversationSheets(context)
     if not sheets:
@@ -489,15 +538,19 @@ def _newProductsFromSpreadsheet(userId: str, storeId: str,
             attachment['name'], store['_id'],
             productImport.Mapping(args.nameColumn, args.priceColumn,
                                   args.inventoryColumn,
-                                  args.descriptionColumn),
+                                  args.descriptionColumn, args.photoColumn),
             args.sheet, args.firstRow, args.lastRow)
     except (chatSpreadsheets.SlotsBusy, ServiceUnavailable):
         raise FormRefused(IMPORT_BUSY) from None
     except ValueError as error:
         raise FormRefused(str(error)) from None
+    rowPhotos = []
+    if args.photoColumn is not None:
+        rowPhotos, imported.summary['photoLinks'] = _linkedPhotos(
+            userId, store['_id'], imported, context)
     form = {'kind': 'newProductsForm', 'formId': newFormId(),
             'currency': store['currency'], 'products': imported.drafts,
-            'rowPhotos': [], 'spreadsheetImport': imported.summary}
+            'rowPhotos': rowPhotos, 'spreadsheetImport': imported.summary}
     return FormOpened(form, productImport.aiResult(imported, IMPORT_SHOWN))
 
 
@@ -575,15 +628,22 @@ FORM_TOOLS: dict[str, FormTool] = {
         'the spreadsheet shows them; ask the owner which column is which '
         'only when the headers leave it unclear. An empty stock cell, or '
         '"unlimited", is a product with no stock count; prices may carry a '
-        'currency or thousands separators. It reads at most '
-        f'{PRODUCT_IMPORT_ROWS_MAX} product rows at a time (firstRow, '
+        'currency or thousands separators. Give photoColumn, the header of '
+        "a column of links to each product's photo, when there is one: the "
+        'server reads each photo itself and puts it on its row (a link '
+        "must be the image's own https link: a share page, such as a "
+        "Google Drive file's, is a web page). It reads at most "
+        f'{PRODUCT_IMPORT_ROWS_MAX} product rows at a time '
+        f'({productImport.PRODUCT_IMPORT_PHOTO_ROWS_MAX} with a photo '
+        'column; firstRow, '
         'lastRow: row numbers as the spreadsheet shows them), once per '
         'message: when nextFirstRow is not null, tell the owner the rest '
         'can be imported next, from that row. It returns how many rows are '
         'on the form, the rows left out and why (no name, a bad price, a '
-        "name repeated in the file or already in the store), and the sheet's "
-        'headers and sheets. If it refuses (no such file, sheet or column, '
-        'no row to import), fix the call from what it says, or relay it to '
+        'name repeated in the file or already in the store), how many '
+        'photos came from the links and why the others did not, and the '
+        "sheet's headers and sheets. If it refuses (no such file, sheet or "
+        'column, no row to import), fix the call from what it says, or relay it to '
         'the owner.',
         ShowNewProductsFromSpreadsheetArgs, _newProductsFromSpreadsheet,
         withContext=True, oncePerTurn=True,

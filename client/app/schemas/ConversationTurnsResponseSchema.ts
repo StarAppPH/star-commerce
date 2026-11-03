@@ -1393,6 +1393,28 @@ export type Reason2 = string;
  */
 export type Skippedrows = SpreadsheetImportSkippedRow[];
 /**
+ * How many rows got their photo from their link
+ */
+export type Fetched = number;
+/**
+ * The row's number, as the spreadsheet numbers its rows
+ */
+export type Row1 = number;
+/**
+ * Its product's name; null without one
+ */
+export type Name10 = string | null;
+/**
+ * Why its link gave no photo
+ */
+export type Reason3 = string;
+/**
+ * The rows with a link that gave no photo
+ *
+ * @maxItems 200
+ */
+export type Notfetched = SpreadsheetImportPhotoLinkRow[];
+/**
  * The form
  */
 export type Kind16 = "phoneVerificationForm";
@@ -1514,7 +1536,7 @@ export type Deliveryzones1 =
 /**
  * What the zone is called, e.g. Makati
  */
-export type Name10 = string;
+export type Name11 = string;
 /**
  * What a delivery into the zone costs, in the store's currency; 0: free
  */
@@ -2196,6 +2218,10 @@ export interface SpreadsheetImport {
   nextFirstRow: Nextfirstrow;
   notFullyRead: Notfullyread;
   skippedRows: Skippedrows;
+  /**
+   * What came of the photo column's links; left out without one
+   */
+  photoLinks?: SpreadsheetImportPhotoLinks | null;
 }
 /**
  * A row of the sheet an import left off the form, and why.
@@ -2204,6 +2230,22 @@ export interface SpreadsheetImportSkippedRow {
   row: Row;
   name: Name9;
   reason: Reason2;
+}
+/**
+ * What came of an import's photo links (its photo column): each link
+ * read by the server when the form opened.
+ */
+export interface SpreadsheetImportPhotoLinks {
+  fetched: Fetched;
+  notFetched: Notfetched;
+}
+/**
+ * A row whose photo link gave no photo, and why.
+ */
+export interface SpreadsheetImportPhotoLinkRow {
+  row: Row1;
+  name: Name10;
+  reason: Reason3;
 }
 /**
  * Asks the shopper to verify their phone number (Firebase sends the
@@ -2244,7 +2286,7 @@ export interface DeliveryPinForm {
  * A zone as a route sends it: its policy and its shape.
  */
 export interface DeliveryZoneResponse {
-  name: Name10;
+  name: Name11;
   deliveryFee: Deliveryfee4;
   deliveryDays: Deliverydays1;
   minimumOrder: Minimumorder1;

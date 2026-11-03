@@ -24,7 +24,9 @@ rows), then:
   has (ProductActions.splitNewNames).
 
 One import shows at most PRODUCT_IMPORT_ROWS_MAX product rows (a range:
-from firstRow, up to lastRow); nextFirstRow says where the next one starts.
+from firstRow, up to lastRow), PRODUCT_IMPORT_PHOTO_ROWS_MAX with a photo
+column (each row's photo link is read when the form opens:
+PhotoLinkActions); nextFirstRow says where the next one starts.
 An import with no row to show is refused, saying why. Nothing is saved
 here: the form's submit saves the rows (ProductActions.importStoreProducts).
 
@@ -53,8 +55,12 @@ UNLIMITED_STOCK = frozenset({'unlimited', 'no limit', '∞'})
 LISTED_MAX = 30
 LISTED_LENGTH_MAX = 60
 # The most left-out rows the model reads of an import, or of its submit
-# (the form shows them all).
+# (the form shows them all), and the most rows with a photo link that gave
+# no photo.
 AI_SKIPPED_MAX = 20
+# The most product rows one import with a photo column shows: each row's
+# link is read when the form opens, within the chat turn's time.
+PRODUCT_IMPORT_PHOTO_ROWS_MAX = 50
 
 NO_NAME = 'No name'
 BAD_PRICE = 'The price is not a number'
@@ -75,20 +81,25 @@ class Sheet(NamedTuple):
 
 
 class Mapping(NamedTuple):
-    """Which header holds what (inventory and description optional)."""
+    """Which header holds what (inventory, description and photo
+    optional)."""
     name: str
     price: str
     inventory: str | None
     description: str | None
+    photo: str | None = None
 
 
 class Imported(NamedTuple):
     """An import's rows for the form, and what the form and the model are
-    told about it."""
+    told about it. `photoLinks`: each draft's row number, photo link (its
+    cell, stripped; None when empty) and name, with a photo column; else
+    empty."""
     drafts: list[dict]
     summary: dict
     headers: list[str]
     sheets: list[str]
+    photoLinks: list[tuple[int, str | None, str]] = []
 
 
 def _listed(values) -> list[str]:
@@ -267,6 +278,7 @@ def importRows(text: str, contentType: str, notFullyRead: bool,
         'inventory': _column(headers, mapping.inventory, sheet, 'stock'),
         'description': _column(headers, mapping.description, sheet,
                                'description'),
+        'photo': _column(headers, mapping.photo, sheet, 'photo links'),
     }
     if firstRow is not None and firstRow < 1:
         raise ValueError('firstRow is a row number of the sheet, 1 or more')
@@ -278,7 +290,8 @@ def importRows(text: str, contentType: str, notFullyRead: bool,
     first = max(firstRow or 0, header + 2)
     inRange = [(number, row) for number, row in products if number >= first
                and (lastRow is None or number <= lastRow)]
-    shown = inRange[:PRODUCT_IMPORT_ROWS_MAX]
+    shown = inRange[:PRODUCT_IMPORT_PHOTO_ROWS_MAX if mapping.photo
+                    else PRODUCT_IMPORT_ROWS_MAX]
     if not shown:
         span = (f' (its product rows: {products[0][0]} to {products[-1][0]})'
                 if products else '')
@@ -287,6 +300,7 @@ def importRows(text: str, contentType: str, notFullyRead: bool,
                          + span)
     last = shown[-1][0]
     drafts, skipped, rows = {}, [], []
+    rowsByNumber = dict(shown)
     for number, row in shown:
         try:
             drafts[number] = _draft(row, columns)
@@ -304,6 +318,10 @@ def importRows(text: str, contentType: str, notFullyRead: bool,
                  'reason': row['reason']} for row in split.skipped]
     skipped.sort(key=lambda row: row['row'])
     kept = [drafts[row['position']] for row in split.kept]
+    links = [(row['position'],
+              _cell(rowsByNumber[row['position']], columns['photo']).strip()
+              or None, drafts[row['position']]['name'])
+             for row in split.kept] if mapping.photo else []
     if not kept:
         raise ValueError(
             f'None of rows {first} to {last}{where} can be added: '
@@ -322,7 +340,7 @@ def importRows(text: str, contentType: str, notFullyRead: bool,
         'skippedRows': skipped,
     }
     names = [one.name for one in sheets if one.name is not None]
-    return Imported(kept, summary, _listed(headers), _listed(names))
+    return Imported(kept, summary, _listed(headers), _listed(names), links)
 
 
 def aiResult(imported: Imported, note: str) -> dict:
@@ -330,6 +348,14 @@ def aiResult(imported: Imported, note: str) -> dict:
     headers, never the rows."""
     summary = imported.summary
     skipped = summary['skippedRows']
+    photos = summary.get('photoLinks')
+    told = {} if photos is None else {
+        'photosFetched': photos['fetched'],
+        'photosNotFetched': len(photos['notFetched']),
+        'photosNotFetchedRows': [
+            {'row': row['row'], 'reason': row['reason']}
+            for row in photos['notFetched'][:AI_SKIPPED_MAX]],
+    }
     return {
         'result': note,
         'fileName': summary['fileName'],
@@ -345,5 +371,6 @@ def aiResult(imported: Imported, note: str) -> dict:
         'skipped': len(skipped),
         'skippedRows': [{'row': row['row'], 'reason': row['reason']}
                         for row in skipped[:AI_SKIPPED_MAX]],
+        **told,
     }
 

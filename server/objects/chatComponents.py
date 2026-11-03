@@ -434,6 +434,26 @@ class SpreadsheetImportSkippedRow(ResponseModel):
     reason: str = Field(..., description='Why it was left out')
 
 
+class SpreadsheetImportPhotoLinkRow(ResponseModel):
+    """A row whose photo link gave no photo, and why."""
+    row: int = Field(..., description="The row's number, as the "
+                     'spreadsheet numbers its rows')
+    name: str | None = Field(..., max_length=PRODUCT_NAME_MAX_LENGTH,
+                             description="Its product's name; null "
+                             'without one')
+    reason: str = Field(..., description='Why its link gave no photo')
+
+
+class SpreadsheetImportPhotoLinks(ResponseModel):
+    """What came of an import's photo links (its photo column): each link
+    read by the server when the form opened."""
+    fetched: int = Field(..., description='How many rows got their photo '
+                         'from their link')
+    notFetched: list[SpreadsheetImportPhotoLinkRow] = Field(
+        ..., max_length=PRODUCT_IMPORT_ROWS_MAX,
+        description='The rows with a link that gave no photo')
+
+
 class SpreadsheetImport(ResponseModel):
     """Where a new products form's rows came from: a spreadsheet the admin
     attached (showNewProductsFromSpreadsheet). Its submit saves the
@@ -458,6 +478,11 @@ class SpreadsheetImport(ResponseModel):
     skippedRows: list[SpreadsheetImportSkippedRow] = Field(
         ..., max_length=PRODUCT_IMPORT_ROWS_MAX,
         description='The rows of the range left off the form')
+    # Sent only for an import with a photo column.
+    photoLinks: SpreadsheetImportPhotoLinks | None = Field(
+        None, exclude_if=lambda value: value is None,
+        description="What came of the photo column's links; left out "
+        'without one')
 
 
 class NewProductsForm(ResponseModel):

@@ -763,6 +763,30 @@ def test_everyStoreKind_landsOnTheNewIdWithItsCountAndExpiry(
     assert usageDoc(collection, oldKey) == old
 
 
+def test_thePhotoLinkCounter_landsOnTheNewIdWithItsCountAndExpiry(storage):
+    """The photo links' counter (PhotoLinkActions.STORE_USAGE_KINDS, apart
+    from PhotoActions') is carried over by a real reset too."""
+    from actions import PhotoLinkActions
+    assert PhotoLinkActions.STORE_USAGE_KINDS == (PHOTO_USAGE,
+                                                  ('photoLinks', ))
+    store = createTestStore(ADMIN_A)
+    expireAt = datetime.datetime(2099, 7, 8, 9, 10, 11, tzinfo=UTC)
+    oldKey = seedUsage(PHOTO_USAGE, 'photoLinks', store['_id'], 41,
+                       expireAt=expireAt)
+    old = usageDoc(PHOTO_USAGE, oldKey)
+
+    api.resetMyStore(ADMIN_A, 'Bakery A')
+
+    newId = ownStore(ADMIN_A)['_id']
+    assert newId != store['_id']
+    new = usageDoc(PHOTO_USAGE,
+                   usageCounters.usageKey('photoLinks', newId, TODAY))
+    assert new['count'] == 41
+    assert new['expireAt'] == old['expireAt']
+    assert new['_version'] == 0
+    assert usageDoc(PHOTO_USAGE, oldKey) == old
+
+
 def test_onlyTheStoreCountersOfTodayAreCopied(storage):
     world = seedWorld()
     oldId = world.a['_id']

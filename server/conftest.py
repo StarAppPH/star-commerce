@@ -368,6 +368,180 @@ def _fakeGeocoding(monkeypatch):
     yield session
 
 
+# --- Photo links -------------------------------------------------------------
+# Every test's photoLinks.resolve and photoLinks.openConnection are a
+# FakePhotoWeb's: no test resolves a name or opens a socket. Until a test
+# serves a page, every host fails to resolve (UNREACHABLE).
+
+PUBLIC_IP = '93.184.216.34'
+# A chunk of a served body that blocks its read until the hop's watchdog
+# kills the socket, then reads as the end of the body (as a shut down
+# socket does): a chunk size line that never ends.
+HANG = 'hang'
+# How long a hung fake waits for its watchdog before failing the test.
+HANG_LIMIT_SECONDS = 30
+
+
+class FakePhotoResponse:
+    """A response of the FakePhotoWeb: `chunks` read one per read1(), each
+    after `beforeRead` (a test's clock step); an Exception chunk is
+    raised, a HANG one waits for the socket to be killed."""
+
+    def __init__(self, status: int, headers: dict, chunks: list,
+                 beforeRead=None, sock=None):
+        self.status = status
+        self.headers = {key.lower(): value for key, value in headers.items()}
+        self.chunks = list(chunks)
+        self.beforeRead = beforeRead
+        self.sock = sock
+        self.reads = 0
+
+    def getheader(self, name, default=None):
+        return self.headers.get(name.lower(), default)
+
+    def read1(self, size: int) -> bytes:
+        self.reads += 1
+        if self.beforeRead is not None:
+            self.beforeRead()
+        if not self.chunks:
+            return b''
+        chunk = self.chunks.pop(0)
+        if chunk == HANG:
+            assert self.sock.killed.wait(HANG_LIMIT_SECONDS), 'never killed'
+            return b''
+        if isinstance(chunk, BaseException):
+            raise chunk
+        if len(chunk) > size:
+            self.chunks.insert(0, chunk[size:])
+        return chunk[:size]
+
+
+class FakePhotoSocket:
+    """A connection's socket: its timeouts recorded, and `killed` once
+    shut down or closed (the hop's watchdog)."""
+
+    def __init__(self):
+        import threading
+        self.timeouts = []
+        self.killed = threading.Event()
+
+    def settimeout(self, seconds):
+        self.timeouts.append(seconds)
+
+    def shutdown(self, how):
+        self.killed.set()
+
+    def close(self):
+        self.killed.set()
+
+
+class FakePhotoConnection:
+    def __init__(self, web, ip: str, host: str, timeout: float, hop):
+        self.web, self.ip, self.host, self.hop = web, ip, host, hop
+        self.sock = None
+        self.closed = False
+
+    def connect(self):
+        self.web.connects.append((self.ip, self.host))
+        if self.ip in self.web.unreachable:
+            raise OSError('unreachable')
+        sock = FakePhotoSocket()
+        self.web.sockets.append(sock)
+        # The TCP connection is made: watched from here on.
+        self.hop.watch(sock)
+        if self.ip in self.web.hangingHandshakes:
+            # A TLS handshake trickled forever: killed, it fails.
+            assert sock.killed.wait(HANG_LIMIT_SECONDS), 'never killed'
+            raise OSError('handshake cut')
+        self.sock = sock
+
+    def request(self, method, target, headers=None):
+        self.target = target
+        self.web.requests.append({'ip': self.ip, 'host': self.host,
+                                  'method': method, 'target': target,
+                                  'headers': dict(headers or {})})
+
+    def getresponse(self):
+        import http.client
+        page = self.web.pages.get((self.host, self.target))
+        if page is None:
+            return FakePhotoResponse(404, {}, [b'not found'])
+        status, headers, chunks, beforeRead = page
+        if status == 'hang':
+            # No status line ever comes.
+            assert self.sock.killed.wait(HANG_LIMIT_SECONDS), 'never killed'
+            raise http.client.RemoteDisconnected('cut')
+        if status == 'continue':
+            # "100 Continue" lines, one after another, until killed.
+            while not self.sock.killed.wait(0.01):
+                self.web.continueLines += 1
+            raise http.client.RemoteDisconnected('cut')
+        response = FakePhotoResponse(status, headers, chunks, beforeRead,
+                                     self.sock)
+        self.web.responses.append(response)
+        return response
+
+    def close(self):
+        self.closed = True
+
+
+class FakePhotoWeb:
+    """The web as photoLinks sees it in a test: `hosts` maps a host to the
+    addresses it resolves to (a list, or a list of answers given one per
+    lookup: rebinding), `pages` (host, target) to a response (its status
+    'hang' never answers, 'continue' sends "100 Continue" lines forever);
+    an address in `hangingHandshakes` connects and then never finishes its
+    TLS handshake. Every lookup (`resolved`), connection (`connects`, their
+    `sockets`), request (`requests`) and served response (`responses`) is
+    recorded."""
+
+    def __init__(self):
+        self.hosts, self.pages = {}, {}
+        self.unreachable, self.hangingHandshakes = set(), set()
+        self.resolved, self.connects, self.requests = [], [], []
+        self.sockets, self.responses = [], []
+        self.continueLines = 0
+        self.lookupDelay = None
+
+    def serve(self, url: str, body=b'', status=200,
+              headers: dict | None = None, ips=(PUBLIC_IP, ), chunks=None,
+              beforeRead=None) -> None:
+        from urllib.parse import urlsplit
+        parts = urlsplit(url)
+        target = (parts.path or '/') + (f'?{parts.query}' if parts.query
+                                        else '')
+        self.hosts.setdefault(parts.hostname, list(ips))
+        self.pages[(parts.hostname, target)] = (
+            status, headers or {},
+            [body] if chunks is None else chunks, beforeRead)
+
+    def resolve(self, host: str) -> list[str]:
+        import socket
+        self.resolved.append(host)
+        if self.lookupDelay is not None:
+            self.lookupDelay.wait(HANG_LIMIT_SECONDS)
+        answer = self.hosts.get(host)
+        if answer is None:
+            raise socket.gaierror('no such host')
+        if answer and isinstance(answer[0], (list, tuple)):
+            return list(answer.pop(0) if len(answer) > 1 else answer[0])
+        return list(answer)
+
+    def openConnection(self, ip: str, host: str, timeout: float, hop):
+        return FakePhotoConnection(self, ip, host, timeout, hop)
+
+
+@pytest.fixture(autouse=True)
+def _fakePhotoLinks(monkeypatch):
+    import photoLinks
+    web = FakePhotoWeb()
+    monkeypatch.setattr(photoLinks, 'resolve', web.resolve)
+    monkeypatch.setattr(photoLinks, 'openConnection', web.openConnection)
+    yield web
+    if web.lookupDelay is not None:
+        web.lookupDelay.set()  # frees a lookup thread a test left waiting
+
+
 def lastPublishedPayload(functionName):
     """The message the last publish of `functionName` (a publisher route or
     a module-level publisher) sent in this test."""

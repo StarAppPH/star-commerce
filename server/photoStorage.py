@@ -34,6 +34,10 @@ bucket. Every other environment ignores both.
   stores/<storeId>/receipts/, which storage.rules lets no client read: only
   the server does, for the store's admin (PaymentActions.getPaymentReceipt).
   It has no download token, so no URL serves it.
+- saveFoundPhoto(), saveImportedPhoto(): a photo the server made for the
+  admin (a product cut out of a group photo, a photo read from a link of
+  their spreadsheet) written to their own users/<uid>/ folder, so it is
+  theirs to put on a product.
 - deletePrefix(): deletes every file of one folder, a store's
   (storeFolder) or a user's (userFolder, but never its chat/ subfolder);
   deleteOwnChatFiles() deletes named files of a user's chat/ subfolder:
@@ -109,6 +113,9 @@ USER_FOLDER = 'users'
 USER_CHAT_FOLDER = 'chat'
 # The products cut out of a user's group photos (saveFoundPhoto).
 USER_FOUND_FOLDER = 'found'
+# The photos read from the links of a user's spreadsheet
+# (saveImportedPhoto).
+USER_IMPORTED_FOLDER = 'imported'
 # The one folder deletePrefix may empty: stores/<id>/ or users/<id>/, the
 # id one segment with no backslash or control character.
 FOLDER_PREFIX_PATTERN = re.compile(
@@ -354,24 +361,30 @@ def fileExtension(path: str) -> str:
     return name[name.rfind('.'):].lower() if '.' in name else ''
 
 
-def _isHeicData(data: bytes) -> bool:
+def isHeicData(data: bytes) -> bool:
     """Whether `data` starts as a HEIC/HEIF file does: an ISO-BMFF ftyp box
     of a HEIF brand."""
     return data[4:8] == b'ftyp' and data[8:12] in HEIC_BRANDS
 
 
+def startsAs(data: bytes, contentType: str) -> bool:
+    """Whether `data` starts as a file of `contentType` (one of SIGNATURES)
+    does: its signature, and a WebP's WEBP_SIGNATURE after RIFF and the
+    size."""
+    return data.startswith(SIGNATURES[contentType]) and (
+        contentType != WEBP_CONTENT_TYPE or data[8:12] == WEBP_SIGNATURE)
+
+
 def _checkContents(data: bytes, contentType: str, label: str,
                    notReal: str) -> None:
     """Refuse `data` unless its first bytes are those of `contentType`
-    (SIGNATURES): a HEIC/HEIF file is CONVERT_PHOTO, any other `notReal`
+    (startsAs): a HEIC/HEIF file is CONVERT_PHOTO, any other `notReal`
     (after the label)."""
-    if _isHeicData(data):
+    if isHeicData(data):
         raise ValueError(f'{label} is a HEIC or HEIF photo. {CONVERT_PHOTO}')
     if contentType in TEXT_CONTENT_TYPES:
         return
-    if not data.startswith(SIGNATURES[contentType]) or (
-            contentType == WEBP_CONTENT_TYPE
-            and data[8:12] != WEBP_SIGNATURE):
+    if not startsAs(data, contentType):
         raise ValueError(f'{label} {notReal}')
 
 
@@ -687,8 +700,8 @@ ORIGINAL_JPEG_QUALITY = 92
 ORIGINAL_WEBP_QUALITY = 90
 
 
-def storeOriginal(data: bytes, contentType: str,
-                  label: str) -> tuple[bytes, str]:
+def storeOriginal(data: bytes, contentType: str, label: str,
+                  maxSide: int | None = None) -> tuple[bytes, str]:
     """An admin's checked photo (a JPEG, PNG or WebP: readOwnImages) as the
     store keeps and shows it: re-encoded in its own type, turned upright
     (its EXIF orientation), with no metadata (a phone's EXIF location, its
@@ -697,7 +710,8 @@ def storeOriginal(data: bytes, contentType: str,
     NOT_A_REAL_PHOTO, one over MODEL_IMAGE_MAX_PIXELS MODEL_IMAGE_TOO_LARGE
     (after the label). Decoded under DECODE_MAX_PIXELS (draftForDecode:
     a larger JPEG kept at a reduced scale, a larger PNG or WebP refused,
-    DECODE_TOO_LARGE)."""
+    DECODE_TOO_LARGE). With `maxSide`, scaled down to at most that many
+    pixels on its long side (shrunk)."""
     from PIL import Image, ImageOps
     try:
         with Image.open(io.BytesIO(data)) as opened:
@@ -706,12 +720,14 @@ def storeOriginal(data: bytes, contentType: str,
             iccProfile = opened.info.get('icc_profile')
             hasAlpha = opened.mode in ('RGBA', 'LA', 'PA') or (
                 'transparency' in opened.info)
-            draftForDecode(opened, label)
+            draftForDecode(opened, label, maxSide)
             image = ImageOps.exif_transpose(opened)
             if contentType == 'image/jpeg' or not hasAlpha:
                 image = image.convert('RGB')
             else:
                 image = image.convert('RGBA')
+            if maxSide is not None:
+                image = shrunk(image, maxSide)
     except (Image.DecompressionBombError, Image.DecompressionBombWarning):
         raise ValueError(f'{label} {MODEL_IMAGE_TOO_LARGE}') from None
     except (OSError, SyntaxError):
@@ -728,13 +744,19 @@ def storeOriginal(data: bytes, contentType: str,
     return out.getvalue(), contentType
 
 
+def _photoExtension(contentType: str) -> str:
+    """The file extension (no dot) a saved photo of `contentType` gets:
+    png, webp, else jpg."""
+    return {'image/png': 'png', WEBP_CONTENT_TYPE: 'webp'}.get(contentType,
+                                                               'jpg')
+
+
 def storePhotoPath(storeId: str, photoId: str,
                    contentType: str = STORE_PHOTO_CONTENT_TYPE) -> str:
     """Where a store photo of `contentType` (a JPEG, or an admin's PNG or
     WebP original) is saved."""
-    extension = {'image/png': 'png', WEBP_CONTENT_TYPE: 'webp'}.get(
-        contentType, 'jpg')
-    return f'{storePhotosFolder(storeId)}{photoId}.{extension}'
+    return (f'{storePhotosFolder(storeId)}{photoId}.'
+            f'{_photoExtension(contentType)}')
 
 
 def publicPathUrl(path: str) -> str:
@@ -829,6 +851,26 @@ def saveFoundPhoto(uid: str, photoId: str, data: bytes,
     return the path."""
     path = foundPhotoPath(uid, photoId)
     _upload(path, data, STORE_PHOTO_CONTENT_TYPE, deadline)
+    return path
+
+
+def importedPhotoPath(uid: str, photoId: str, contentType: str) -> str:
+    """Where a photo read from a link of the user `uid`'s spreadsheet is
+    saved (a JPEG, PNG or WebP: `contentType`): their own folder, so it is
+    theirs to put on a product."""
+    return (f'{userFolder(uid)}{USER_IMPORTED_FOLDER}/{photoId}.'
+            f'{_photoExtension(contentType)}')
+
+
+def saveImportedPhoto(uid: str, photoId: str, data: bytes, contentType: str,
+                      deadline: float) -> str:
+    """Write `data` (re-encoded by storeOriginal: a JPEG, PNG or WebP) to
+    importedPhotoPath(uid, photoId, contentType) (_upload) and return the
+    path."""
+    if contentType not in IMAGE_CONTENT_TYPES:
+        raise ValueError('An imported photo is a JPEG, a PNG or a WebP')
+    path = importedPhotoPath(uid, photoId, contentType)
+    _upload(path, data, contentType, deadline)
     return path
 
 

@@ -112,6 +112,28 @@ export type Reason = string;
  * @maxItems 200
  */
 export type Skippedrows = SpreadsheetImportSkippedRow[];
+/**
+ * How many rows got their photo from their link
+ */
+export type Fetched = number;
+/**
+ * The row's number, as the spreadsheet numbers its rows
+ */
+export type Row1 = number;
+/**
+ * Its product's name; null without one
+ */
+export type Name2 = string | null;
+/**
+ * Why its link gave no photo
+ */
+export type Reason1 = string;
+/**
+ * The rows with a link that gave no photo
+ *
+ * @maxItems 200
+ */
+export type Notfetched = SpreadsheetImportPhotoLinkRow[];
 
 /**
  * Asks the admin for new products. Answered with NewProductsAnswer.
@@ -152,6 +174,10 @@ export interface SpreadsheetImport {
   nextFirstRow: Nextfirstrow;
   notFullyRead: Notfullyread;
   skippedRows: Skippedrows;
+  /**
+   * What came of the photo column's links; left out without one
+   */
+  photoLinks?: SpreadsheetImportPhotoLinks | null;
 }
 /**
  * A row of the sheet an import left off the form, and why.
@@ -160,4 +186,20 @@ export interface SpreadsheetImportSkippedRow {
   row: Row;
   name: Name1;
   reason: Reason;
+}
+/**
+ * What came of an import's photo links (its photo column): each link
+ * read by the server when the form opened.
+ */
+export interface SpreadsheetImportPhotoLinks {
+  fetched: Fetched;
+  notFetched: Notfetched;
+}
+/**
+ * A row whose photo link gave no photo, and why.
+ */
+export interface SpreadsheetImportPhotoLinkRow {
+  row: Row1;
+  name: Name2;
+  reason: Reason1;
 }

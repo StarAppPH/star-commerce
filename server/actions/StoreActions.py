@@ -323,12 +323,14 @@ def _deletedCount(result: int | str) -> int:
 def _carryOverUsage(oldStoreId: str, newStoreId: str, day: datetime.date,
                     session) -> None:
     """Copy the old store's daily counters of `day` (chat, attachments,
-    photos, voice: each module's STORE_USAGE_KINDS) to the new store, in
-    `session`, so a reset never gives a day's quota back."""
+    photos, photo links, voice: each module's STORE_USAGE_KINDS) to the
+    new store, in `session`, so a reset never gives a day's quota back."""
     # Imported here: each of these modules imports this one.
-    from actions import ChatActions, PhotoActions, VoiceActions
+    from actions import (ChatActions, PhotoActions, PhotoLinkActions,
+                         VoiceActions)
     for collection, kinds in (ChatActions.STORE_USAGE_KINDS,
                               PhotoActions.STORE_USAGE_KINDS,
+                              PhotoLinkActions.STORE_USAGE_KINDS,
                               VoiceActions.STORE_USAGE_KINDS):
         for kind in kinds:
             copyDailyQuota(collection, usageKey(kind, oldStoreId, day),

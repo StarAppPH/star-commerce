@@ -2,8 +2,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import Image from 'next/image';
 import {
-  ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, FileSpreadsheetIcon, ImagePlusIcon, PackagePlusIcon, PlusIcon, Trash2Icon,
-  TriangleAlertIcon, XIcon,
+  ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, FileSpreadsheetIcon, ImageIcon, ImagePlusIcon, PackagePlusIcon, PlusIcon,
+  Trash2Icon, TriangleAlertIcon, XIcon,
 } from 'lucide-react';
 import { useObjectUrls } from './useObjectUrls';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -379,9 +379,12 @@ export function NewProductsForm({ component, answered, busy, onAnswer }: Compone
 // Where a spreadsheet form's rows came from: the file and sheet, which rows
 // (the sheet's own row numbers, header and blank rows counted, as in Excel),
 // the ones left out and why, and what is left to import. `formRows` is how
-// many products the form opened with; totalRows counts product rows.
+// many products the form opened with; totalRows counts product rows. With a
+// photo column, one line: how many rows got their photo from their link, and
+// (opened) why the others did not.
 function ImportNote({ imported, formRows }: { imported: SpreadsheetImport; formRows: number }) {
   const skipped = imported.skippedRows;
+  const photoLinks = imported.photoLinks ?? null;
   return (
     <div data-component="newProductsFormImport" className="flex flex-col gap-2 border-b px-4 py-3 text-sm">
       <div className="flex items-start gap-2">
@@ -407,30 +410,79 @@ function ImportNote({ imported, formRows }: { imported: SpreadsheetImport; formR
         </Alert>
       )}
       {skipped.length > 0 && (
-        <Collapsible data-component="newProductsFormImportSkipped">
-          <CollapsibleTrigger
-            data-component="newProductsFormImportSkippedToggle"
-            className="group -my-1 flex min-h-6 items-center gap-1.5 text-muted-foreground text-xs hover:text-foreground"
-          >
-            <ChevronDownIcon aria-hidden="true" className="size-3.5 transition-transform group-data-panel-open:rotate-180" />
-            {skipped.length === 1 ? '1 row skipped' : `${skipped.length} rows skipped`}
-          </CollapsibleTrigger>
-          <CollapsiblePanel>
-            <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto pt-2 text-xs">
-              {skipped.map((one) => (
-                <li key={one.row} className="flex gap-2">
-                  <span className="shrink-0 text-muted-foreground tabular-nums">Row {one.row}</span>
-                  <span className="min-w-0 break-words">
-                    {one.name !== null && <span className="font-medium">{one.name}: </span>}
-                    {one.reason}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </CollapsiblePanel>
-        </Collapsible>
+        <RowReasons
+          dataComponent="newProductsFormImportSkipped"
+          toggleDataComponent="newProductsFormImportSkippedToggle"
+          label={skipped.length === 1 ? '1 row skipped' : `${skipped.length} rows skipped`}
+          rows={skipped}
+        />
+      )}
+      {photoLinks !== null && (
+        <div data-component="newProductsFormImportPhotoLinks">
+          {photoLinks.notFetched.length > 0 ? (
+            <RowReasons
+              dataComponent="newProductsFormImportPhotoLinksNotFetched"
+              toggleDataComponent="newProductsFormImportPhotoLinksToggle"
+              label={`${photosAdded(photoLinks.fetched)} · ${photoLinks.notFetched.length} couldn’t be used`}
+              rows={photoLinks.notFetched}
+            />
+          ) : (
+            <span className="flex min-h-6 items-center gap-1.5 text-muted-foreground text-xs">
+              <ImageIcon aria-hidden="true" className="size-3.5" />
+              {photoLinks.fetched === 0 ? 'No photo links in the photo column' : photosAdded(photoLinks.fetched)}
+            </span>
+          )}
+        </div>
       )}
     </div>
+  );
+}
+
+// How many rows got their photo from their link, as the import note says it.
+function photosAdded(fetched: number): string {
+  if (fetched === 0) return 'No photos from links';
+  return fetched === 1 ? '1 photo added from a link' : `${fetched} photos added from links`;
+}
+
+interface RowReason {
+  row: number;
+  name: string | null;
+  reason: string;
+}
+
+interface RowReasonsProps {
+  dataComponent: string;
+  toggleDataComponent: string;
+  label: string;
+  rows: RowReason[];
+}
+
+// A folded list of spreadsheet rows, each with its product's name and why:
+// the rows an import skipped, the photo links that gave no photo.
+function RowReasons({ dataComponent, toggleDataComponent, label, rows }: RowReasonsProps) {
+  return (
+    <Collapsible data-component={dataComponent}>
+      <CollapsibleTrigger
+        data-component={toggleDataComponent}
+        className="group -my-1 flex min-h-6 items-center gap-1.5 text-muted-foreground text-xs hover:text-foreground"
+      >
+        <ChevronDownIcon aria-hidden="true" className="size-3.5 transition-transform group-data-panel-open:rotate-180" />
+        {label}
+      </CollapsibleTrigger>
+      <CollapsiblePanel>
+        <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto pt-2 text-xs">
+          {rows.map((one) => (
+            <li key={one.row} className="flex gap-2">
+              <span className="shrink-0 text-muted-foreground tabular-nums">Row {one.row}</span>
+              <span className="min-w-0 break-words">
+                {one.name !== null && <span className="font-medium">{one.name}: </span>}
+                {one.reason}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </CollapsiblePanel>
+    </Collapsible>
   );
 }
 

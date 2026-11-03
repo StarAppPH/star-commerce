@@ -296,6 +296,7 @@ from objects.chatComponents import (
     ProductPhotoChoiceCard, PhotoOfferRow, ProductPhotoOfferCard,
     PhotoColorsCard, StoreCard,
     LocationForm, ChatProductDraft, SpreadsheetImportSkippedRow,
+    SpreadsheetImportPhotoLinkRow, SpreadsheetImportPhotoLinks,
     SpreadsheetImport, NewProductsForm, PhoneVerificationForm,
     PhotoRequestForm, DeliveryPinForm, DeliveryZonesForm, BrandColorsForm,
     BRAND_COLOR_SUGGESTIONS_MAX, HexColor, ChatComponent, AnswerId,
