@@ -53,6 +53,7 @@ from objects import (BRAND_COLOR_SUGGESTIONS_MAX, HEX_COLOR_PATTERN,
                      DELIVERY_ZONE_RULES, UploadedProductPhotosResponse,
                      deliveryZoneAt, ruledZones)
 from services.__request import ServiceUnavailable
+from toolArguments import decodedArguments, refusedFields
 from utils import generateRandomString
 
 # ChatActions.CHAT_TURNS (ChatActions imports this module).
@@ -150,12 +151,7 @@ def _component(data: dict) -> dict:
 
 def _fieldsOf(error: ValidationError) -> str:
     """The fields a ValidationError refused, never the values."""
-    fields = []
-    for detail in error.errors(include_input=False):
-        field = '.'.join(str(part) for part in detail['loc']) or 'form'
-        if field not in fields:
-            fields.append(field)
-    return ', '.join(fields)
+    return refusedFields(error, 'form')
 
 
 # ── Form tools ──────────────────────────────
@@ -738,7 +734,8 @@ def runFormTool(toolset: str, name: str, argumentsJson: str, userId: str,
         return json.dumps({'error': f'The arguments of {name} must be a '
                            'JSON object'}), None
     try:
-        args = tool.argsModel.model_validate(arguments)
+        args = tool.argsModel.model_validate(
+            decodedArguments(tool.argsModel, arguments))
     except ValidationError as error:
         return json.dumps({'error': f'Invalid arguments for {name}: '
                            f'{_fieldsOf(error)}'}), None

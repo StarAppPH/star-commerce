@@ -47,6 +47,7 @@ from mcpCreator import TOOL_NAME_PATTERN
 from objects import (CHAT_TOOL_ARGUMENTS_MAX_LENGTH,
                      CHAT_TOOL_CALL_ID_MAX_LENGTH, CHAT_TOOL_NAME_MAX_LENGTH)
 from services.__request import ServiceUnavailable
+from toolArguments import decodedArguments, refusedFields
 
 CHAT_MODEL = 'muse-spark-1.3'
 CHAT_BASE_URL = 'https://api.meta.ai/v1'
@@ -520,17 +521,6 @@ def toolCallProblem(callId, name, arguments) -> str | None:
     return None
 
 
-def _fieldsOf(error: ValidationError) -> str:
-    """The fields a ValidationError refused (items.0.quantity), never the
-    values."""
-    fields = []
-    for detail in error.errors(include_input=False):
-        field = '.'.join(str(part) for part in detail['loc']) or 'arguments'
-        if field not in fields:
-            fields.append(field)
-    return ', '.join(fields)
-
-
 def _toolContent(toolset: str, name, argumentsJson, userId: str,
                  storeId: str) -> str:
     from chatTools import TOOL_CALLS
@@ -547,9 +537,12 @@ def _toolContent(toolset: str, name, argumentsJson, userId: str,
     if not isinstance(arguments, dict):
         return toolError(f'The arguments of {name} must be a JSON object')
     try:
-        args = argsModel.model_validate(arguments)
+        # Muse may send an object argument as a JSON string.
+        args = argsModel.model_validate(
+            decodedArguments(argsModel, arguments))
     except ValidationError as error:
-        return toolError(f'Invalid arguments for {name}: {_fieldsOf(error)}')
+        return toolError(f'Invalid arguments for {name}: '
+                         f'{refusedFields(error, "arguments")}')
     try:
         result = call(userId, storeId, args)
     except ToolError as error:
