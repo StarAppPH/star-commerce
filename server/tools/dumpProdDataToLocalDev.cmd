@@ -9,28 +9,26 @@ set "LOCAL_DB=teststarCommerce"
 set "SOURCE_DB=starCommerce"
 
 REM The source database, the first one found wins:
-REM   1. MONGO_DUMP_URI from the environment: a read-only user's connection string.
-REM   2. MONGO_DUMP_URI from server\cloud.env (written by create-star-app cloud-setup; gitignored).
-REM   3. MONGO_DUMP_HOST and MONGO_DUMP_USER (from the environment, else the defaults
+REM   1. READER from server\.env: a read-only user's connection string (gitignored).
+REM   2. MONGO_DUMP_HOST and MONGO_DUMP_USER (from the environment, else the defaults
 REM      below); mongodump itself then asks for the password (masked).
-REM The script never prints a password. With 1 or 2 the password is inside the connection
+REM MONGO_DUMP_URI (environment or server\cloud.env) is never read.
+REM The script never prints a password. With 1 the password is inside the connection
 REM string, so it is on mongodump's command line, which other processes of the same Windows
-REM user and command-line auditing can read: use a read-only user. With 3 it is on no
+REM user and command-line auditing can read: use a read-only user. With 2 it is on no
 REM command line.
 REM A new project leaves the defaults empty; a fleet repo writes its own cluster host and
 REM read-only user here.
 if not defined MONGO_DUMP_HOST set "MONGO_DUMP_HOST="
 if not defined MONGO_DUMP_USER set "MONGO_DUMP_USER="
 
-set "CLOUD_ENV=%~dp0..\cloud.env"
-set "DUMP_SOURCE="
-if defined MONGO_DUMP_URI set "DUMP_SOURCE=the MONGO_DUMP_URI environment variable"
-if not defined MONGO_DUMP_URI if exist "%CLOUD_ENV%" (
-    for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b "MONGO_DUMP_URI=" "%CLOUD_ENV%"`) do set "MONGO_DUMP_URI=%%b"
+set "SERVER_ENV=%~dp0..\.env"
+set "READER_URI="
+if exist "%SERVER_ENV%" (
+    for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b "READER=" "%SERVER_ENV%"`) do set "READER_URI=%%b"
 )
-if not defined DUMP_SOURCE if defined MONGO_DUMP_URI set "DUMP_SOURCE=server\cloud.env"
 
-if "%MONGO_DUMP_URI%"=="" (
+if "%READER_URI%"=="" (
     if not defined MONGO_DUMP_HOST goto :noSource
     if not defined MONGO_DUMP_USER goto :noSource
     goto :prompt
@@ -44,7 +42,7 @@ set "DUMP_USER_ARG=1"
 goto :dump
 
 :haveUri
-set "MONGO_URI=%MONGO_DUMP_URI%"
+set "MONGO_URI=%READER_URI%"
 set "DUMP_USER_ARG="
 REM Host and user for the message below, read from the URI (never the password)
 set "MONGO_DUMP_HOST=an unparsed host"
@@ -53,14 +51,13 @@ for /f "usebackq tokens=1,2" %%a in (`powershell -NoProfile -Command "try { $u =
     set "MONGO_DUMP_HOST=%%a"
     set "MONGO_DUMP_USER=%%b"
 )
-echo Using MONGO_DUMP_URI from %DUMP_SOURCE%.
+echo Using READER from server\.env.
 goto :dump
 
 :noSource
 echo ERROR: no source database to dump. Supply one of:
-echo   1. MONGO_DUMP_URI in the environment: the read-only user's connection string
-echo   2. MONGO_DUMP_URI in server\cloud.env: run create-star-app cloud-setup, which writes it
-echo   3. MONGO_DUMP_HOST and MONGO_DUMP_USER in the environment, or as the defaults in this
+echo   1. READER in server\.env: the read-only user's connection string
+echo   2. MONGO_DUMP_HOST and MONGO_DUMP_USER in the environment, or as the defaults in this
 echo      script; mongodump then asks for the password
 pause
 exit /b 1
@@ -92,7 +89,7 @@ if errorlevel 1 (
 REM The connection string is not needed past the dump: mongosh and mongorestore below must
 REM not inherit it
 set "MONGO_URI="
-set "MONGO_DUMP_URI="
+set "READER_URI="
 echo mongodump completed successfully.
 
 REM Step 2: Determine the dump subfolder deterministically
