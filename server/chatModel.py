@@ -193,6 +193,13 @@ PIN_IS_NOT_CONFIRMATION = (
     'The delivery pin is not a confirmation: ask for the address and rider '
     'notes before previewMyCheckout; its suggestedAddress is a guess from '
     'the map, never the address until the customer confirms it. ')
+# A refused delivery checkout is fixed or asked about, never made a pickup.
+DELIVERY_REFUSAL_STAYS_DELIVERY = (
+    'When previewMyCheckout or checkoutMyCart refuses a delivery, call it '
+    "again with the full delivery (the confirmed address, the pin's "
+    'latitude and longitude, the notes) or relay the refusal and ask the '
+    'customer; never switch to pickup, or leave fulfillment out to get it, '
+    'unless the customer chose pickup. ')
 _CUSTOMER_UI = (
     'The app shows what your tools return as cards under your reply '
     '(products, the checkout summary, the order to pay, orders, returns, '
@@ -237,7 +244,7 @@ _CUSTOMER_UI = (
     'open or isn\'t taking orders, tell the customer in one short line '
     'that it isn\'t taking orders yet and they can still look around; '
     'never try another way to order. ' + _FORM_ANSWER_RULE +
-    PIN_IS_NOT_CONFIRMATION)
+    PIN_IS_NOT_CONFIRMATION + DELIVERY_REFUSAL_STAYS_DELIVERY)
 
 CHAT_PROMPTS = {
     'admin': (

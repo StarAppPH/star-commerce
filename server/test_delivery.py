@@ -554,6 +554,31 @@ def test_theCustomerPrompt_saysTheSuggestedAddressNeedsAYes():
     assert 'only once they said yes' in chatModel.CHAT_PROMPTS['customer']
 
 
+def test_aDeliveryWithoutItsDetails_toldTheFieldsToSend():
+    """A delivery sent without `delivery` is refused with what to send, so
+    the model calls again with it instead of guessing (prod: it switched the
+    customer to a pickup)."""
+    for field in ('address', 'latitude', 'longitude', 'notes', 'pin'):
+        assert field in DELIVERY_REQUIRED, field
+    assert DELIVERY_REQUIRED.startswith('A delivery needs')
+
+
+def test_theCustomerPrompt_neverTurnsARefusedDeliveryIntoAPickup():
+    import chatModel
+    from actions.CartActions import PREVIEW_MY_CHECKOUT_DESCRIPTION
+    prompt = chatModel.CHAT_PROMPTS['customer']
+    rule = chatModel.DELIVERY_REFUSAL_STAYS_DELIVERY
+    assert rule in prompt
+    assert 'never switch to pickup' in rule
+    assert 'unless the customer chose pickup' in rule
+    assert rule not in chatModel.CHAT_PROMPTS['admin']
+    assert prompt.index(chatModel.PIN_IS_NOT_CONFIRMATION) < prompt.index(rule)
+    assert 'into a pickup the customer did not choose' in (
+        PREVIEW_MY_CHECKOUT_DESCRIPTION)
+    for field in ('`latitude`', '`longitude`', '`notes`'):
+        assert field in PREVIEW_MY_CHECKOUT_DESCRIPTION, field
+
+
 def test_aPickupChosenInChat_isPlacedWithoutAnAddress(clean, firebase,
                                                      model):
     store, customerId, products = shop(firebase, **DELIVERS)
