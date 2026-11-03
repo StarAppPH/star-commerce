@@ -153,7 +153,7 @@ def test_theToolTwin_answersTheAiItsCart(clean, firebase):
 
     assertExactShape(CartResponse, cart)
     assert set(cart['items'][0]) == {'productId', 'name', 'price',
-                                     'quantity', 'inventory'}
+                                     'quantity', 'inventory', 'hasInventory'}
     assert tools.getMyCart(customerId, store['_id']) == cart
 
 

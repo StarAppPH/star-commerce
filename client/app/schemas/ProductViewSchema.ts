@@ -50,7 +50,7 @@ export type Orderid = string;
  */
 export type Quantity = number;
 /**
- * Whether the units came out of inventory: false for a product with hasInventory false, so a cancel puts nothing back (missing in documents stored before: true)
+ * Whether the units came out of inventory: false for a product with hasInventory false, so a cancel puts nothing back (missing in documents stored before: true). Stored only when false, as orders write it (OrderActions._reserveUnits)
  */
 export type Tracked = boolean;
 /**

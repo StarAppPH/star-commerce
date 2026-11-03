@@ -117,6 +117,11 @@ def hasInventory(product: dict) -> bool:
     return product.get('hasInventory') is not False
 
 
+# hasInventory by another name, for the routes whose own hasInventory
+# param hides the function.
+_tracksInventory = hasInventory
+
+
 def _validProduct(name: str | None = None,
                   description: str | None = None,
                   price: float | None = None,
@@ -127,7 +132,8 @@ def _validProduct(name: str | None = None,
                   isNew: bool) -> dict:
     """The product fields sent, stripped and checked, each refusal naming
     the field and its limit, never the value. A new product needs a name, a
-    price and an inventory (isAvailable and hasInventory default to True).
+    price and an inventory (isAvailable defaults to True; hasInventory,
+    when not sent, is left to Product's default, true).
     With hasInventory false no inventory is needed: it is stored as 0 (any
     count sent is ignored), and orders never move it. An update leaves
     every field sent as None or "" unchanged, so only the fields it changes
@@ -148,8 +154,6 @@ def _validProduct(name: str | None = None,
         fields['description'] = description
     if price is not None or isNew:
         fields['price'] = _validPrice(price)
-    if hasInventory is None and isNew:
-        hasInventory = True
     if hasInventory is not None:
         if not isinstance(hasInventory, bool):
             raise ValueError('hasInventory is true or false')
@@ -273,7 +277,8 @@ def addStoreProduct(model,
                     hasInventory: bool = True) -> dict:
     store = _adminStore(userId)
     # The generated HTTP handler passes a missing body key as None:
-    # _validProduct applies the isAvailable and hasInventory defaults.
+    # _validProduct applies the isAvailable default, Product the
+    # hasInventory one.
     fields = _validProduct(name, description, price, inventory,
                            isAvailable, hasInventory, isNew=True)
     document = _newProductDocument(
@@ -366,7 +371,7 @@ def updateStoreProduct(model,
     if product is None:
         raise ValueError(PRODUCT_NOT_FOUND)
     if ('inventory' in changes and 'hasInventory' not in changes
-            and not hasInventory(product)):
+            and not _tracksInventory(product)):
         raise ValueError(NO_INVENTORY_KEPT)
     # An order's cancel gives its units back to inventory: with them,
     # inventory still stays within PRODUCT_INVENTORY_MAX. (A change

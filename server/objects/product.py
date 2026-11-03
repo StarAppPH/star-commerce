@@ -52,14 +52,19 @@ def productNameKey(name: str) -> str:
     return ' '.join(name.lower().split())
 
 
+def _isTrue(value) -> bool:
+    return value is True
+
+
 class ReservedInventory(AppModel):
     """Units of a product an order is holding (taken out of inventory)."""
     orderId: str = Field(..., min_length=1, description='The Orders _id')
     quantity: int = Field(..., ge=1, description='Units the order holds')
     tracked: bool = Field(
-        True, description='Whether the units came out of inventory: false '
+        True, exclude_if=_isTrue, description='Whether the units came out of inventory: false '
         'for a product with hasInventory false, so a cancel puts nothing '
-        'back (missing in documents stored before: true)')
+        'back (missing in documents stored before: true). Stored only '
+        'when false, as orders write it (OrderActions._reserveUnits)')
 
 
 class Product(MongoModel):

@@ -570,7 +570,8 @@ def test_theShopsProductCard_isTheRoutesResult_andOrdersThroughTheModel(
     assert byName['Ube Cake']['price'] == 650
     assert 'Old Recipe' not in byName  # hidden from customers
     assert set(byName['Pandesal']) == {'_id', 'name', 'description',
-                                       'price', 'inventory', 'photoUrl'}
+                                       'price', 'inventory', 'hasInventory',
+                                       'photoUrl'}
 
     picked = [{'productId': byName['Pandesal']['_id'], 'quantity': 3},
               {'productId': byName['Ube Cake']['_id'], 'quantity': 1}]

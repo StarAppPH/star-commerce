@@ -17,7 +17,7 @@
                 },
                 "tracked": {
                     "default": true,
-                    "description": "Whether the units came out of inventory: false for a product with hasInventory false, so a cancel puts nothing back (missing in documents stored before: true)",
+                    "description": "Whether the units came out of inventory: false for a product with hasInventory false, so a cancel puts nothing back (missing in documents stored before: true). Stored only when false, as orders write it (OrderActions._reserveUnits)",
                     "title": "Tracked",
                     "type": "boolean"
                 }

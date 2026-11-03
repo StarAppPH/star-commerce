@@ -797,8 +797,7 @@ def test_toolErrors_reachTheModel_withoutLeakingInput(
         'error': 'Invalid arguments for addStoreProduct: price'
     }
     assert json.loads(tools['e6']) == {
-        'error': 'Invalid arguments for addStoreProduct: name, price, '
-                 'inventory'
+        'error': 'Invalid arguments for addStoreProduct: name, price'
     }
     [turn] = turnDocs(res['conversationId'])
     storedResults = ''.join(s['content'] for s in turn['steps']

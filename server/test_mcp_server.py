@@ -406,7 +406,8 @@ def test_e2e_listStoreProducts_asTheCustomer_atTheConnectionsStore(
     assert [p['name'] for p in result.structured_content['products']
             ] == ['Pandesal', 'Ensaymada']
     # Literally: no photo url (card-only), whatever aiCopy does.
-    assert all(set(p) <= {'_id', 'name', 'price', 'description', 'inventory'}
+    assert all(set(p) <= {'_id', 'name', 'price', 'description', 'inventory',
+                          'hasInventory'}
                and '_id' in p
                for p in result.structured_content['products'])
     assert all(p['photoUrl'] for p in tools.listStoreProducts(
@@ -595,7 +596,8 @@ def test_e2e_adminToolsAreNotOnTheCustomerServer(clean, firebase, tool,
 
 # ----------------------------- admin product tools ----------------------------- #
 
-PRODUCT_FIELDS = {'name', 'price', 'inventory', 'description', 'isAvailable'}
+PRODUCT_FIELDS = {'name', 'price', 'inventory', 'description', 'isAvailable',
+                  'hasInventory'}
 
 
 def _resolved(schema: dict, node: dict) -> dict:
@@ -614,14 +616,14 @@ def test_theAdminProductToolsArguments_leaveOutTheInjectedParams():
 
     add = byName['addStoreProduct'].input_schema
     assert set(add['properties']) == PRODUCT_FIELDS
-    assert set(add['required']) == {'name', 'price', 'inventory'}
+    assert set(add['required']) == {'name', 'price'}
 
     batch = byName['addStoreProducts'].input_schema
     assert set(batch['properties']) == {'products'}
     assert set(batch['required']) == {'products'}
     item = _resolved(batch, batch['properties']['products']['items'])
     assert set(item['properties']) == PRODUCT_FIELDS
-    assert set(item['required']) == {'name', 'price', 'inventory'}
+    assert set(item['required']) == {'name', 'price'}
     # NewProduct is types only: the route checks the limits.
     for key in ('maxLength', 'minLength', 'minimum', 'maximum'):
         assert key not in str(item)
