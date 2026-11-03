@@ -15,11 +15,14 @@ a brief: the unused paths per route (most first), how to trim the top route,
 and the violations with file:line. There is no baseline and no allowlist: it
 stays red until the responses are trimmed.
 
-Two rules exclude a route, because code outside client/ reads its response:
+Three rules exclude a route, because code outside client/ reads its response:
 - it publishes to Pub/Sub (a `fn` in server/pubsub_models.json): its response
   IS the message payload its consumers read;
 - it is defined in server/actions/ServiceToServiceActions.py, the routes
-  another service calls over HTTP.
+  another service calls over HTTP;
+- device_caller_routes() (a per-repo block, empty in a new project) names it:
+  the routes a device of this repo calls (e.g. a printer PC's own program,
+  not client/ and not a sibling service).
 The brief lists each excluded route with its reason. An excluded route's
 analyzer problems still fail the test.
 
@@ -323,9 +326,11 @@ def http_caller_routes() -> tuple[dict[str, str], list[str], list[str]]:
     return routes, scanned, problems
 
 
-def service_to_service_routes(source: str | None = None) -> list[str]:
-    """The @route_config methods of ServiceToServiceActions, from its file's
-    source (read from server/ when not given)."""
+def service_to_service_routes(source: str | None = None,
+                              className: str = SERVICE_TO_SERVICE_CLASS) -> list[str]:
+    """The @route_config methods of ServiceToServiceActions (or className, the
+    class of a device_caller_routes() file), from its file's source (read from
+    server/ when not given)."""
     if source is None:
         path = serverDir(REPO_ROOT) / SERVICE_TO_SERVICE
         if not path.is_file():
@@ -334,9 +339,10 @@ def service_to_service_routes(source: str | None = None) -> list[str]:
                         'into ApiRequests), for the routes another service calls over HTTP')
         source = path.read_text(encoding='utf-8')
     classes = [node for node in ast.parse(source).body
-               if isinstance(node, ast.ClassDef) and node.name == SERVICE_TO_SERVICE_CLASS]
+               if isinstance(node, ast.ClassDef) and node.name == className]
     if not classes:
-        pytest.fail(f'server/{SERVICE_TO_SERVICE} defines no class {SERVICE_TO_SERVICE_CLASS}')
+        pytest.fail(f'no class {className} in its file (server/{SERVICE_TO_SERVICE}, or the '
+                    'device_caller_routes() file that names it)')
 
     def isRoute(decorator: ast.expr) -> bool:
         target = decorator.func if isinstance(decorator, ast.Call) else decorator
@@ -360,6 +366,16 @@ def service_to_service_problems(httpRoutes: dict[str, str], serviceRoutes: list[
                  'so the gate checks its fields'
                  for route in serviceRoutes if route not in httpRoutes]
     return problems
+
+
+# >>> star-app per-repo: device callers
+def device_caller_routes() -> tuple[dict[str, str], list[str]]:
+    """The routes a device of this repo calls over HTTP (its own program, not
+    client/ and not a sibling service): {route: reason} for the gate to skip,
+    and the problems (e.g. a listed route the device no longer calls). A new
+    project has none."""
+    return {}, []
+# <<< star-app per-repo: device callers
 
 
 def failing_routes(routes: dict, excluded: dict) -> list[tuple[str, dict]]:
@@ -461,13 +477,16 @@ def test_everyResponseFieldIsReadByTheClient():
     result = run_analyzer(analyzer_args())
     httpRoutes, scanned, problems = http_caller_routes()
     serviceRoutes = service_to_service_routes()
+    devices, deviceProblems = device_caller_routes()
     # Every analyzer problem counts, an excluded route's included.
     problems = ([f'analyzer: {p}' for p in result['problems']] + problems
-                + service_to_service_problems(httpRoutes, serviceRoutes, result['routes']))
+                + service_to_service_problems(httpRoutes, serviceRoutes, result['routes'])
+                + deviceProblems)
     services = {route: f'{SERVICE_TO_SERVICE_REASON}: {httpRoutes[route]}' if route in httpRoutes
                 else SERVICE_TO_SERVICE_REASON for route in serviceRoutes}
     # A publisher that is no route (PUBSUB_PAYLOAD_MODELS) has no response here.
-    excluded = {route: reason for route, reason in {**publisher_routes(), **services}.items()
+    excluded = {route: reason
+                for route, reason in {**publisher_routes(), **services, **devices}.items()
                 if route in result['routes']}
     failing = failing_routes(result['routes'], excluded)
     violations = result['violations']
