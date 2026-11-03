@@ -60,3 +60,6 @@ venv/
 .vercel/
 
 .vercel
+
+# Demo video recordings and cuts (large binaries)
+/demo-video/
