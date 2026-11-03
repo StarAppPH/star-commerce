@@ -7,7 +7,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChatCard, PhotoPrompts, ProductPhoto, countsStock } from './ChatCard';
+import { ChatCard, MoreProducts, PhotoPrompts, ProductPhoto, countsStock, productListTitle } from './ChatCard';
 import { CopyButton } from './CopyButton';
 import { mapLink } from './OrderDelivery';
 import { type PolicyAnswers, type PolicyQuestion, missingDeliveryZones, offersDelivery, policyQuestionApplies, unansweredPolicyQuestions } from '@/lib/policyQuestions';
@@ -16,12 +16,12 @@ import { PAYMENT_METHOD_LABELS, PAYMENT_PROVIDER_LABELS, POLICY_VALUE_LABELS, fo
 import type { ComponentProps } from './types';
 
 // The admin's products a tool listed, added or changed.
-export function StoreProductsCard({ component }: ComponentProps<'storeProducts'>) {
+export function StoreProductsCard({ component, busy }: ComponentProps<'storeProducts'>) {
   return (
     <ChatCard
       dataComponent="storeProductsCard"
       icon={<PackageSearchIcon />}
-      title={component.products.length === 1 ? '1 product' : `${component.products.length} products`}
+      title={productListTitle(component.products.length, component.nextSkip)}
     >
       <ul className="divide-y">
         {component.products.map((product) => (
@@ -42,6 +42,7 @@ export function StoreProductsCard({ component }: ComponentProps<'storeProducts'>
           </li>
         ))}
       </ul>
+      <MoreProducts dataComponent="storeProductsShowMore" nextSkip={component.nextSkip} busy={busy} />
     </ChatCard>
   );
 }

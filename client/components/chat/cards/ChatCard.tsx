@@ -1,11 +1,13 @@
 'use client';
 import Image from 'next/image';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { CheckIcon, ChevronDownIcon, ImageIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { NumberField, NumberFieldDecrement, NumberFieldGroup, NumberFieldIncrement, NumberFieldInput } from '@/components/ui/number-field';
 import { cn } from '@/lib/utils';
+import { useOptionalChatShell } from '@/components/chat/ChatShell';
 
 interface ChatCardProps {
   dataComponent: string;
@@ -36,6 +38,40 @@ export function ChatCard({ dataComponent, icon, title, subtitle, meta, children,
       {children}
       {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t bg-muted/40 px-4 py-3">{footer}</div>}
     </Card>
+  );
+}
+
+// A product card's title. `nextSkip` (sent only when the list came back
+// full, so there may be more) is where the next page starts: this page is
+// the `count` products before it.
+export function productListTitle(count: number, nextSkip: number | undefined): string {
+  if (nextSkip === undefined) return count === 1 ? '1 product' : `${count} products`;
+  if (nextSkip === count) return `First ${count} products`;
+  return `Products ${nextSkip - count + 1}–${nextSkip}`;
+}
+
+interface MoreProductsProps {
+  dataComponent: string;
+  nextSkip: number | undefined;
+  busy: boolean;
+}
+
+// Show more under a full product list: asks the chat for the next page,
+// which the assistant lists with the same search, filters and sort.
+export function MoreProducts({ dataComponent, nextSkip, busy }: MoreProductsProps) {
+  const shell = useOptionalChatShell();
+  const [asked, setAsked] = useState(false);
+  if (nextSkip === undefined || !shell) return null;
+  const askMore = () => {
+    if (shell.sendText(`Show me more products, after the first ${nextSkip}.`) === 'sent') setAsked(true);
+  };
+  return (
+    <div className="flex justify-center border-t px-4 py-2.5">
+      <Button data-component={dataComponent} size="sm" variant="ghost" disabled={busy || asked} onClick={askMore}>
+        <ChevronDownIcon />
+        Show more
+      </Button>
+    </div>
   );
 }
 

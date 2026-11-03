@@ -160,3 +160,33 @@ def test_listStoreProducts_refusesANonTextSearch(clean, firebase, search):
 
     with pytest.raises(ValueError, match='^The search must be text$'):
         tools.listStoreProducts(customerId, store['_id'], search=search)
+
+
+def test_listStoreProducts_skip_listsTheNextPage(clean, firebase):
+    store = createTestStore(ADMIN)
+    for number in range(5):
+        addProduct(store['_id'], f'Item {number}', 1, soldCount=10 - number)
+    addProduct(store['_id'], 'Hidden', 1, soldCount=100, isAvailable=False)
+    customerId = guestAt(firebase, store, GUEST)
+
+    def names(**kwargs):
+        return [p['name'] for p in tools.listStoreProducts(
+            customerId, store['_id'], **kwargs)['products']]
+
+    assert names(limit=2) == ['Item 0', 'Item 1']
+    assert names(limit=2, skip=2) == ['Item 2', 'Item 3']
+    assert names(limit=2, skip=4) == ['Item 4']
+    assert names(limit=2, skip=5) == []
+    assert names(skip=None) == names(skip=0) == names()
+    assert names(search='item 3', skip=0) == ['Item 3']
+    assert names(search='item 3', skip=1) == []
+
+
+@pytest.mark.parametrize('skip', [-1, 2001, True, 2.5, '1', {'$gt': 0}])
+def test_listStoreProducts_refusesABadSkip(clean, firebase, skip):
+    store = storeWithProducts(ADMIN)
+    customerId = guestAt(firebase, store, GUEST)
+
+    with pytest.raises(ValueError,
+                       match='^skip is a whole number from 0 to 2000$'):
+        tools.listStoreProducts(customerId, store['_id'], skip=skip)
