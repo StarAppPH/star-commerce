@@ -72,6 +72,10 @@ export type Photourl = string | null;
  * @maxItems 50
  */
 export type Products = ChatStoreProductRow[];
+/**
+ * The skip that lists the next products: the list came back full, so there may be more (its Show more button); left out otherwise
+ */
+export type Nextskip = number | null;
 
 /**
  * The admin's products a tool listed, added or changed.
@@ -80,6 +84,7 @@ export interface StoreProductsCard {
   kind: Kind;
   currency: Currency;
   products: Products;
+  nextSkip?: Nextskip;
 }
 /**
  * A product on the admin's product card.

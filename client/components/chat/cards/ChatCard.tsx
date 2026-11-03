@@ -44,15 +44,15 @@ export function ChatCard({ dataComponent, icon, title, subtitle, meta, children,
 // A product card's title. `nextSkip` (sent only when the list came back
 // full, so there may be more) is where the next page starts: this page is
 // the `count` products before it.
-export function productListTitle(count: number, nextSkip: number | undefined): string {
-  if (nextSkip === undefined) return count === 1 ? '1 product' : `${count} products`;
+export function productListTitle(count: number, nextSkip: number | null | undefined): string {
+  if (nextSkip == null) return count === 1 ? '1 product' : `${count} products`;
   if (nextSkip === count) return `First ${count} products`;
   return `Products ${nextSkip - count + 1}–${nextSkip}`;
 }
 
 interface MoreProductsProps {
   dataComponent: string;
-  nextSkip: number | undefined;
+  nextSkip: number | null | undefined;
   busy: boolean;
 }
 
@@ -61,7 +61,7 @@ interface MoreProductsProps {
 export function MoreProducts({ dataComponent, nextSkip, busy }: MoreProductsProps) {
   const shell = useOptionalChatShell();
   const [asked, setAsked] = useState(false);
-  if (nextSkip === undefined || !shell) return null;
+  if (nextSkip == null || !shell) return null;
   const askMore = () => {
     if (shell.sendText(`Show me more products, after the first ${nextSkip}.`) === 'sent') setAsked(true);
   };
