@@ -40,14 +40,13 @@ import threading
 import time
 from typing import Callable, TypeVar
 
-from pydantic import ValidationError
 from pydantic_core import to_json
 
 from mcpCreator import TOOL_NAME_PATTERN
 from objects import (CHAT_TOOL_ARGUMENTS_MAX_LENGTH,
                      CHAT_TOOL_CALL_ID_MAX_LENGTH, CHAT_TOOL_NAME_MAX_LENGTH)
 from services.__request import ServiceUnavailable
-from toolArguments import decodedArguments, refusedFields
+from toolArguments import ArgumentsRefused, validated
 
 CHAT_MODEL = 'muse-spark-1.3'
 CHAT_BASE_URL = 'https://api.meta.ai/v1'
@@ -531,18 +530,9 @@ def _toolContent(toolset: str, name, argumentsJson, userId: str,
                          else UNKNOWN_TOOL_REFUSAL)
     argsModel, call = calls[name]
     try:
-        arguments = json.loads(argumentsJson or '{}')
-    except (TypeError, ValueError):
-        return toolError(f'The arguments of {name} are not valid JSON')
-    if not isinstance(arguments, dict):
-        return toolError(f'The arguments of {name} must be a JSON object')
-    try:
-        # Muse may send an object argument as a JSON string.
-        args = argsModel.model_validate(
-            decodedArguments(argsModel, arguments))
-    except ValidationError as error:
-        return toolError(f'Invalid arguments for {name}: '
-                         f'{refusedFields(error, "arguments")}')
+        args = validated(argsModel, name, argumentsJson)
+    except ArgumentsRefused as refusal:
+        return toolError(str(refusal))
     try:
         result = call(userId, storeId, args)
     except ToolError as error:

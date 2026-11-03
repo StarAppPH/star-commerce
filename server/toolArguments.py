@@ -11,6 +11,10 @@ chatForms' form tools share it).
 - refusedFields(): the fields a ValidationError refused (items.0.quantity),
   each a shape error's reason after it ("delivery (expected an object)"),
   never a value.
+- validated(): a tool call's arguments JSON as its args model, or
+  ArgumentsRefused with the refusal the model gets (never a value). JSON
+  nested too deep to parse (a RecursionError) is refused like any other
+  JSON that does not parse.
 """
 
 import json
@@ -85,7 +89,7 @@ def decodedArguments(argsModel: type[BaseModel], arguments: dict) -> dict:
             continue
         try:
             parsed = json.loads(value)
-        except ValueError:
+        except (ValueError, RecursionError):
             continue
         if ((isinstance(parsed, dict) and _OBJECT in shapes)
                 or (isinstance(parsed, list) and _LIST in shapes)):
@@ -104,3 +108,27 @@ def refusedFields(error: ValidationError, whole: str) -> str:
             fields[field] = reason
     return ', '.join(f'{field} ({reason})' if reason else field
                      for field, reason in fields.items())
+
+
+class ArgumentsRefused(Exception):
+    """A tool call's arguments refused; its text is what the model gets."""
+
+
+def validated(argsModel: type[BaseModel], name: str, argumentsJson,
+              whole: str = 'arguments') -> BaseModel:
+    """The model's `argumentsJson` for the tool `name` as `argsModel`
+    (an object or a list sent as a JSON string decoded first), or
+    ArgumentsRefused naming what is wrong; `whole` names the input itself
+    in a refusal."""
+    try:
+        arguments = json.loads(argumentsJson or '{}')
+    except (TypeError, ValueError, RecursionError):
+        raise ArgumentsRefused(
+            f'The arguments of {name} are not valid JSON') from None
+    if not isinstance(arguments, dict):
+        raise ArgumentsRefused(f'The arguments of {name} must be a JSON object')
+    try:
+        return argsModel.model_validate(decodedArguments(argsModel, arguments))
+    except ValidationError as error:
+        raise ArgumentsRefused(f'Invalid arguments for {name}: '
+                               f'{refusedFields(error, whole)}') from None

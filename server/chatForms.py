@@ -53,7 +53,7 @@ from objects import (BRAND_COLOR_SUGGESTIONS_MAX, HEX_COLOR_PATTERN,
                      DELIVERY_ZONE_RULES, UploadedProductPhotosResponse,
                      deliveryZoneAt, ruledZones)
 from services.__request import ServiceUnavailable
-from toolArguments import decodedArguments, refusedFields
+from toolArguments import ArgumentsRefused, refusedFields, validated
 from utils import generateRandomString
 
 # ChatActions.CHAT_TURNS (ChatActions imports this module).
@@ -147,11 +147,6 @@ def _component(data: dict) -> dict:
     """A component as it is sent and stored."""
     return _COMPONENT.dump_python(_COMPONENT.validate_python(data),
                                   by_alias=True)
-
-
-def _fieldsOf(error: ValidationError) -> str:
-    """The fields a ValidationError refused, never the values."""
-    return refusedFields(error, 'form')
 
 
 # ── Form tools ──────────────────────────────
@@ -726,19 +721,9 @@ def runFormTool(toolset: str, name: str, argumentsJson: str, userId: str,
     if tool is None or toolset not in tool.toolsets:
         return json.dumps({'error': f'Unknown tool {name}'}), None
     try:
-        arguments = json.loads(argumentsJson or '{}')
-    except (TypeError, ValueError):
-        return json.dumps({'error': f'The arguments of {name} are not '
-                           'valid JSON'}), None
-    if not isinstance(arguments, dict):
-        return json.dumps({'error': f'The arguments of {name} must be a '
-                           'JSON object'}), None
-    try:
-        args = tool.argsModel.model_validate(
-            decodedArguments(tool.argsModel, arguments))
-    except ValidationError as error:
-        return json.dumps({'error': f'Invalid arguments for {name}: '
-                           f'{_fieldsOf(error)}'}), None
+        args = validated(tool.argsModel, name, argumentsJson, 'form')
+    except ArgumentsRefused as refusal:
+        return json.dumps({'error': str(refusal)}), None
     try:
         if tool.withContext:
             if context is None:
@@ -779,7 +764,7 @@ def validAnswer(form) -> BaseModel | None:
         return _ANSWER.validate_python(form)
     except ValidationError as error:
         raise ValueError(FORM_ANSWER_INVALID.format(
-            fields=_fieldsOf(error))) from None
+            fields=refusedFields(error, 'form'))) from None
 
 
 def _answers(component: dict, formId: str) -> bool:
