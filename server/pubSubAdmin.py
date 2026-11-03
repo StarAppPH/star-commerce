@@ -8,6 +8,7 @@ from google.oauth2 import service_account
 import google.auth
 import google.auth.exceptions
 import google.api_core.exceptions
+import atexit
 import os
 import ast
 import sys
@@ -856,6 +857,10 @@ def main(argv=None):
     args = __parseArgs(sys.argv[1:] if argv is None else argv)
     dryRun = args['dryRun']
     nonInteractive = args['project'] is not None
+    if argv is None and not nonInteractive:
+        # Run as a script (a caller passing argv, a test, never pauses).
+        # Runs after the result, an abort, a sys.exit or a traceback
+        atexit.register(__pauseBeforeClose)
     try:
         credentials, adc_project_id = google.auth.default()
         if nonInteractive:
@@ -927,6 +932,7 @@ def main(argv=None):
             __ensure_topic(publisher, project_id, deadLetterTopic)
             createPubSubForAllServices(credentials, project_id,
                                        service_account_email, plan, True)
+            __printSuccess(plan, True, project_id, current_service_name)
             return
         # y re-applies the full plan (PATCHes existing subscriptions); new only
         # creates what is missing. new is a whole word so a habitual n aborts.
@@ -954,6 +960,7 @@ def main(argv=None):
         __saveLastTarget(project_id, current_service_name, service_account_email)
         createPubSubForAllServices(credentials, project_id,
                                    service_account_email, applyPlan, allowPatch)
+        __printSuccess(applyPlan, allowPatch, project_id, current_service_name)
     except (google.api_core.exceptions.Unauthenticated,
             google.api_core.exceptions.ServiceUnavailable,
             google.api_core.exceptions.RetryError,
@@ -963,6 +970,28 @@ def main(argv=None):
         print("\n  gcloud auth application-default login\n")
         print(f"({e.__class__.__name__}; nothing more was changed)")
         sys.exit(1)
+
+
+def __printSuccess(plan, allowPatch: bool, project_id: str, serviceName: str) -> None:
+    """The closing line of a run that wrote: what the applied plan held."""
+    topicCount = len(plan)
+    subCount = sum(len(subscriptions) for _, subscriptions in plan)
+    print(f"\nSUCCESS: {topicCount} topic(s) and {subCount} subscription(s) "
+          f"{'created or updated' if allowPatch else 'created'} in {project_id} "
+          f"for {serviceName}.")
+
+
+def __pauseBeforeClose() -> None:
+    """Keep the console window open after an interactive run (double-click,
+    an IDE's Run), so its result, an abort or an error stays readable.
+    main() registers it only in the interactive mode; never pauses without
+    a terminal."""
+    if not sys.stdin.isatty():
+        return
+    try:
+        input("\nPress Enter to close...")
+    except (EOFError, KeyboardInterrupt):
+        pass
 
 
 if __name__ == "__main__":
